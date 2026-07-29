@@ -1316,6 +1316,82 @@ html, body {
   color: hsl(var(--catalogue-text-primary));
 }
 
+/* Form controls inside a DARK catalogue (lead/enroll/checkout modals). The
+   shared design-system MyInput hardcodes border-neutral-300 + text-neutral-600
+   because it is used by every form in the app, most of which are always light.
+   On a dark catalogue that reads as a harsh bright outline around dim text.
+   Rather than re-theming the shared component, re-point the colors for controls
+   that appear inside the catalogue wrapper only. The attribute+class selector
+   outranks the Tailwind utility, so no !important is needed. */
+[data-catalogue-theme].dark :is(input, textarea, select),
+.dark [data-catalogue-theme] :is(input, textarea, select) {
+  border-color: hsl(var(--catalogue-border));
+  color: hsl(var(--catalogue-text-primary));
+}
+[data-catalogue-theme].dark :is(input, textarea)::placeholder,
+.dark [data-catalogue-theme] :is(input, textarea)::placeholder {
+  color: hsl(var(--catalogue-text-muted));
+}
+/* Native select popups inherit the page background on most platforms; give the
+   options an explicit surface so they are not white-on-white. */
+[data-catalogue-theme].dark select option,
+.dark [data-catalogue-theme] select option {
+  background-color: hsl(var(--catalogue-bg-elevated));
+  color: hsl(var(--catalogue-text-primary));
+}
+
+/* react-phone-input-2 inside a DARK catalogue. The library ships its own
+   stylesheet hardcoding background:#fff on the input, the flag dropdown and the
+   country list, so the phone field rendered as a bright white slab in an
+   otherwise dark lead/enroll form. We cannot change the package's CSS, so
+   override it — scoped to the catalogue wrapper so every other consumer of the
+   phone input (registration, sub-org, product pages) keeps the library look. */
+[data-catalogue-theme].dark .react-tel-input .form-control,
+.dark [data-catalogue-theme] .react-tel-input .form-control {
+  background-color: hsl(var(--catalogue-bg-subtle));
+  color: hsl(var(--catalogue-text-primary));
+  border-color: hsl(var(--catalogue-border));
+}
+[data-catalogue-theme].dark .react-tel-input .form-control::placeholder,
+.dark [data-catalogue-theme] .react-tel-input .form-control::placeholder {
+  color: hsl(var(--catalogue-text-muted));
+}
+[data-catalogue-theme].dark .react-tel-input .flag-dropdown,
+.dark [data-catalogue-theme] .react-tel-input .flag-dropdown,
+[data-catalogue-theme].dark .react-tel-input .selected-flag:hover,
+.dark [data-catalogue-theme] .react-tel-input .selected-flag:hover,
+[data-catalogue-theme].dark .react-tel-input .selected-flag.open,
+.dark [data-catalogue-theme] .react-tel-input .selected-flag.open {
+  background-color: hsl(var(--catalogue-bg-muted));
+  border-color: hsl(var(--catalogue-border));
+}
+/* Country dropdown: list surface, rows, hover/selected and the search box. */
+[data-catalogue-theme].dark .react-tel-input .country-list,
+.dark [data-catalogue-theme] .react-tel-input .country-list {
+  background-color: hsl(var(--catalogue-bg-elevated));
+  color: hsl(var(--catalogue-text-primary));
+}
+[data-catalogue-theme].dark .react-tel-input .country-list .country .dial-code,
+.dark [data-catalogue-theme] .react-tel-input .country-list .country .dial-code {
+  color: hsl(var(--catalogue-text-muted));
+}
+[data-catalogue-theme].dark .react-tel-input .country-list .country:hover,
+.dark [data-catalogue-theme] .react-tel-input .country-list .country:hover,
+[data-catalogue-theme].dark .react-tel-input .country-list .country.highlight,
+.dark [data-catalogue-theme] .react-tel-input .country-list .country.highlight {
+  background-color: hsl(var(--catalogue-interactive-hover));
+}
+[data-catalogue-theme].dark .react-tel-input .country-list .search,
+.dark [data-catalogue-theme] .react-tel-input .country-list .search {
+  background-color: hsl(var(--catalogue-bg-elevated));
+}
+[data-catalogue-theme].dark .react-tel-input .country-list .search-box,
+.dark [data-catalogue-theme] .react-tel-input .country-list .search-box {
+  background-color: hsl(var(--catalogue-bg-subtle));
+  color: hsl(var(--catalogue-text-primary));
+  border-color: hsl(var(--catalogue-border));
+}
+
 /* Card-style each column in a document "Columns Layout" block so columns read as
    distinct regions. Applied via CSS (not just the editor's serialized output) so
    ALREADY-SAVED slides get it too — the stored column divs only set padding/text

@@ -598,6 +598,17 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     [filtersConfig],
   );
   const defaultToAllFilters = filterIds.size === 0;
+
+  // How a course preview image sits in the card's image band. `cover` (default)
+  // fills it but crops — fine for photos, destructive for wide marketing
+  // banners whose edges carry the logo and headline. `contain` shows the whole
+  // artwork. Authored per catalogue so institutes with banner-style artwork can
+  // opt in without changing anyone else's grid.
+  const imageFit: "cover" | "contain" =
+    (render?.styles as { imageFit?: "cover" | "contain" } | undefined)
+      ?.imageFit === "contain"
+      ? "contain"
+      : "cover";
   const shouldShowLevelFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
@@ -1390,14 +1401,26 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   >
                     {/* ── Header band (image or gradient fallback) ── */}
                     {displayImage && (
-                      <div className="relative h-44 overflow-hidden flex-shrink-0">
+                      <div
+                        className={cn(
+                          "relative h-44 overflow-hidden flex-shrink-0",
+                          // `contain` letterboxes, so give the band a surface
+                          // rather than leaving a bare gap beside the artwork.
+                          imageFit === "contain" && "bg-catalogue-bg-subtle",
+                        )}
+                      >
                         {hasRealImage ? (
                           /* Real image: fill the band */
                           <div className="w-full h-full">
                             <CourseImage
                               previewImageUrl={course.thumbnail}
                               alt={course.title}
-                              className="w-full h-full object-cover"
+                              className={cn(
+                                "w-full h-full",
+                                imageFit === "contain"
+                                  ? "object-contain"
+                                  : "object-cover",
+                              )}
                             />
                           </div>
                         ) : (

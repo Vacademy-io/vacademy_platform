@@ -60,7 +60,7 @@ slots appear on the host's and invitee's calendars.
 ### New: `admin_core_service/features/mentorship`  (Phase 1 — DONE)
 Base path `/admin-core-service/mentorship/v1`.
 
-Tables (V408):
+Tables (V411; renumbered from V408 after course-pulse took V408–V410 on main):
 - `mentor` — a user promoted to mentor in an institute (custom `display_name`,
   `title`, `profile_image_file_id`, `bio`, optional `booking_page_id`). Unique per
   (institute, user) while not DELETED.

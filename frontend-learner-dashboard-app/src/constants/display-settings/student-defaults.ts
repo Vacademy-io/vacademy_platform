@@ -75,7 +75,8 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
     // Hidden from learners by default; admins can enable it in Student Display settings.
     { id: "referral", order: 5, visible: false },
     { id: "attendance", order: 6, visible: true },
-    { id: "my-mentors", order: 7, visible: true },
+    // Hidden by default; admins enable it per-institute in Student Display settings.
+    { id: "my-mentors", order: 7, visible: false },
   ];
 }
 

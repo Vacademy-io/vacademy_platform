@@ -83,6 +83,17 @@ export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse
 export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;
 export const COURSE_PULSE_FEED = `${BASE_URL}/admin-core-service/course-pulse/feed`;
 
+// Institute Pulse — institute-wide live view. One endpoint per rail so a slow or failing rail
+// cannot take the others down with it. The assessments rail is served by assessment_service
+// directly (not proxied), which is why it carries a different service prefix.
+export const INSTITUTE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/institute-pulse/summary`;
+export const INSTITUTE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/institute-pulse/content-map`;
+export const INSTITUTE_PULSE_LIVE_CLASSES = `${BASE_URL}/admin-core-service/institute-pulse/live-classes`;
+export const INSTITUTE_PULSE_FEED = `${BASE_URL}/admin-core-service/institute-pulse/feed`;
+// Served by assessment_service directly, not proxied through admin_core — see the Institute
+// Pulse plan (§2.1) for why the assessment rail is called straight from the browser.
+export const INSTITUTE_PULSE_ASSESSMENTS = `${BASE_URL}/assessment-service/institute-pulse/summary`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;

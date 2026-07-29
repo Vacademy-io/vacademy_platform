@@ -72,6 +72,7 @@ export const SUB_MODULE_SIDEBAR_MAPPING: Record<
 };
 
 export const controlledTabs = [
+    'institute-pulse',
     'live-session',
     'reports',
     'doubt-management',

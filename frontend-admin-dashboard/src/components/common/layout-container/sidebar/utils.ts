@@ -10,6 +10,7 @@ import {
     Video,
     CalendarCheck,
     ChartBar,
+    Pulse,
     Lightning,
     Question,
     PencilCircle,
@@ -684,6 +685,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'log-course-progress',
             },
         ],
+    },
+    {
+        icon: Pulse,
+        title: 'Institute Pulse',
+        id: 'institute-pulse',
+        to: '/institute-pulse',
+        category: 'LMS',
     },
     {
         icon: ChartBar,

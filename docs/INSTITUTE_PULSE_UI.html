@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Institute Pulse — UI concept</title>
+<style>
+:root{
+  /* Vacademy admin tokens (src/index.css) */
+  --primary-50:34 89% 96%; --primary-100:33 90% 92%; --primary-200:29 87% 84%;
+  --primary-300:27 86% 71%; --primary-400:25 86% 62%; --primary-500:24 85% 54%; --primary-600:21 78% 46%;
+  --danger-50:0 86% 97%; --danger-100:0 90% 94%; --danger-500:360 76% 68%; --danger-600:0 64% 55%;
+  --warning-50:44 100% 96%; --warning-100:45 96% 89%; --warning-500:37 100% 50%; --warning-600:32 95% 44%;
+  --success-50:150 60% 96%; --success-100:149 62% 88%; --success-500:142 56% 54%; --success-600:145 55% 40%;
+  --info-50:204 100% 97%; --info-100:204 94% 92%; --info-500:199 89% 48%; --info-600:201 90% 38%;
+
+  --bg:#f7f7f8; --surface:#ffffff; --surface-2:#fbfbfc;
+  --line:#e8e8ec; --line-strong:#d8d8de;
+  --ink:#17171c; --ink-2:#55555f; --ink-3:#8a8a95;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(16,16,24,.05), 0 1px 3px rgba(16,16,24,.04);
+  --shadow-lg:0 4px 16px rgba(16,16,24,.07);
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101014; --surface:#17171c; --surface-2:#1c1c22;
+    --line:#27272e; --line-strong:#33333c;
+    --ink:#f2f2f5; --ink-2:#a8a8b3; --ink-3:#71717d;
+    --shadow:0 1px 2px rgba(0,0,0,.4); --shadow-lg:0 4px 16px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Open Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:14px;line-height:22px;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;font-weight:500}
+.wrap{max-width:1440px;margin:0 auto;padding:20px 24px 64px}
+
+/* ---------- header ---------- */
+.topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.brandmark{width:34px;height:34px;border-radius:9px;flex:none;
+  background:linear-gradient(140deg,hsl(var(--primary-400)),hsl(var(--primary-600)));
+  display:grid;place-items:center;color:#fff;font-weight:600;font-size:15px}
+.title-block h1{font-size:20px;line-height:28px;letter-spacing:-.01em}
+.title-block p{margin:1px 0 0;font-size:12px;line-height:18px;color:var(--ink-3)}
+.spacer{flex:1}
+.livechip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+  background:hsl(var(--success-50));color:hsl(var(--success-600));font-size:12px;font-weight:500;
+  border:1px solid hsl(var(--success-100))}
+@media (prefers-color-scheme:dark){.livechip{background:hsl(var(--success-500)/.12);border-color:hsl(var(--success-500)/.25)}}
+.dot{width:7px;height:7px;border-radius:50%;background:hsl(var(--success-500));position:relative;flex:none}
+.dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;
+  background:hsl(var(--success-500)/.35);animation:ping 1.9s cubic-bezier(0,0,.2,1) infinite}
+@keyframes ping{75%,100%{transform:scale(2);opacity:0}}
+.ghostbtn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-2);
+  border-radius:var(--radius-sm);padding:6px 12px;font:inherit;font-size:12px;cursor:pointer}
+.ghostbtn:hover{border-color:hsl(var(--primary-400));color:hsl(var(--primary-600))}
+
+/* ---------- KPI strip ---------- */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:20px}
+@media(max-width:1180px){.kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:13px 14px 13px 17px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rail,var(--line-strong))}
+.kpi .lbl{font-size:11px;line-height:16px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.kpi .val{font-size:27px;line-height:34px;font-weight:500;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.kpi .val small{font-size:14px;color:var(--ink-3);font-weight:400;letter-spacing:0}
+.kpi .hint{font-size:11px;line-height:16px;color:var(--ink-3);margin-top:2px}
+.k-p{--rail:hsl(var(--primary-500))} .k-s{--rail:hsl(var(--success-500))}
+.k-w{--rail:hsl(var(--warning-500))} .k-d{--rail:hsl(var(--danger-500))}
+.k-i{--rail:hsl(var(--info-500))} .k-n{--rail:var(--line-strong)}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;padding:4px;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:10px;margin-bottom:18px;overflow-x:auto}
+.tabs button{border:0;background:transparent;color:var(--ink-2);font:inherit;font-size:13px;font-weight:500;
+  padding:7px 15px;border-radius:7px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected=true]{background:var(--surface);color:hsl(var(--primary-600));box-shadow:var(--shadow)}
+.tabs .cnt{font-size:11px;font-variant-numeric:tabular-nums;background:var(--line);color:var(--ink-2);
+  padding:0 6px;border-radius:999px;line-height:17px}
+.tabs button[aria-selected=true] .cnt{background:hsl(var(--primary-50));color:hsl(var(--primary-600))}
+
+/* ---------- layout ---------- */
+.grid3{display:grid;grid-template-columns:1fr 1fr 340px;gap:16px;align-items:start}
+@media(max-width:1180px){.grid3{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+@media(max-width:1180px){.grid2{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:16px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.panel-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.panel-hd h3{font-size:13px;font-weight:600;letter-spacing:.01em}
+.panel-hd .sub{font-size:11px;color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
+.panel-bd{padding:14px 16px}
+.panel-bd.tight{padding:6px 0}
+
+/* freshness pill */
+.fresh{font-size:10px;line-height:15px;font-weight:600;padding:1px 6px;border-radius:4px;letter-spacing:.03em;
+  text-transform:uppercase;border:1px solid transparent}
+.f-live{background:hsl(var(--success-50));color:hsl(var(--success-600));border-color:hsl(var(--success-100))}
+.f-near{background:hsl(var(--info-50));color:hsl(var(--info-600));border-color:hsl(var(--info-100))}
+.f-post{background:var(--surface-2);color:var(--ink-3);border-color:var(--line)}
+@media (prefers-color-scheme:dark){
+  .f-live{background:hsl(var(--success-500)/.13);border-color:transparent}
+  .f-near{background:hsl(var(--info-500)/.13);border-color:transparent}
+}
+
+/* ---------- session / assessment cards ---------- */
+.card{border:1px solid var(--line);border-radius:var(--radius-sm);padding:13px 14px;background:var(--surface);
+  position:relative;overflow:hidden}
+.card + .card{margin-top:10px}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rail,transparent)}
+.card.on{--rail:hsl(var(--success-500))}
+.card.soon{--rail:hsl(var(--info-500))}
+.card.risk{--rail:hsl(var(--danger-500))}
+.card.done{--rail:var(--line-strong)}
+.card-hd{display:flex;align-items:flex-start;gap:10px}
+.card-hd .nm{font-size:14px;font-weight:500;line-height:20px}
+.card-hd .meta{font-size:11px;color:var(--ink-3);line-height:16px;margin-top:2px;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card-hd .meta span.sep{color:var(--line-strong)}
+.timer{margin-left:auto;text-align:right;flex:none}
+.timer .t{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.timer .tl{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.t-warn{color:hsl(var(--warning-600))} .t-dan{color:hsl(var(--danger-600))} .t-ok{color:var(--ink)}
+
+/* window progress */
+.winbar{height:4px;border-radius:2px;background:var(--line);margin:11px 0 9px;overflow:hidden;position:relative}
+.winbar i{display:block;height:100%;background:hsl(var(--success-500));border-radius:2px}
+.winbar.b-i i{background:hsl(var(--info-500))}
+
+/* funnel / stacked bar */
+.stackbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--line);margin:12px 0 8px}
+.stackbar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--ink-2)}
+.legend b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+
+/* stats row */
+.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:11px;
+  border-top:1px dashed var(--line);padding-top:10px}
+.statrow.c3{grid-template-columns:repeat(3,1fr)}
+.stat .n{font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;line-height:22px}
+.stat .l{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.stat .n.dan{color:hsl(var(--danger-600))} .stat .n.warn{color:hsl(var(--warning-600))}
+.stat .n.ok{color:hsl(var(--success-600))}
+
+/* donut */
+.donut{width:52px;height:52px;flex:none;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:conic-gradient(hsl(var(--success-500)) calc(var(--pct)*1%), var(--line) 0)}
+.donut::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--surface)}
+.donut b{position:relative;z-index:1;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.donut.mid{background:conic-gradient(hsl(var(--warning-500)) calc(var(--pct)*1%), var(--line) 0)}
+.donut.low{background:conic-gradient(hsl(var(--danger-500)) calc(var(--pct)*1%), var(--line) 0)}
+
+/* avatars */
+.faces{display:flex;align-items:center}
+.face{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:600;
+  color:#fff;border:2px solid var(--surface);margin-left:-7px;flex:none}
+.face:first-child{margin-left:0}
+.face.more{background:var(--line);color:var(--ink-2)}
+
+/* rows / table */
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--surface-2)}
+.row .grow{flex:1;min-width:0}
+.row .nm{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .sb{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .num{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink-2);flex:none}
+.chip{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;letter-spacing:.02em;flex:none}
+.c-dan{background:hsl(var(--danger-50));color:hsl(var(--danger-600))}
+.c-warn{background:hsl(var(--warning-50));color:hsl(var(--warning-600))}
+.c-ok{background:hsl(var(--success-50));color:hsl(var(--success-600))}
+.c-info{background:hsl(var(--info-50));color:hsl(var(--info-600))}
+.c-mute{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+@media (prefers-color-scheme:dark){
+  .c-dan{background:hsl(var(--danger-500)/.15)} .c-warn{background:hsl(var(--warning-500)/.15)}
+  .c-ok{background:hsl(var(--success-500)/.15)} .c-info{background:hsl(var(--info-500)/.15)}
+}
+
+/* sparkline */
+.spark{display:block;width:100%;height:34px}
+
+/* attention feed */
+.alert{display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line)}
+.alert:last-child{border-bottom:0}
+.alert .ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:13px;flex:none}
+.a-dan .ic{background:hsl(var(--danger-50));color:hsl(var(--danger-600))}
+.a-warn .ic{background:hsl(var(--warning-50));color:hsl(var(--warning-600))}
+.a-info .ic{background:hsl(var(--info-50));color:hsl(var(--info-600))}
+.alert .tx{font-size:12.5px;line-height:18px}
+.alert .tx b{font-weight:600}
+.alert .tm{font-size:10.5px;color:var(--ink-3);margin-top:1px}
+
+/* content tree */
+.tree{font-size:13px}
+.tnode{display:flex;align-items:center;gap:9px;padding:7px 16px;border-bottom:1px solid var(--line)}
+.tnode:hover{background:var(--surface-2)}
+.tnode .car{color:var(--ink-3);font-size:9px;width:9px;flex:none}
+.tnode .tt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tnode.l0{font-weight:600;background:var(--surface-2)}
+.tnode.l1{padding-left:34px;color:var(--ink-2)}
+.tnode.l2{padding-left:52px;color:var(--ink-2)}
+.tnode.l3{padding-left:70px}
+.heads{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;background:hsl(var(--primary-50));
+  color:hsl(var(--primary-600));padding:1px 8px;border-radius:999px;flex:none}
+@media (prefers-color-scheme:dark){.heads{background:hsl(var(--primary-500)/.15)}}
+
+/* misc */
+.empty{padding:26px 16px;text-align:center;color:var(--ink-3);font-size:12.5px}
+.hr{height:1px;background:var(--line);margin:14px 0}
+.note{font-size:11.5px;line-height:17px;color:var(--ink-3);background:var(--surface-2);
+  border:1px dashed var(--line-strong);border-radius:var(--radius-sm);padding:10px 12px}
+.note b{color:var(--ink-2)}
+.hidden{display:none}
+code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px;
+  border:1px solid var(--line)}
+.footlegend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:22px;padding:13px 16px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);font-size:11.5px;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HEADER ============ -->
+  <div class="topbar">
+    <div class="brandmark">IP</div>
+    <div class="title-block">
+      <h1>Institute Pulse</h1>
+      <p>Sunrise Academy · everything happening right now</p>
+    </div>
+    <div class="spacer"></div>
+    <span class="livechip"><span class="dot"></span> Live · updated <span id="ago">3</span>s ago</span>
+    <button class="ghostbtn" id="pausebtn">Pause auto-refresh</button>
+  </div>
+
+  <!-- ============ KPI STRIP ============ -->
+  <div class="kpis">
+    <div class="kpi k-p">
+      <div class="lbl">People online</div>
+      <div class="val">418</div>
+      <div class="hint">deduped across all 3 rails</div>
+    </div>
+    <div class="kpi k-s">
+      <div class="lbl">In content</div>
+      <div class="val">246 <small>/ 1,890</small></div>
+      <div class="hint">198 active · 48 idle</div>
+    </div>
+    <div class="kpi k-i">
+      <div class="lbl">Classes on air</div>
+      <div class="val">7</div>
+      <div class="hint">129 joined of 214 invited</div>
+    </div>
+    <div class="kpi k-w">
+      <div class="lbl">Assessments live</div>
+      <div class="val">4</div>
+      <div class="hint">86 in progress · 52 submitted</div>
+    </div>
+    <div class="kpi k-d">
+      <div class="lbl">Needs attention</div>
+      <div class="val">23</div>
+      <div class="hint">11 stalled · 6 stuck · 6 no-show</div>
+    </div>
+    <div class="kpi k-n">
+      <div class="lbl">Next 60 min</div>
+      <div class="val">9</div>
+      <div class="hint">5 classes · 4 assessments</div>
+    </div>
+  </div>
+
+  <!-- ============ TABS ============ -->
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-t="ov">Overview</button>
+    <button role="tab" aria-selected="false" data-t="ct">Content <span class="cnt">246</span></button>
+    <button role="tab" aria-selected="false" data-t="ls">Live Sessions <span class="cnt">7</span></button>
+    <button role="tab" aria-selected="false" data-t="as">Assessments <span class="cnt">4</span></button>
+    <button role="tab" aria-selected="false" data-t="at">Attention <span class="cnt">23</span></button>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- OVERVIEW                                                     -->
+  <!-- ============================================================ -->
+  <section id="p-ov">
+    <div class="grid3">
+
+      <!-- rail 1: content -->
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd">
+            <h3>Content</h3><span class="fresh f-live">live</span>
+            <span class="sub">246 learners</span>
+          </div>
+          <div class="panel-bd">
+            <div class="statrow c3" style="border-top:0;padding-top:0;margin-top:0">
+              <div class="stat"><div class="n ok">198</div><div class="l">Active</div></div>
+              <div class="stat"><div class="n warn">48</div><div class="l">Idle</div></div>
+              <div class="stat"><div class="n dan">6</div><div class="l">Need help</div></div>
+            </div>
+            <div class="hr"></div>
+            <div style="font-size:11px;color:var(--ink-3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Hottest right now</div>
+            <div class="legend" style="flex-direction:column;gap:7px">
+              <div style="display:flex;width:100%;gap:8px;align-items:center"><span class="grow" style="flex:1">JEE Physics · Rotational Motion</span><span class="heads">41</span></div>
+              <div style="display:flex;width:100%;gap:8px;align-items:center"><span class="grow" style="flex:1">NEET Biology · Human Physiology</span><span class="heads">33</span></div>
+              <div style="display:flex;width:100%;gap:8px;align-items:center"><span class="grow" style="flex:1">Class 10 Maths · Trigonometry</span><span class="heads">28</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Needs help</h3><span class="fresh f-live">live</span><span class="sub">6</span></div>
+          <div class="rows">
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">AR</span>
+              <span class="grow"><span class="nm">Aditi Rao</span><span class="sb">3 wrong · Rotational Motion Q4</span></span>
+              <span class="num">14m 22s</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">KM</span>
+              <span class="grow"><span class="nm">Karan Mehta</span><span class="sb">2 failed submissions · Two Sum</span></span>
+              <span class="num">21m 08s</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">SN</span>
+              <span class="grow"><span class="nm">Sneha Nair</span><span class="sb">4 wrong · Trigonometry quiz</span></span>
+              <span class="num">9m 41s</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- rail 2: sessions + assessments summary -->
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Classes on air</h3><span class="fresh f-near">near-live</span><span class="sub">7 running</span></div>
+          <div class="panel-bd">
+
+            <div class="card on">
+              <div class="card-hd">
+                <div class="donut" style="--pct:78"><b>78%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Organic Chemistry — Aldehydes</div>
+                  <div class="meta">Dr. Meera Iyer <span class="sep">·</span> Zoom <span class="sep">·</span> JEE Dropper 2026 <span class="sep">·</span> started 34m ago</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="1520">25:20</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:58%"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">62</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n ok">48</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n warn">9</div><div class="l">Late</div></div>
+                <div class="stat"><div class="n dan">14</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+            <div class="card on">
+              <div class="card-hd">
+                <div class="donut mid" style="--pct:52"><b>52%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Calculus — Definite Integrals</div>
+                  <div class="meta">Rahul Verma <span class="sep">·</span> BBB <span class="sep">·</span> Class 12 A <span class="sep">·</span> started 12m ago</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="2880">48:00</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:20%"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">54</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n ok">28</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n warn">4</div><div class="l">Late</div></div>
+                <div class="stat"><div class="n dan">26</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+            <div class="card risk">
+              <div class="card-hd">
+                <div class="donut low" style="--pct:17"><b>17%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Spoken English — Batch C</div>
+                  <div class="meta">Anita Das <span class="sep">·</span> Google Meet <span class="sep">·</span> started 21m ago</div>
+                </div>
+                <div class="timer"><div class="t t-warn" data-cd="540">09:00</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:70%;background:hsl(var(--danger-500))"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">35</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n dan">6</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n">2</div><div class="l">Late</div></div>
+                <div class="stat"><div class="n dan">29</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- rail 3: attention -->
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Needs attention</h3><span class="sub">23 open</span></div>
+          <div class="rows">
+            <div class="alert a-dan"><div class="ic">!</div><div><div class="tx"><b>11 learners disconnected</b> mid-attempt in <b>Weekly Mock Test 14</b> — no sync for 2+ min</div><div class="tm">assessment · updated 8s ago</div></div></div>
+            <div class="alert a-dan"><div class="ic">!</div><div><div class="tx"><b>Spoken English — Batch C</b> at 17% turnout, 21 min in</div><div class="tm">live session · updated 40s ago</div></div></div>
+            <div class="alert a-warn"><div class="ic">⏱</div><div><div class="tx"><b>9 attempts auto-submit in &lt;5 min</b> — 4 still on the last section</div><div class="tm">assessment · updated 8s ago</div></div></div>
+            <div class="alert a-warn"><div class="ic">?</div><div><div class="tx"><b>Q7 of Physics Unit Test</b> is failing for 71% of live takers</div><div class="tm">assessment · updated 22s ago</div></div></div>
+            <div class="alert a-warn"><div class="ic">⚑</div><div><div class="tx"><b>6 learners stuck</b> in content — 3+ wrong answers on the same slide</div><div class="tm">content · updated 8s ago</div></div></div>
+            <div class="alert a-info"><div class="ic">↻</div><div><div class="tx"><b>2 ended classes</b> awaiting attendance sync from Zoom (&gt;30 min)</div><div class="tm">live session · post-hoc</div></div></div>
+            <div class="alert a-info"><div class="ic">▤</div><div><div class="tx"><b>BBB node blr-02</b> degraded · 11 / 12 meeting slots used</div><div class="tm">infrastructure · updated 15s ago</div></div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Starting in the next hour</h3><span class="fresh f-live">live</span></div>
+          <div class="rows">
+            <div class="row"><span class="chip c-info">CLASS</span><span class="grow"><span class="nm">Thermodynamics — Doubt Session</span><span class="sb">Dr. Meera Iyer · 48 invited</span></span><span class="num">in 12m</span></div>
+            <div class="row"><span class="chip c-warn">TEST</span><span class="grow"><span class="nm">NEET Biology Sectional 6</span><span class="sb">180 registered · 45 min</span></span><span class="num">in 18m</span></div>
+            <div class="row"><span class="chip c-info">CLASS</span><span class="grow"><span class="nm">English Literature — Poetry</span><span class="sb">Anita Das · 30 invited</span></span><span class="num">in 27m</span></div>
+            <div class="row"><span class="chip c-warn">TEST</span><span class="grow"><span class="nm">Class 10 Maths Chapter Test</span><span class="sb">62 registered · 30 min</span></span><span class="num">in 41m</span></div>
+            <div class="row"><span class="chip c-info">CLASS</span><span class="grow"><span class="nm">Coding — Recursion Lab</span><span class="sb">Karan S. · 24 invited</span></span><span class="num">in 52m</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- CONTENT                                                      -->
+  <!-- ============================================================ -->
+  <section id="p-ct" class="hidden">
+    <div class="grid2">
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Where everyone is</h3><span class="fresh f-live">live</span>
+            <span class="sub">246 learners · 5 courses</span></div>
+          <div class="tree">
+            <div class="tnode l0"><span class="car">▾</span><span class="tt">JEE Dropper 2026 · Batch A</span><span class="heads">88</span></div>
+            <div class="tnode l1"><span class="car">▾</span><span class="tt">Physics</span><span class="heads">52</span></div>
+            <div class="tnode l2"><span class="car">▾</span><span class="tt">Mechanics → Rotational Motion</span><span class="heads">41</span></div>
+            <div class="tnode l3"><span class="tt">▸ Torque &amp; Angular Momentum <span class="chip c-dan" style="margin-left:6px">friction · usually 6m</span></span><span class="num" style="margin-right:8px">avg 14m 02s</span><span class="heads">23</span></div>
+            <div class="tnode l3"><span class="tt">▸ Moment of Inertia (video)</span><span class="num" style="margin-right:8px">avg 5m 18s</span><span class="heads">18</span></div>
+            <div class="tnode l2"><span class="car">▸</span><span class="tt">Thermodynamics → First Law</span><span class="heads">11</span></div>
+            <div class="tnode l1"><span class="car">▸</span><span class="tt">Chemistry</span><span class="heads">36</span></div>
+            <div class="tnode l0"><span class="car">▾</span><span class="tt">NEET Repeater 2026</span><span class="heads">74</span></div>
+            <div class="tnode l1"><span class="car">▾</span><span class="tt">Biology</span><span class="heads">51</span></div>
+            <div class="tnode l2"><span class="car">▸</span><span class="tt">Human Physiology → Digestion</span><span class="heads">33</span></div>
+            <div class="tnode l1"><span class="car">▸</span><span class="tt">Chemistry</span><span class="heads">23</span></div>
+            <div class="tnode l0"><span class="car">▸</span><span class="tt">Class 10 CBSE · Section A</span><span class="heads">45</span></div>
+            <div class="tnode l0"><span class="car">▸</span><span class="tt">Full-Stack Bootcamp · Cohort 4</span><span class="heads">39</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Live feed</h3><span class="fresh f-live">live</span><span class="sub">last 15 min</span></div>
+          <div class="rows">
+            <div class="row"><span class="num">14:22</span><span class="grow"><span class="nm">Rohit S. answered</span><span class="sb">Rotational Motion Q4 · <span style="color:hsl(var(--danger-600))">incorrect</span></span></span></div>
+            <div class="row"><span class="num">14:22</span><span class="grow"><span class="nm">Priya K. ran</span><span class="sb">Two Sum · <span style="color:hsl(var(--success-600))">accepted (12/12)</span></span></span></div>
+            <div class="row"><span class="num">14:21</span><span class="grow"><span class="nm">Amit B. submitted</span><span class="sb">Trigonometry Worksheet · <span style="color:hsl(var(--danger-600))">late submission</span></span></span></div>
+            <div class="row"><span class="num">14:21</span><span class="grow"><span class="nm">Sneha N. answered</span><span class="sb">Digestion quiz · <span style="color:hsl(var(--success-600))">correct</span></span></span></div>
+            <div class="row"><span class="num">14:20</span><span class="grow"><span class="nm">Karan M. ran</span><span class="sb">Binary Search · <span style="color:hsl(var(--danger-600))">TLE (7/12)</span></span></span></div>
+            <div class="row"><span class="num">14:19</span><span class="grow"><span class="nm">Divya R. submitted</span><span class="sb">Chemistry Practice Set 3 · submitted</span></span></div>
+          </div>
+        </div>
+        <div class="note"><b>Reuses the existing course-pulse pipeline.</b> Same 60s learner heartbeat →
+          <code>activity_log.last_seen_at</code> → 8s server cache → 15s poll. Institute scope adds a
+          Course/Batch level above Subject in the tree and moves the roster cap into SQL.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- LIVE SESSIONS                                                -->
+  <!-- ============================================================ -->
+  <section id="p-ls" class="hidden">
+    <div class="grid2">
+      <div class="stack">
+
+        <div class="panel">
+          <div class="panel-hd"><h3>On air now</h3><span class="fresh f-near">near-live</span>
+            <span class="sub">7 classes · 129 of 214 joined (60%)</span></div>
+          <div class="panel-bd">
+
+            <div class="card on">
+              <div class="card-hd">
+                <div class="donut" style="--pct:78"><b>78%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Organic Chemistry — Aldehydes &amp; Ketones</div>
+                  <div class="meta">Dr. Meera Iyer <span class="sep">·</span> <span class="chip c-info">ZOOM</span>
+                    <span class="sep">·</span> JEE Dropper 2026 · Batch A <span class="sep">·</span> 14:00–15:00 IST</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="1520">25:20</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:58%"></i></div>
+              <div style="display:flex;gap:14px;align-items:flex-end;margin-top:4px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:2px">Join curve · per minute</div>
+                  <svg class="spark" viewBox="0 0 300 34" preserveAspectRatio="none">
+                    <polyline fill="none" stroke="hsl(var(--success-500))" stroke-width="1.8"
+                      points="0,32 12,6 24,10 36,14 48,20 60,24 72,26 84,28 96,29 108,30 120,29 132,31 144,30 156,31 168,32 180,31 192,32 204,32 216,31 228,32 240,32 252,31 264,32 276,32 288,31 300,32"/>
+                    <polygon fill="hsl(var(--success-500)/.10)"
+                      points="0,32 12,6 24,10 36,14 48,20 60,24 72,26 84,28 96,29 108,30 120,29 132,31 144,30 156,31 168,32 180,31 192,32 204,32 216,31 228,32 240,32 252,31 264,32 276,32 288,31 300,32 300,34 0,34"/>
+                  </svg>
+                </div>
+                <div class="faces">
+                  <span class="face" style="background:hsl(var(--primary-500))">MI</span>
+                  <span class="face" style="background:hsl(var(--info-500))">RS</span>
+                  <span class="face" style="background:hsl(var(--success-500))">PK</span>
+                  <span class="face" style="background:hsl(var(--warning-500))">AB</span>
+                  <span class="face more">+44</span>
+                </div>
+              </div>
+              <div class="statrow">
+                <div class="stat"><div class="n">62</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n ok">48</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n warn">9</div><div class="l">Late (&gt;10m)</div></div>
+                <div class="stat"><div class="n dan">14</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+            <div class="card on">
+              <div class="card-hd">
+                <div class="donut mid" style="--pct:52"><b>52%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Calculus — Definite Integrals</div>
+                  <div class="meta">Rahul Verma <span class="sep">·</span> <span class="chip c-ok">BBB · blr-01</span>
+                    <span class="sep">·</span> Class 12 Science A <span class="sep">·</span> 14:22–15:22 IST</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="2880">48:00</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:20%"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">54</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n ok">28</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n warn">4</div><div class="l">Late</div></div>
+                <div class="stat"><div class="n dan">26</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+            <div class="card risk">
+              <div class="card-hd">
+                <div class="donut low" style="--pct:17"><b>17%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">Spoken English — Batch C</div>
+                  <div class="meta">Anita Das <span class="sep">·</span> <span class="chip c-mute">GOOGLE MEET</span>
+                    <span class="sep">·</span> 14:13–14:53 IST <span class="sep">·</span>
+                    <span class="chip c-dan">low turnout</span></div>
+                </div>
+                <div class="timer"><div class="t t-warn" data-cd="540">09:00</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:70%;background:hsl(var(--danger-500))"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">35</div><div class="l">Invited</div></div>
+                <div class="stat"><div class="n dan">6</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n">2</div><div class="l">Late</div></div>
+                <div class="stat"><div class="n dan">29</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+            <div class="card on">
+              <div class="card-hd">
+                <div class="donut" style="--pct:91"><b>91%</b></div>
+                <div style="min-width:0">
+                  <div class="nm">NEET Biology — Doubt Clearing (Public)</div>
+                  <div class="meta">Dr. Sanjay Kulkarni <span class="sep">·</span> <span class="chip c-info">ZOOM</span>
+                    <span class="sep">·</span> <span class="chip c-mute">PUBLIC</span> 210 registered · 32 paid</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="1980">33:00</div><div class="tl">left</div></div>
+              </div>
+              <div class="winbar"><i style="width:45%"></i></div>
+              <div class="statrow">
+                <div class="stat"><div class="n">210</div><div class="l">Registered</div></div>
+                <div class="stat"><div class="n ok">191</div><div class="l">Joined</div></div>
+                <div class="stat"><div class="n">32</div><div class="l">Paid</div></div>
+                <div class="stat"><div class="n">19</div><div class="l">No-show</div></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Just ended</h3><span class="fresh f-post">post-hoc</span><span class="sub">last 60 min</span></div>
+          <div class="rows">
+            <div class="row"><span class="grow"><span class="nm">Physics — Wave Optics</span><span class="sb">Dr. Meera Iyer · 13:00–14:00 · turnout 84% (52/62)</span></span>
+              <span class="chip c-ok">synced</span><span class="num">avg 47m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Maths — Probability Drill</span><span class="sb">Rahul Verma · 12:30–13:30 · turnout 61% (33/54)</span></span>
+              <span class="chip c-warn">sync pending</span><span class="num">—</span></div>
+            <div class="row"><span class="grow"><span class="nm">Career Counselling (Public)</span><span class="sb">Guest speaker · 13:15–14:05 · turnout 72%</span></span>
+              <span class="chip c-info">recording processing</span><span class="num">avg 38m</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Absent from a class right now</h3><span class="fresh f-near">near-live</span><span class="sub">85</span></div>
+          <div class="rows">
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">VS</span>
+              <span class="grow"><span class="nm">Vikram Sethi</span><span class="sb">Organic Chemistry · 34m in</span></span><span class="chip c-dan">no-show</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--warning-500))">NP</span>
+              <span class="grow"><span class="nm">Neha Patil</span><span class="sb">Calculus · joined 11m late</span></span><span class="chip c-warn">late</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">HT</span>
+              <span class="grow"><span class="nm">Harsh Tiwari</span><span class="sb">Spoken English · 21m in</span></span><span class="chip c-dan">no-show</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">RD</span>
+              <span class="grow"><span class="nm">Riya Dsouza</span><span class="sb">Spoken English · 21m in</span></span><span class="chip c-dan">no-show</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--warning-500))">AG</span>
+              <span class="grow"><span class="nm">Arjun Gupta</span><span class="sb">Organic Chemistry · joined 14m late</span></span><span class="chip c-warn">late</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Meeting infrastructure</h3><span class="fresh f-live">live</span></div>
+          <div class="rows">
+            <div class="row"><span class="grow"><span class="nm">BBB · blr-01</span><span class="sb">RUNNING · healthy</span></span><span class="num">4 / 12</span></div>
+            <div class="row"><span class="grow"><span class="nm">BBB · blr-02</span><span class="sb">RUNNING · <span style="color:hsl(var(--warning-600))">degraded</span></span></span><span class="num">11 / 12</span></div>
+            <div class="row"><span class="grow"><span class="nm">BBB · sgp-01</span><span class="sb">STOPPED · standby</span></span><span class="num">0 / 12</span></div>
+            <div class="row"><span class="grow"><span class="nm">Zoom accounts</span><span class="sb">3 of 5 hosts in use</span></span><span class="num">3 / 5</span></div>
+          </div>
+        </div>
+
+        <div class="note"><b>Honest limits.</b> There are no leave events — Zoom's
+          <code>participant_left</code> webhook is received and discarded — so "joined" means
+          <i>ever joined</i>, not <i>in the room now</i>. Duration and engagement
+          (chats / talks / raise-hand / polls) arrive only after the meeting ends. And there is no
+          <code>started_at</code>: liveness is a wall-clock window, so a teacher starting late is invisible.
+          Everything marked <span class="fresh f-near">near-live</span> updates on join, not continuously.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- ASSESSMENTS                                                  -->
+  <!-- ============================================================ -->
+  <section id="p-as" class="hidden">
+    <div class="grid2">
+      <div class="stack">
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Assessments in flight</h3><span class="fresh f-live">live</span>
+            <span class="sub">4 live · 86 in progress</span></div>
+          <div class="panel-bd">
+
+            <div class="card on">
+              <div class="card-hd">
+                <div style="min-width:0;flex:1">
+                  <div class="nm">Weekly Mock Test 14 — Full Syllabus</div>
+                  <div class="meta">JEE Dropper 2026 <span class="sep">·</span> 180 min <span class="sep">·</span>
+                    EXAM <span class="sep">·</span> 3 sets <span class="sep">·</span> window 13:00–16:30 IST</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="4920">1:22:00</div><div class="tl">window closes</div></div>
+              </div>
+              <div class="stackbar">
+                <i style="width:14%;background:var(--line-strong)"></i>
+                <i style="width:8%;background:hsl(var(--info-500))"></i>
+                <i style="width:44%;background:hsl(var(--primary-500))"></i>
+                <i style="width:34%;background:hsl(var(--success-500))"></i>
+              </div>
+              <div class="legend">
+                <span><span class="sw" style="background:var(--line-strong)"></span>Not started <b>34</b></span>
+                <span><span class="sw" style="background:hsl(var(--info-500))"></span>In preview <b>19</b></span>
+                <span><span class="sw" style="background:hsl(var(--primary-500))"></span>In progress <b>107</b></span>
+                <span><span class="sw" style="background:hsl(var(--success-500))"></span>Submitted <b>82</b></span>
+                <span style="margin-left:auto;color:var(--ink-3)">242 registered</span>
+              </div>
+              <div class="statrow">
+                <div class="stat"><div class="n dan">11</div><div class="l">Stalled &gt;2m</div></div>
+                <div class="stat"><div class="n warn">9</div><div class="l">Auto-submit &lt;5m</div></div>
+                <div class="stat"><div class="n">64%</div><div class="l">Avg progress</div></div>
+                <div class="stat"><div class="n">128 <small style="font-size:11px;color:var(--ink-3)">/300</small></div><div class="l">Avg marks</div></div>
+              </div>
+            </div>
+
+            <div class="card on">
+              <div class="card-hd">
+                <div style="min-width:0;flex:1">
+                  <div class="nm">Physics Unit Test — Rotational Motion</div>
+                  <div class="meta">Class 12 Science A <span class="sep">·</span> 45 min <span class="sep">·</span>
+                    PRACTICE <span class="sep">·</span> window 14:00–15:00 IST</div>
+                </div>
+                <div class="timer"><div class="t t-warn" data-cd="1520">25:20</div><div class="tl">window closes</div></div>
+              </div>
+              <div class="stackbar">
+                <i style="width:6%;background:var(--line-strong)"></i>
+                <i style="width:4%;background:hsl(var(--info-500))"></i>
+                <i style="width:52%;background:hsl(var(--primary-500))"></i>
+                <i style="width:38%;background:hsl(var(--success-500))"></i>
+              </div>
+              <div class="legend">
+                <span><span class="sw" style="background:var(--line-strong)"></span>Not started <b>3</b></span>
+                <span><span class="sw" style="background:hsl(var(--info-500))"></span>In preview <b>2</b></span>
+                <span><span class="sw" style="background:hsl(var(--primary-500))"></span>In progress <b>28</b></span>
+                <span><span class="sw" style="background:hsl(var(--success-500))"></span>Submitted <b>21</b></span>
+                <span style="margin-left:auto;color:var(--ink-3)">54 registered</span>
+              </div>
+              <div class="statrow">
+                <div class="stat"><div class="n">0</div><div class="l">Stalled</div></div>
+                <div class="stat"><div class="n dan">7</div><div class="l">Auto-submit &lt;5m</div></div>
+                <div class="stat"><div class="n">81%</div><div class="l">Avg progress</div></div>
+                <div class="stat"><div class="n">31 <small style="font-size:11px;color:var(--ink-3)">/50</small></div><div class="l">Avg marks</div></div>
+              </div>
+            </div>
+
+            <div class="card soon">
+              <div class="card-hd">
+                <div style="min-width:0;flex:1">
+                  <div class="nm">Coding Contest — Arrays &amp; Hashing</div>
+                  <div class="meta">Full-Stack Bootcamp · Cohort 4 <span class="sep">·</span> 90 min
+                    <span class="sep">·</span> window 14:10–15:40 IST</div>
+                </div>
+                <div class="timer"><div class="t t-ok" data-cd="4020">1:07:00</div><div class="tl">window closes</div></div>
+              </div>
+              <div class="stackbar">
+                <i style="width:41%;background:var(--line-strong)"></i>
+                <i style="width:12%;background:hsl(var(--info-500))"></i>
+                <i style="width:38%;background:hsl(var(--primary-500))"></i>
+                <i style="width:9%;background:hsl(var(--success-500))"></i>
+              </div>
+              <div class="legend">
+                <span><span class="sw" style="background:var(--line-strong)"></span>Not started <b>16</b></span>
+                <span><span class="sw" style="background:hsl(var(--info-500))"></span>In preview <b>5</b></span>
+                <span><span class="sw" style="background:hsl(var(--primary-500))"></span>In progress <b>15</b></span>
+                <span><span class="sw" style="background:hsl(var(--success-500))"></span>Submitted <b>3</b></span>
+                <span style="margin-left:auto;color:var(--ink-3)">39 registered</span>
+              </div>
+              <div class="statrow">
+                <div class="stat"><div class="n">0</div><div class="l">Stalled</div></div>
+                <div class="stat"><div class="n">0</div><div class="l">Auto-submit &lt;5m</div></div>
+                <div class="stat"><div class="n">22%</div><div class="l">Avg progress</div></div>
+                <div class="stat"><div class="n">—</div><div class="l">Avg marks</div></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Hardest questions right now</h3><span class="fresh f-live">live</span>
+            <span class="sub">from in-flight attempts</span></div>
+          <div class="rows">
+            <div class="row"><span class="chip c-dan">71% wrong</span>
+              <span class="grow"><span class="nm">Q7 · Physics Unit Test</span><span class="sb">Angular momentum conservation · 24 of 34 answered wrong · avg 3m 40s</span></span></div>
+            <div class="row"><span class="chip c-dan">64% wrong</span>
+              <span class="grow"><span class="nm">Q42 · Weekly Mock Test 14</span><span class="sb">Organic reaction mechanism · 58 of 91 wrong · avg 2m 55s</span></span></div>
+            <div class="row"><span class="chip c-warn">48% skipped</span>
+              <span class="grow"><span class="nm">Q19 · Weekly Mock Test 14</span><span class="sb">Integration by parts · 74 skipped so far</span></span></div>
+            <div class="row"><span class="chip c-warn">avg 6m 12s</span>
+              <span class="grow"><span class="nm">Q3 · Coding Contest</span><span class="sb">Longest Consecutive Sequence · slowest question in the set</span></span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Learners at risk</h3><span class="fresh f-live">live</span><span class="sub">20</span></div>
+          <div class="rows">
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">RS</span>
+              <span class="grow"><span class="nm">Rohit Sharma</span><span class="sb">Mock 14 · no sync for 6m 12s · 41% done</span></span><span class="chip c-dan">stalled</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">PJ</span>
+              <span class="grow"><span class="nm">Pooja Jain</span><span class="sb">Mock 14 · no sync for 4m 03s · 58% done</span></span><span class="chip c-dan">stalled</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--warning-500))">AM</span>
+              <span class="grow"><span class="nm">Ankit Mishra</span><span class="sb">Physics UT · 2m 40s left · 12 unanswered</span></span><span class="chip c-warn">auto-submit</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--warning-500))">SG</span>
+              <span class="grow"><span class="nm">Simran Gill</span><span class="sb">Physics UT · 3m 55s left · 8 unanswered</span></span><span class="chip c-warn">auto-submit</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--info-500))">DK</span>
+              <span class="grow"><span class="nm">Deepak Kumar</span><span class="sb">Mock 14 · client clock 4m 12s behind server</span></span><span class="chip c-info">clock skew</span></div>
+            <div class="row"><span class="face" style="background:hsl(var(--danger-500))">MT</span>
+              <span class="grow"><span class="nm">Manish Tiwari</span><span class="sb">Mock 14 · started 2h 51m ago, still LIVE</span></span><span class="chip c-dan">overrun</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Live leaderboard</h3><span class="fresh f-live">live</span>
+            <span class="sub">Mock 14 · includes in-flight</span></div>
+          <div class="rows">
+            <div class="row"><span class="num" style="width:18px">1</span><span class="face" style="background:hsl(var(--success-500))">IK</span>
+              <span class="grow"><span class="nm">Ishan Kapoor</span><span class="sb">submitted · 2h 41m</span></span><span class="num">278</span></div>
+            <div class="row"><span class="num" style="width:18px">2</span><span class="face" style="background:hsl(var(--primary-500))">TV</span>
+              <span class="grow"><span class="nm">Tanvi Verma</span><span class="sb">in progress · 91% done</span></span><span class="num">264</span></div>
+            <div class="row"><span class="num" style="width:18px">3</span><span class="face" style="background:hsl(var(--success-500))">AR</span>
+              <span class="grow"><span class="nm">Aman Raj</span><span class="sb">submitted · 2h 58m</span></span><span class="num">251</span></div>
+            <div class="row"><span class="num" style="width:18px">4</span><span class="face" style="background:hsl(var(--primary-500))">NS</span>
+              <span class="grow"><span class="nm">Nidhi Singh</span><span class="sb">in progress · 84% done</span></span><span class="num">243</span></div>
+            <div class="row"><span class="num" style="width:18px">5</span><span class="face" style="background:hsl(var(--success-500))">FK</span>
+              <span class="grow"><span class="nm">Faizan Khan</span><span class="sb">submitted · 2h 33m</span></span><span class="num">239</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><h3>Post-window backlog</h3><span class="fresh f-post">post-hoc</span></div>
+          <div class="rows">
+            <div class="row"><span class="grow"><span class="nm">Awaiting evaluation</span><span class="sb">result_status = PENDING</span></span><span class="num">148</span></div>
+            <div class="row"><span class="grow"><span class="nm">AI evaluation in progress</span><span class="sb">3 processes running</span></span><span class="num">61</span></div>
+            <div class="row"><span class="grow"><span class="nm">Reports unreleased</span><span class="sb">graded but not published</span></span><span class="num">92</span></div>
+            <div class="row"><span class="grow"><span class="nm">Manual grading queue</span><span class="sb">across 2 assessments</span></span><span class="num">27</span></div>
+          </div>
+        </div>
+
+        <div class="note"><b>Design caution.</b> <code>student_attempt.status='LIVE'</code> is only corrected by an
+          <i>hourly</i> cron, so treat it as <i>claimed</i> live. True-live must be derived from
+          <code>start_time + max_time</code> and <code>server_last_sync</code> recency — which is also what
+          powers the stalled / overrun / clock-skew signals above.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- ATTENTION                                                    -->
+  <!-- ============================================================ -->
+  <section id="p-at" class="hidden">
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-hd"><h3>Everything that needs a human</h3><span class="sub">23 open · newest first</span></div>
+        <div class="rows">
+          <div class="alert a-dan"><div class="ic">!</div><div><div class="tx"><b>Rohit Sharma</b> has not synced for <b>6m 12s</b> in Weekly Mock Test 14 — 41% complete, 1h 22m of window left</div><div class="tm">assessment · stalled attempt · 8s ago</div></div></div>
+          <div class="alert a-dan"><div class="ic">!</div><div><div class="tx"><b>Spoken English — Batch C</b> is 21 minutes in at <b>17% turnout</b> (6 of 35). 29 invited learners never joined.</div><div class="tm">live session · low turnout · 40s ago</div></div></div>
+          <div class="alert a-dan"><div class="ic">!</div><div><div class="tx"><b>Manish Tiwari</b> has been LIVE for 2h 51m on a 180-min attempt with no sync in 38m — likely abandoned, will auto-end on the next hourly sweep</div><div class="tm">assessment · overrun · 1m ago</div></div></div>
+          <div class="alert a-warn"><div class="ic">⏱</div><div><div class="tx"><b>9 attempts auto-submit within 5 minutes</b> — 4 of them still have unanswered questions in the final section</div><div class="tm">assessment · deadline · 8s ago</div></div></div>
+          <div class="alert a-warn"><div class="ic">?</div><div><div class="tx"><b>Q7 of Physics Unit Test</b> is being answered wrong by <b>71%</b> of live takers (24 of 34) — possible bad key or bad wording</div><div class="tm">assessment · question health · 22s ago</div></div></div>
+          <div class="alert a-warn"><div class="ic">⚑</div><div><div class="tx"><b>6 learners stuck in content</b> — 3+ wrong answers or 2+ failed code submissions on their current slide</div><div class="tm">content · needs help · 8s ago</div></div></div>
+          <div class="alert a-warn"><div class="ic">⚑</div><div><div class="tx"><b>Torque &amp; Angular Momentum</b> shows friction — learners are averaging 14m against a 6m median</div><div class="tm">content · friction · 8s ago</div></div></div>
+          <div class="alert a-info"><div class="ic">↻</div><div><div class="tx"><b>Maths — Probability Drill</b> ended 44 min ago and attendance has not synced from Zoom yet</div><div class="tm">live session · sync lag · post-hoc</div></div></div>
+          <div class="alert a-info"><div class="ic">▤</div><div><div class="tx"><b>BBB node blr-02</b> is degraded with 11 of 12 meeting slots in use — 5 classes start within the hour</div><div class="tm">infrastructure · capacity · 15s ago</div></div></div>
+          <div class="alert a-info"><div class="ic">⧗</div><div><div class="tx"><b>Deepak Kumar's</b> client clock is 4m 12s behind the server — timer may display incorrectly on their device</div><div class="tm">assessment · clock skew · 30s ago</div></div></div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-hd"><h3>Rule thresholds</h3></div>
+          <div class="rows">
+            <div class="row"><span class="grow"><span class="nm">Stalled attempt</span><span class="sb">now − server_last_sync</span></span><span class="num">&gt; 2m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Auto-submit warning</span><span class="sb">start_time + max_time − now</span></span><span class="num">&lt; 5m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Low turnout</span><span class="sb">joined / invited, 15m into window</span></span><span class="num">&lt; 40%</span></div>
+            <div class="row"><span class="grow"><span class="nm">Late joiner</span><span class="sb">first PRESENT log after start</span></span><span class="num">&gt; 10m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Learner idle</span><span class="sb">now − last_seen_at</span></span><span class="num">&gt; 2m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Learner offline</span><span class="sb">now − last_seen_at</span></span><span class="num">&gt; 5m</span></div>
+            <div class="row"><span class="grow"><span class="nm">Needs help</span><span class="sb">wrong answers on current slide</span></span><span class="num">≥ 3</span></div>
+            <div class="row"><span class="grow"><span class="nm">Bad question</span><span class="sb">incorrect rate, min 20 responses</span></span><span class="num">&gt; 60%</span></div>
+            <div class="row"><span class="grow"><span class="nm">Attendance sync lag</span><span class="sb">ended − last_attendance_sync_at</span></span><span class="num">&gt; 30m</span></div>
+          </div>
+        </div>
+        <div class="note">Every threshold above maps to an existing column. Nothing here needs a new
+          write path — the only genuinely new capability worth adding later is persisting Zoom's
+          <code>participant_left</code> webhook, which would turn <i>joined</i> into a true
+          <i>in the room now</i> count.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LEGEND ============ -->
+  <div class="footlegend">
+    <b style="font-weight:600;color:var(--ink)">Data freshness:</b>
+    <span><span class="fresh f-live">live</span> &nbsp;updates every poll (15s) from a row written continuously</span>
+    <span><span class="fresh f-near">near-live</span> &nbsp;updates on an event (a join), not continuously</span>
+    <span><span class="fresh f-post">post-hoc</span> &nbsp;arrives after the class/window ends, via provider sync</span>
+  </div>
+
+</div>
+
+<script>
+// tabs
+const panes = ['ov','ct','ls','as','at'];
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b));
+    panes.forEach(p=>document.getElementById('p-'+p).classList.toggle('hidden', p!==b.dataset.t));
+  });
+});
+
+// countdowns
+function fmt(s){
+  if(s<0) s=0;
+  const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
+  const p=n=>String(n).padStart(2,'0');
+  return h ? h+':'+p(m)+':'+p(x) : p(m)+':'+p(x);
+}
+setInterval(()=>{
+  document.querySelectorAll('[data-cd]').forEach(el=>{
+    let s = parseInt(el.dataset.cd,10) - 1;
+    if(s<0) s=0;
+    el.dataset.cd = s;
+    el.textContent = fmt(s);
+    el.classList.remove('t-ok','t-warn','t-dan');
+    el.classList.add(s<300?'t-dan':s<900?'t-warn':'t-ok');
+  });
+},1000);
+
+// "updated Ns ago" ticker
+let ago=0, paused=false;
+setInterval(()=>{ if(paused) return; ago=(ago+1)%16; document.getElementById('ago').textContent=ago; },1000);
+document.getElementById('pausebtn').addEventListener('click',e=>{
+  paused=!paused;
+  e.target.textContent = paused ? 'Resume auto-refresh' : 'Pause auto-refresh';
+});
+</script>
+</body>
+</html>

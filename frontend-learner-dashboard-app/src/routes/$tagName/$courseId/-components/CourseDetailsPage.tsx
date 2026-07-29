@@ -1047,22 +1047,36 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               </div>
             )}
 
-          {/* Render details page components from JSON */}
-          {catalogueData.pages
-            ?.filter(
-              (page) =>
-                page.id === "details" || page.route === "course-details",
-            )
-            ?.map((page) => (
-              <JsonRenderer
-                key={page.id}
-                page={page}
-                globalSettings={catalogueData.globalSettings}
-                instituteId={instituteId}
-                tagName={tagName}
-                courseData={courseData}
-              />
-            ))}
+          {/* Render details page components from JSON.
+              HeaderComponent renders a `fixed` <header> (h-16 md:h-20) and emits
+              no spacer, so the wrapper above collapses to zero height and the
+              hero title would slide under it. The catalogue page reserves the
+              same offset on its <main> (`pt-16 md:pt-20`) — mirror it here. */}
+          <div
+            className={
+              (catalogueData.globalSettings as any).layout?.header &&
+              (catalogueData.globalSettings as any).layout?.header?.enabled !==
+                false
+                ? "pt-16 md:pt-20"
+                : ""
+            }
+          >
+            {catalogueData.pages
+              ?.filter(
+                (page) =>
+                  page.id === "details" || page.route === "course-details",
+              )
+              ?.map((page) => (
+                <JsonRenderer
+                  key={page.id}
+                  page={page}
+                  globalSettings={catalogueData.globalSettings}
+                  instituteId={instituteId}
+                  tagName={tagName}
+                  courseData={courseData}
+                />
+              ))}
+          </div>
         </>
       )}
 
@@ -1245,9 +1259,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode
-                            ? `hsl(var(--primary))`
-                            : "#3b82f6", // design-lint-ignore: page-builder default color
+                          backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
                         {catalogueData?.globalSettings?.payment?.enabled !==
@@ -1436,9 +1448,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode
-                            ? `hsl(var(--primary))`
-                            : "#3b82f6", // design-lint-ignore: page-builder default color
+                          backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
                         Enroll Now
@@ -1649,12 +1659,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 onClick={() => navigate({ to: "/login" })}
                 className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg border transition-all duration-200"
                 style={{
-                  color: domainRouting.instituteThemeCode
-                    ? `hsl(var(--primary))`
-                    : "#3b82f6", // design-lint-ignore: page-builder default color
-                  borderColor: domainRouting.instituteThemeCode
-                    ? `hsl(var(--primary))`
-                    : "#3b82f6", // design-lint-ignore: page-builder default color
+                  color: `hsl(var(--primary-500, var(--primary)))`,
+                  borderColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
                 Login
@@ -1681,9 +1687,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 }}
                 className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
                 style={{
-                  backgroundColor: domainRouting.instituteThemeCode
-                    ? `hsl(var(--primary))`
-                    : "#3b82f6", // design-lint-ignore: page-builder default color
+                  backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
                 {catalogueData?.globalSettings?.payment?.enabled !== false

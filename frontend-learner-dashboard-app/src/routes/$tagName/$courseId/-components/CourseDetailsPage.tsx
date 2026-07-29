@@ -124,7 +124,7 @@ const HighlightSectionCard: React.FC<{
   title: string;
   children: React.ReactNode;
 }> = ({ icon, iconBgClass, overlayClass, title, children }) => (
-  <div className="relative bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
+  <div className="relative bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
     <div
       className={cn(
         "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl",
@@ -141,7 +141,7 @@ const HighlightSectionCard: React.FC<{
         >
           {icon}
         </div>
-        <h2 className="text-base font-bold text-gray-900">{title}</h2>
+        <h2 className="text-base font-bold text-catalogue-text-primary">{title}</h2>
       </div>
       {children}
     </div>
@@ -168,31 +168,31 @@ const CourseHighlightsAccordion: React.FC<{
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <section className="rounded-xl border border-catalogue-border bg-catalogue-bg-elevated shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-start hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-start hover:bg-catalogue-bg-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
         <span className="flex items-center gap-2 min-w-0">
           <div className="p-1 bg-primary-50 rounded-md">
             <Info className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" weight="bold" />
           </div>
-          <span className="text-sm font-semibold truncate text-gray-900">
+          <span className="text-sm font-semibold truncate text-catalogue-text-primary">
             {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
           </span>
         </span>
         <CaretDown
           className={cn(
-            "w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200",
+            "w-4 h-4 text-catalogue-text-muted flex-shrink-0 transition-transform duration-200",
             open ? "rotate-180" : "rotate-0"
           )}
           weight="bold"
         />
       </button>
       {open && (
-        <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-gray-100 bg-gray-50/50">
+        <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-catalogue-border-subtle bg-catalogue-bg-subtle/50">
           {hasAbout && (
             <HighlightSectionCard
               title={`About This ${getTerminology(
@@ -211,7 +211,7 @@ const CourseHighlightsAccordion: React.FC<{
             >
               <HtmlWithViewMore
                 html={aboutCourse || ""}
-                className="text-sm text-gray-600 leading-relaxed"
+                className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
             </HighlightSectionCard>
           )}
@@ -230,7 +230,7 @@ const CourseHighlightsAccordion: React.FC<{
             >
               <HtmlWithViewMore
                 html={whyLearn}
-                className="text-sm text-gray-600 leading-relaxed"
+                className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
             </HighlightSectionCard>
           )}
@@ -249,7 +249,7 @@ const CourseHighlightsAccordion: React.FC<{
             >
               <HtmlWithViewMore
                 html={whoShouldLearn}
-                className="text-sm text-gray-600 leading-relaxed"
+                className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
             </HighlightSectionCard>
           )}
@@ -273,17 +273,17 @@ const CourseHighlightsAccordion: React.FC<{
                 {instructors.map((inst, idx) => (
                   <div
                     key={`${inst.email}-${idx}`}
-                    className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
+                    className="flex items-center gap-3 p-2.5 bg-catalogue-bg-subtle/80 rounded-lg hover:bg-catalogue-bg-muted/80 transition-all duration-300"
                   >
                     <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
                       {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
                     </div>
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-900">
+                      <h4 className="text-sm font-semibold text-catalogue-text-primary">
                         {inst.name ||
                           getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                       </h4>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-catalogue-text-secondary">
                         {inst.email || "No email provided"}
                       </p>
                     </div>
@@ -979,10 +979,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-2">
             {error || "Course not found"}
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-catalogue-text-secondary mb-4">
             The requested course could not be loaded.
           </p>
           <button
@@ -1002,15 +1002,25 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const isEnrollmentClosed = inviteAvailability !== "AVAILABLE";
   const unavailableMessageHtml = courseData.unavailableMessageHtml ?? "";
 
+  // Honor the catalogue's light/dark mode, exactly like CourseCataloguePage.
+  // Without this the details page kept light tokens under a dark catalogue:
+  // the hero painted its configured dark background while the title still
+  // resolved text-catalogue-text-primary to near-black (dark on dark), and the
+  // content below stayed white.
+  const isDarkMode = (catalogueData?.globalSettings as any)?.mode === "dark";
+
   return (
-    <div ref={themeRootRef} className="min-h-screen bg-white w-full">
+    <div
+      ref={themeRootRef}
+      className={`min-h-screen bg-catalogue-bg w-full${isDarkMode ? " dark" : ""}`}
+    >
       {/* Render header and footer - add them if not in JSON */}
       {!catalogueData && (
         <div className="container mx-auto p-8 text-center">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-4">
             Loading Course Catalogue...
           </h2>
-          <p className="text-gray-600">
+          <p className="text-catalogue-text-secondary">
             Please wait while we load the course information.
           </p>
         </div>
@@ -1083,7 +1093,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {/* Course Content */}
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
-        <div className="pt-4 pb-24 sm:pt-6 bg-gray-50 w-full">
+        <div className="pt-4 pb-24 sm:pt-6 bg-catalogue-bg-subtle w-full">
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
               {/* Main Content */}
@@ -1106,13 +1116,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
-                  <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
+                  <div className="bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm p-4 space-y-3">
                     {/* Header */}
-                    <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2 pb-3 border-b border-catalogue-border-subtle">
                       <div className="p-1.5 bg-primary-50 rounded-lg">
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
-                      <h2 className="text-sm font-semibold text-gray-900">
+                      <h2 className="text-sm font-semibold text-catalogue-text-primary">
                         Course Overview
                       </h2>
                     </div>
@@ -1123,7 +1133,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
                         <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
                             Price
                           </span>
@@ -1138,8 +1148,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       )}
 
                       {/* Rating */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
                           Rating
                         </span>
@@ -1158,7 +1168,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               />
                             ))}
                           </div>
-                          <span className="text-xs font-semibold text-gray-900">
+                          <span className="text-xs font-semibold text-catalogue-text-primary">
                             {courseData.rating > 0
                               ? courseData.rating.toFixed(1)
                               : "—"}
@@ -1168,12 +1178,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Level (hidden when the level is a sentinel like "Default") */}
                       {displayLevelName(courseData.level) && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             Level
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {displayLevelName(courseData.level)}
                           </span>
                         </div>
@@ -1181,12 +1191,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Duration */}
                       {courseData.duration && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <Clock size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
                             Duration
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {courseData.duration}
                           </span>
                         </div>
@@ -1194,15 +1204,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Instructor */}
                       {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(
                               RoleTerms.Teacher,
                               SystemTerms.Teacher,
                             )}
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md max-w-32 truncate">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md max-w-32 truncate">
                             {courseData.instructor}
                           </span>
                         </div>
@@ -1269,7 +1279,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             : "Enroll Now"
                           : "Get Started"}
                       </button>
-                      <p className="text-xs text-gray-400 text-center">
+                      <p className="text-xs text-catalogue-text-muted text-center">
                         Click to register for this course
                       </p>
                     </div>
@@ -1295,13 +1305,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               <div className="lg:col-span-1">
                 <div className="sticky top-4 space-y-4">
                   {/* Course Overview Card - Hidden on mobile, shown on desktop */}
-                  <div className="hidden lg:block bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
+                  <div className="hidden lg:block bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm p-4 space-y-3">
                     {/* Header */}
-                    <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2 pb-3 border-b border-catalogue-border-subtle">
                       <div className="p-1.5 bg-primary-50 rounded-lg">
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
-                      <h2 className="text-sm font-semibold text-gray-900">
+                      <h2 className="text-sm font-semibold text-catalogue-text-primary">
                         Course Overview
                       </h2>
                     </div>
@@ -1312,7 +1322,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
                         <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
                             Price
                           </span>
@@ -1327,8 +1337,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       )}
 
                       {/* Rating */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
                           Rating
                         </span>
@@ -1347,7 +1357,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               />
                             ))}
                           </div>
-                          <span className="text-xs font-semibold text-gray-900">
+                          <span className="text-xs font-semibold text-catalogue-text-primary">
                             {courseData.rating > 0
                               ? courseData.rating.toFixed(1)
                               : "—"}
@@ -1357,12 +1367,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Level (hidden when the level is a sentinel like "Default") */}
                       {displayLevelName(courseData.level) && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             Level
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {displayLevelName(courseData.level)}
                           </span>
                         </div>
@@ -1370,12 +1380,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Duration */}
                       {courseData.duration && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <Clock size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
                             Duration
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {courseData.duration}
                           </span>
                         </div>
@@ -1383,15 +1393,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Instructor */}
                       {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-gray-400" weight="duotone" />
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
+                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(
                               RoleTerms.Teacher,
                               SystemTerms.Teacher,
                             )}
                           </span>
-                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md max-w-32 truncate">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md max-w-32 truncate">
                             {courseData.instructor}
                           </span>
                         </div>
@@ -1453,7 +1463,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       >
                         Enroll Now
                       </button>
-                      <p className="text-xs text-gray-400 text-center">
+                      <p className="text-xs text-catalogue-text-muted text-center">
                         Click to register for this course
                       </p>
                     </div>
@@ -1651,7 +1661,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
-        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg-elevated border-t border-catalogue-border p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? "mb-8" : ""}`}>
             {/* Login Button */}
             <div className="flex flex-col gap-1">
@@ -1665,7 +1675,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               >
                 Login
               </button>
-              <span className="text-xs text-gray-500 text-center">If already registered</span>
+              <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
             </div>
 
             {/* Get Started / Enroll Button */}
@@ -1696,7 +1706,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     : "Enroll Now"
                   : "Get Started"}
               </button>
-              <span className="text-xs text-gray-500 text-center">For new users</span>
+              <span className="text-xs text-catalogue-text-secondary text-center">For new users</span>
             </div>
           </div>
         </div>

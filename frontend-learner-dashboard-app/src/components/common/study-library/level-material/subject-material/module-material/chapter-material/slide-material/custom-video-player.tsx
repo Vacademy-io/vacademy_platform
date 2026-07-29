@@ -11,7 +11,7 @@ import {
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
-import { getEpochTimeInMillis } from "./utils";
+import { getEpochTimeInMillis, safePlay } from "./utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
@@ -238,7 +238,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         useImperativeHandle(ref, () => ({
             playVideo: () => {
                 if (videoRef.current) {
-                    videoRef.current.play();
+                    safePlay(videoRef.current);
                     setIsPlayed(true);
                 }
             },
@@ -442,7 +442,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
             // Resume video playback
             if (videoRef.current) {
-                videoRef.current.play();
+                safePlay(videoRef.current);
                 setIsPlayed(true);
             }
         };
@@ -1153,7 +1153,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             if (isPlayed) {
                 videoRef.current.pause();
             } else {
-                videoRef.current.play();
+                safePlay(videoRef.current);
             }
         };
 

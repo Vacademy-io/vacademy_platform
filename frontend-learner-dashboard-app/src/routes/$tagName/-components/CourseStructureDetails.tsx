@@ -512,7 +512,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   size={16}
                   className="me-2 text-green-500 flex-shrink-0"
                 />
-                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                   {chapter.chapter_name || "Unnamed Chapter"}
                 </span>
                 <div className="flex-shrink-0 ms-2">
@@ -563,7 +563,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <Icon size={16} className={`flex-shrink-0 ${color}`} />
               <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium break-words truncate">
+                  <span className="text-sm font-medium text-catalogue-text-primary break-words truncate">
                     {slide.title}
                   </span>
                   <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
@@ -608,7 +608,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   size={16}
                   className="me-2 text-orange-500 flex-shrink-0"
                 />
-                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                   {moduleWithChapters.module?.module_name || "Unnamed Module"}
                 </span>
                 <div className="flex-shrink-0 ms-2">
@@ -661,7 +661,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       size={16}
                       className="me-2 text-green-500 flex-shrink-0"
                     />
-                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                    <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                       {chapter.chapter_name || "Unnamed Chapter"}
                     </span>
                     <div className="flex-shrink-0 ms-2">
@@ -698,7 +698,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium break-words truncate">
+                      <span className="text-sm font-medium text-catalogue-text-primary break-words truncate">
                         {slide.title}
                       </span>
                       <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
@@ -753,7 +753,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       size={16}
                       className="me-2 text-green-500 flex-shrink-0"
                     />
-                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                    <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                       {chapter.chapter_name || "Unnamed Chapter"}
                     </span>
                     <div className="flex-shrink-0 ms-2">
@@ -784,7 +784,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium break-words truncate">
+                      <span className="text-sm font-medium text-catalogue-text-primary break-words truncate">
                         {slide.title}
                       </span>
                       <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
@@ -838,7 +838,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     size={16}
                     className="me-2 text-blue-500 flex-shrink-0"
                   />
-                  <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                  <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                     {moduleWithChapters.module?.module_name || "Unnamed Module"}
                   </span>
                   <div className="flex-shrink-0 ms-2">
@@ -886,7 +886,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                                 size={16}
                                 className="me-2 text-green-500 flex-shrink-0"
                               />
-                              <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                              <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                                 {chapter.chapter_name || "Unnamed Chapter"}
                               </span>
                               <div className="flex-shrink-0 ms-2">
@@ -932,7 +932,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                         size={16}
                         className="me-2 text-green-500 flex-shrink-0"
                       />
-                      <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                      <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                         {chapter.chapter_name || "Unnamed Chapter"}
                       </span>
                       <div className="flex-shrink-0 ms-2">
@@ -963,7 +963,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     <Icon size={16} className={`flex-shrink-0 ${color}`} />
                     <div className="flex-1 min-w-0 overflow-hidden">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-medium break-words truncate">
+                        <span className="text-sm font-medium text-catalogue-text-primary break-words truncate">
                           {slide.title}
                         </span>
                         <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
@@ -1064,7 +1064,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       size={16}
                       className="me-2 text-orange-500 flex-shrink-0"
                     />
-                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                    <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                       {moduleWithChapters.module?.module_name ||
                         "Unnamed Module"}
                     </span>
@@ -1111,7 +1111,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                           size={16}
                           className="me-2 text-green-500 flex-shrink-0"
                         />
-                        <span className="text-sm font-medium break-words truncate flex-1 min-w-0">
+                        <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                           {chapter.chapter_name || "Unnamed Chapter"}
                         </span>
                         <div className="flex-shrink-0 ms-2">
@@ -1142,7 +1142,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       <Icon size={16} className={`flex-shrink-0 ${color}`} />
                       <div className="flex-1 min-w-0 overflow-hidden">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-medium break-words truncate">
+                          <span className="text-sm font-medium text-catalogue-text-primary break-words truncate">
                             {slide.title}
                           </span>
                           <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">

@@ -131,11 +131,16 @@ module.exports = {
           "text-secondary": "hsl(var(--catalogue-text-secondary))",
           "text-muted": "hsl(var(--catalogue-text-muted))",
           bg: "hsl(var(--catalogue-bg))",
+          // Raised surface (cards, canvas, dialogs) — sits above --catalogue-bg.
+          // Mirrors the learner config; the CSS vars already exist in
+          // catalogue-tokens.css for both light and dark.
+          "bg-elevated": "hsl(var(--catalogue-bg-elevated))",
           "bg-subtle": "hsl(var(--catalogue-bg-subtle))",
           "bg-muted": "hsl(var(--catalogue-bg-muted))",
           "interactive-hover": "hsl(var(--catalogue-interactive-hover))",
           border: "hsl(var(--catalogue-border))",
           "border-subtle": "hsl(var(--catalogue-border-subtle))",
+          "border-strong": "hsl(var(--catalogue-border-strong))",
           "brand-ink": "hsl(var(--catalogue-brand-ink))",
         },
                 border: 'hsl(var(--border))',

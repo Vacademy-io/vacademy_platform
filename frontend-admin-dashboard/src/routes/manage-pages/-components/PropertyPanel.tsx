@@ -23,6 +23,7 @@ import {
 import { useState } from 'react';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
+import { VideoUploadField } from './VideoUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
@@ -2632,6 +2633,28 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         onChange={(e) => updateRight('alt', e.target.value)}
                     />
                 </div>
+            </div>
+
+            {/* Right Video — a YouTube/Vimeo link or an uploaded file. When set
+                it replaces the image/carousel in the hero media slot. */}
+            <div className="space-y-3 rounded border bg-gray-50 p-3">
+                <h5 className="text-xs font-semibold">Right Video</h5>
+                <VideoUploadField
+                    label="Video"
+                    value={props.right?.video || ''}
+                    onChange={(url) => updateRight('video', url)}
+                />
+                <p className="text-xs text-gray-500">
+                    Paste a YouTube or Vimeo link, or upload a video file. A video
+                    takes priority over the image and carousel above.
+                </p>
+                {props.right?.video && (
+                    <ImageUploadField
+                        label="Poster (uploaded video only)"
+                        value={props.right?.videoPoster || ''}
+                        onChange={(url) => updateRight('videoPoster', url)}
+                    />
+                )}
             </div>
 
             {/* Carousel Images */}

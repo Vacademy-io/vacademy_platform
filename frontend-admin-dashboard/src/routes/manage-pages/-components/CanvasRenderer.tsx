@@ -40,7 +40,7 @@ const SlotDropZone = ({
         <div
             ref={setNodeRef}
             className={`relative flex-1 min-h-20 border border-dashed rounded transition-colors ${
-                isOver ? 'border-teal-400 bg-teal-50' : 'border-teal-200 bg-white'
+                isOver ? 'border-teal-400 bg-teal-50' : 'border-teal-200 bg-catalogue-bg-elevated'
             }`}
         >
             <div className="absolute left-1 top-0.5 z-10 text-caption font-semibold uppercase text-teal-400 select-none">
@@ -209,12 +209,12 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     const canvasWidth = previewViewport === 'desktop' ? '100%' : currentSize.width;
 
     return (
-        <div className="flex h-full flex-col bg-gray-100">
+        <div className="flex h-full flex-col bg-catalogue-bg-muted">
             {/* Canvas Toolbar */}
-            <div className="flex shrink-0 items-center justify-between border-b bg-white px-3 py-2">
+            <div className="flex shrink-0 items-center justify-between border-b bg-catalogue-bg-elevated px-3 py-2">
                 <div className="flex items-center gap-3">
                     {/* Viewport switcher */}
-                    <div className="flex rounded-lg border bg-gray-100 p-1">
+                    <div className="flex rounded-lg border bg-catalogue-bg-muted p-1">
                         <Button
                             variant={previewViewport === 'desktop' ? 'default' : 'ghost'}
                             size="sm"
@@ -245,7 +245,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     </div>
 
                     {page && (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-catalogue-text-muted">
                             {page.title || page.route || 'Untitled'} ·{' '}
                             {page.components.length} component{page.components.length !== 1 ? 's' : ''}
                         </span>
@@ -279,7 +279,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     as the learner page wrapper so tokens (type scale, radius,
                     theme colors, fonts) render truthfully while editing. */}
                 <div
-                    className={`relative bg-white shadow-lg transition-all duration-300${config?.globalSettings?.mode === 'dark' ? ' dark' : ''} ${
+                    className={`relative bg-catalogue-bg-elevated shadow-lg transition-all duration-300${config?.globalSettings?.mode === 'dark' ? ' dark' : ''} ${
                         isOver ? 'ring-2 ring-blue-400' : ''
                     }`}
                     data-catalogue-theme={config?.globalSettings?.theme?.preset || 'default'}
@@ -332,13 +332,13 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
 
                     {/* Page components */}
                     {!config || !selectedPageId ? (
-                        <div className="flex h-full min-h-72 items-center justify-center text-sm text-gray-400">
+                        <div className="flex h-full min-h-72 items-center justify-center text-sm text-catalogue-text-muted">
                             Select a page from the bottom bar to start editing
                         </div>
                     ) : !page ? null : page.components.length === 0 ? (
                         <div className="flex h-full min-h-96 flex-col items-center justify-center">
-                            <div className="rounded-xl border-2 border-dashed border-gray-200 px-12 py-16 text-center">
-                                <div className="mb-2 text-base font-medium text-gray-400">
+                            <div className="rounded-xl border-2 border-dashed border-catalogue-border px-12 py-16 text-center">
+                                <div className="mb-2 text-base font-medium text-catalogue-text-muted">
                                     This page is empty
                                 </div>
                                 <p className="text-sm text-gray-300">

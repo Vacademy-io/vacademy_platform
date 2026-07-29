@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
-import { getPublicUrl } from "@/services/upload_file";
+// No-login variant: this component also renders on the GUEST waiting room,
+// where the authenticated getPublicUrl silently fails (no token) and music
+// never plays. The public endpoint works for logged-in learners too.
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface BackgroundMusicProps {
   backgroundScoreFileId: string | null;
@@ -14,7 +17,7 @@ export function BackgroundMusic({
     const fetchAndPlayAudio = async () => {
       if (backgroundScoreFileId) {
         try {
-          const url = await getPublicUrl(backgroundScoreFileId);
+          const url = await getPublicUrlWithoutLogin(backgroundScoreFileId);
           if (audioRef.current) {
             audioRef.current.src = url;
             audioRef.current.volume = 0.3; // Set volume to 30%

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.community_service.feature.pricing.dto.ProductDto;
 import vacademy.io.community_service.feature.pricing.entity.PricingPlan;
 import vacademy.io.community_service.feature.pricing.entity.PricingPlanFeature;
+import vacademy.io.community_service.feature.pricing.entity.PricingPlanInclusion;
 import vacademy.io.community_service.feature.pricing.entity.PricingProduct;
 import vacademy.io.community_service.feature.pricing.entity.PricingSetting;
 import vacademy.io.community_service.feature.pricing.repository.*;
@@ -39,6 +40,8 @@ public class PricingCatalogService {
     private PricingPlanRepository planRepository;
     @Autowired
     private PricingPlanFeatureRepository featureRepository;
+    @Autowired
+    private PricingPlanInclusionRepository inclusionRepository;
     @Autowired
     private PricingSettingRepository settingRepository;
 
@@ -84,6 +87,15 @@ public class PricingCatalogService {
                         plans.stream().map(PricingPlan::getId).toList())
                 .stream().collect(Collectors.groupingBy(PricingPlanFeature::getPlanId));
 
+        Map<String, List<PricingPlanInclusion>> inclusionsByPlan = plans.isEmpty()
+                ? Map.of()
+                : inclusionRepository.findByPlanIdInOrderBySortOrderAsc(
+                        plans.stream().map(PricingPlan::getId).toList())
+                .stream().collect(Collectors.groupingBy(PricingPlanInclusion::getPlanId));
+
+        Map<String, String> productNames = products.stream()
+                .collect(Collectors.toMap(PricingProduct::getCode, PricingProduct::getName, (a, b) -> a));
+
         Map<String, List<PricingPlan>> plansByProduct = plans.stream()
                 .collect(Collectors.groupingBy(PricingPlan::getProductCode));
 
@@ -91,7 +103,8 @@ public class PricingCatalogService {
         for (PricingProduct p : products) {
             List<PricingPlan> productPlans = plansByProduct.getOrDefault(p.getCode(), List.of());
             List<ProductDto.PlanDto> planDtos = productPlans.stream()
-                    .map(pl -> toPlanDto(p, pl, featuresByPlan.getOrDefault(pl.getId(), List.of())))
+                    .map(pl -> toPlanDto(p, pl, featuresByPlan.getOrDefault(pl.getId(), List.of()),
+                            inclusionsByPlan.getOrDefault(pl.getId(), List.of()), productNames))
                     .toList();
 
             out.add(ProductDto.builder()
@@ -115,8 +128,18 @@ public class PricingCatalogService {
     }
 
     private ProductDto.PlanDto toPlanDto(PricingProduct product, PricingPlan plan,
-                                         List<PricingPlanFeature> features) {
+                                         List<PricingPlanFeature> features,
+                                         List<PricingPlanInclusion> inclusions,
+                                         Map<String, String> productNames) {
         return ProductDto.PlanDto.builder()
+                .inclusions(inclusions.stream()
+                        .map(i -> ProductDto.InclusionDto.builder()
+                                .productCode(i.getIncludedProductCode())
+                                .productName(productNames.get(i.getIncludedProductCode()))
+                                .planCode(i.getIncludedPlanCode())
+                                .quantity(i.getIncludedQuantity())
+                                .build())
+                        .toList())
                 .code(plan.getCode())
                 .name(plan.getName())
                 .description(plan.getDescription())
@@ -155,6 +178,15 @@ public class PricingCatalogService {
 
     public Optional<PricingPlan> plan(String productCode, String planCode) {
         return planRepository.findByProductCodeAndCode(productCode, planCode);
+    }
+
+    /** What a plan bundles in for free, keyed by the included product's code. */
+    public Map<String, PricingPlanInclusion> inclusionsFor(String planId) {
+        Map<String, PricingPlanInclusion> m = new LinkedHashMap<>();
+        for (PricingPlanInclusion i : inclusionRepository.findByPlanIdOrderBySortOrderAsc(planId)) {
+            m.put(i.getIncludedProductCode(), i);
+        }
+        return m;
     }
 
     /** Feature labels a plan includes, for the quote's "included at no extra cost" panel. */

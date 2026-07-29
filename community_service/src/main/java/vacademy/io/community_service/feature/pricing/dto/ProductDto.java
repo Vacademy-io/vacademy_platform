@@ -53,6 +53,23 @@ public class ProductDto {
         private BigDecimal annualPrice;
         private boolean popular;
         private List<FeatureDto> features;
+        /** Other products this plan bundles in for free. */
+        private List<InclusionDto> inclusions;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class InclusionDto {
+        private String productCode;
+        /** Name of the included product, so the FE can label it without a lookup. */
+        private String productName;
+        /** Null means any plan of that product; set means only that plan is free. */
+        private String planCode;
+        /** Null means the whole product; a number means that many units are free. */
+        private Integer quantity;
     }
 
     @Data

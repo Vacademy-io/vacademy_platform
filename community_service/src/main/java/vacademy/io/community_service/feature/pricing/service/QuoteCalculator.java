@@ -11,6 +11,7 @@ import vacademy.io.community_service.feature.pricing.dto.QuoteRequestDto.Selecti
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto;
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto.LineItemDto;
 import vacademy.io.community_service.feature.pricing.entity.PricingPlan;
+import vacademy.io.community_service.feature.pricing.entity.PricingPlanInclusion;
 import vacademy.io.community_service.feature.pricing.entity.PricingProduct;
 
 import java.math.BigDecimal;
@@ -56,6 +57,21 @@ public class QuoteCalculator {
             }
         }
 
+        // First pass: work out what the chosen plans bundle in for free, so a later product can be
+        // zeroed regardless of the order it appears in the basket.
+        Map<String, PricingPlanInclusion> inclusions = new LinkedHashMap<>();
+        Map<String, String> inclusionSource = new LinkedHashMap<>();
+        for (SelectionDto sel : byProduct.values()) {
+            PricingProduct product = catalog.product(sel.getProductCode()).orElse(null);
+            if (product == null || !product.isActive()) continue;
+            PricingPlan plan = resolvePlan(product, sel, byProduct);
+            if (plan == null) continue;
+            catalog.inclusionsFor(plan.getId()).forEach((code, inc) -> {
+                inclusions.put(code, inc);
+                inclusionSource.put(code, plan.getName());
+            });
+        }
+
         for (SelectionDto sel : byProduct.values()) {
             PricingProduct product = catalog.product(sel.getProductCode()).orElse(null);
             if (product == null || !product.isActive()) {
@@ -76,7 +92,20 @@ public class QuoteCalculator {
             BigDecimal unit = sel.getPriceOverride() != null && sel.getPriceOverride().signum() >= 0
                     ? sel.getPriceOverride()
                     : plan.getPrice();
-            LineItemDto item = priceOne(product, plan, unit, sel, inr, usdPerInr);
+
+            // A plan elsewhere in the basket may bundle this product in — either wholly, or up to
+            // a free allowance with the extras still chargeable.
+            PricingPlanInclusion inc = inclusions.get(product.getCode());
+            boolean planMatches = inc != null && (inc.getIncludedPlanCode() == null
+                    || inc.getIncludedPlanCode().equalsIgnoreCase(plan.getCode()));
+            if (inc != null && planMatches && inc.getIncludedQuantity() == null) {
+                recurring.add(freeLine(product, plan, inclusionSource.get(product.getCode())));
+                continue;
+            }
+
+            LineItemDto item = priceOne(product, plan, unit, sel, inr, usdPerInr,
+                    inc != null && planMatches ? inc.getIncludedQuantity() : null,
+                    inclusionSource.get(product.getCode()));
             if (item == null) {
                 continue;
             }
@@ -190,9 +219,25 @@ public class QuoteCalculator {
         return catalog.defaultPlan(product.getCode()).orElse(null);
     }
 
-    /** Applies the product's pricing model to produce one line. */
+    /** A product a chosen plan bundles in wholly — shown at zero rather than hidden. */
+    private static LineItemDto freeLine(PricingProduct product, PricingPlan plan, String source) {
+        return LineItemDto.builder()
+                .code(product.getCode())
+                .label(product.getName())
+                .detail("Included in " + (source == null ? plan.getName() : source))
+                .amount(BigDecimal.ZERO)
+                .oneTime(false)
+                .includedFree(true)
+                .build();
+    }
+
+    /**
+     * Applies the product's pricing model to produce one line. {@code freeUnits} is the allowance
+     * a bundling plan grants (sub-orgs), with anything beyond it still charged.
+     */
     private LineItemDto priceOne(PricingProduct product, PricingPlan plan, BigDecimal unit,
-                                 SelectionDto sel, boolean inr, BigDecimal usdPerInr) {
+                                 SelectionDto sel, boolean inr, BigDecimal usdPerInr,
+                                 Integer freeUnits, String inclusionSource) {
         String model = product.getPricingModel();
         String symbol = inr ? "₹" : "$";
         int qty = sel.getQuantity() == null
@@ -233,9 +278,14 @@ public class QuoteCalculator {
             case COUNT_BASED -> {
                 if (qty <= 0) return null;
                 BigDecimal each = product.getUnitPrice() == null ? unit : product.getUnitPrice();
-                return line(product.getCode(), product.getName(),
-                        qty + " × " + money(each, inr, usdPerInr, symbol) + " per year",
-                        each.multiply(BigDecimal.valueOf(qty)), false);
+                int free = freeUnits == null ? 0 : Math.min(freeUnits, qty);
+                int billable = qty - free;
+                String detail = free > 0
+                        ? free + " included in " + inclusionSource
+                            + (billable > 0 ? ", " + billable + " × " + money(each, inr, usdPerInr, symbol) : "")
+                        : qty + " × " + money(each, inr, usdPerInr, symbol) + " per year";
+                return line(product.getCode(), product.getName(), detail,
+                        each.multiply(BigDecimal.valueOf(billable)), false);
             }
             case USAGE -> {
                 BigDecimal each = product.getUnitPrice() == null ? unit : product.getUnitPrice();

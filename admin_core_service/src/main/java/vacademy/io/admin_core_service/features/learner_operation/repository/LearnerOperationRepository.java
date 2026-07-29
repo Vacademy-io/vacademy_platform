@@ -28,6 +28,24 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
                         String userId);
 
         /**
+         * Atomic upsert on the logical key (backed by the unique index from
+         * V409). Replaces the read-then-write in LearnerOperationService, which
+         * raced under the async cascade and produced duplicate rows.
+         */
+        @Modifying
+        @Query(value = "INSERT INTO learner_operation (id, user_id, source, source_id, operation, value) " +
+                        "VALUES (:id, :userId, :source, :sourceId, :operation, :value) " +
+                        "ON CONFLICT (user_id, source, source_id, operation) " +
+                        "DO UPDATE SET value = EXCLUDED.value", nativeQuery = true)
+        void upsertOperation(
+                        @Param("id") String id,
+                        @Param("userId") String userId,
+                        @Param("source") String source,
+                        @Param("sourceId") String sourceId,
+                        @Param("operation") String operation,
+                        @Param("value") String value);
+
+        /**
          * Find all learner operations for a user within a date range
          * Used for student analysis report generation
          */

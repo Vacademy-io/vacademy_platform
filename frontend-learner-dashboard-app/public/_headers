@@ -52,11 +52,25 @@
 # STATIC ASSET CACHING
 # ============================================
 
+# NOTE: deliberately NO `immutable` on js/css.
+#
+# These rules match the REQUEST path (see the warning at the top of this file),
+# so anything served under a .js/.css URL inherits them — including the SPA
+# fallback Pages returns when a chunk is missing. `immutable` told the browser
+# never to revalidate, which meant a single bad response got pinned for a year
+# and location.reload() (our chunk-error recovery) read it back out of cache
+# instead of refetching. Filenames are content-hashed AND commit-SHA suffixed,
+# so the long max-age still gives us full cache reuse; dropping `immutable`
+# only costs a conditional request on an explicit reload.
+#
+# functions/assets/[[path]].ts is the primary defence — it turns a missing
+# asset into an uncacheable 404 so no bad body reaches the cache at all.
+
 /*.js
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=31536000
 
 /*.css
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=31536000
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable

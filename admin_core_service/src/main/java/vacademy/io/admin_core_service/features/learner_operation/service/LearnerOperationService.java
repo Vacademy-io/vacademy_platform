@@ -2,10 +2,12 @@ package vacademy.io.admin_core_service.features.learner_operation.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner_operation.entity.LearnerOperation;
 import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -16,17 +18,13 @@ public class LearnerOperationService {
     public void deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(String userId, String source, String sourceId, String operation) {
         learnerOperationRepository.deleteBySourceAndSourceIdAndOperationAndUserId(source,sourceId,operation,userId);
     }
+    // Atomic upsert (ON CONFLICT on the V409 unique key). The previous
+    // find-then-save raced under the async cascade: two concurrent rollups for
+    // the same learner either lost an update or inserted a duplicate row.
+    @Transactional
     public void addOrUpdateOperation(String userId, String source, String sourceId, String operation, String value) {
-        Optional<LearnerOperation> existingOperation = findByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId, operation);
-
-        if (existingOperation.isPresent()) {
-            LearnerOperation operationEntity = existingOperation.get();
-            operationEntity.setValue(value);
-            learnerOperationRepository.save(operationEntity);
-        } else {
-            LearnerOperation newOperation = new LearnerOperation(userId, source, sourceId, operation, value);
-            learnerOperationRepository.save(newOperation);
-        }
+        learnerOperationRepository.upsertOperation(
+                UUID.randomUUID().toString(), userId, source, sourceId, operation, value);
     }
 
     private Optional<LearnerOperation> findByUserIdSourceAndSourceIdAndOperation(String userId, String source, String sourceId, String operation) {

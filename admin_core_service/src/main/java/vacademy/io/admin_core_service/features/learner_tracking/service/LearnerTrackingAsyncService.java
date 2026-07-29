@@ -29,15 +29,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class LearnerTrackingAsyncService {
-
-        private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
         @Autowired
         private StudentSessionRepository studentSessionRepository;
@@ -377,6 +373,13 @@ public class LearnerTrackingAsyncService {
         }
 
         public long getUniqueWatchedDurationMillis(List<VideoInterval> intervals) {
+                // Inverted segments (end < start — seek races, clock skew) would form their
+                // own merged island and contribute a NEGATIVE duration, dragging the total
+                // (and the resulting percentage) below reality. The engaged_ms SQL filters
+                // these; this in-memory merge must too.
+                intervals = intervals.stream()
+                                .filter(i -> !i.end().isBefore(i.start()))
+                                .collect(Collectors.toCollection(ArrayList::new));
                 if (intervals.isEmpty())
                         return 0;
 
@@ -611,18 +614,23 @@ public class LearnerTrackingAsyncService {
                         String chapterId, String moduleId,
                         String subjectId, String packageSessionId) {
                 Double percentageWatched;
+                LearnerOperationEnum operation;
                 if (SlideTypeEnum.VIDEO.name().equals(slideType)) {
                         percentageWatched = activityLogRepository.getPercentageVideoWatched(slideId, userId);
+                        operation = LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED;
                 } else if (SlideTypeEnum.HTML_VIDEO.name().equals(slideType)) {
                         percentageWatched = activityLogRepository.getPercentageHtmlVideoWatched(slideId, userId);
+                        operation = LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED;
+                } else if (SlideTypeEnum.AUDIO.name().equals(slideType)) {
+                        percentageWatched = computeAudioPercentageFromBreadcrumbs(userId, slideId);
+                        operation = LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED;
                 } else {
+                        // DOCUMENT and friends. (QUESTION/QUIZ/ASSIGNMENT/ASSESSMENT are
+                        // recomputed by their own submit paths; a structural edit doesn't
+                        // change their stored 100s.)
                         percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
+                        operation = LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED;
                 }
-
-                LearnerOperationEnum operation = (SlideTypeEnum.VIDEO.name().equals(slideType)
-                                || SlideTypeEnum.HTML_VIDEO.name().equals(slideType))
-                                                ? LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED
-                                                : LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED;
 
                 addOrUpdatePercentageOperation(
                                 userId,
@@ -632,6 +640,23 @@ public class LearnerTrackingAsyncService {
                                 percentageWatched);
 
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+        }
+
+        // Same maths as the live audio path (merged breadcrumb union ÷ published
+        // length); used by the structural-edit trigger, which has no fresh DTO.
+        private Double computeAudioPercentageFromBreadcrumbs(String userId, String slideId) {
+                List<Object[]> trackedTimes = activityLogRepository.getAudioTrackedIntervals(slideId, userId);
+                List<VideoInterval> intervals = trackedTimes.stream()
+                                .filter(row -> row[0] != null && row[1] != null)
+                                .map(row -> new VideoInterval(((Timestamp) row[0]).toInstant(),
+                                                ((Timestamp) row[1]).toInstant()))
+                                .collect(Collectors.toCollection(ArrayList::new));
+                long actualListenedMillis = getUniqueWatchedDurationMillis(intervals);
+                Long publishedAudioLengthMillis = audioSlideRepository.getPublishedAudioLength(slideId);
+                if (publishedAudioLengthMillis == null || publishedAudioLengthMillis <= 0) {
+                        return null;
+                }
+                return (actualListenedMillis * 100.0) / publishedAudioLengthMillis;
         }
 
         // ==== Batch-Level Trigger ====
@@ -654,22 +679,36 @@ public class LearnerTrackingAsyncService {
                                                 moduleId, subjectId, packageSessionId));
                                 break;
 
+                        // Each case must recompute the level that changed AND everything
+                        // above it, up to the package session. The previous version
+                        // skipped both ends: a chapter whose slide set changed was never
+                        // itself recomputed (the module re-averaged stale chapter rows),
+                        // and the course percentage on the learner home page was not
+                        // refreshed at all for CHAPTER/MODULE edits.
                         case "CHAPTER":
                                 userIds.forEach(userId -> {
+                                        if (StringUtils.hasText(chapterId)) {
+                                                updateChapterCompletionPercentage(userId, chapterId);
+                                        }
                                         updateModuleCompletionPercentage(userId, moduleId);
                                         updateSubjectCompletionPercentage(userId, subjectId);
+                                        updatePackageSessionCompletionPercentage(userId, packageSessionId);
                                 });
                                 break;
 
                         case "MODULE":
                                 userIds.forEach(userId -> {
+                                        updateModuleCompletionPercentage(userId, moduleId);
                                         updateSubjectCompletionPercentage(userId, subjectId);
+                                        updatePackageSessionCompletionPercentage(userId, packageSessionId);
                                 });
                                 break;
 
                         case "SUBJECT":
-                                userIds.forEach(userId -> updatePackageSessionCompletionPercentage(userId,
-                                                packageSessionId));
+                                userIds.forEach(userId -> {
+                                        updateSubjectCompletionPercentage(userId, subjectId);
+                                        updatePackageSessionCompletionPercentage(userId, packageSessionId);
+                                });
                                 break;
 
                         default:

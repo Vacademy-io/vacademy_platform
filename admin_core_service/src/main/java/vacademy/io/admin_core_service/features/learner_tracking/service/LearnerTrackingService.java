@@ -12,7 +12,6 @@ import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogD
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
-import vacademy.io.admin_core_service.features.learner_tracking.entity.AudioTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.DocumentTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.VideoTrackedRepository;
@@ -23,7 +22,6 @@ import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.sql.Timestamp;
-import java.util.List;
 import java.util.Objects;
 
 @Slf4j
@@ -259,13 +257,21 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
+    // Upsert per row (same as documents/videos) instead of the historical
+    // delete-then-insert, which let a second tab or a retried request delete
+    // segments the first request had just written.
     private void saveAudioTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
-        audioTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked audios
-        if (activityLogDTO.getAudios() != null) {
-            List<AudioTracked> audioTrackedList = activityLogDTO.getAudios().stream()
-                    .map(audioActivityLogDTO -> new AudioTracked(audioActivityLogDTO, activityLog))
-                    .toList();
-            audioTrackedRepository.saveAll(audioTrackedList);
+        if (activityLogDTO.getAudios() == null)
+            return;
+        for (var dto : activityLogDTO.getAudios()) {
+            if (dto == null || dto.getId() == null)
+                continue;
+            audioTrackedRepository.upsert(
+                    dto.getId(),
+                    activityLog.getId(),
+                    dto.getStartTimeInMillis() != null ? new Timestamp(dto.getStartTimeInMillis()) : null,
+                    dto.getEndTimeInMillis() != null ? new Timestamp(dto.getEndTimeInMillis()) : null,
+                    dto.getPlaybackSpeed());
         }
     }
 

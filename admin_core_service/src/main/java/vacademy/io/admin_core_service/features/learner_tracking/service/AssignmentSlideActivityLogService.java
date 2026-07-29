@@ -88,11 +88,13 @@ public class AssignmentSlideActivityLogService {
             activityLogDTO.getAssignmentSlides().forEach(s -> s.setLateSubmission(true));
         }
 
+        // Identity comes from the token, never from the userId request param —
+        // a learner could otherwise submit (or overwrite) as someone else.
         ActivityLog activityLog = null;
         if (activityLogDTO.isNewActivity()) {
-            activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
+            activityLog = activityLogService.saveActivityLog(activityLogDTO, user.getUserId(), slideId);
         } else {
-            activityLog = activityLogService.updateActivityLog(activityLogDTO);
+            activityLog = activityLogService.updateActivityLog(activityLogDTO, user.getUserId());
         }
         addAssigmentSlideActivityLog(activityLog, activityLogDTO.getAssignmentSlides());
         learnerTrackingAsyncService.updateLearnerOperationsForAssignment(user.getUserId(), slideId, chapterId, moduleId,

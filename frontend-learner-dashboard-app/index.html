@@ -141,14 +141,35 @@
          purged; the request then falls back to index.html (text/html), the
          module fails MIME checks, and the app never boots. When that happens
          we clear all caches + service workers and do ONE hard reload, guarded
-         by sessionStorage so it can never loop. -->
+         by sessionStorage so it can never loop.
+
+         The reload alone is not enough: the fallback HTML is served under a
+         .js/.css URL, so it inherits the long-lived caching rule in
+         public/_headers and location.reload() re-reads the poisoned entry
+         instead of refetching. So before reloading we re-request every failed
+         asset with {cache:"reload"}, which bypasses the HTTP cache AND
+         overwrites the bad entry with the real file. -->
     <script>
       (function () {
         var KEY = "__chunkRecoveryAttempted__";
+        var badUrls = [];
         function isAppAsset(url) {
           return (
             !!url &&
             (/\/assets\/.*\.(js|css)$/.test(url) || /\/src\/main\.tsx$/.test(url))
+          );
+        }
+        function purgeBadUrls() {
+          if (typeof fetch !== "function" || !badUrls.length) {
+            return Promise.resolve();
+          }
+          return Promise.all(
+            badUrls.map(function (u) {
+              return fetch(u, {
+                cache: "reload",
+                credentials: "same-origin",
+              }).catch(function () {});
+            })
           );
         }
         function recover() {
@@ -156,10 +177,15 @@
             if (sessionStorage.getItem(KEY)) return; // already tried this session
             sessionStorage.setItem(KEY, "1");
           } catch (e) {}
+          // The whole head fails within the same tick — wait for the rest of
+          // the errors to land so one pass re-fetches every poisoned URL.
+          setTimeout(runRecovery, 150);
+        }
+        function runRecovery() {
           var reload = function () {
             location.reload();
           };
-          var tasks = [];
+          var tasks = [purgeBadUrls()];
           try {
             if ("serviceWorker" in navigator) {
               tasks.push(
@@ -191,7 +217,10 @@
             }
           } catch (e) {}
           Promise.all(tasks).then(reload, reload);
-          setTimeout(reload, 1500); // safety: reload even if cleanup hangs
+          // Safety: reload even if cleanup hangs. Generous, because the purge
+          // above is downloading the real chunks — work the reload would have
+          // had to do anyway, so finishing it is worth the wait.
+          setTimeout(reload, 10000);
         }
         // Resource load errors don't bubble, so listen in the capture phase.
         window.addEventListener(
@@ -199,7 +228,11 @@
           function (e) {
             var t = e && e.target;
             if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
-              if (isAppAsset(t.src || t.href)) recover();
+              var url = t.src || t.href;
+              if (isAppAsset(url)) {
+                if (badUrls.indexOf(url) === -1) badUrls.push(url);
+                recover();
+              }
             }
           },
           true

@@ -420,62 +420,21 @@ public class SlideService {
         String sourceType = slide.getSourceType();
         String slideId = slide.getId();
 
-        if (sourceType.equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUESTION.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUESTION.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUESTION.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSIGNMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.ASSIGNMENT.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.ASSIGNMENT.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUIZ.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUIZ.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUIZ.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.VIDEO_QUESTION.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.VIDEO_QUESTION.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.HTML_VIDEO.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.HTML_VIDEO.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.HTML_VIDEO.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.SCORM.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.SCORM.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.ASSESSMENT.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
-                    SlideTypeEnum.ASSESSMENT.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        // Every branch of the old if-else chain made the same two calls with the
+        // slide's own type — and AUDIO had no branch at all, so moving an audio
+        // slide left both chapters' percentages stale for every learner. Resolve
+        // the canonical enum name and always fire both recomputes.
+        SlideTypeEnum slideType;
+        try {
+            slideType = SlideTypeEnum.valueOf(sourceType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Skipping learner-tracking recompute for slide {}: unknown source type {}", slideId, sourceType);
+            return;
         }
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, slideType.name(),
+                oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, slideType.name(),
+                newChapterId, newModuleId, newSubjectId, newPackageSessionId);
     }
 
     @Transactional

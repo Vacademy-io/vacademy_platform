@@ -26,78 +26,122 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
+    // Merged-union coverage, matching the live write path
+    // (LearnerTrackingAsyncService.getUniqueWatchedDurationMillis). The old
+    // MAX(end)-MIN(start) span silently inflated the batch/trigger recompute:
+    // 10s watched at the start + 10s at the end of a video spanned the whole
+    // length and, via the slide-level monotonic guard, permanently promoted
+    // the learner to 100%. Returns NULL (skip the write) when the published
+    // length is missing or the learner has no valid segments.
     @Query(value = """
+            WITH segs AS (
+                SELECT vt.start_time, vt.end_time
+                FROM activity_log a
+                JOIN video_tracked vt ON vt.activity_id = a.id
+                WHERE a.user_id = :userId
+                  AND a.slide_id = :slideId
+                  AND vt.start_time IS NOT NULL
+                  AND vt.end_time IS NOT NULL
+                  AND vt.end_time >= vt.start_time
+            ),
+            ordered AS (
+                SELECT start_time, end_time,
+                       MAX(end_time) OVER (ORDER BY start_time, end_time
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max_end
+                FROM segs
+            ),
+            islands AS (
+                SELECT start_time, end_time,
+                       SUM(CASE WHEN prev_max_end IS NULL OR start_time > prev_max_end THEN 1 ELSE 0 END)
+                           OVER (ORDER BY start_time, end_time) AS island
+                FROM ordered
+            ),
+            merged AS (
+                SELECT EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) * 1000 AS ms
+                FROM islands
+                GROUP BY island
+            )
             SELECT
                 CASE
-                    WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN 0
-                    ELSE
-                        EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000
-                        / v.published_video_length * 100
+                    WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN NULL
+                    ELSE LEAST(100.0, (SELECT SUM(ms) FROM merged) / v.published_video_length * 100)
                 END AS percentage_watched
-            FROM
-                activity_log a
-            JOIN
-                video_tracked vt ON vt.activity_id = a.id
-            JOIN
-                slide s ON s.id = a.slide_id
-            JOIN
-                video v ON s.source_id = v.id
-            WHERE
-                a.user_id = :userId
-                AND a.slide_id = :slideId
-            GROUP BY
-                v.id, a.user_id, a.slide_id, v.published_video_length
+            FROM slide s
+            JOIN video v ON s.source_id = v.id
+            WHERE s.id = :slideId
             """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
     @Query(value = """
+            WITH segs AS (
+                SELECT vt.start_time, vt.end_time
+                FROM activity_log a
+                JOIN video_tracked vt ON vt.activity_id = a.id
+                WHERE a.user_id = :userId
+                  AND a.slide_id = :slideId
+                  AND vt.start_time IS NOT NULL
+                  AND vt.end_time IS NOT NULL
+                  AND vt.end_time >= vt.start_time
+            ),
+            ordered AS (
+                SELECT start_time, end_time,
+                       MAX(end_time) OVER (ORDER BY start_time, end_time
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max_end
+                FROM segs
+            ),
+            islands AS (
+                SELECT start_time, end_time,
+                       SUM(CASE WHEN prev_max_end IS NULL OR start_time > prev_max_end THEN 1 ELSE 0 END)
+                           OVER (ORDER BY start_time, end_time) AS island
+                FROM ordered
+            ),
+            merged AS (
+                SELECT EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) * 1000 AS ms
+                FROM islands
+                GROUP BY island
+            )
             SELECT
                 CASE
-                    WHEN v.video_length IS NULL OR v.video_length = 0 THEN 0
-                    ELSE
-                        EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000
-                        / v.video_length * 100
+                    WHEN v.video_length IS NULL OR v.video_length = 0 THEN NULL
+                    ELSE LEAST(100.0, (SELECT SUM(ms) FROM merged) / v.video_length * 100)
                 END AS percentage_watched
-            FROM
-                activity_log a
-            JOIN
-                video_tracked vt ON vt.activity_id = a.id
-            JOIN
-                slide s ON s.id = a.slide_id
-            JOIN
-                html_video_slide v ON s.source_id = v.id
-            WHERE
-                a.user_id = :userId
-                AND a.slide_id = :slideId
-            GROUP BY
-                v.id, a.user_id, a.slide_id, v.video_length
+            FROM slide s
+            JOIN html_video_slide v ON s.source_id = v.id
+            WHERE s.id = :slideId
             """, nativeQuery = true)
     Double getPercentageHtmlVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
+    // Numerator and denominator must count the same population: only questions
+    // that (a) belong to THIS quiz and (b) carry an allowed status. The old
+    // numerator counted any tracked question id with a non-null quiz_slide_id —
+    // including soft-deleted questions and questions from other quizzes.
+    // A quiz whose questions are all inactive yields NULL (skip the write).
     @Query(value = """
             WITH quiz_slide_data AS (
                 SELECT qz.id AS quiz_slide_id, COUNT(DISTINCT qq.id) AS total_questions
                 FROM slide s
                 JOIN quiz_slide qz ON qz.id = s.source_id
-                JOIN quiz_slide_question qq ON qq.quiz_slide_id = qz.id
+                LEFT JOIN quiz_slide_question qq ON qq.quiz_slide_id = qz.id
+                       AND qq.status IN (:quizSlideStatuses)
                 WHERE s.id = :slideId
                   AND s.source_type = 'QUIZ'
-                  AND qq.status IN (:quizSlideStatuses)
                 GROUP BY qz.id
             ),
             attempted_questions AS (
                 SELECT COUNT(DISTINCT qst.question_id) AS attempted_questions
                 FROM activity_log al
                 JOIN quiz_slide_question_tracked qst ON qst.activity_id = al.id
-                LEFT JOIN quiz_slide_question qq ON qq.id = qst.question_id
+                JOIN quiz_slide_question qq ON qq.id = qst.question_id
+                JOIN quiz_slide_data qsd ON qq.quiz_slide_id = qsd.quiz_slide_id
                 WHERE al.slide_id = :slideId
                   AND al.user_id = :userId
-                  AND qq.quiz_slide_id IS NOT NULL
+                  AND qq.status IN (:quizSlideStatuses)
             )
             SELECT
                 CASE
-                    WHEN qsd.total_questions = 0 THEN 0
-                    ELSE ROUND(100.0 * aq.attempted_questions / qsd.total_questions, 2)
+                    WHEN qsd.total_questions = 0 THEN NULL
+                    ELSE ROUND(100.0 * LEAST(aq.attempted_questions, qsd.total_questions)
+                               / qsd.total_questions, 2)
                 END AS percentage_completed
             FROM quiz_slide_data qsd, attempted_questions aq
             """, nativeQuery = true)
@@ -126,7 +170,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 SELECT
-                    COALESCE((COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(MAX(ds.published_document_total_pages), 0)), 0) AS percentage_watched
+                    -- NULL (not 0) when the publish-time page count is missing/0, matching the
+                    -- video path: "cannot compute" must skip the write, not record a real 0 row.
+                    -- A valid denominator with no tracked pages still computes 0 via COUNT().
+                    (COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(MAX(ds.published_document_total_pages), 0)) AS percentage_watched
                 FROM
                     slide s
                 JOIN

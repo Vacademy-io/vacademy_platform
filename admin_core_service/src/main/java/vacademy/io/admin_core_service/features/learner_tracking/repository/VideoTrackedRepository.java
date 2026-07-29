@@ -26,9 +26,11 @@ public interface VideoTrackedRepository extends JpaRepository<VideoTracked, Stri
     @Query(value = "INSERT INTO public.video_tracked (id, activity_id, start_time, end_time) " +
             "VALUES (:id, :activityId, :startTime, :endTime) " +
             "ON CONFLICT (id) DO UPDATE SET " +
-            "activity_id = EXCLUDED.activity_id, " +
             "start_time = EXCLUDED.start_time, " +
-            "end_time = EXCLUDED.end_time", nativeQuery = true)
+            "end_time = EXCLUDED.end_time " +
+            // Never re-parent a breadcrumb onto another activity (see
+            // DocumentTrackedRepository.upsert for the failure mode).
+            "WHERE video_tracked.activity_id = EXCLUDED.activity_id", nativeQuery = true)
     void upsert(@Param("id") String id,
                 @Param("activityId") String activityId,
                 @Param("startTime") Timestamp startTime,

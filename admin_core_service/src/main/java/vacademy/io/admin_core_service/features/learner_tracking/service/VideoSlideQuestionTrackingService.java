@@ -40,10 +40,12 @@ public class VideoSlideQuestionTrackingService {
     public String saveOrUpdateVideoSlideQuestionLogs(ActivityLogDTO activityLogDTO, String slideId, String userId, CustomUserDetails user) {
         ActivityLog activityLog;
         activityLogDTO.setSourceType(SlideTypeEnum.VIDEO_QUESTION.name());
+        // Identity comes from the token, never from the userId request param —
+        // a learner could otherwise submit (or overwrite) as someone else.
         if (activityLogDTO.isNewActivity()) {
-            activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
+            activityLog = activityLogService.saveActivityLog(activityLogDTO, user.getUserId(), slideId);
         } else {
-            activityLog = activityLogService.updateActivityLog(activityLogDTO);
+            activityLog = activityLogService.updateActivityLog(activityLogDTO, user.getUserId());
         }
 
         saveVideoSlideQuestionLogs(activityLog, activityLogDTO.getVideoSlidesQuestions());

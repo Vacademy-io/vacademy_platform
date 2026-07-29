@@ -49,14 +49,16 @@ public class AssessmentSlideActivityLogService {
     public String addOrUpdateAssessmentSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,
             String userId, CustomUserDetails user, String chapterId, String moduleId, String subjectId,
             String packageSessionId) {
+        // Identity comes from the token, never from the userId request param —
+        // a learner could otherwise submit (or overwrite) as someone else.
         ActivityLog activityLog;
         if (activityLogDTO.isNewActivity()) {
-            activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
+            activityLog = activityLogService.saveActivityLog(activityLogDTO, user.getUserId(), slideId);
         } else {
-            activityLog = activityLogService.updateActivityLog(activityLogDTO);
+            activityLog = activityLogService.updateActivityLog(activityLogDTO, user.getUserId());
         }
         addAssessmentSlideActivityLog(activityLog, activityLogDTO.getAssessmentSlides());
-        learnerTrackingAsyncService.updateLearnerOperationsForAssessment(userId, slideId, chapterId, moduleId,
+        learnerTrackingAsyncService.updateLearnerOperationsForAssessment(user.getUserId(), slideId, chapterId, moduleId,
                 subjectId, packageSessionId);
         return activityLog.getId();
     }

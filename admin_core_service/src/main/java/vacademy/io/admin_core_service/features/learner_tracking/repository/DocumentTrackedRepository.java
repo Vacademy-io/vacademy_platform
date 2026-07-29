@@ -26,10 +26,14 @@ public interface DocumentTrackedRepository extends JpaRepository<DocumentTracked
     @Query(value = "INSERT INTO document_tracked (id, activity_id, start_time, end_time, page_number) " +
             "VALUES (:id, :activityId, :startTime, :endTime, :pageNumber) " +
             "ON CONFLICT (id) DO UPDATE SET " +
-            "activity_id = EXCLUDED.activity_id, " +
             "start_time = EXCLUDED.start_time, " +
             "end_time = EXCLUDED.end_time, " +
-            "page_number = EXCLUDED.page_number", nativeQuery = true)
+            "page_number = EXCLUDED.page_number " +
+            // A breadcrumb belongs to the activity it was first recorded under.
+            // Without this guard a stale/crafted request could re-parent the row
+            // onto a different activity (and therefore a different slide/learner,
+            // since page counts join through activity_log).
+            "WHERE document_tracked.activity_id = EXCLUDED.activity_id", nativeQuery = true)
     void upsert(@Param("id") String id,
                 @Param("activityId") String activityId,
                 @Param("startTime") Timestamp startTime,

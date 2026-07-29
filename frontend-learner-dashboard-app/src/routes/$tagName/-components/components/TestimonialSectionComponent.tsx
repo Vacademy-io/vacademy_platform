@@ -147,8 +147,8 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
       <section className="w-full catalogue-section" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>
-            {description && <p className="text-base sm:text-lg text-gray-500 max-w-2xl mx-auto">{description}</p>}
+            <h2 className="text-2xl sm:text-3xl font-bold text-catalogue-text-primary mb-2">{headerText}</h2>
+            {description && <p className="text-base sm:text-lg text-catalogue-text-secondary max-w-2xl mx-auto">{description}</p>}
           </div>
 
           <div className="relative max-w-2xl mx-auto">
@@ -169,14 +169,14 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
               <>
                 <button
                   onClick={prevTestimonial}
-                  className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
+                  className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-catalogue-bg border border-catalogue-border text-catalogue-text-secondary p-2 rounded-full hover:text-catalogue-text-primary hover:shadow-md transition-all"
                   aria-label="Previous testimonial"
                 >
                   <CaretLeft className="w-5 h-5" />
                 </button>
                 <button
                   onClick={nextTestimonial}
-                  className="absolute end-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
+                  className="absolute end-0 top-1/2 -translate-y-1/2 translate-x-4 bg-catalogue-bg border border-catalogue-border text-catalogue-text-secondary p-2 rounded-full hover:text-catalogue-text-primary hover:shadow-md transition-all"
                   aria-label="Next testimonial"
                 >
                   <CaretRight className="w-5 h-5" />
@@ -209,8 +209,8 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
     <section className="w-full catalogue-section" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>
-          {description && <p className="text-base sm:text-lg text-gray-500 max-w-2xl mx-auto">{description}</p>}
+          <h2 className="text-2xl sm:text-3xl font-bold text-catalogue-text-primary mb-2">{headerText}</h2>
+          {description && <p className="text-base sm:text-lg text-catalogue-text-secondary max-w-2xl mx-auto">{description}</p>}
         </div>
 
         <div className={`grid gap-5 sm:gap-6 ${

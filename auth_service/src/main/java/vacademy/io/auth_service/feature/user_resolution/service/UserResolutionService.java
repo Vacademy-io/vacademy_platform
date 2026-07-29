@@ -9,6 +9,7 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -38,7 +39,8 @@ public class UserResolutionService {
         try {
             List<User> users = userRoleRepository.findUsersByInstituteIdAndRoleName(instituteId, roleName);
             log.debug("Found {} users with role: {} in institute: {}", users.size(), roleName, instituteId);
-            return users.stream().map(this::sanitizeUser).toList();
+            // MUST be a non-final collection — see toCacheableList.
+            return toCacheableList(users);
 
         } catch (Exception e) {
             log.error("Error getting users by institute and role", e);
@@ -71,9 +73,8 @@ public class UserResolutionService {
 
             // Sanitize users before caching to avoid circular reference issues
             // This removes the roles collection which causes circular references
-            List<User> sanitized = users.stream().map(this::sanitizeUser).toList();
-
-            return sanitized;
+            // MUST be a non-final collection — see toCacheableList.
+            return toCacheableList(users);
 
         } catch (Exception e) {
             log.error("Error getting users by IDs", e);
@@ -95,6 +96,26 @@ public class UserResolutionService {
             log.error("Error in searchUserIdsByQuery", e);
             return List.of();
         }
+    }
+
+    /**
+     * Sanitizes each user and collects into an {@link ArrayList} — deliberately NOT
+     * {@code Stream.toList()}.
+     *
+     * <p>The Redis cache serializer uses {@code activateDefaultTyping(..., NON_FINAL, ...)}, which
+     * writes a type id only for non-final runtime types. {@code Stream.toList()} returns
+     * {@code java.util.ImmutableCollections$ListN}, which IS final, so the cached root array was
+     * written with no type id — it serialized fine and then threw
+     * {@code "expected VALUE_STRING ... type id"} on every read. That surfaced as an intermittent
+     * HTTP 400 from {@code /users/by-role}: the first caller after each TTL expiry repopulated the
+     * cache and got a correct answer, and everyone in the following 5 minutes got the error. For the
+     * doubt cascade that meant zero recipients — no email, push, or bell.</p>
+     *
+     * <p>{@code ArrayList} is non-final, so its type id is written and the entry round-trips.</p>
+     */
+    private List<User> toCacheableList(List<User> users) {
+        return users.stream().map(this::sanitizeUser)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     /**

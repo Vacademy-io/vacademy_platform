@@ -16,6 +16,8 @@ import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
 import { AiCopilotPanel } from './AiCopilotPanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
+import { PublishCheckDialog } from './PublishCheckDialog';
+import { runPublishChecks, type PublishIssue } from '../-utils/publish-checks';
 import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
@@ -49,6 +51,7 @@ export const CatalogueEditorPage = () => {
         canRedo,
         selectedPageId,
         selectPage,
+        selectComponent,
         addComponent,
         addToSlot,
     } = useEditorStore();
@@ -105,6 +108,8 @@ export const CatalogueEditorPage = () => {
     const queryClient = useQueryClient();
     const [hasDraft, setHasDraft] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    // Pre-publish checks: surfaced once per Publish click, never blocking.
+    const [publishIssues, setPublishIssues] = useState<PublishIssue[] | null>(null);
 
     // Draft/publish model: the editor works on a DRAFT revision; learners keep
     // seeing the last PUBLISHED config until the admin hits Publish.
@@ -378,7 +383,14 @@ export const CatalogueEditorPage = () => {
                     </Button>
                     <Button
                         size="sm"
-                        onClick={() => publishMutation.mutate()}
+                        onClick={() => {
+                            const issues = config ? runPublishChecks(config) : [];
+                            if (issues.length > 0) {
+                                setPublishIssues(issues);
+                                return;
+                            }
+                            publishMutation.mutate();
+                        }}
                         disabled={
                             publishMutation.isPending || saveMutation.isPending || !canWrite || !!jsonError || !catalogueId ||
                             (!hasDraft && !isDirty)
@@ -394,6 +406,18 @@ export const CatalogueEditorPage = () => {
                     </Button>
                 </div>
             </div>
+
+            {/* Pre-publish checks — warn, never block */}
+            <PublishCheckDialog
+                open={!!publishIssues}
+                onOpenChange={(o) => !o && setPublishIssues(null)}
+                issues={publishIssues || []}
+                onConfirm={() => { setPublishIssues(null); publishMutation.mutate(); }}
+                onJumpTo={(issue) => {
+                    if (issue.pageId) selectPage(issue.pageId);
+                    if (issue.componentId) selectComponent(issue.componentId);
+                }}
+            />
 
             {/* Version history */}
             <RevisionHistoryDialog

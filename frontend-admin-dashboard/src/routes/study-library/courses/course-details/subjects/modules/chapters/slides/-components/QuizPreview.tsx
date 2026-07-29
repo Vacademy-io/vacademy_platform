@@ -83,6 +83,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     const [selectedQuestionType, setSelectedQuestionType] = useState<string>('');
     const [isDeleteConfirmDialogOpen, setIsDeleteConfirmDialogOpen] = useState(false);
     const [questionToDelete, setQuestionToDelete] = useState<number | null>(null);
+    const [isDeletingQuestion, setIsDeletingQuestion] = useState(false);
 
     // Quiz-level settings (time limit, marks, negative marking)
     const [quizSettings, setQuizSettings] = useState<QuizSettings>({
@@ -560,7 +561,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     };
 
     const confirmDelete = async () => {
+        // Guard against a second click landing while the first request is still in flight
+        if (isDeletingQuestion) return;
+
         if (questionToDelete !== null) {
+            setIsDeletingQuestion(true);
             try {
                 // Get all current questions
                 const currentQuestions = form.getValues('questions');
@@ -592,6 +597,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
             } catch (error) {
                 console.error('Error deleting question:', error);
                 toast.error('Failed to delete question. Please try again.');
+            } finally {
+                setIsDeletingQuestion(false);
             }
         }
         setIsDeleteConfirmDialogOpen(false);
@@ -737,7 +744,12 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             >
                                 Cancel
                             </Button>
-                            <MyButton type="button" className="" onClick={handleAddQuestionConfirm}>
+                            <MyButton
+                                type="button"
+                                className=""
+                                onAsyncClick={handleAddQuestionConfirm}
+                                loadingText="Adding..."
+                            >
                                 Add Question
                             </MyButton>
                         </div>
@@ -783,7 +795,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             >
                                 Cancel
                             </Button>
-                            <MyButton type="button" onClick={handleEditConfirm}>
+                            <MyButton
+                                type="button"
+                                onAsyncClick={handleEditConfirm}
+                                loadingText="Saving..."
+                            >
                                 Save Changes
                             </MyButton>
                         </div>
@@ -796,6 +812,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     onOpenChange={setIsDeleteConfirmDialogOpen}
                     onConfirm={confirmDelete}
                     onCancel={cancelDelete}
+                    isDeleting={isDeletingQuestion}
                 />
 
                 {/* External question adding dialogs */}

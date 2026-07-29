@@ -787,6 +787,8 @@ export default function LiveClassRegistrationPage() {
                 verifiedEmail={verifiedEmail}
                 verifiedEmails={verifiedEmails}
                 paymentRequired={!!data?.paymentRequired}
+                requireEmailVerification={!!data?.requireEmailVerification}
+                requirePhoneVerification={!!data?.requirePhoneVerification}
                 onSubmit={onSubmit}
                 onError={onError}
                 onIdentityChange={handleIdentityChange}

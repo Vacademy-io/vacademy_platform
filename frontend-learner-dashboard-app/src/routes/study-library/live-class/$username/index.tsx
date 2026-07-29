@@ -163,16 +163,25 @@ function RouteComponent() {
       // Get sessions that are currently active (in waiting room or live)
       const activeSessionsData = getActiveSessions(allSessions);
       try {
+        // Auto-join policy: a session that is LIVE right now always wins — the learner
+        // opened their unique link to attend class, so join it without asking. The
+        // selection dialog is only for a genuine tie (2+ simultaneously live) or when
+        // everything active is still in its waiting-room window.
+        const liveNow = activeSessionsData.filter(({ status }) => status.isLive);
         if (activeSessionsData.length === 0) {
           // No active sessions, redirect to live-class page
-      
           navigate({ to: "/study-library/live-class" });
+        } else if (liveNow.length === 1) {
+          // Exactly one session live right now — auto-join it, even if other
+          // sessions are in their waiting-room window.
+          const { session, status } = liveNow[0];
+          handleNavigateToSession(session, status.isInWaitingRoom);
         } else if (activeSessionsData.length === 1) {
-          // Exactly one active session, auto-navigate
+          // Nothing live yet but one session active (waiting room) — auto-navigate
           const { session, status } = activeSessionsData[0];
           handleNavigateToSession(session, status.isInWaitingRoom);
         } else {
-          // Multiple active sessions, show selection dialog
+          // Multiple candidates and no unambiguous live session — let the learner pick
           setActiveSessions(activeSessionsData);
           setShowSessionSelection(true);
         }

@@ -547,6 +547,11 @@ public class AuthService {
                     null);
             if (response == null || response.getBody() == null
                     || !response.getStatusCode().is2xxSuccessful()) {
+                // Log loudly: callers cannot tell "no such users" from "lookup failed" (both are an
+                // empty list), and for the doubt cascade an empty admin list means nobody is notified.
+                logger.warn("Role lookup returned no usable response for institute {} role {} (status {})",
+                        instituteId, roleName,
+                        response == null ? "no-response" : response.getStatusCode());
                 return List.of();
             }
             ObjectMapper objectMapper = new ObjectMapper();
@@ -560,6 +565,9 @@ public class AuthService {
                     .toList();
         } catch (Exception e) {
             // Swallow — this method only powers fallbacks; failure should not break doubt creation.
+            // Still log: a silent empty here is indistinguishable from "institute has no such role",
+            // and it silently costs the doubt cascade every one of its recipients.
+            logger.warn("Role lookup failed for institute {} role {}: {}", instituteId, roleName, e.getMessage());
             return List.of();
         }
     }

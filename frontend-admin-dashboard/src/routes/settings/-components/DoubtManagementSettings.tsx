@@ -149,7 +149,7 @@ const ASSIGNEE_SOURCE_OPTIONS: { value: QueryTypeAssigneeSource; label: string }
     { value: 'BATCH_TEACHER', label: 'Batch teacher' },
     { value: 'ROLE', label: 'A role' },
     { value: 'SPECIFIC_USERS', label: 'Specific staff' },
-    { value: 'NONE', label: 'No auto-assign (manual)' },
+    { value: 'NONE', label: 'No one (no notifications sent)' },
 ];
 
 /** UPPER_SNAKE slug used as a stable type key when the admin adds a new type. */
@@ -197,8 +197,9 @@ const OPTIONS: { value: DoubtAssigneeSource; title: string; description: string 
     },
     {
         value: 'NONE',
-        title: 'None (manual)',
-        description: 'No auto-assign. Admins assign each doubt manually.',
+        title: 'Admins only',
+        description:
+            'Skip teachers entirely — assign every doubt to your institute admins, who are notified and then triage it onward.',
     },
 ];
 

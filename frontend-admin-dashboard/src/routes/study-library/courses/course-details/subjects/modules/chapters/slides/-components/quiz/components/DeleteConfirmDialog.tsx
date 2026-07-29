@@ -1,13 +1,15 @@
 import React from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Warning } from '@phosphor-icons/react';
+import { CircleNotch, Warning } from '@phosphor-icons/react';
 
 interface DeleteConfirmDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     onConfirm: () => void;
     onCancel: () => void;
+    /** Blocks re-submits and dismissal while the delete request is in flight. */
+    isDeleting?: boolean;
 }
 
 const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
@@ -15,9 +17,10 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
     onOpenChange,
     onConfirm,
     onCancel,
+    isDeleting = false,
 }) => {
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <Dialog open={isOpen} onOpenChange={(open) => !isDeleting && onOpenChange(open)}>
             <DialogContent className="max-w-md">
                 <div className="flex items-center gap-3">
                     <div className="flex size-10 items-center justify-center rounded-full bg-red-100">
@@ -32,11 +35,28 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
                     </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
-                    <Button type="button" variant="outline" onClick={onCancel}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={onCancel}
+                        disabled={isDeleting}
+                    >
                         Cancel
                     </Button>
-                    <Button type="button" variant="destructive" onClick={onConfirm}>
-                        Delete
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={onConfirm}
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <CircleNotch className="size-4 animate-spin" />
+                                Deleting...
+                            </span>
+                        ) : (
+                            'Delete'
+                        )}
                     </Button>
                 </div>
             </DialogContent>

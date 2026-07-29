@@ -83,6 +83,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     const [selectedQuestionType, setSelectedQuestionType] = useState<string>('');
     const [isDeleteConfirmDialogOpen, setIsDeleteConfirmDialogOpen] = useState(false);
     const [questionToDelete, setQuestionToDelete] = useState<number | null>(null);
+    const [isDeletingQuestion, setIsDeletingQuestion] = useState(false);
 
     // Quiz-level settings (time limit, marks, negative marking)
     const [quizSettings, setQuizSettings] = useState<QuizSettings>({
@@ -560,7 +561,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     };
 
     const confirmDelete = async () => {
+        // Guard against a second click landing while the first request is still in flight
+        if (isDeletingQuestion) return;
+
         if (questionToDelete !== null) {
+            setIsDeletingQuestion(true);
             try {
                 // Get all current questions
                 const currentQuestions = form.getValues('questions');
@@ -592,6 +597,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
             } catch (error) {
                 console.error('Error deleting question:', error);
                 toast.error('Failed to delete question. Please try again.');
+            } finally {
+                setIsDeletingQuestion(false);
             }
         }
         setIsDeleteConfirmDialogOpen(false);
@@ -601,6 +608,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         setQuestionToDelete(null);
         setIsDeleteConfirmDialogOpen(false);
     };
+
+    // Soft-deleted questions stay in the form array, so a raw index is not the number the user
+    // sees. Convert a form-array index to its 1-based position among the visible questions.
+    const getDisplayNumber = (originalIndex: number) =>
+        fields.slice(0, originalIndex).filter((f) => f.status !== 'DELETED').length + 1;
 
     // Check if route parameters are available
     if (!chapterId || !moduleId || !subjectId || !sessionId) {
@@ -659,14 +671,17 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     {fields.filter((field) => field.status !== 'DELETED').length > 0 ? (
                         fields
                             .filter((field) => field.status !== 'DELETED')
-                            .map((field) => {
-                                // Find the original index in the fields array
+                            .map((field, displayIndex) => {
+                                // Find the original index in the fields array. Questions are soft
+                                // deleted, so this index (which addresses the form array) is not
+                                // the number shown to the user — displayIndex is.
                                 const originalIndex = fields.findIndex((f) => f.id === field.id);
                                 return (
                                     <QuestionDisplay
                                         key={field.id}
                                         question={field as TransformedQuestion}
                                         questionIndex={originalIndex}
+                                        displayNumber={displayIndex + 1}
                                         onEdit={handleEdit}
                                         onDelete={handleRemove}
                                     />
@@ -729,7 +744,12 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             >
                                 Cancel
                             </Button>
-                            <MyButton type="button" className="" onClick={handleAddQuestionConfirm}>
+                            <MyButton
+                                type="button"
+                                className=""
+                                onAsyncClick={handleAddQuestionConfirm}
+                                loadingText="Adding..."
+                            >
                                 Add Question
                             </MyButton>
                         </div>
@@ -743,7 +763,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 >
                     <DialogContent className="no-scrollbar !m-0 flex h-full !w-full !max-w-full flex-col overflow-y-auto !rounded-none !p-0">
                         <h1 className="bg-primary-50 p-4 font-semibold text-primary-500">
-                            Edit Question {editIndex !== null ? editIndex + 1 : ''}
+                            Edit Question {editIndex !== null ? getDisplayNumber(editIndex) : ''}
                         </h1>
 
                         <FormProvider {...editForm}>
@@ -775,7 +795,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             >
                                 Cancel
                             </Button>
-                            <MyButton type="button" onClick={handleEditConfirm}>
+                            <MyButton
+                                type="button"
+                                onAsyncClick={handleEditConfirm}
+                                loadingText="Saving..."
+                            >
                                 Save Changes
                             </MyButton>
                         </div>
@@ -788,6 +812,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     onOpenChange={setIsDeleteConfirmDialogOpen}
                     onConfirm={confirmDelete}
                     onCancel={cancelDelete}
+                    isDeleting={isDeletingQuestion}
                 />
 
                 {/* External question adding dialogs */}

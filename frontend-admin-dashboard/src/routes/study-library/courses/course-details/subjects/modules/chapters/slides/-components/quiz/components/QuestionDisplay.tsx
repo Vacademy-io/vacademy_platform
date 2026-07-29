@@ -5,7 +5,13 @@ import { isRichTextEmpty } from '@/lib/utils';
 
 interface QuestionDisplayProps {
     question: TransformedQuestion;
+    /**
+     * Index of this question in the full form array, including soft-deleted rows.
+     * Used only to address the question in onEdit/onDelete — never for display.
+     */
     questionIndex: number;
+    /** 1-based position among the visible (non-deleted) questions. */
+    displayNumber: number;
     onEdit: (index: number) => void;
     onDelete: (index: number) => void;
 }
@@ -13,6 +19,7 @@ interface QuestionDisplayProps {
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
     question,
     questionIndex,
+    displayNumber,
     onEdit,
     onDelete,
 }) => {
@@ -196,7 +203,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="text-primary-700 flex size-8 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold">
-                        {questionIndex + 1}
+                        {displayNumber}
                     </div>
                     {/* Inline label next to number */}
                     {question.questionType === 'CMCQS' ||

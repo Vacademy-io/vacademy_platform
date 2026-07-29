@@ -32,11 +32,17 @@ export interface ConversionAnalysis {
     formattingWarnings: string[];
 }
 
-/** data-yoopta-type values whose whole subtree is opaque to the plain-text /
- *  formatting comparison (their fidelity is covered by block-count + payload
- *  round-trip, not visible text, which differs by design between the two
- *  editors' static fallback bodies). */
-const CUSTOM_BLOCK_SELECTOR = '[data-yoopta-type],div.mermaid,pre';
+/** Subtrees opaque to the plain-text / formatting comparison — their fidelity
+ *  is covered by block counts, not visible text, which differs by design
+ *  between the two editors' static fallback bodies. `dl` and `pre` are Yoopta's
+ *  callout and code shapes on the SOURCE side; their converted counterparts
+ *  carry data-yoopta-type / <pre>, so both sides must be excluded symmetrically. */
+const CUSTOM_BLOCK_SELECTOR = '[data-yoopta-type],div.mermaid,pre,dl';
+
+/** Yoopta checkbox text markers (`[x] `/`[ ] `) — editor syntax, not content;
+ *  stripped before the word comparison so a converted checklist (marker gone)
+ *  doesn't read as text loss vs the source. */
+const CHECK_MARKER_RE = /\[[xX ]\]/g;
 
 function parse(html: string): Document {
     return new DOMParser().parseFromString(html || '', 'text/html');
@@ -49,6 +55,10 @@ function blockCounts(doc: Document): Map<string, number> {
     doc.querySelectorAll('[data-yoopta-type]').forEach((el) =>
         bump(`type:${el.getAttribute('data-yoopta-type') || 'unknown'}`)
     );
+    // Yoopta callouts serialize as <dl>; converted ones are
+    // data-yoopta-type="callout" (counted above). Align them so a dropped
+    // callout is caught.
+    doc.querySelectorAll('dl').forEach(() => bump('type:callout'));
     doc.querySelectorAll('div.mermaid').forEach(() => bump('mermaid'));
     doc.querySelectorAll('table').forEach(() => bump('table'));
     doc.querySelectorAll('img[src]').forEach((el) => {
@@ -95,7 +105,8 @@ function nonBlockWordCounts(doc: Document): Map<string, number> {
     clone.querySelectorAll('br').forEach((br) => br.replaceWith(' '));
     clone.querySelectorAll(BLOCK_TAGS).forEach((el) => el.append(' '));
     const counts = new Map<string, number>();
-    for (const word of (clone.textContent || '').split(/\s+/)) {
+    const text = (clone.textContent || '').replace(CHECK_MARKER_RE, ' ');
+    for (const word of text.split(/\s+/)) {
         if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
     }
     return counts;

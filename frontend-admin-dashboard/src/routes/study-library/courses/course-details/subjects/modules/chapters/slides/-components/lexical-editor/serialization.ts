@@ -1,6 +1,7 @@
 import { $getRoot, $insertNodes, $createParagraphNode, type LexicalEditor } from 'lexical';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { formatHTMLString } from '../slide-operations/formatHtmlString';
+import { normalizeYooptaHtml } from './normalize-yoopta';
 
 /**
  * HTML (de)serialization for the Lexical document editor.
@@ -54,7 +55,10 @@ export function exportDocHtml(editor: LexicalEditor): string {
 
 /** Load stored HTML into the editor (replaces the whole document). */
 export function importDocHtml(editor: LexicalEditor, storedHtml: string): void {
-    const inner = extractLexicalInnerHtml(storedHtml);
+    // Rewrite legacy-Yoopta shapes (dl callouts, [x] checkboxes, flex-wrapped
+    // media, per-item lists) into what the Lexical importer understands.
+    // No-op on already-Lexical content.
+    const inner = normalizeYooptaHtml(extractLexicalInnerHtml(storedHtml));
     editor.update(
         () => {
             const root = $getRoot();

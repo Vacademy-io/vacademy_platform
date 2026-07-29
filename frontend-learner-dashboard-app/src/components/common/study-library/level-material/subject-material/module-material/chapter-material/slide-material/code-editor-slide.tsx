@@ -1,5 +1,6 @@
 /* eslint-disable */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { getLearnerTrackingSettings } from "@/services/learner-tracking-settings";
 import {
   Code,
   Play,

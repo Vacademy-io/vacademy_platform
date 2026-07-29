@@ -163,7 +163,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
                     COALESCE(NULLIF(vid_percent.value, ''), '0') AS percentageVideoWatched,
                     COALESCE(NULLIF(vid_last.value, ''), '0') AS videoLastTimestamp,
-                    vid_last.updated_at AS videoLastUpdated
+                    vid_last.updated_at AS videoLastUpdated,
+
+                    COALESCE(slide_complete.pct, 0) AS percentageCompleted
 
                 FROM chapter_to_slides cts
                 JOIN slide s ON cts.slide_id = s.id
@@ -195,6 +197,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     AND s.source_type = 'VIDEO'
                     AND vid_last.operation = 'VIDEO_LAST_TIMESTAMP'
                     AND vid_last.user_id = :userId
+
+                -- Unified per-slide completion for this learner, across every slide
+                -- type, using the same completion operations the chapter rollup uses
+                -- (so the slide number is consistent with the chapter percentage).
+                LEFT JOIN (
+                    SELECT lo.source_id AS slide_id,
+                        MAX(CASE WHEN lo.value ~ '^[0-9]+(\\.[0-9]+)?$'
+                                 THEN LEAST(CAST(lo.value AS FLOAT), 100) ELSE 0 END) AS pct
+                    FROM learner_operation lo
+                    WHERE lo.source = 'SLIDE'
+                      AND lo.user_id = :userId
+                      AND lo.operation IN ('PERCENTAGE_VIDEO_WATCHED','PERCENTAGE_DOCUMENT_COMPLETED',
+                                           'PERCENTAGE_QUIZ_COMPLETED','PERCENTAGE_QUESTION_COMPLETED',
+                                           'PERCENTAGE_ASSIGNMENT_COMPLETED','PERCENTAGE_ASSESSMENT_DONE',
+                                           'PERCENTAGE_SCORM_COMPLETED','PERCENTAGE_AUDIO_LISTENED')
+                    GROUP BY lo.source_id
+                ) slide_complete ON slide_complete.slide_id = s.id
 
                 WHERE ch.id = :chapterId
                 AND s.status IN (:status)

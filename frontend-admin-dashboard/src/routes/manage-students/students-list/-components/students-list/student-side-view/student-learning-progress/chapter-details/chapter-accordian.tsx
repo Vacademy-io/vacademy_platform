@@ -2,6 +2,7 @@ import { CaretUp, CaretDown } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { TopicDetails } from './topic-details/topic-details';
 import { StatusIcon } from '../status-icon';
+import { InlineProgress } from '../inline-progress';
 import { ChapterWithProgress } from '@/routes/manage-students/students-list/-types/student-subjects-details-types';
 
 export const ChapterAccordian = ({
@@ -25,13 +26,16 @@ export const ChapterAccordian = ({
                         setExpand(!expand);
                     }}
                 >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                         <StatusIcon status={chapterCompletionStatus} />
-                        <div>
+                        <div className="truncate">
                             Chapter {key}: {ChapterDetails.chapter_name}
                         </div>
                     </div>
-                    <div>{expand ? <CaretUp /> : <CaretDown />}</div>
+                    <div className="flex items-center gap-3">
+                        <InlineProgress percentage={ChapterDetails.percentage_completed} />
+                        {expand ? <CaretUp /> : <CaretDown />}
+                    </div>
                 </div>
                 {expand && <TopicDetails chapterDetails={ChapterDetails} />}
             </div>

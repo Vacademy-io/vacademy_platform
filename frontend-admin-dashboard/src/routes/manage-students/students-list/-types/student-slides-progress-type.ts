@@ -20,6 +20,9 @@ export interface SlideWithStatusType {
     image_file_id: string | null;
     percentage_video_watched: string | null;
     percentage_document_watched: string | null;
+    // Unified completion % for the slide across every type (video/document/quiz/
+    // question/assignment/assessment/scorm/audio), consistent with the chapter %.
+    percentage_completed: number | null;
     slide_order: number | null;
 }
 

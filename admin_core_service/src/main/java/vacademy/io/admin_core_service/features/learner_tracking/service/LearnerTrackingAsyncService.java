@@ -28,7 +28,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -469,22 +471,60 @@ public class LearnerTrackingAsyncService {
         // from the service logs instead of a database forensics session.
         public void updateLearnerOperationsForChapter(String userId, String chapterId, String moduleId,
                         String subjectId, String packageSessionId) {
-                if (!StringUtils.hasText(chapterId) || !StringUtils.hasText(moduleId)
-                                || !StringUtils.hasText(subjectId) || !StringUtils.hasText(packageSessionId)) {
-                        log.warn("Progress rollup for user {} is missing ids (chapterId={}, moduleId={}, "
-                                        + "subjectId={}, packageSessionId={}). Levels without an id keep their "
-                                        + "previous percentage.",
-                                        userId, chapterId, moduleId, subjectId, packageSessionId);
-                }
-                // Skip only the chapter-level work when there's no chapterId; the
-                // module / subject / package rollups below still run off whatever
-                // ids WERE supplied. They recompute from stored chapter values, so
-                // they remain useful without a chapterId — and returning early here
-                // would silently drop a refresh the caller used to get.
                 if (StringUtils.hasText(chapterId)) {
                         updateChapterCompletionPercentage(userId, chapterId);
                 }
 
+                // Resolve module -> subject -> enrolled package session(s) from the
+                // chapter itself rather than trusting the client to send them. The
+                // client historically omitted these ids intermittently, so the module,
+                // subject and package-session rollups silently computed null and were
+                // dropped — the chapter advanced while the course percentage on the
+                // learner's home page froze for months. Server-side resolution
+                // guarantees the cascade always reaches the top, for every batch the
+                // learner is enrolled in.
+                List<Object[]> targets = StringUtils.hasText(chapterId)
+                                ? activityLogRepository.resolveChapterRollupTargets(
+                                                userId, chapterId,
+                                                List.of(ChapterStatus.ACTIVE.name()),
+                                                List.of(LearnerSessionStatusEnum.ACTIVE.name(),
+                                                                LearnerSessionStatusEnum.INACTIVE.name()))
+                                : List.of();
+
+                if (!targets.isEmpty()) {
+                        Set<String> moduleIds = new LinkedHashSet<>();
+                        Set<String> subjectIds = new LinkedHashSet<>();
+                        Set<String> packageSessionIds = new LinkedHashSet<>();
+                        for (Object[] row : targets) {
+                                if (row[0] != null) {
+                                        moduleIds.add((String) row[0]);
+                                }
+                                if (row[1] != null) {
+                                        subjectIds.add((String) row[1]);
+                                }
+                                if (row[2] != null) {
+                                        packageSessionIds.add((String) row[2]);
+                                }
+                        }
+                        moduleIds.forEach(id -> updateModuleCompletionPercentage(userId, id));
+                        subjectIds.forEach(id -> updateSubjectCompletionPercentage(userId, id));
+                        packageSessionIds.forEach(id -> updatePackageSessionCompletionPercentage(userId, id));
+                        return;
+                }
+
+                // Fallback: no chapterId, or the chapter/enrollment mapping resolved
+                // nothing (e.g. content not yet mapped to the learner's batch). Use
+                // whatever ids the caller supplied so we never regress the previous
+                // behaviour; log when they're incomplete so a stuck percentage stays
+                // diagnosable from the service logs instead of a database forensics
+                // session.
+                if (!StringUtils.hasText(chapterId) || !StringUtils.hasText(moduleId)
+                                || !StringUtils.hasText(subjectId) || !StringUtils.hasText(packageSessionId)) {
+                        log.warn("Progress rollup for user {} could not resolve parents from chapterId={} and is "
+                                        + "missing client ids (moduleId={}, subjectId={}, packageSessionId={}). "
+                                        + "Levels without an id keep their previous percentage.",
+                                        userId, chapterId, moduleId, subjectId, packageSessionId);
+                }
                 updateModuleCompletionPercentage(userId, moduleId);
                 updateSubjectCompletionPercentage(userId, subjectId);
                 updatePackageSessionCompletionPercentage(userId, packageSessionId);

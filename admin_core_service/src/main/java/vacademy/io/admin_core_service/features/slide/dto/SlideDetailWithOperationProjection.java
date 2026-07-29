@@ -58,4 +58,12 @@ public interface SlideDetailWithOperationProjection {
     String getPublishedData();
 
     String getVideoSourceType();
+
+    // Unified slide completion percentage for this learner, across every slide
+    // type (video / document / quiz / question / assignment / assessment / scorm /
+    // audio). Uses the same completion operations the chapter rollup does, so a
+    // slide's number is consistent with the chapter percentage it contributes to.
+    // Lets the side-view Progress tab show a real percentage on every slide row
+    // instead of only video / document.
+    Double getPercentageCompleted();
 }

@@ -287,6 +287,36 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("packageSessionId") String packageSessionId,
             @Param("subjectStatusList") List<String> subjectStatusList);
 
+    /**
+     * Resolves the parent chain a chapter rolls up into — module, subject, and the
+     * package session(s) the learner is actually enrolled in — directly from the
+     * chapter and the learner's enrollment, instead of trusting the client request
+     * to carry moduleId/subjectId/packageSessionId. Returns one {moduleId,
+     * subjectId, packageSessionId} row per enrolled path (usually one; more for
+     * shared content or a learner in multiple batches). The completion cascade uses
+     * this so the MODULE / SUBJECT / PACKAGE_SESSION rollups can never be silently
+     * skipped when the client omits an id — the historical cause of the learner's
+     * course percentage freezing while chapters kept advancing.
+     */
+    @Query(value = """
+            SELECT DISTINCT mcm.module_id, smm.subject_id, cpsm.package_session_id
+            FROM module_chapter_mapping mcm
+            JOIN subject_module_mapping smm ON smm.module_id = mcm.module_id
+            JOIN chapter_package_session_mapping cpsm
+                ON cpsm.chapter_id = mcm.chapter_id
+                AND cpsm.status IN (:chapterPackageSessionStatusList)
+            JOIN student_session_institute_group_mapping ss
+                ON ss.package_session_id = cpsm.package_session_id
+                AND ss.user_id = :userId
+                AND ss.status IN (:enrollmentStatusList)
+            WHERE mcm.chapter_id = :chapterId
+            """, nativeQuery = true)
+    List<Object[]> resolveChapterRollupTargets(
+            @Param("userId") String userId,
+            @Param("chapterId") String chapterId,
+            @Param("chapterPackageSessionStatusList") List<String> chapterPackageSessionStatusList,
+            @Param("enrollmentStatusList") List<String> enrollmentStatusList);
+
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.videoTracked vt

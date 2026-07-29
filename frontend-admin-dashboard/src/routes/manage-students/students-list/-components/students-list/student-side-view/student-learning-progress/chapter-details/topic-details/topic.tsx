@@ -8,6 +8,7 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { FileDoc } from '@phosphor-icons/react';
 import { FilePdf } from '@phosphor-icons/react';
 import { PlayCircle } from '@phosphor-icons/react';
+import { InlineProgress } from '../../inline-progress';
 
 interface TopicProps {
     slideData: SlideWithStatusType;
@@ -40,15 +41,12 @@ export const Topic = ({ slideData }: TopicProps) => {
     };
 
     useEffect(() => {
+        // Unified completion across every slide type (video/document/quiz/question/
+        // assignment/assessment/scorm/audio). Replaces the old per-type check that
+        // read PERCENTAGE_DOCUMENT_WATCHED — a near-empty operation, so completed
+        // documents wrongly showed as pending.
         const status: 'done' | 'pending' =
-            slideData.source_type == 'DOCUMENT'
-                ? slideData.percentage_document_watched &&
-                  slideData.percentage_document_watched >= '90'
-                    ? 'done'
-                    : 'pending'
-                : slideData.percentage_video_watched && slideData.percentage_video_watched >= '90'
-                  ? 'done'
-                  : 'pending';
+            (slideData.percentage_completed ?? 0) >= 90 ? 'done' : 'pending';
         setChapterCompletionStatus(status);
     }, [slideData]);
 
@@ -66,7 +64,8 @@ export const Topic = ({ slideData }: TopicProps) => {
                         : slideData.video_last_updated}
                 </div>
             </div>
-            <div>
+            <div className="flex items-center gap-3">
+                <InlineProgress percentage={slideData.percentage_completed} />
                 <MyButton
                     buttonType="secondary"
                     layoutVariant="default"

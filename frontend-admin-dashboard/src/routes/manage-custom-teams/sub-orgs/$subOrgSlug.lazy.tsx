@@ -93,11 +93,19 @@ function InstituteAdminSubOrgPage() {
     const resyncMutation = useMutation({
         mutationFn: (subOrgId: string) => resyncSubOrgInvites(subOrgId),
         onSuccess: (data) => {
-            toast.success(
-                data.created_count > 0
-                    ? `Re-synced ${data.created_count} invite(s) across ${data.package_session_count} course(s)`
-                    : 'Already in sync — no new invites needed'
-            );
+            // Re-sync does two things now: mirror missing invites, and re-apply the
+            // institute's naming settings to existing invite names. Report whichever
+            // actually happened so a rename-only run doesn't read as "nothing to do".
+            const parts: string[] = [];
+            if (data.created_count > 0) {
+                parts.push(
+                    `Re-synced ${data.created_count} invite(s) across ${data.package_session_count} course(s)`
+                );
+            }
+            if (data.renamed_count > 0) {
+                parts.push(`renamed ${data.renamed_count} to match your naming settings`);
+            }
+            toast.success(parts.length > 0 ? parts.join(' · ') : 'Already in sync — no changes needed');
             if (selectedSubOrg) {
                 queryClient.invalidateQueries({
                     queryKey: ['sub-org-scoped-invites', selectedSubOrg.id],

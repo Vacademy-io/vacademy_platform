@@ -306,7 +306,9 @@ public class PipelineReportService {
      * COALESCE(lu.user_id, assigned_counselor_id) convention; NULL collapses into a synthetic
      * UNASSIGNED row, which — like SYSTEM — only appears for unscoped callers (NULL never matches
      * a scope CSV). DISTINCT on the lead's user id so a multi-response lead counts once per
-     * status, not once per response.
+     * status, not once per response. Soft-deleted leads are excluded (audience_status = 'ACTIVE')
+     * to match the Recent Leads list default (EXCLUDE_DELETED) — without this the matrix counts
+     * deleted leads the list can't show, and the two screens disagree.
      */
     private static final String CURRENT_STATUS_BY_COUNSELLOR_SQL = """
             SELECT COALESCE(lu.user_id, ulp.assigned_counselor_id, 'UNASSIGNED') AS actor_id,
@@ -317,6 +319,7 @@ public class PipelineReportService {
             WHERE a.institute_id = :instituteId
               AND ar.submitted_at >= :fromTs
               AND ar.submitted_at <  :toTs
+              AND ar.audience_status = 'ACTIVE'
             """ + LEAD_SCOPE_PREDICATES + """
             GROUP BY 1, 2
             """;

@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.institute.entity.Institute;
@@ -186,6 +187,13 @@ public class UserInstituteService {
         institute.setAccountType(instituteInfo.getAccountType());
         institute.setProduct(instituteInfo.getProduct() != null ? instituteInfo.getProduct() : "vacademy");
         institute.setCompanySize(instituteInfo.getCompanySize());
+        // Demo/trial provisioning: only set when supplied, so normal signups keep the
+        // lead_tag column default and a null expiry.
+        if (StringUtils.hasText(instituteInfo.getLeadTag())) {
+            institute.setLeadTag(instituteInfo.getLeadTag());
+        }
+        institute.setDemoExpiresAt(instituteInfo.getDemoExpiresAt());
+        institute.setSourceQuoteId(instituteInfo.getSourceQuoteId());
         return institute;
     }
 

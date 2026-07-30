@@ -68,6 +68,14 @@ public class Institute {
     @Column(name = "held")
     private String heldBy;
 
+    /** When a FREE_TRIAL institute stops being accessible; null for normal institutes. */
+    @Column(name = "demo_expires_at")
+    private java.sql.Timestamp demoExpiresAt;
+
+    /** pricing_quote.id this institute was provisioned from. */
+    @Column(name = "source_quote_id")
+    private String sourceQuoteId;
+
     @Column(name = "founded_date")
     private Timestamp foundedData;
 

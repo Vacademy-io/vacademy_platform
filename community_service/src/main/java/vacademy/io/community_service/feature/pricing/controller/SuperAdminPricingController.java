@@ -48,6 +48,16 @@ public class SuperAdminPricingController {
         return ResponseEntity.ok(quoteService.forSubmission(submissionId));
     }
 
+    /** Called after a demo workspace is provisioned, so the quote shows what it produced. */
+    @PutMapping("/quotes/{id}/provisioned")
+    public ResponseEntity<PricingQuote> markProvisioned(
+            @PathVariable String id,
+            @RequestParam String instituteId,
+            @RequestParam(required = false) Long demoExpiresAt) {
+        return ResponseEntity.ok(quoteService.markProvisioned(id, instituteId,
+                demoExpiresAt == null ? null : new java.util.Date(demoExpiresAt)));
+    }
+
     @PutMapping("/quotes/{id}/status")
     public ResponseEntity<PricingQuote> updateStatus(@PathVariable String id,
                                                      @RequestParam String status) {

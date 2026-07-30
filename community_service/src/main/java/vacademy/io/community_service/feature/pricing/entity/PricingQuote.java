@@ -94,6 +94,16 @@ public class PricingQuote {
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
+    // ---- demo workspace provisioned from this quote ----------------------------
+    @Column(name = "provisioned_institute_id")
+    private String provisionedInstituteId;
+
+    @Column(name = "provisioned_at")
+    private Date provisionedAt;
+
+    @Column(name = "demo_expires_at")
+    private Date demoExpiresAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Date createdAt;

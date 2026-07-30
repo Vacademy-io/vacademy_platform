@@ -11,11 +11,13 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.onboarding.entity.OnboardingSubmission;
 import vacademy.io.community_service.feature.onboarding.repository.OnboardingSubmissionRepository;
 import vacademy.io.community_service.feature.onboarding.service.OnboardingJson;
+import vacademy.io.community_service.feature.onboarding.service.OnboardingRecipientService;
 import vacademy.io.community_service.feature.pricing.dto.QuoteRequestDto;
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto;
 import vacademy.io.community_service.feature.pricing.entity.PricingQuote;
 import vacademy.io.community_service.feature.pricing.repository.PricingQuoteRepository;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +32,10 @@ public class PricingQuoteService {
     private QuoteCalculator calculator;
     @Autowired
     private OnboardingSubmissionRepository submissionRepository;
+    @Autowired
+    private PricingAlertService alertService;
+    @Autowired
+    private OnboardingRecipientService recipientService;
     @Autowired
     private OnboardingJson json;
 
@@ -98,6 +104,13 @@ public class PricingQuoteService {
 
         quote = repository.save(quote);
         priced.setQuoteId(quote.getId());
+
+        // Tell the team. Best-effort: a mail failure must never cost us the quote we just saved.
+        try {
+            alertService.onQuoteSaved(quote, priced, recipientService.activeEmails());
+        } catch (Exception e) {
+            log.error("Pricing alert failed for quote {}: {}", quote.getId(), e.getMessage());
+        }
         return priced;
     }
 
@@ -108,6 +121,22 @@ public class PricingQuoteService {
     public Page<PricingQuote> search(String status, String source, int page, int size) {
         return repository.search(emptyToNull(status), emptyToNull(source),
                 PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100)));
+    }
+
+    /**
+     * Records the demo workspace this quote produced. Also nudges the quote out of DRAFT — a lead
+     * you've built a workspace for has clearly been engaged with.
+     */
+    public PricingQuote markProvisioned(String id, String instituteId, Date demoExpiresAt) {
+        PricingQuote q = repository.findById(id)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Quote not found"));
+        q.setProvisionedInstituteId(instituteId);
+        q.setProvisionedAt(new Date());
+        q.setDemoExpiresAt(demoExpiresAt);
+        if ("DRAFT".equals(q.getStatus())) {
+            q.setStatus("SENT");
+        }
+        return repository.save(q);
     }
 
     public PricingQuote updateStatus(String id, String status) {

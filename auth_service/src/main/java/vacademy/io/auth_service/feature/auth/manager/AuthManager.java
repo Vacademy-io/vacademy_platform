@@ -55,6 +55,9 @@ public class AuthManager {
     UserRepository userRepository;
 
     @Autowired
+    vacademy.io.auth_service.feature.demo.service.TrialAccessGuard trialAccessGuard;
+
+    @Autowired
     JwtService jwtService;
 
     @Autowired
@@ -101,6 +104,20 @@ public class AuthManager {
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest))
             throw new VacademyException("Invalid Request");
+
+        // Signup is unauthenticated, so an existing email must never get this far: createUser would
+        // reuse that account and we would hand working tokens for it to whoever asked. Rejecting
+        // here (rather than after) also avoids leaving an orphaned institute behind.
+        String email = registerRequest.getEmail() == null ? null : registerRequest.getEmail().toLowerCase().trim();
+        if (email != null && !email.isBlank()
+                && userRepository.findFirstByEmailOrderByCreatedAtDesc(email).isPresent()) {
+            throw new VacademyException(HttpStatus.CONFLICT,
+                    "An account already exists for " + email + ". Please log in instead.");
+        }
+
+        // Only ever mint an admin here. The role list arrives in the request body, so without this
+        // a caller could name any role that happens to exist in the roles table.
+        registerRequest.setUserRoles(List.of(ADMIN_ROLE));
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
 
@@ -179,6 +196,11 @@ public class AuthManager {
             if (userOptional.isEmpty()) {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
+
+            // A demo workspace stops letting anyone in once its trial lapses. Checked here rather
+            // than by a scheduler so it can never drift, and so extending the date restores access
+            // immediately. Nothing is deleted.
+            trialAccessGuard.assertNotExpired(authRequestDTO.getInstituteId());
 
             refreshTokenService.deleteAllRefreshToken(userOptional.get());
 

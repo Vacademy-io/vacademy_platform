@@ -1,15 +1,15 @@
 package vacademy.io.community_service.feature.onboarding.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.community_service.feature.onboarding.dto.DemoHandoffDto;
 import vacademy.io.community_service.feature.onboarding.dto.PublicLinkConfigDto;
 import vacademy.io.community_service.feature.onboarding.dto.SubmitRequestDto;
 import vacademy.io.community_service.feature.onboarding.dto.SubmitResponseDto;
-import vacademy.io.community_service.feature.onboarding.service.DemoAccountService;
 import vacademy.io.community_service.feature.onboarding.service.OnboardingLinkService;
 import vacademy.io.community_service.feature.onboarding.service.OnboardingSubmissionService;
+import vacademy.io.community_service.feature.onboarding.service.SubmissionRateLimiter;
 
 /**
  * Unauthenticated onboarding endpoints powering the public form on the health-check frontend.
@@ -24,7 +24,7 @@ public class PublicOnboardingController {
     @Autowired
     private OnboardingSubmissionService submissionService;
     @Autowired
-    private DemoAccountService demoAccountService;
+    private SubmissionRateLimiter rateLimiter;
 
     /** Form config for a link: which questions to show, prefilled values, institute-type options. */
     @GetMapping("/link/{slug}")
@@ -34,13 +34,13 @@ public class PublicOnboardingController {
 
     /** Submit a completed form → records it, emails the team, returns the demo handoff. */
     @PostMapping("/submit")
-    public ResponseEntity<SubmitResponseDto> submit(@RequestBody SubmitRequestDto request) {
+    public ResponseEntity<SubmitResponseDto> submit(@RequestBody SubmitRequestDto request,
+                                                    HttpServletRequest http) {
+        rateLimiter.check(http, "onboarding submit");
         return ResponseEntity.ok(submissionService.submit(request));
     }
 
-    /** Direct-demo: hand straight to the chosen institute type's demo (no form). */
-    @GetMapping("/demo/{instituteType}")
-    public ResponseEntity<DemoHandoffDto> demo(@PathVariable String instituteType) {
-        return ResponseEntity.ok(demoAccountService.buildHandoff(instituteType));
-    }
+    // GET /demo/{instituteType} was removed on 2026-07-30. It returned the shared demo accounts'
+    // admin credentials to any anonymous caller. Demos are now provisioned per lead from the
+    // Quotes tab, so the endpoint was pure liability.
 }

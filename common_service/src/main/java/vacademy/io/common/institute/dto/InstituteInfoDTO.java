@@ -46,6 +46,14 @@ public class InstituteInfoDTO {
     private List<SubjectDTO> subjects;
     private List<Integer> sessionExpiryDays;
     private List<PackageGroupDTO> packageGroups;
+
+    // ---- demo / free-trial provisioning ----------------------------------------
+    /** PROD | LEAD | TEST | FREE_TRIAL. Null leaves the column default alone. */
+    private String leadTag;
+    /** When a FREE_TRIAL institute stops being accessible. */
+    private java.sql.Timestamp demoExpiresAt;
+    /** pricing_quote.id this institute was provisioned from. */
+    private String sourceQuoteId;
     private String letterHeadFileId;
     private List<String> tags;
     private String setting;

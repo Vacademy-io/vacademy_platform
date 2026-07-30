@@ -409,10 +409,19 @@ export const updateSubOrgConfiguration = async (
  * Re-run the SUBORG_LEARNER mirror logic for every PS already linked to this sub-org's
  * org-level invite. Idempotent — only creates invites for institute-wide PaymentOptions
  * that aren't already mirrored. Used by the "Re-sync invites" button on the deep page.
+ *
+ * Also re-applies the institute's current Naming Settings terminology to existing
+ * sub-org invite names (`renamed_count`) — invite names are written once at creation,
+ * so this is how a term rename reaches invites that already exist.
  */
 export const resyncSubOrgInvites = async (
     subOrgId: string
-): Promise<{ sub_org_id: string; created_count: number; package_session_count: number }> => {
+): Promise<{
+    sub_org_id: string;
+    created_count: number;
+    renamed_count: number;
+    package_session_count: number;
+}> => {
     const parentInstituteId = getCurrentInstituteId();
     const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resync-invites`;
     const response = await authenticatedAxiosInstance({

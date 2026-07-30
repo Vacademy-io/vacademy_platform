@@ -1,27 +1,32 @@
 /**
  * Reports Center — Dispositions tab.
  *
- * Post-call disposition reporting from GET /v1/reports/dispositions, in two
+ * Post-call disposition reporting from GET /v1/reports/dispositions, in three
  * matrices keyed by actor (counsellor / the synthetic SYSTEM workflow):
  *
- *   1. Status changes by counsellor — rows = actors (sorted by total changes
+ *   1. Current status by counsellor — rows = counsellors (plus "Unassigned"
+ *      for admins), columns = the active status catalog, cells = leads
+ *      CURRENTLY holding that status. Point-in-time snapshot: NOT bounded by
+ *      the page date range. Trailing "No status" + Total columns.
+ *   2. Status changes by counsellor — rows = actors (sorted by total changes
  *      desc), columns = the active status catalog (colour-chip headers from
  *      the per-institute colours), cells = transition counts into each status
  *      (0 dimmed), plus a trailing Total column.
- *   2. Call outcomes by counsellor — rows = actors, columns = the distinct
+ *   3. Call outcomes by counsellor — rows = actors, columns = the distinct
  *      CALL_STATUS outcomes present across the window, cells = call counts.
  *
- * Read-only; both matrices export the rows already loaded to CSV.
+ * Read-only; all matrices export the rows already loaded to CSV.
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowsLeftRight, Phone } from '@phosphor-icons/react';
+import { ArrowsLeftRight, ChartBarHorizontal, Phone } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
     fetchDispositions,
     dispositionsQueryKey,
     type DispositionActorRow,
     type DispositionCallOutcomeRow,
+    type DispositionCurrentStatusRow,
     type DispositionStatusMeta,
 } from '../-services/get-crm-reports';
 import {
@@ -81,6 +86,13 @@ export function DispositionsTab({
         return rows;
     }, [query.data]);
 
+    // Point-in-time counsellor × current-status snapshot, biggest book first.
+    const currentStatusRows = useMemo(() => {
+        const rows = [...(query.data?.current_status_rows ?? [])];
+        rows.sort((a, b) => b.total_leads - a.total_leads || actorName(a).localeCompare(actorName(b)));
+        return rows;
+    }, [query.data]);
+
     if (query.isLoading) return <ReportTabSkeleton />;
     if (query.isError) {
         return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
@@ -106,6 +118,35 @@ export function DispositionsTab({
         };
     };
 
+    const getCurrentStatusExportData = () => {
+        const dataRows = currentStatusRows.map((r) => [
+            actorName(r),
+            ...statuses.map((s) => r.statuses[s.status_key] ?? 0),
+            r.no_status_count ?? 0,
+            r.total_leads,
+        ]);
+        const footerCols = statuses.map((_, si) =>
+            dataRows.reduce((sum, row) => sum + ((row[si + 1] as number) ?? 0), 0)
+        );
+        const footerNoStatus = dataRows.reduce(
+            (sum, row) => sum + ((row[row.length - 2] as number) ?? 0),
+            0
+        );
+        const footerTotal = dataRows.reduce(
+            (sum, row) => sum + ((row[row.length - 1] as number) ?? 0),
+            0
+        );
+        return {
+            headers: [
+                'Counsellor',
+                ...statuses.map((s) => s.label || s.status_key),
+                'No status',
+                'Total leads',
+            ],
+            rows: [...dataRows, ['TOTAL', ...footerCols, footerNoStatus, footerTotal]],
+        };
+    };
+
     const getOutcomeExportData = () => {
         const dataRows = outcomeRows.map((r) => [
             actorName(r),
@@ -124,6 +165,80 @@ export function DispositionsTab({
 
     return (
         <div className="flex flex-col gap-6">
+            {/* ── Current status by counsellor (point-in-time) ────────────── */}
+            <ReportSection
+                title="Current status by counsellor"
+                icon={<ChartBarHorizontal size={18} />}
+                actions={
+                    <ExportWithColumnPickerButton
+                        filename={`dispositions-current-status_${fromDate}_${toDate}.csv`}
+                        disabled={currentStatusRows.length === 0 || statuses.length === 0}
+                        getHeadersAndRows={getCurrentStatusExportData}
+                    />
+                }
+            >
+                {currentStatusRows.length === 0 || statuses.length === 0 ? (
+                    <EmptyHint message="No assigned leads yet." />
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                                        <th className="sticky left-0 z-10 bg-white py-2 pr-3 text-left">
+                                            Counsellor
+                                        </th>
+                                        {statuses.map((s) => (
+                                            <StatusHeaderCell key={s.status_key} status={s} />
+                                        ))}
+                                        <th className="py-2 pl-3 text-right text-warning-600">
+                                            No status
+                                        </th>
+                                        <th className="py-2 pl-3 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {currentStatusRows.map((r) => (
+                                        <tr
+                                            key={r.user_id}
+                                            className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                        >
+                                            <td className="sticky left-0 z-10 bg-white py-2.5 pr-3 font-medium text-neutral-900">
+                                                {actorName(r)}
+                                            </td>
+                                            {statuses.map((s) => (
+                                                <CountCell
+                                                    key={s.status_key}
+                                                    value={r.statuses[s.status_key] ?? 0}
+                                                />
+                                            ))}
+                                            <td
+                                                className={cn(
+                                                    'py-2.5 pl-3 text-right tabular-nums font-semibold',
+                                                    (r.no_status_count ?? 0) > 0
+                                                        ? 'text-warning-600'
+                                                        : 'text-neutral-300'
+                                                )}
+                                            >
+                                                {r.no_status_count ?? 0}
+                                            </td>
+                                            <td className="py-2.5 pl-3 text-right font-semibold text-neutral-900">
+                                                {fmtNumber(r.total_leads)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p className="text-xs text-neutral-400">
+                            Snapshot of each counsellor&apos;s leads by their status right now —
+                            the date range above does not apply to this table. No status = leads
+                            never given a status.
+                        </p>
+                    </>
+                )}
+            </ReportSection>
+
             {/* ── Status changes by counsellor ────────────────────────────── */}
             <ReportSection
                 title="Status changes by counsellor"
@@ -295,7 +410,9 @@ function CountCell({ value }: { value: number }) {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 /** Resolved actor name, falling back to the raw user id when hydration fails. */
-function actorName(row: DispositionActorRow | DispositionCallOutcomeRow): string {
+function actorName(
+    row: DispositionActorRow | DispositionCallOutcomeRow | DispositionCurrentStatusRow
+): string {
     return row.name ?? row.user_id;
 }
 

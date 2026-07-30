@@ -62,6 +62,8 @@ public class PipelineReportService {
     private static final int DEFAULT_RANGE_DAYS = 30;
     private static final String SYSTEM_ACTOR_ID = "SYSTEM";
     private static final String SYSTEM_ACTOR_NAME = "System/Workflow";
+    private static final String UNASSIGNED_ACTOR_ID = "UNASSIGNED";
+    private static final String UNASSIGNED_ACTOR_NAME = "Unassigned";
 
     // ─────────────────────────────────────────────────────────────────────
     // Shared SQL fragments
@@ -293,6 +295,29 @@ public class PipelineReportService {
             GROUP BY 1, 2
             """;
 
+    /**
+     * Point-in-time "where does each counsellor's book stand" matrix: every scoped lead bucketed
+     * by counsellor × CURRENT status. Deliberately NOT window-bounded (same snapshot semantics as
+     * the funnel's current_stock) — the window filters ACTIVITY reports, but "current status" is a
+     * property of now. Status resolution mirrors the leads list: the response's lead_status_id
+     * first, falling back to the profile's conversion_status (which the bidirectional mirror keeps
+     * holding a status_key); both NULL → the NO-STATUS bucket (NULL status_key row here).
+     * Counsellor identity = the per-lead COALESCE(lu.user_id, assigned_counselor_id) convention;
+     * NULL collapses into a synthetic UNASSIGNED row, which — like SYSTEM — only appears for
+     * unscoped callers (NULL never matches a scope CSV). DISTINCT on the lead's user id so a
+     * multi-response lead counts once per status, not once per response.
+     */
+    private static final String CURRENT_STATUS_BY_COUNSELLOR_SQL = """
+            SELECT COALESCE(lu.user_id, ulp.assigned_counselor_id, 'UNASSIGNED') AS actor_id,
+                   COALESCE(lst.status_key, ulp.conversion_status)               AS status_key,
+                   COUNT(DISTINCT COALESCE(ar.user_id, ar.student_user_id, ar.id)) AS n
+            """ + LEAD_SCOPE_JOINS + """
+            LEFT JOIN lead_status lst ON lst.id = ar.lead_status_id
+            WHERE a.institute_id = :instituteId
+            """ + LEAD_SCOPE_PREDICATES + """
+            GROUP BY 1, 2
+            """;
+
     @Transactional(readOnly = true)
     public DispositionReportDTO getDispositions(String instituteId, String fromDate, String toDate,
                                                 String teamId, String counsellorUserId,
@@ -339,20 +364,40 @@ public class PipelineReportService {
         };
         jdbc.query(CALL_OUTCOMES_SQL, p, outcomesCollector);
 
-        // Every ACTIVE counsellor in scope gets a row in BOTH matrices — the
+        // counsellor → (status_key → leads currently in that status), plus the
+        // no-status bucket (NULL status_key rows) kept alongside.
+        Map<String, Map<String, Long>> currentByCounsellor = new LinkedHashMap<>();
+        Map<String, Long> noStatusByCounsellor = new LinkedHashMap<>();
+        RowCallbackHandler currentStatusCollector = rs -> {
+            String actor = rs.getString("actor_id");
+            String statusKey = rs.getString("status_key");
+            long n = rs.getLong("n");
+            Map<String, Long> byStatus = currentByCounsellor.computeIfAbsent(actor, k -> new LinkedHashMap<>());
+            if (statusKey == null) {
+                noStatusByCounsellor.merge(actor, n, Long::sum);
+            } else {
+                byStatus.merge(statusKey, n, Long::sum);
+            }
+        };
+        jdbc.query(CURRENT_STATUS_BY_COUNSELLOR_SQL, p, currentStatusCollector);
+
+        // Every ACTIVE counsellor in scope gets a row in ALL matrices — the
         // SQL groups the DATA, so a counsellor with no status changes / calls
         // in the window used to vanish from the report entirely. Zero-filled
         // rows sort to the bottom via the existing total-desc ordering.
         for (String id : scopedActiveCounsellors(instituteId, scopeCsv)) {
             changesByActor.computeIfAbsent(id, k -> new LinkedHashMap<>());
             outcomesByActor.computeIfAbsent(id, k -> new LinkedHashMap<>());
+            currentByCounsellor.computeIfAbsent(id, k -> new LinkedHashMap<>());
         }
 
-        // One auth-service batch for the union of human actor ids across both groupings.
+        // One auth-service batch for the union of human actor ids across all groupings.
         Set<String> ids = new LinkedHashSet<>();
         ids.addAll(changesByActor.keySet());
         ids.addAll(outcomesByActor.keySet());
+        ids.addAll(currentByCounsellor.keySet());
         ids.remove(SYSTEM_ACTOR_ID);
+        ids.remove(UNASSIGNED_ACTOR_ID);
         Map<String, String> nameById = resolveNames(ids);
 
         List<DispositionReportDTO.ActorChangesRow> rows = changesByActor.entrySet().stream()
@@ -377,10 +422,26 @@ public class PipelineReportService {
                         a.getOutcomes().values().stream().mapToLong(Long::longValue).sum()))
                 .collect(Collectors.toList());
 
+        List<DispositionReportDTO.CurrentStatusRow> currentStatusRows = currentByCounsellor.entrySet().stream()
+                .map(e -> {
+                    long noStatus = noStatusByCounsellor.getOrDefault(e.getKey(), 0L);
+                    long total = e.getValue().values().stream().mapToLong(Long::longValue).sum() + noStatus;
+                    return DispositionReportDTO.CurrentStatusRow.builder()
+                            .userId(e.getKey())
+                            .name(displayName(e.getKey(), nameById))
+                            .totalLeads(total)
+                            .statuses(e.getValue())
+                            .noStatusCount(noStatus)
+                            .build();
+                })
+                .sorted((a, b) -> Long.compare(b.getTotalLeads(), a.getTotalLeads()))
+                .collect(Collectors.toList());
+
         return DispositionReportDTO.builder()
                 .statuses(statuses)
                 .rows(rows)
                 .callOutcomes(callOutcomes)
+                .currentStatusRows(currentStatusRows)
                 .build();
     }
 
@@ -610,6 +671,7 @@ public class PipelineReportService {
 
     private static String displayName(String userId, Map<String, String> nameById) {
         if (SYSTEM_ACTOR_ID.equals(userId)) return SYSTEM_ACTOR_NAME;
+        if (UNASSIGNED_ACTOR_ID.equals(userId)) return UNASSIGNED_ACTOR_NAME;
         return Optional.ofNullable(nameById.get(userId)).filter(s -> !s.isBlank()).orElse(userId);
     }
 

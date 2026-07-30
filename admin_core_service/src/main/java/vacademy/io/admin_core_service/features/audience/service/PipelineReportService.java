@@ -296,16 +296,17 @@ public class PipelineReportService {
             """;
 
     /**
-     * Point-in-time "where does each counsellor's book stand" matrix: every scoped lead bucketed
-     * by counsellor × CURRENT status. Deliberately NOT window-bounded (same snapshot semantics as
-     * the funnel's current_stock) — the window filters ACTIVITY reports, but "current status" is a
-     * property of now. Status resolution mirrors the leads list: the response's lead_status_id
-     * first, falling back to the profile's conversion_status (which the bidirectional mirror keeps
-     * holding a status_key); both NULL → the NO-STATUS bucket (NULL status_key row here).
-     * Counsellor identity = the per-lead COALESCE(lu.user_id, assigned_counselor_id) convention;
-     * NULL collapses into a synthetic UNASSIGNED row, which — like SYSTEM — only appears for
-     * unscoped callers (NULL never matches a scope CSV). DISTINCT on the lead's user id so a
-     * multi-response lead counts once per status, not once per response.
+     * "Where do each counsellor's recent leads stand" matrix: the leads SUBMITTED in the report
+     * window, bucketed by counsellor × CURRENT status — i.e. "of the last 30 days' leads, 10 are
+     * New, 5 Converted". The window bounds the COHORT (ar.submitted_at, same as source-performance
+     * and Recent Leads); the status read is always the lead's status as of now. Status resolution
+     * mirrors the leads list: the response's lead_status_id first, falling back to the profile's
+     * conversion_status (which the bidirectional mirror keeps holding a status_key); both NULL →
+     * the NO-STATUS bucket (NULL status_key row here). Counsellor identity = the per-lead
+     * COALESCE(lu.user_id, assigned_counselor_id) convention; NULL collapses into a synthetic
+     * UNASSIGNED row, which — like SYSTEM — only appears for unscoped callers (NULL never matches
+     * a scope CSV). DISTINCT on the lead's user id so a multi-response lead counts once per
+     * status, not once per response.
      */
     private static final String CURRENT_STATUS_BY_COUNSELLOR_SQL = """
             SELECT COALESCE(lu.user_id, ulp.assigned_counselor_id, 'UNASSIGNED') AS actor_id,
@@ -314,6 +315,8 @@ public class PipelineReportService {
             """ + LEAD_SCOPE_JOINS + """
             LEFT JOIN lead_status lst ON lst.id = ar.lead_status_id
             WHERE a.institute_id = :instituteId
+              AND ar.submitted_at >= :fromTs
+              AND ar.submitted_at <  :toTs
             """ + LEAD_SCOPE_PREDICATES + """
             GROUP BY 1, 2
             """;

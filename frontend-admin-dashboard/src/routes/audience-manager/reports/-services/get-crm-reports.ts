@@ -234,11 +234,11 @@ export interface DispositionCurrentStatusRow {
     user_id: string;
     /** Hydrated name; "Unassigned" for UNASSIGNED. */
     name: string | null;
-    /** All leads on the counsellor's book = Σ statuses + no_status_count. */
+    /** The counsellor's leads received in the range = Σ statuses + no_status_count. */
     total_leads: number;
-    /** status_key → leads CURRENTLY holding that status (point-in-time snapshot). */
+    /** status_key → in-range leads CURRENTLY holding that status. */
     statuses: Record<string, number>;
-    /** Leads with no status at all (never dispositioned). */
+    /** In-range leads with no status at all (never dispositioned). */
     no_status_count: number;
 }
 
@@ -247,7 +247,7 @@ export interface DispositionReport {
     statuses: DispositionStatusMeta[];
     rows: DispositionActorRow[];
     call_outcomes: DispositionCallOutcomeRow[];
-    /** Point-in-time counsellor × current-status snapshot — NOT bounded by the date range. */
+    /** In-range leads per counsellor, bucketed by the status each lead holds now. */
     current_status_rows: DispositionCurrentStatusRow[];
 }
 

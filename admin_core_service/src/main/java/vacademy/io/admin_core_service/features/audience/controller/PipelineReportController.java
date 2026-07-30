@@ -43,8 +43,8 @@ public class PipelineReportController {
     }
 
     /**
-     * Per-actor status-change matrix + per-counsellor call outcome counts, plus a point-in-time
-     * counsellor × current-status snapshot (current_status_rows — not window-bounded).
+     * Per-actor status-change matrix + per-counsellor call outcome counts, plus the in-window
+     * lead cohort per counsellor bucketed by current status (current_status_rows).
      */
     @GetMapping("/dispositions")
     public ResponseEntity<DispositionReportDTO> getDispositions(

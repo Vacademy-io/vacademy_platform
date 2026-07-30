@@ -5,9 +5,9 @@
  * matrices keyed by actor (counsellor / the synthetic SYSTEM workflow):
  *
  *   1. Current status by counsellor — rows = counsellors (plus "Unassigned"
- *      for admins), columns = the active status catalog, cells = leads
- *      CURRENTLY holding that status. Point-in-time snapshot: NOT bounded by
- *      the page date range. Trailing "No status" + Total columns.
+ *      for admins), columns = the active status catalog, cells = the leads
+ *      RECEIVED in the date range that CURRENTLY hold that status ("of this
+ *      month's leads: 10 New, 5 Converted"). Trailing "No status" + Total.
  *   2. Status changes by counsellor — rows = actors (sorted by total changes
  *      desc), columns = the active status catalog (colour-chip headers from
  *      the per-institute colours), cells = transition counts into each status
@@ -86,7 +86,7 @@ export function DispositionsTab({
         return rows;
     }, [query.data]);
 
-    // Point-in-time counsellor × current-status snapshot, biggest book first.
+    // In-window leads per counsellor × current status, biggest book first.
     const currentStatusRows = useMemo(() => {
         const rows = [...(query.data?.current_status_rows ?? [])];
         rows.sort((a, b) => b.total_leads - a.total_leads || actorName(a).localeCompare(actorName(b)));
@@ -165,7 +165,7 @@ export function DispositionsTab({
 
     return (
         <div className="flex flex-col gap-6">
-            {/* ── Current status by counsellor (point-in-time) ────────────── */}
+            {/* ── Current status by counsellor (in-window cohort) ─────────── */}
             <ReportSection
                 title="Current status by counsellor"
                 icon={<ChartBarHorizontal size={18} />}
@@ -178,7 +178,7 @@ export function DispositionsTab({
                 }
             >
                 {currentStatusRows.length === 0 || statuses.length === 0 ? (
-                    <EmptyHint message="No assigned leads yet." />
+                    <EmptyHint message="No leads in this range." />
                 ) : (
                     <>
                         <div className="overflow-x-auto">
@@ -231,9 +231,9 @@ export function DispositionsTab({
                             </table>
                         </div>
                         <p className="text-xs text-neutral-400">
-                            Snapshot of each counsellor&apos;s leads by their status right now —
-                            the date range above does not apply to this table. No status = leads
-                            never given a status.
+                            Leads received in the selected date range, by the status they hold
+                            right now. Total = all of the counsellor&apos;s leads from this range;
+                            No status = leads never given a status.
                         </p>
                     </>
                 )}

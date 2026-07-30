@@ -229,11 +229,26 @@ export interface DispositionCallOutcomeRow {
     outcomes: Record<string, number>;
 }
 
+export interface DispositionCurrentStatusRow {
+    /** auth-service user id, or the synthetic "UNASSIGNED" bucket. */
+    user_id: string;
+    /** Hydrated name; "Unassigned" for UNASSIGNED. */
+    name: string | null;
+    /** The counsellor's leads received in the range = Σ statuses + no_status_count. */
+    total_leads: number;
+    /** status_key → in-range leads CURRENTLY holding that status. */
+    statuses: Record<string, number>;
+    /** In-range leads with no status at all (never dispositioned). */
+    no_status_count: number;
+}
+
 export interface DispositionReport {
     /** Active status catalog in display_order — the stable column set. */
     statuses: DispositionStatusMeta[];
     rows: DispositionActorRow[];
     call_outcomes: DispositionCallOutcomeRow[];
+    /** In-range leads per counsellor, bucketed by the status each lead holds now. */
+    current_status_rows: DispositionCurrentStatusRow[];
 }
 
 export const dispositionsQueryKey = (p: CrmReportParams) =>
@@ -247,5 +262,8 @@ export async function fetchDispositions(p: CrmReportParams): Promise<Disposition
         statuses: Array.isArray(data?.statuses) ? data.statuses : [],
         rows: Array.isArray(data?.rows) ? data.rows : [],
         call_outcomes: Array.isArray(data?.call_outcomes) ? data.call_outcomes : [],
+        current_status_rows: Array.isArray(data?.current_status_rows)
+            ? data.current_status_rows
+            : [],
     };
 }

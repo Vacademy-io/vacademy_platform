@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.common.service.InstituteCustomFil
 import vacademy.io.admin_core_service.features.live_session.dto.CancelBookingRequest;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.service.BookingManagementService;
+import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleCalendarService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -61,6 +62,7 @@ public class PublicBookingService {
     private final MeetingBookingService meetingBookingService;
     private final BookingManagementService bookingManagementService;
     private final ScheduleNotificationRepository scheduleNotificationRepository;
+    private final GoogleCalendarService googleCalendarService;
     private final AudienceService audienceService;
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
@@ -120,6 +122,18 @@ public class PublicBookingService {
 
     public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
                                                        PublicBookingDTOs.PublicBookRequestDTO request) {
+        return book(instituteId, slug, request, null);
+    }
+
+    /**
+     * Same booking flow, but stamps {@code inviteeUserId} on the booking. Used by
+     * authenticated learners booking an assigned mentor so the meeting is tied to
+     * their account (My Schedule, reminders, "my bookings") rather than a bare
+     * guest email.
+     */
+    public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
+                                                       PublicBookingDTOs.PublicBookRequestDTO request,
+                                                       String inviteeUserId) {
         BookingPage page = activePage(instituteId, slug);
         if (request.getName() == null || request.getName().isBlank()) {
             throw new VacademyException("name is required");
@@ -165,6 +179,7 @@ public class PublicBookingService {
                 .bookingPageId(page.getId())
                 .hostUserId(page.getHostUserId())
                 .startTime(request.getStartTime())
+                .inviteeUserId(inviteeUserId)
                 .inviteeName(request.getName())
                 .inviteeEmail(hasEmail ? request.getEmail() : null)
                 .inviteePhone(hasPhone ? request.getPhone() : null)
@@ -274,6 +289,12 @@ public class PublicBookingService {
         instance.setStatus(finalStatus);
         instance.setCancelReason(reason);
         bookingInstanceRepository.save(instance);
+
+        // Remove the mirrored Google Calendar event so cancelled/rescheduled slots
+        // don't linger on the host's + invitee's calendars (best-effort, scope-gated).
+        if (instance.getGoogleCalendarEventId() != null && !instance.getGoogleCalendarEventId().isBlank()) {
+            googleCalendarService.deleteEvent(instance.getInstituteId(), instance.getGoogleCalendarEventId());
+        }
     }
 
     /** Coarse anti-abuse caps for the unauthenticated book endpoint. */

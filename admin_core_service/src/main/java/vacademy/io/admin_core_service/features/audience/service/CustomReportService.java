@@ -54,6 +54,7 @@ public class CustomReportService {
     private static final int DEFAULT_RANGE_DAYS = 30;
     private static final int MAX_ROWS = 1000;
     private static final String COUNSELLOR_KEY = "counsellor";
+    private static final String STATUS_KEY = "conversion_status";
 
     // ── Whitelist: dimension key → (label, group-by SQL expression) ──────────
     private record Dim(String label, String expr) {
@@ -63,7 +64,10 @@ public class CustomReportService {
     static {
         DIMENSIONS.put("source_type", new Dim("Source", "COALESCE(ulp.best_source_type, 'UNKNOWN')"));
         DIMENSIONS.put("lead_tier", new Dim("Tier", "COALESCE(ulp.lead_tier, 'UNCLASSIFIED')"));
-        DIMENSIONS.put("conversion_status", new Dim("Status", "ulp.conversion_status"));
+        // conversion_status holds the lead's CURRENT status_key — the bidirectional
+        // list↔side-view mirror keeps it in sync with audience_response.lead_status_id,
+        // so this is the "current status" field. Values hydrate to catalog labels in run().
+        DIMENSIONS.put(STATUS_KEY, new Dim("Current status", "ulp.conversion_status"));
         DIMENSIONS.put(COUNSELLOR_KEY, new Dim("Counsellor", "ulp.assigned_counselor_id"));
         DIMENSIONS.put("acquisition_month", new Dim("Acquisition month",
                 "to_char((COALESCE(ulp.created_at, ulp.last_calculated_at) AT TIME ZONE 'UTC' AT TIME ZONE :tz), 'YYYY-MM')"));
@@ -98,7 +102,7 @@ public class CustomReportService {
     static {
         FILTERS.put("source_type", new Filt("Source", "COALESCE(ulp.best_source_type, 'UNKNOWN')"));
         FILTERS.put("lead_tier", new Filt("Tier", "COALESCE(ulp.lead_tier, 'UNCLASSIFIED')"));
-        FILTERS.put("conversion_status", new Filt("Status", "ulp.conversion_status"));
+        FILTERS.put(STATUS_KEY, new Filt("Current status", "ulp.conversion_status"));
         FILTERS.put(COUNSELLOR_KEY, new Filt("Counsellor", "ulp.assigned_counselor_id"));
     }
 
@@ -135,7 +139,7 @@ public class CustomReportService {
         List<CustomReportCatalogDTO.FilterField> filters = new ArrayList<>();
         filters.add(filterField("source_type", "Source", distinctSourceOptions(instituteId)));
         filters.add(filterField("lead_tier", "Tier", staticOptions("HOT", "WARM", "COLD", "UNCLASSIFIED")));
-        filters.add(filterField("conversion_status", "Status", staticOptions("LEAD", "CONVERTED", "LOST")));
+        filters.add(filterField(STATUS_KEY, "Current status", statusOptions(instituteId)));
         filters.add(filterField(COUNSELLOR_KEY, "Counsellor", counsellorOptions(instituteId, callerUserId)));
 
         return CustomReportCatalogDTO.builder()
@@ -243,6 +247,16 @@ public class CustomReportService {
             }
         }
 
+        // Hydrate current-status keys → catalog labels in-place (unknown keys stay raw).
+        int statusIdx = dims.indexOf(STATUS_KEY);
+        if (statusIdx >= 0) {
+            Map<String, String> labels = statusLabels(instituteId);
+            for (List<Object> r : rows) {
+                String key = (String) r.get(statusIdx);
+                if (key != null) r.set(statusIdx, labels.getOrDefault(key, key));
+            }
+        }
+
         List<CustomReportResponseDTO.Column> columns = new ArrayList<>();
         for (String d : dims) {
             columns.add(CustomReportResponseDTO.Column.builder()
@@ -275,6 +289,60 @@ public class CustomReportService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             return List.of();
+        }
+    }
+
+    /**
+     * Current-status filter options: the institute's ACTIVE status catalog in display_order,
+     * followed by any extra conversion_status values actually present on this institute's leads
+     * (legacy / now-inactive keys), so every stored value stays filterable. Values are the raw
+     * status_keys the filter binds on; labels come from the catalog when it knows the key.
+     */
+    private List<CustomReportCatalogDTO.Option> statusOptions(String instituteId) {
+        try {
+            MapSqlParameterSource p = new MapSqlParameterSource("instituteId", instituteId);
+            List<CustomReportCatalogDTO.Option> out = new ArrayList<>();
+            Map<String, String> labels = statusLabels(instituteId);
+            List<String> catalogKeys = jdbc.queryForList(
+                    "SELECT status_key FROM lead_status WHERE institute_id = :instituteId "
+                            + "AND is_active = true ORDER BY display_order, status_key",
+                    p, String.class);
+            for (String key : catalogKeys) {
+                out.add(CustomReportCatalogDTO.Option.builder()
+                        .value(key).label(labels.getOrDefault(key, key)).build());
+            }
+            List<String> present = jdbc.queryForList(
+                    "SELECT DISTINCT conversion_status FROM user_lead_profile "
+                            + "WHERE institute_id = :instituteId AND conversion_status IS NOT NULL "
+                            + "ORDER BY conversion_status",
+                    p, String.class);
+            for (String key : present) {
+                if (!catalogKeys.contains(key)) {
+                    out.add(CustomReportCatalogDTO.Option.builder()
+                            .value(key).label(labels.getOrDefault(key, key)).build());
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            return staticOptions("LEAD", "CONVERTED", "LOST");
+        }
+    }
+
+    /** status_key → catalog label for this institute (active AND inactive rows, for hydration). */
+    private Map<String, String> statusLabels(String instituteId) {
+        try {
+            Map<String, String> labels = new LinkedHashMap<>();
+            org.springframework.jdbc.core.RowCallbackHandler collector = rs -> {
+                String label = rs.getString("label");
+                if (label != null && !label.isBlank()) {
+                    labels.putIfAbsent(rs.getString("status_key"), label);
+                }
+            };
+            jdbc.query("SELECT status_key, label FROM lead_status WHERE institute_id = :instituteId",
+                    new MapSqlParameterSource("instituteId", instituteId), collector);
+            return labels;
+        } catch (Exception e) {
+            return Collections.emptyMap();
         }
     }
 

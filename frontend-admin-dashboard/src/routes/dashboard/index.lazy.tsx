@@ -76,6 +76,7 @@ import { AssistantLaunchBar } from '@/components/vacademy-assistant/AssistantLau
 import KpiBand from './-components/KpiBand';
 import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
 import SubOrgOverviewWidget from './-components/SubOrgOverviewWidget';
+import MentorshipStatsWidget from './-components/MentorshipStatsWidget';
 import SubOrgSelfStatsWidget from './-components/SubOrgSelfStatsWidget';
 import SubOrgGeographyWidget from './-components/SubOrgGeographyWidget';
 import RevenueTrendsWidget from './-components/RevenueTrendsWidget';
@@ -709,6 +710,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                 )}
                 {/* My Courses Widget - Only for Non-Admin Users */}
                 {!isAdmin && isWidgetVisible('myCourses') && <MyCoursesWidget />}
+                {isAdmin && isWidgetVisible('mentorshipStats') && <MentorshipStatsWidget />}
                 {/* Unresolved Doubts Widget */}
                 {(subModules.lms || subModules.assess) &&
                     !showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&

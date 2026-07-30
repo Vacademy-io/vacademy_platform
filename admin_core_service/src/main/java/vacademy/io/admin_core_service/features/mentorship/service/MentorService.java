@@ -1,0 +1,267 @@
+package vacademy.io.admin_core_service.features.mentorship.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDTO;
+import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
+import vacademy.io.admin_core_service.features.booking.repository.BookingInstanceRepository;
+import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
+import vacademy.io.admin_core_service.features.booking.service.BookingPageService;
+import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
+import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
+import vacademy.io.admin_core_service.features.mentorship.entity.MentorStudentAssignment;
+import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorStudentAssignmentRepository;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Mentor profile management: promote a user to mentor (grants the auth MENTOR
+ * role best-effort + creates the profile row), edit, list with assigned-student
+ * counts, soft-delete, and the admin dashboard aggregate. Identity fields
+ * (name/email/image) are hydrated from auth_service by user id.
+ */
+@Service
+@RequiredArgsConstructor
+public class MentorService {
+
+    private static final String MENTOR_ROLE = "MENTOR";
+
+    private final MentorRepository mentorRepository;
+    private final MentorStudentAssignmentRepository assignmentRepository;
+    private final BookingPageRepository bookingPageRepository;
+    private final BookingInstanceRepository bookingInstanceRepository;
+    private final BookingPageService bookingPageService;
+    private final AuthService authService;
+
+    @Transactional
+    public MentorDTO create(CreateMentorRequest req, CustomUserDetails user) {
+        if (req.getInstituteId() == null || req.getInstituteId().isBlank()
+                || req.getUserId() == null || req.getUserId().isBlank()) {
+            throw new VacademyException("instituteId and userId are required");
+        }
+        mentorRepository.findByInstituteIdAndUserIdAndStatusNot(
+                        req.getInstituteId(), req.getUserId(), MentorStatus.DELETED.name())
+                .ifPresent(m -> {
+                    throw new VacademyException("This user is already a mentor in this institute");
+                });
+
+        // Grant the MENTOR role in auth_service (best-effort; swallows transient failures).
+        authService.addRolesToUserInternal(req.getUserId(), List.of(MENTOR_ROLE), req.getInstituteId());
+
+        Mentor mentor = Mentor.builder()
+                .instituteId(req.getInstituteId())
+                .userId(req.getUserId())
+                .displayName(req.getDisplayName())
+                .title(req.getTitle())
+                .profileImageFileId(req.getProfileImageFileId())
+                .bio(req.getBio())
+                .subOrgId(req.getSubOrgId())
+                .status(MentorStatus.ACTIVE.name())
+                .createdByUserId(user != null ? user.getUserId() : null)
+                .build();
+        mentor = mentorRepository.save(mentor);
+
+        return toDTO(mentor, 0, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    @Transactional
+    public MentorDTO update(String mentorId, String instituteId, UpdateMentorRequest req) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+        if (req.getDisplayName() != null) mentor.setDisplayName(req.getDisplayName());
+        if (req.getTitle() != null) mentor.setTitle(req.getTitle());
+        if (req.getProfileImageFileId() != null) mentor.setProfileImageFileId(req.getProfileImageFileId());
+        if (req.getBio() != null) mentor.setBio(req.getBio());
+        if (req.getBookingPageId() != null) mentor.setBookingPageId(req.getBookingPageId());
+        if (req.getStatus() != null && !req.getStatus().isBlank()
+                && !MentorStatus.DELETED.name().equalsIgnoreCase(req.getStatus())) {
+            mentor.setStatus(req.getStatus().toUpperCase());
+        }
+        mentor = mentorRepository.save(mentor);
+        int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    public List<MentorDTO> list(String instituteId) {
+        List<Mentor> mentors = mentorRepository.findByInstituteIdAndStatusNot(instituteId, MentorStatus.DELETED.name());
+        if (mentors.isEmpty()) return List.of();
+
+        Map<String, UserDTO> users = hydrate(mentors.stream().map(Mentor::getUserId).collect(Collectors.toList()));
+        Map<String, Integer> counts = activeCountsByMentorId(instituteId);
+
+        return mentors.stream()
+                .map(m -> toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())))
+                .collect(Collectors.toList());
+    }
+
+    public MentorDTO getById(String mentorId, String instituteId) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+        int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    @Transactional
+    public void delete(String mentorId, String instituteId) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+        mentor.setStatus(MentorStatus.DELETED.name());
+        mentorRepository.save(mentor);
+        // Deactivate this mentor's active assignments too.
+        List<MentorStudentAssignment> active =
+                assignmentRepository.findByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        active.forEach(a -> a.setStatus(MentorStatus.DELETED.name()));
+        if (!active.isEmpty()) assignmentRepository.saveAll(active);
+        // Auth MENTOR role is intentionally NOT revoked here: role removal in auth
+        // is not institute-scoped, so it could strip the role in other institutes.
+    }
+
+    /**
+     * Ensure the mentor has a booking page (host = the mentor) so learners can book
+     * 1:1 sessions. Idempotent — returns the current mentor if a live page already
+     * exists. Creates a sensible default (Mon–Fri 09:00–17:00, Google Meet) via the
+     * booking module; the mentor can refine availability later in Meetings.
+     */
+    @Transactional
+    public MentorDTO provisionBookingPage(String mentorId, String instituteId, CustomUserDetails user) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+
+        if (slugFor(mentor.getBookingPageId()) != null) {
+            // Already linked to a live booking page — no-op.
+            int existing = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+            return toDTO(mentor, existing, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+        }
+
+        String label = (mentor.getDisplayName() != null && !mentor.getDisplayName().isBlank())
+                ? mentor.getDisplayName() : "Mentor";
+
+        List<BookingAvailabilityDTO.WeeklyWindow> windows =
+                List.of("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY").stream()
+                        .map(day -> BookingAvailabilityDTO.WeeklyWindow.builder()
+                                .dayOfWeek(day).startTime("09:00").endTime("17:00").build())
+                        .collect(Collectors.toList());
+        BookingAvailabilityDTO availability = BookingAvailabilityDTO.builder().weeklyWindows(windows).build();
+
+        BookingPageDTO pageDto = new BookingPageDTO();
+        pageDto.setInstituteId(instituteId);
+        pageDto.setHostUserId(mentor.getUserId());
+        pageDto.setTitle(label + " — 1:1 Session");
+        pageDto.setAllocateGoogleMeet(true);
+        pageDto.setAvailability(availability);
+
+        BookingPageDTO created = bookingPageService.create(pageDto, user);
+        mentor.setBookingPageId(created.getId());
+        mentor = mentorRepository.save(mentor);
+
+        int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    public MentorDashboardDTO dashboard(String instituteId) {
+        List<MentorDTO> mentors = list(instituteId);
+        List<MentorStudentAssignment> active =
+                assignmentRepository.findByInstituteIdAndStatus(instituteId, MentorStatus.ACTIVE.name());
+        int distinctMentees = (int) active.stream().map(MentorStudentAssignment::getStudentUserId).distinct().count();
+
+        // Booking counts across all of this institute's mentors (as hosts).
+        List<String> mentorUserIds = mentors.stream()
+                .map(MentorDTO::getUserId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        int todaySessions = 0;
+        int upcomingSessions = 0;
+        if (!mentorUserIds.isEmpty()) {
+            java.time.LocalDate todayUtc = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+            java.sql.Timestamp startToday =
+                    java.sql.Timestamp.from(todayUtc.atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+            java.sql.Timestamp endToday =
+                    java.sql.Timestamp.from(todayUtc.plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+            java.time.Instant now = java.time.Instant.now();
+            todaySessions = (int) bookingInstanceRepository.countActiveForHostsBetween(mentorUserIds, startToday, endToday);
+            upcomingSessions = (int) bookingInstanceRepository.countActiveForHostsBetween(
+                    mentorUserIds, java.sql.Timestamp.from(now),
+                    java.sql.Timestamp.from(now.plus(java.time.Duration.ofDays(7))));
+        }
+
+        return MentorDashboardDTO.builder()
+                .totalMentors(mentors.size())
+                .totalActiveAssignments(active.size())
+                .distinctMentees(distinctMentees)
+                .todaySessions(todaySessions)
+                .upcomingSessions(upcomingSessions)
+                .mentors(mentors)
+                .build();
+    }
+
+    // ---------- helpers ----------
+
+    private Mentor getActiveMentorOrThrow(String mentorId, String instituteId) {
+        return mentorRepository.findByIdAndInstituteIdAndStatusNot(mentorId, instituteId, MentorStatus.DELETED.name())
+                .orElseThrow(() -> new VacademyException("Mentor not found"));
+    }
+
+    private Map<String, Integer> activeCountsByMentorId(String instituteId) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (MentorStudentAssignment a :
+                assignmentRepository.findByInstituteIdAndStatus(instituteId, MentorStatus.ACTIVE.name())) {
+            counts.merge(a.getMentorId(), 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    /** Resolve a mentor's booking-page slug (for the learner Book flow); null when unset/deleted. */
+    String slugFor(String bookingPageId) {
+        if (bookingPageId == null || bookingPageId.isBlank()) return null;
+        return bookingPageRepository.findById(bookingPageId)
+                .filter(p -> !MentorStatus.DELETED.name().equals(p.getStatus()))
+                .map(vacademy.io.admin_core_service.features.booking.entity.BookingPage::getSlug)
+                .orElse(null);
+    }
+
+    /** Batch-resolve user identity from auth_service, keyed by user id. Never throws hard. */
+    private Map<String, UserDTO> hydrate(List<String> userIds) {
+        List<String> distinct = userIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
+        if (distinct.isEmpty()) return Map.of();
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(distinct);
+            Map<String, UserDTO> map = new HashMap<>();
+            for (UserDTO u : users) {
+                if (u != null && u.getId() != null) map.put(u.getId(), u);
+            }
+            return map;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private MentorDTO toDTO(Mentor m, Integer assignedCount, UserDTO u) {
+        return MentorDTO.builder()
+                .id(m.getId())
+                .instituteId(m.getInstituteId())
+                .userId(m.getUserId())
+                .displayName(m.getDisplayName())
+                .title(m.getTitle())
+                .profileImageFileId(m.getProfileImageFileId())
+                .bio(m.getBio())
+                .bookingPageId(m.getBookingPageId())
+                .bookingPageSlug(slugFor(m.getBookingPageId()))
+                .status(m.getStatus())
+                .assignedStudentCount(assignedCount)
+                .name(u != null ? u.getFullName() : null)
+                .email(u != null ? u.getEmail() : null)
+                .mobileNumber(u != null ? u.getMobileNumber() : null)
+                .profilePicFileId(u != null ? u.getProfilePicFileId() : null)
+                .build();
+    }
+}

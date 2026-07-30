@@ -86,6 +86,9 @@ export const controlledTabs = [
     // Audit log: opt-in per institute via Display Settings. Off by default
     // (see admin-defaults.ts) so the UI only surfaces it where it's wanted.
     'admin-activity-logs',
+    // Mentorship: hidden by default (feature not broadly rolled out); admins
+    // opt it in per institute via Display Settings (see admin-defaults.ts).
+    'mentorship',
 ];
 
 export const modules = ['ASSESS', 'ENGAGE', 'VOLT', 'VSMART_AI_TOOLS'];

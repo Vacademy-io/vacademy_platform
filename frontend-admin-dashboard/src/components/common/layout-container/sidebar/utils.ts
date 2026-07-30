@@ -560,6 +560,25 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         ],
     },
     {
+        icon: UsersFour,
+        title: 'Mentorship',
+        id: 'mentorship',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Mentors',
+                subItemLink: '/mentorship/mentors',
+                subItemId: 'mentorship-mentors',
+                adminOnly: true,
+            },
+            {
+                subItem: 'My Mentorship',
+                subItemLink: '/mentorship/my-mentorship',
+                subItemId: 'mentorship-my-mentorship',
+            },
+        ],
+    },
+    {
         icon: Lightning,
         title: 'Engagement Engines',
         id: 'engagement-engines',

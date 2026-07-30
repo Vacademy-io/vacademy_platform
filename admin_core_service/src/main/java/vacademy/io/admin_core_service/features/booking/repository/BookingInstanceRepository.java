@@ -19,6 +19,18 @@ public interface BookingInstanceRepository extends JpaRepository<BookingInstance
     /** Public-endpoint abuse caps (see PublicBookingService.book). */
     long countByBookingPageIdAndCreatedAtAfter(String bookingPageId, Timestamp after);
 
+    /** Count active bookings across a set of hosts in a time window — mentorship dashboard stats. */
+    @Query("""
+            SELECT COUNT(b) FROM BookingInstance b
+            WHERE b.hostUserId IN :hostUserIds
+              AND b.status NOT IN ('CANCELLED', 'RESCHEDULED')
+              AND b.scheduledStartUtc >= :start
+              AND b.scheduledStartUtc < :end
+            """)
+    long countActiveForHostsBetween(@Param("hostUserIds") List<String> hostUserIds,
+                                    @Param("start") Timestamp start,
+                                    @Param("end") Timestamp end);
+
     long countByBookingPageIdAndInviteeEmailIgnoreCaseAndCreatedAtAfter(
             String bookingPageId, String inviteeEmail, Timestamp after);
 

@@ -42,7 +42,10 @@ public class PipelineReportController {
                 instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 
-    /** Per-actor status-change matrix + per-counsellor call outcome counts. */
+    /**
+     * Per-actor status-change matrix + per-counsellor call outcome counts, plus the in-window
+     * lead cohort per counsellor bucketed by current status (current_status_rows).
+     */
     @GetMapping("/dispositions")
     public ResponseEntity<DispositionReportDTO> getDispositions(
             @RequestParam String instituteId,

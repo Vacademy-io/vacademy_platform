@@ -81,6 +81,9 @@ interface BookingPageProps {
   pageData: BookingPageResponse;
   instituteId: string;
   slug: string;
+  // When true (My Mentors flow), book via the authenticated endpoint so the
+  // meeting is tied to the learner's account. Public links leave this unset.
+  authed?: boolean;
 }
 
 type Step = "pick" | "details" | "confirmed";
@@ -173,7 +176,7 @@ export const BookingConfirmation = ({
   );
 };
 
-const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
+const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) => {
   const domainRouting = useDomainRouting();
   const queryClient = useQueryClient();
 
@@ -233,6 +236,7 @@ const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
       const result = await bookSlot({
         instituteId,
         slug,
+        authenticated: authed,
         payload: {
           name: values.name,
           ...(values.email ? { email: values.email } : {}),

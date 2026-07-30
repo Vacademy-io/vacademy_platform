@@ -81,6 +81,7 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
+import { MyMentorsWidget } from "./-components/MyMentorsWidget";
 import cleanerIconCourses from "@/assets/cleaner-play/icon-courses.webp";
 import cleanerIconAssessments from "@/assets/cleaner-play/icon-assessments.webp";
 import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
@@ -926,6 +927,12 @@ export function DashboardComponent() {
       order: getWidgetOrder("thisWeekAttendance"),
       visible: isWidgetVisible("thisWeekAttendance"),
       render: <AttendanceWidget />,
+    },
+    {
+      id: "myMentors" as const,
+      order: getWidgetOrder("myMentors"),
+      visible: isWidgetVisible("myMentors"),
+      render: <MyMentorsWidget />,
     },
   ]
     .filter((w) => w.visible)

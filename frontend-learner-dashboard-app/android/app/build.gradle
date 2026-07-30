@@ -132,8 +132,8 @@ android {
 		hcca {
 			dimension "client"
 			applicationId "com.hcca.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 3
+			versionName "1.0.2"
 			resValue "string", "app_name", "HCCA Learning"
 			manifestPlaceholders.DEEP_LINK_HOST = "learn.hcca.in"
 		}

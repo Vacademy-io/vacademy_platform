@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.service.ProviderMeetingBatchService;
+import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleCalendarService;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
 import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
@@ -41,6 +42,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -71,6 +73,7 @@ public class MeetingBookingService {
     private final Step2Service step2Service;
     private final SessionScheduleRepository sessionScheduleRepository;
     private final ProviderMeetingBatchService providerMeetingBatchService;
+    private final GoogleCalendarService googleCalendarService;
     private final AuthService authService;
     private final NotificationService notificationService;
     private final PlatformTransactionManager transactionManager;
@@ -132,13 +135,24 @@ public class MeetingBookingService {
         final String customLinkRef = customLink;
         final boolean allocateMeetRef = allocateMeet;
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
-        BookingInstance instance = tx.execute(status -> persistBooking(
-                request, user, pageRef, hostUserId, title, duration, timezone, zone,
-                locationType, customLinkRef, allocateMeetRef, start, end, reminderConfig));
+        BookingInstance instance;
+        try {
+            instance = tx.execute(status -> persistBooking(
+                    request, user, pageRef, hostUserId, title, duration, timezone, zone,
+                    locationType, customLinkRef, allocateMeetRef, start, end, reminderConfig));
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // uq_booking_instance_page_slot violated: another invitee grabbed this
+            // exact slot between the availability check and our insert. The whole
+            // transaction (session + schedule + instance) rolled back.
+            throw new VacademyException("This slot was just booked. Please pick another time.");
+        }
 
-        // ---- Phase 2 (post-commit, best effort): Meet link + confirmation email ----
+        // ---- Phase 2 (post-commit, best effort): Meet link + Calendar push + confirmation email ----
         if (allocateMeet) {
             instance = allocateMeetLink(instance, title, duration, timezone);
+        }
+        if ("CONFIRMED".equals(instance.getStatus())) {
+            instance = pushCalendarEvent(instance, title, timezone);
         }
         sendConfirmationEmail(instance, title, zone, reminderConfig);
         sendConfirmationWhatsapp(instance, title, zone, reminderConfig);
@@ -243,6 +257,42 @@ public class MeetingBookingService {
         } catch (Exception e) {
             log.error("Google Meet allocation failed for session {}: {}",
                     instance.getLiveSessionId(), e.getMessage());
+        }
+        return instance;
+    }
+
+    /**
+     * Post-commit one-way Google Calendar push: create an event on the institute's
+     * connected Google account with the host + invitee as attendees (sendUpdates=all),
+     * so the booking reflects on both calendars. Scope-gated and best-effort inside
+     * {@link GoogleCalendarService} — a booking is never rolled back if this fails,
+     * and institutes without Calendar consent are simply skipped.
+     */
+    private BookingInstance pushCalendarEvent(BookingInstance instance, String title, String timezone) {
+        try {
+            List<String> attendees = new ArrayList<>();
+            if (instance.getInviteeEmail() != null && !instance.getInviteeEmail().isBlank()) {
+                attendees.add(instance.getInviteeEmail());
+            }
+            try {
+                authService.getUsersFromAuthServiceByUserIds(List.of(instance.getHostUserId())).stream()
+                        .filter(u -> u.getEmail() != null && !u.getEmail().isBlank())
+                        .findFirst()
+                        .ifPresent(h -> attendees.add(h.getEmail()));
+            } catch (Exception ignore) {
+                // host email is best-effort — the event still lands with the invitee
+            }
+            String description = "Booking with " + firstNonBlank(instance.getInviteeName(), "invitee", "");
+            Optional<String> eventId = googleCalendarService.createEvent(
+                    instance.getInstituteId(), title, description,
+                    instance.getScheduledStartUtc().toInstant(), instance.getScheduledEndUtc().toInstant(),
+                    timezone, attendees, instance.getMeetLink());
+            if (eventId.isPresent()) {
+                instance.setGoogleCalendarEventId(eventId.get());
+                instance = bookingInstanceRepository.save(instance);
+            }
+        } catch (Exception e) {
+            log.error("Google Calendar push failed for booking {}: {}", instance.getId(), e.getMessage());
         }
         return instance;
     }

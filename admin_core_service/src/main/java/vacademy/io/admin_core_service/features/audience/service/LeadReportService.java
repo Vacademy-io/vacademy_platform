@@ -316,21 +316,16 @@ public class LeadReportService {
         return null;
     }
 
-    /** Parse [from, to] as ISO yyyy-MM-dd; default to last 30 days. Returns the server-TZ timestamp strings. */
+    /**
+     * Parse [from, to] as ISO yyyy-MM-dd (whole days) or yyyy-MM-dd'T'HH:mm[:ss] (exact bounds)
+     * via {@link ReportWindowUtil}; default to last 30 days. Returns the server-TZ timestamp
+     * strings the native query CASTs — no UTC conversion, preserving this report's legacy
+     * server-zone semantics.
+     */
     private DateRange resolveRange(String fromDate, String toDate) {
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate today = LocalDate.now(zone);
-        LocalDate to = parseOr(toDate, today);
-        LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
-        // Inclusive-of-day on both ends; query uses '<' on the upper bound so add a day.
-        return new DateRange(
-                from.atStartOfDay().toString(),
-                to.plusDays(1).atStartOfDay().toString());
-    }
-
-    private static LocalDate parseOr(String iso, LocalDate fallback) {
-        if (iso == null || iso.isBlank()) return fallback;
-        try { return LocalDate.parse(iso); } catch (Exception e) { return fallback; }
+        ReportWindowUtil.LocalWindow w = ReportWindowUtil.resolveLocal(
+                fromDate, toDate, ZoneId.systemDefault(), DEFAULT_RANGE_DAYS);
+        return new DateRange(w.from().toString(), w.to().toString());
     }
 
     private static long nz(Long v) { return v == null ? 0L : v; }

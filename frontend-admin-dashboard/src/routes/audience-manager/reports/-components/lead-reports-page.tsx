@@ -25,6 +25,7 @@ import {
     ArrowsClockwise,
     ArrowsLeftRight,
     CalendarCheck,
+    Clock,
     ChartLineUp,
     CurrencyCircleDollar,
     Funnel,
@@ -96,6 +97,13 @@ const computeRange = (days: number) => {
     return { from: toDateInput(start), to: toDateInput(now) };
 };
 
+// ── Time-precision helpers ─────────────────────────────────────────────
+// The backend accepts yyyy-MM-dd (whole days, both ends inclusive) OR
+// yyyy-MM-ddTHH:mm (exact bound; the "to" side is exclusive). These convert a
+// filter value between the two input modes without losing the date part.
+const dateOnly = (v: string) => v.slice(0, 10);
+const withDefaultTime = (v: string, time: string) => (v.includes('T') ? v : `${v}T${time}`);
+
 /** Quick presets — last N days (inclusive of today). */
 const PRESETS = [
     { key: '7', label: '7d', days: 7 },
@@ -152,6 +160,9 @@ export function LeadReportsPage() {
     const [fromDate, setFromDate] = useState(defaults.from);
     const [toDate, setToDate] = useState(defaults.to);
     const [applied, setApplied] = useState(defaults);
+    // Time-precision mode: inputs switch to datetime-local so a range can carry
+    // exact HH:mm bounds (e.g. yesterday 10:00 → today 10:00) into every tab + CSV.
+    const [withTime, setWithTime] = useState(false);
     const [teamId, setTeamId] = useState<string | undefined>(undefined);
     const [counsellorUserId, setCounsellorUserId] = useState<string | undefined>(undefined);
     const [audienceId, setAudienceId] = useState<string | undefined>(undefined);
@@ -163,18 +174,33 @@ export function LeadReportsPage() {
 
     const applyPreset = (days: number) => {
         const r = computeRange(days);
+        setWithTime(false);
         setFromDate(r.from);
         setToDate(r.to);
         setApplied(r);
     };
     const apply = () => setApplied({ from: fromDate, to: toDate });
     const reset = () => {
+        setWithTime(false);
         setFromDate(defaults.from);
         setToDate(defaults.to);
         setApplied(defaults);
         setTeamId(undefined);
         setCounsellorUserId(undefined);
         setAudienceId(undefined);
+    };
+
+    // Toggling time mode keeps the chosen dates: on → seed 00:00 / 23:59 bounds
+    // the user can refine; off → truncate back to whole days.
+    const toggleTime = () => {
+        if (withTime) {
+            setFromDate(dateOnly(fromDate));
+            setToDate(dateOnly(toDate));
+        } else {
+            setFromDate(withDefaultTime(fromDate, '00:00'));
+            setToDate(withDefaultTime(toDate, '23:59'));
+        }
+        setWithTime(!withTime);
     };
 
     // Team change invalidates the counsellor choice — the selected counsellor
@@ -270,24 +296,38 @@ export function LeadReportsPage() {
                     </Label>
                     <Input
                         id="rep-from"
-                        type="date"
+                        type={withTime ? 'datetime-local' : 'date'}
                         value={fromDate}
                         onChange={(e) => setFromDate(e.target.value)}
-                        className="h-9 w-40"
+                        className={cn('h-9', withTime ? 'w-52' : 'w-40')}
                     />
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="rep-to" className="text-xs text-neutral-600">
-                        To
+                        {withTime ? 'To (until)' : 'To'}
                     </Label>
                     <Input
                         id="rep-to"
-                        type="date"
+                        type={withTime ? 'datetime-local' : 'date'}
                         value={toDate}
                         onChange={(e) => setToDate(e.target.value)}
-                        className="h-9 w-40"
+                        className={cn('h-9', withTime ? 'w-52' : 'w-40')}
                     />
                 </div>
+                <Button
+                    onClick={toggleTime}
+                    size="sm"
+                    variant={withTime ? 'secondary' : 'ghost'}
+                    className={cn('h-9 gap-1.5 self-end', withTime && 'text-primary-500')}
+                    title={
+                        withTime
+                            ? 'Switch back to whole-day range'
+                            : 'Refine the range down to hours & minutes'
+                    }
+                >
+                    <Clock size={14} />
+                    Time
+                </Button>
                 <Button onClick={apply} size="sm" className="h-9 self-end" disabled={!instituteId}>
                     Apply
                 </Button>

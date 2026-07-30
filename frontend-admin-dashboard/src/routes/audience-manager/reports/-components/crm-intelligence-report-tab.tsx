@@ -227,7 +227,9 @@ function CounsellorWorkPatterns({
 }
 
 const toMillis = (d: string, endOfDay = false): number | undefined => {
-    const t = new Date(endOfDay ? `${d}T23:59:59` : d).getTime();
+    // A datetime value (time-precision mode) is already an exact bound — only
+    // pad end-of-day onto bare yyyy-MM-dd dates.
+    const t = new Date(endOfDay && !d.includes('T') ? `${d}T23:59:59` : d).getTime();
     return Number.isNaN(t) ? undefined : t;
 };
 

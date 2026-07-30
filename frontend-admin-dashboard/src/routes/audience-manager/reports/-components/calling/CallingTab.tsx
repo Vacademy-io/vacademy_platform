@@ -218,12 +218,15 @@ export default function CallingTab(props: {
         downloadCsv(`calling-counsellors-${fromDate}-to-${toDate}.csv`, csv);
     };
 
+    // fromDate/toDate may already carry a time part (yyyy-MM-ddTHH:mm) when the
+    // page's time-precision mode is on — only pad end-of-day onto bare dates.
+    const toEnd = toDate.includes('T') ? toDate : `${toDate}T23:59:59`;
     const fromMillis = Number.isNaN(new Date(fromDate).getTime())
         ? undefined
         : new Date(fromDate).getTime();
-    const toMillis = Number.isNaN(new Date(`${toDate}T23:59:59`).getTime())
+    const toMillis = Number.isNaN(new Date(toEnd).getTime())
         ? undefined
-        : new Date(`${toDate}T23:59:59`).getTime();
+        : new Date(toEnd).getTime();
 
     return (
         <div className="flex flex-col gap-6">

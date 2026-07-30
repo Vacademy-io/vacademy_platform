@@ -415,16 +415,10 @@ public class CustomReportService {
         }
     }
 
+    /** Dates or datetimes in the institute TZ — see {@link ReportWindowUtil} for the formats. */
     private Window resolveWindow(String fromDate, String toDate, ZoneId zone) {
-        LocalDate today = LocalDate.now(zone);
-        LocalDate to = parseOr(toDate, today);
-        LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
-        return new Window(toUtc(from, zone), toUtc(to.plusDays(1), zone));
-    }
-
-    private static Timestamp toUtc(LocalDate localDate, ZoneId zone) {
-        return Timestamp.valueOf(localDate.atStartOfDay(zone)
-                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
+        ReportWindowUtil.UtcWindow w = ReportWindowUtil.resolveUtc(fromDate, toDate, zone, DEFAULT_RANGE_DAYS);
+        return new Window(w.fromTs(), w.toTs());
     }
 
     private ZoneId safeZone(String tz) {
@@ -432,15 +426,6 @@ public class CustomReportService {
             return ZoneId.of(tz);
         } catch (Exception e) {
             return ZoneId.of("Asia/Kolkata");
-        }
-    }
-
-    private static LocalDate parseOr(String iso, LocalDate fallback) {
-        if (iso == null || iso.isBlank()) return fallback;
-        try {
-            return LocalDate.parse(iso.trim());
-        } catch (Exception e) {
-            return fallback;
         }
     }
 

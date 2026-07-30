@@ -601,10 +601,11 @@ public class PipelineReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * fromDate/toDate are dates in the INSTITUTE timezone; range predicates need UTC wall-clock
-     * bounds (columns store UTC in timestamp-without-time-zone). Timestamp.valueOf(LocalDateTime)
-     * round-trips the wall clock through JDBC regardless of JVM TZ, so the bind is exact.
-     * Defaults to the last {@value #DEFAULT_RANGE_DAYS} days ending today (institute TZ).
+     * fromDate/toDate are dates or datetimes in the INSTITUTE timezone (see
+     * {@link ReportWindowUtil}); range predicates need UTC wall-clock bounds (columns store UTC
+     * in timestamp-without-time-zone). Timestamp.valueOf(LocalDateTime) round-trips the wall
+     * clock through JDBC regardless of JVM TZ, so the bind is exact. Defaults to the last
+     * {@value #DEFAULT_RANGE_DAYS} days ending today (institute TZ).
      */
     private Window resolveWindow(String fromDate, String toDate, String tz) {
         ZoneId zone;
@@ -614,21 +615,8 @@ public class PipelineReportService {
             log.warn("[PipelineReport] Invalid institute timezone '{}', falling back to Asia/Kolkata", tz);
             zone = ZoneId.of("Asia/Kolkata");
         }
-        LocalDate today = LocalDate.now(zone);
-        LocalDate to = parseOr(toDate, today);
-        LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
-        return new Window(
-                Timestamp.valueOf(from.atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()),
-                Timestamp.valueOf(to.plusDays(1).atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()));
-    }
-
-    private static LocalDate parseOr(String iso, LocalDate fallback) {
-        if (iso == null || iso.isBlank()) return fallback;
-        try {
-            return LocalDate.parse(iso.trim());
-        } catch (Exception e) {
-            return fallback;
-        }
+        ReportWindowUtil.UtcWindow w = ReportWindowUtil.resolveUtc(fromDate, toDate, zone, DEFAULT_RANGE_DAYS);
+        return new Window(w.fromTs(), w.toTs());
     }
 
     /**

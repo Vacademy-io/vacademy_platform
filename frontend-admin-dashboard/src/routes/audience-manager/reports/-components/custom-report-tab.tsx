@@ -5,8 +5,13 @@
  * measures (aggregates) and filters from the server's catalog (GET /custom/catalog), then runs the
  * spec (POST /custom/run). No SQL ever leaves the browser — only whitelisted field keys. The page
  * date range + team/counsellor scope from the shared filter bar are applied to every run.
+ *
+ * Matrix view: when the result has exactly two dimensions and one measure (e.g. Counsellor ×
+ * Current status → Leads), a client-side pivot renders the second dimension as columns — the
+ * same grid shape as the Dispositions-tab matrices. Pure presentation; the flat rows from the
+ * server are the source of truth and the CSV export follows whichever view is active.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowClockwise, FunnelSimple, Play, Table as TableIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -44,6 +49,7 @@ export function CustomReportTab({
     const [dims, setDims] = useState<string[]>([]);
     const [measures, setMeasures] = useState<string[]>([]);
     const [filters, setFilters] = useState<Record<string, string[]>>({});
+    const [matrixView, setMatrixView] = useState(false);
 
     const run = useMutation({ mutationFn: runCustomReport });
 
@@ -78,6 +84,38 @@ export function CustomReportTab({
 
     const result = run.data ?? null;
 
+    // Pivot the flat rows into a first-dim × second-dim grid — only defined for
+    // exactly 2 dimensions + 1 measure (any other spec keeps the flat table).
+    const pivot = useMemo(() => {
+        if (!result) return null;
+        const dimCols = result.columns.filter((c) => c.kind === 'dimension');
+        const measCols = result.columns.filter((c) => c.kind === 'measure');
+        if (dimCols.length !== 2 || measCols.length !== 1) return null;
+        const colKeys: string[] = [];
+        const rowOrder: string[] = [];
+        const cells = new Map<string, Record<string, number | null>>();
+        for (const row of result.rows) {
+            const r = row[0] == null ? '—' : String(row[0]);
+            const c = row[1] == null ? '—' : String(row[1]);
+            const v = typeof row[2] === 'number' ? row[2] : null;
+            if (!colKeys.includes(c)) colKeys.push(c);
+            if (!cells.has(r)) {
+                rowOrder.push(r);
+                cells.set(r, {});
+            }
+            cells.get(r)![c] = v;
+        }
+        colKeys.sort((a, b) => a.localeCompare(b));
+        return {
+            rowDim: dimCols[0]!,
+            colDim: dimCols[1]!,
+            measure: measCols[0]!,
+            colKeys,
+            rows: rowOrder.map((r) => ({ key: r, values: cells.get(r)! })),
+        };
+    }, [result]);
+
+    const showMatrix = matrixView && !!pivot;
 
     if (catalog.isLoading) return <ReportTabSkeleton />;
     if (catalog.isError)
@@ -161,22 +199,110 @@ export function CustomReportTab({
                     title="Result"
                     icon={<TableIcon size={18} />}
                     actions={
-                        <ExportWithColumnPickerButton
-                            filename={`custom-report_${fromDate}_${toDate}.csv`}
-                            disabled={result.rows.length === 0}
-                            getHeadersAndRows={() => ({
-                                headers: result.columns.map((c) => c.label),
-                                rows: result.rows.map((row) =>
-                                    row.map((cell, i) =>
-                                        formatCell(cell, result.columns[i]?.type)
-                                    )
-                                ),
-                            })}
-                        />
+                        <div className="flex items-center gap-2">
+                            {pivot && (
+                                <Chip
+                                    label="Matrix view"
+                                    active={matrixView}
+                                    tone="primary"
+                                    onClick={() => setMatrixView((v) => !v)}
+                                />
+                            )}
+                            <ExportWithColumnPickerButton
+                                filename={`custom-report_${fromDate}_${toDate}.csv`}
+                                disabled={result.rows.length === 0}
+                                getHeadersAndRows={() =>
+                                    showMatrix && pivot
+                                        ? {
+                                              headers: [
+                                                  pivot.rowDim.label,
+                                                  ...pivot.colKeys,
+                                                  'Total',
+                                              ],
+                                              rows: pivot.rows.map((r) => [
+                                                  r.key,
+                                                  ...pivot.colKeys.map((k) =>
+                                                      formatCell(r.values[k] ?? null, 'number')
+                                                  ),
+                                                  formatCell(pivotRowTotal(r.values), 'number'),
+                                              ]),
+                                          }
+                                        : {
+                                              headers: result.columns.map((c) => c.label),
+                                              rows: result.rows.map((row) =>
+                                                  row.map((cell, i) =>
+                                                      formatCell(cell, result.columns[i]?.type)
+                                                  )
+                                              ),
+                                          }
+                                }
+                            />
+                        </div>
                     }
                 >
                     {result.rows.length === 0 ? (
                         <EmptyHint message="No rows match this spec." />
+                    ) : showMatrix && pivot ? (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                                            <th className="sticky left-0 z-10 bg-white py-2 pr-3 text-left">
+                                                {pivot.rowDim.label}
+                                            </th>
+                                            {pivot.colKeys.map((k) => (
+                                                <th key={k} className="py-2 pl-3 text-right">
+                                                    {k}
+                                                </th>
+                                            ))}
+                                            <th className="py-2 pl-3 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {pivot.rows.map((r) => (
+                                            <tr
+                                                key={r.key}
+                                                className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                            >
+                                                <td className="sticky left-0 z-10 bg-white py-2.5 pr-3 font-medium text-neutral-900">
+                                                    {r.key}
+                                                </td>
+                                                {pivot.colKeys.map((k) => {
+                                                    const v = r.values[k];
+                                                    return (
+                                                        <td
+                                                            key={k}
+                                                            className={cn(
+                                                                'py-2.5 pl-3 text-right tabular-nums',
+                                                                v != null && v !== 0
+                                                                    ? 'text-neutral-800'
+                                                                    : 'text-neutral-300'
+                                                            )}
+                                                        >
+                                                            {formatCell(v ?? 0, 'number')}
+                                                        </td>
+                                                    );
+                                                })}
+                                                <td className="py-2.5 pl-3 text-right font-semibold text-neutral-900">
+                                                    {formatCell(pivotRowTotal(r.values), 'number')}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="text-xs text-neutral-400">
+                                {pivot.measure.label} by {pivot.rowDim.label.toLowerCase()} (rows) ×{' '}
+                                {pivot.colDim.label.toLowerCase()} (columns).
+                            </p>
+                            {result.truncated && (
+                                <p className="text-xs text-amber-600">
+                                    Built from the first {result.row_count} rows — refine your
+                                    filters to narrow the result.
+                                </p>
+                            )}
+                        </>
                     ) : (
                         <>
                             <div className="overflow-x-auto">
@@ -301,6 +427,11 @@ function Chip({
             {label}
         </button>
     );
+}
+
+/** Sum of a pivot row's cell values (nulls skipped) for the trailing Total column. */
+function pivotRowTotal(values: Record<string, number | null>): number {
+    return Object.values(values).reduce<number>((sum, v) => sum + (v ?? 0), 0);
 }
 
 /** Measures render as grouped numbers; dimensions as their string value. Null → em-dash. */

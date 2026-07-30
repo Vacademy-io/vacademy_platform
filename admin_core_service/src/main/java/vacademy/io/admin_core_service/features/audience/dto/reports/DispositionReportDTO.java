@@ -22,6 +22,13 @@ import java.util.Map;
  *                 user_id "SYSTEM" row named "System/Workflow" (only visible when the caller is
  *                 unscoped — scope filtering is on the actor id itself).
  * call_outcomes — telephony_call_log in-window grouped by counsellor × call status.
+ * current_status_rows — the leads SUBMITTED in the window per counsellor, bucketed by each
+ *                 lead's CURRENT status (response lead_status_id first, profile
+ *                 conversion_status fallback — the leads list COALESCE): "of this range's
+ *                 leads, 10 are New, 5 Converted". Leads with neither land in
+ *                 no_status_count. Leads with no counsellor collapse into a synthetic
+ *                 "UNASSIGNED" row (admin/unscoped callers only, same mechanics as SYSTEM).
+ *                 audienceId + RBAC scope are honoured.
  *
  * Map keys (status_key / CALL_STATUS) are emitted verbatim — snake_case naming only applies to
  * bean property names.
@@ -36,6 +43,7 @@ public class DispositionReportDTO {
     private List<StatusMeta> statuses;
     private List<ActorChangesRow> rows;
     private List<CallOutcomeRow> callOutcomes;
+    private List<CurrentStatusRow> currentStatusRows;
 
     @Data
     @NoArgsConstructor
@@ -70,5 +78,18 @@ public class DispositionReportDTO {
         private String userId;
         private String name;
         private Map<String, Long> outcomes; // CALL_STATUS → call count
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CurrentStatusRow {
+        private String userId;             // auth-service user id, or "UNASSIGNED"
+        private String name;               // hydrated via auth-service batch; "Unassigned" for UNASSIGNED
+        private long totalLeads;           // the counsellor's in-window leads = Σstatuses + no_status_count
+        private Map<String, Long> statuses; // status_key → in-window leads currently holding that status
+        private long noStatusCount;        // in-window leads with no status at all (never dispositioned)
     }
 }

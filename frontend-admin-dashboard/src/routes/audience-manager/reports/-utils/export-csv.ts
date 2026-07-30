@@ -27,9 +27,7 @@ export const downloadCsv = (filename: string, content: string): void => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // Filenames embed the applied range, which carries ':' in time-precision
-    // mode (yyyy-MM-ddTHH:mm) — illegal on Windows, so swap for '-'.
-    link.download = filename.replace(/:/g, '-');
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

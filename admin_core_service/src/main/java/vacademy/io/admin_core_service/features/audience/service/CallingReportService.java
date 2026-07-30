@@ -621,15 +621,20 @@ public class CallingReportService {
     }
 
     /**
-     * fromDate/toDate are institute-TZ calendar dates OR datetimes (see
-     * {@link ReportWindowUtil} for the formats), converted to UTC bounds for the half-open
-     * range predicate. Defaults to the trailing 30 days ending today (institute TZ), matching
-     * LeadReportService. Columns store UTC wall-clock, so we bind UTC LocalDateTimes — immune
-     * to the JVM default zone (no java.sql.Timestamp involved).
+     * fromDate/toDate are institute-TZ calendar dates (yyyy-MM-dd, both
+     * inclusive). Convert to UTC instants for the half-open range predicate:
+     * from 00:00 → (to + 1 day) 00:00 in the institute zone. Defaults to the
+     * trailing 30 days ending today (institute TZ), matching LeadReportService.
+     * Columns store UTC wall-clock, so we bind UTC LocalDateTimes — immune to
+     * the JVM default zone (no java.sql.Timestamp involved).
      */
     private Window resolveWindow(String fromDate, String toDate, ZoneId tz) {
-        ReportWindowUtil.UtcWindow w = ReportWindowUtil.resolveUtc(fromDate, toDate, tz, DEFAULT_RANGE_DAYS);
-        return new Window(w.fromUtc(), w.toUtc());
+        LocalDate today = LocalDate.now(tz);
+        LocalDate to = parseOr(toDate, today);
+        LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
+        return new Window(
+                from.atStartOfDay(tz).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime(),
+                to.plusDays(1).atStartOfDay(tz).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
     }
 
     private record Window(LocalDateTime fromUtc, LocalDateTime toUtc) {
@@ -683,6 +688,14 @@ public class CallingReportService {
         return s == null || s.isBlank();
     }
 
+    private static LocalDate parseOr(String iso, LocalDate fallback) {
+        if (iso == null || iso.isBlank()) return fallback;
+        try {
+            return LocalDate.parse(iso.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
 
     private static String trimToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();

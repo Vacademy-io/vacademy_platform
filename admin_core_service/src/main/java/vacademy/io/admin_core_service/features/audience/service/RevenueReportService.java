@@ -443,10 +443,11 @@ public class RevenueReportService {
         return out;
     }
 
-    /** Dates or datetimes in the institute TZ — see {@link ReportWindowUtil} for the formats. */
     private Window resolveWindow(String fromDate, String toDate, ZoneId zone) {
-        ReportWindowUtil.UtcWindow w = ReportWindowUtil.resolveUtc(fromDate, toDate, zone, DEFAULT_RANGE_DAYS);
-        return new Window(w.fromTs(), w.toTs());
+        LocalDate today = LocalDate.now(zone);
+        LocalDate to = parseOr(toDate, today);
+        LocalDate from = parseOr(fromDate, to.minusDays(DEFAULT_RANGE_DAYS - 1L));
+        return new Window(toUtc(from, zone), toUtc(to.plusDays(1), zone));
     }
 
     private static Timestamp toUtc(LocalDate localDate, ZoneId zone) {
@@ -488,6 +489,14 @@ public class RevenueReportService {
         }
     }
 
+    private static LocalDate parseOr(String iso, LocalDate fallback) {
+        if (iso == null || iso.isBlank()) return fallback;
+        try {
+            return LocalDate.parse(iso.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
 
     private static String trimToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();

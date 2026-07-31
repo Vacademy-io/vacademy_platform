@@ -209,12 +209,11 @@ public class UserInstituteService {
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
         Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteIdAndStatusIn(instituteId,
                 List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
-        // Distinct learners per status within live batches. ACTIVE is the headline
-        // studentCount — the same population the learner list returns for
-        // statuses:["ACTIVE"].
-        LearnerStatusCountProjection learnerCounts = studentSessionRepository.countLearnersByStatusForInstitute(
-                instituteId,
-                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
+        // Distinct learners per status, scoped exactly like the learner list's header
+        // badges so the two screens can't disagree. ACTIVE is the headline studentCount.
+        LearnerStatusCountProjection learnerCounts = studentSessionRepository
+                .countLearnersByStatusForInstitute(instituteId);
+        Long totalLearnerCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getTotalCount());
         Long activeCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getActiveCount());
         Long inactiveCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getInactiveCount());
         Long terminatedCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getTerminatedCount());
@@ -226,6 +225,7 @@ public class UserInstituteService {
                 .profileCompletionPercentage(percentage)
                 .batchCount(batchCount)
                 .studentCount(activeCount)
+                .totalStudentCount(totalLearnerCount)
                 .activeStudentCount(activeCount)
                 .inactiveStudentCount(inactiveCount)
                 .terminatedStudentCount(terminatedCount)

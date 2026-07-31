@@ -48,8 +48,10 @@ const todayKey = (): string => {
 
 interface InstituteCounts {
     student_count?: number;
-    // Learner status breakdown. Each is a distinct-learner count, so a learner
-    // active in one batch and terminated in another is in both buckets.
+    // Learner status breakdown, matching the Learner Management header badges. Each
+    // is a distinct-learner count, so a learner active in one batch and terminated in
+    // another is in both buckets — they need not sum to total_student_count.
+    total_student_count?: number;
     active_student_count?: number;
     inactive_student_count?: number;
     terminated_student_count?: number;
@@ -107,6 +109,7 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
     const activeLearners = counts?.active_student_count ?? counts?.student_count ?? 0;
     const inactiveLearners = counts?.inactive_student_count ?? 0;
     const terminatedLearners = counts?.terminated_student_count ?? 0;
+    const totalLearners = counts?.total_student_count ?? activeLearners;
 
     const learnersPlural = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
     const coursesPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
@@ -119,10 +122,12 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
     return [
         {
             id: 'activeLearners',
-            label: `Total ${learnersPlural}`,
+            // "Active", not "Total" — the value is the active count, and labelling it
+            // Total made it read as contradicting Learner Management's own Total badge.
+            label: `Active ${learnersPlural}`,
             value: activeLearners,
             format: 'number',
-            subtitle: `Active across ${batchesPlural.toLowerCase()}`,
+            subtitle: `of ${totalLearners.toLocaleString('en-IN')} total`,
             deepLink: '/manage-students/students-list',
             // Always rendered, zeros included — "0 terminated" is itself the answer
             // an admin is looking for. Empty buckets drop to a neutral tone so a

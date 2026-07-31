@@ -44,6 +44,7 @@ public class AiReportHtmlBuilder {
 
     public String generateAiReportHtml(String assessmentName, String processedJson, ReportBrandingDto branding, StudentComparisonDto comparison) {
         StringBuilder html = new StringBuilder();
+        if (branding == null) branding = ReportBrandingDto.builder().build();
         String accent = branding.getPrimaryColor() != null ? branding.getPrimaryColor() : PURPLE;
 
         html.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">");

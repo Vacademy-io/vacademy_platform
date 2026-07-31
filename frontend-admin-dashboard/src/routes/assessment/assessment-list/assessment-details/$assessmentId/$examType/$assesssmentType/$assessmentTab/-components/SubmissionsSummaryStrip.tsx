@@ -15,7 +15,7 @@ interface SubmissionsSummaryStripProps {
     totalMarks: number;
     // Bump to force a refetch (e.g. after a manual refresh / revaluation / release).
     refreshKey?: number;
-    // MANUAL evaluation assessments: the first tile becomes "Attempts / Submissions"
+    // MANUAL evaluation assessments: the first tile becomes "Submissions / Attempts"
     // where submissions counts attempts with a submitted answer-sheet file.
     isManualEvaluation?: boolean;
 }
@@ -192,8 +192,8 @@ export const SubmissionsSummaryStrip = ({
             {isManualEvaluation && stats.fileSubmissions !== null ? (
                 <StatTile
                     icon={<ClipboardText size={18} />}
-                    label="Attempts / Submissions"
-                    value={`${stats.submitted} / ${stats.fileSubmissions}`}
+                    label="Submissions / Attempts"
+                    value={`${stats.fileSubmissions} / ${stats.submitted}`}
                     accent="neutral"
                 />
             ) : (

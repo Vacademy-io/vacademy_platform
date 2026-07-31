@@ -30,6 +30,10 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentU
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
+import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
+import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
+import vacademy.io.assessment_service.features.learner_assessment.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
@@ -60,6 +64,12 @@ public class AdminExportManager {
 
     @Autowired
     SectionRepository sectionRepository;
+
+    @Autowired
+    AdminCoreServiceClient adminCoreServiceClient;
+
+    @Autowired
+    LearnerReportService learnerReportService;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -477,7 +487,41 @@ public class AdminExportManager {
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(assessmentOptional.get().getName(), studentReportOverallDetailDto);
+        // Same branded template the learner gets — this used to call the legacy
+        // no-branding overload, so the admin download always came out in the
+        // hardcoded default palette regardless of the institute's report branding.
+        ReportBrandingDto branding = null;
+        try {
+            branding = adminCoreServiceClient.getReportBranding(instituteId);
+        } catch (Exception ignored) {
+        }
+
+        // Comparison + option distribution used to be passed as null here, so the
+        // admin's copy silently dropped rank, percentile, class average, marks
+        // distribution and section-wise comparison — i.e. everything that makes it
+        // a comparison report. Both are built the same way the learner download
+        // does it (LearnerReportService#getStudentReportPdf) so admin and learner
+        // now get a byte-identical document.
+        StudentComparisonDto comparison = null;
+        try {
+            String studentUserId = studentAttemptRepository.findById(attemptId)
+                    .map(attempt -> attempt.getRegistration() != null
+                            ? attempt.getRegistration().getUserId()
+                            : null)
+                    .orElse(null);
+            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
+        } catch (Exception ignored) {
+        }
+
+        Map<String, Map<String, Double>> optionDistribution = null;
+        try {
+            optionDistribution = learnerReportService.computeOptionDistribution(assessmentId);
+        } catch (Exception ignored) {
+        }
+
+        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(
+                assessmentOptional.get().getName(), studentReportOverallDetailDto,
+                comparison, optionDistribution, branding);
 
         ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
         ConverterProperties converterProperties = new ConverterProperties();

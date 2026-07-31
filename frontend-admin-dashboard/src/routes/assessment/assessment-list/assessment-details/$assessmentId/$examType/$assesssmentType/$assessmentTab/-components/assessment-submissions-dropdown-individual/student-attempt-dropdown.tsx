@@ -47,6 +47,11 @@ import {
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
 
+const isEvaluatedStatus = (status?: string | null) => {
+    const s = (status || '').toUpperCase();
+    return s === 'COMPLETED' || s === 'AI_EVALUATION_COMPLETED';
+};
+
 const ProvideReattemptComponent = ({
     student,
     onClose,
@@ -313,8 +318,8 @@ const StudentEvaluateWithAIComponent = ({
                         <WarningCircle size={18} className="mt-0.5 shrink-0" />
                         <p className="text-sm">
                             This attempt has already been evaluated. Re-evaluating will move it back
-                            to <span className="font-semibold">Evaluating</span> until the new result
-                            is ready.
+                            to <span className="font-semibold">Evaluating</span> until the new
+                            result is ready.
                         </p>
                     </div>
                 )}
@@ -610,6 +615,38 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
         if (viewSubmissionMutation.isPending) return;
         viewSubmissionMutation.mutate();
     };
+    const downloadReportMutation = useMutation({
+        mutationFn: async () => {
+            const blob = await handleGetStudentReportExportPDF(
+                assessmentId,
+                instituteId,
+                student.attempt_id
+            );
+            if (!blob) throw new Error('Empty report response');
+            return blob as Blob;
+        },
+        onSuccess: (blob) => {
+            const objectUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            const safeName = (student.full_name || 'student').replace(/[^\w.-]+/g, '_');
+            link.setAttribute('download', `Report_${safeName}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(objectUrl);
+            setMenuOpen(false);
+        },
+        onError: (error: unknown) => {
+            console.error('Failed to generate student report:', error);
+            toast.error('Failed to generate the report. Please try again.');
+        },
+    });
+
+    const handleDownloadReport = () => {
+        if (downloadReportMutation.isPending) return;
+        downloadReportMutation.mutate();
+    };
 
     // Get evaluation_type from saved_data
     const evaluationType = assessmentData?.[0]?.saved_data?.evaluation_type;
@@ -618,6 +655,7 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     // Get evaluation_status from student data
     const evaluationStatus = student?.evaluation_status;
     const isEvaluationPending = evaluationStatus === 'PENDING';
+    const isEvaluated = isEvaluatedStatus(evaluationStatus);
 
     // For manual assessments the menu depends on whether the attempt has a
     // submitted answer sheet and an evaluated copy. Both live behind detail
@@ -756,9 +794,7 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     {isManualEvaluation &&
                         !isEvaluationPending &&
                         (reportDetailQuery.isLoading ? (
-                            <DropdownMenuItem disabled>
-                                Checking Evaluated Copy...
-                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>Checking Evaluated Copy...</DropdownMenuItem>
                         ) : (
                             hasEvaluatedCopy && (
                                 <DropdownMenuItem
@@ -774,6 +810,24 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                                 </DropdownMenuItem>
                             )
                         ))}
+                    {/* Only evaluated attempts have marks, so only they have a
+                        report worth rendering. */}
+                    {isEvaluated && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            disabled={downloadReportMutation.isPending}
+                            onSelect={(e) => {
+                                // Keep the menu open while the PDF is generated so
+                                // the pending label stays visible.
+                                e.preventDefault();
+                                handleDownloadReport();
+                            }}
+                        >
+                            {downloadReportMutation.isPending
+                                ? 'Generating Report...'
+                                : 'Download Report'}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}

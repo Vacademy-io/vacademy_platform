@@ -50,7 +50,7 @@ public class ReportBrandingHelper {
         // Logo column
         if (logoUrl != null && Boolean.TRUE.equals(branding.getShowLogoInHeader())) {
             html.append("<td style=\"width:50px; vertical-align:middle; padding-right:12px;\">")
-                    .append("<img src=\"").append(logoUrl).append("\" style=\"max-height:40px; max-width:40px;\" />")
+                    .append("<img src=\"").append(escapeAttr(logoUrl)).append("\" style=\"max-height:40px; max-width:40px;\" />")
                     .append("</td>");
         }
 
@@ -59,7 +59,7 @@ public class ReportBrandingHelper {
         String headerHtml = branding.getHeaderHtml();
         if (headerHtml != null && !headerHtml.isEmpty()) {
             String resolved = headerHtml.replace("{{assessment_name}}", escapeHtml(title));
-            if (logoUrl != null) resolved = resolved.replace("{{logo_url}}", logoUrl);
+            if (logoUrl != null) resolved = resolved.replace("{{logo_url}}", escapeAttr(logoUrl));
             // Force text to light color for visibility on colored header
             resolved = resolved.replaceAll("color\\s*:\\s*#[0-9a-fA-F]{3,6}", "color:#E0E0E0");
             resolved = resolved.replaceAll("color\\s*:\\s*rgb[^)]*\\)", "color:#E0E0E0");
@@ -87,6 +87,17 @@ public class ReportBrandingHelper {
                     + escapeHtml(branding.getFooterText()) + "</div>";
         }
         return "";
+    }
+
+    /**
+     * Escapes a URL for use inside an HTML attribute. Media-service hands back a
+     * presigned S3 URL whose query string is full of raw {@code &}; left unescaped
+     * the HTML parser reads those as entity starts and mangles the URL, so the
+     * logo silently fails to load in the PDF.
+     */
+    private static String escapeAttr(String url) {
+        if (url == null) return "";
+        return url.trim().replace("&amp;", "&").replace("&", "&amp;").replace("\"", "&quot;");
     }
 
     private static String escapeHtml(String text) {

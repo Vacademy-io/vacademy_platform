@@ -5,6 +5,7 @@ import { ListChecks } from '@phosphor-icons/react';
 
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { Switch } from '@/components/ui/switch';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -24,6 +25,12 @@ import {
 } from '../-hooks/use-slides';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
 import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store';
+import {
+    useStudyLibraryStore,
+    type SubjectType,
+} from '@/stores/study-library/use-study-library-store';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getSlideStatusForUser } from '../non-admin/hooks/useNonAdminSlides';
 import {
     buildAppendReorderPayload,
@@ -44,7 +51,35 @@ const AssessmentCreateForm = () => {
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { items, setActiveItem, setAssessmentCreateMode } = useContentStore();
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
+    const { studyLibraryData } = useStudyLibraryStore();
     const instituteId = getInstituteId();
+
+    // Course depth (2–5): only a depth-5 course actually has a subject level.
+    // Shallower courses carry a synthetic 'DEFAULT' subject, so there's nothing
+    // meaningful for the admin to pick — keep the field hidden and pass the
+    // route's subject id through untouched.
+    const courseStructure =
+        studyLibraryData?.find((item) => item.course.id === courseId)?.course?.course_depth ?? 0;
+
+    // Every (non-DEFAULT) subject in this course, deduped across sessions/levels.
+    const subjectOptions = useMemo(() => {
+        const course = studyLibraryData?.find((item) => item.course.id === courseId);
+        const byId = new Map<string, SubjectType>();
+        course?.sessions?.forEach((session) =>
+            session.level_with_details?.forEach((level) =>
+                level.subjects?.forEach((subject) => {
+                    if (subject.subject_name?.trim().toUpperCase() === 'DEFAULT') return;
+                    byId.set(subject.id, subject);
+                })
+            )
+        );
+        return Array.from(byId.values()).map((subject) => ({
+            value: subject.id,
+            label: subject.subject_name,
+        }));
+    }, [studyLibraryData, courseId]);
+
+    const showSubjectField = courseStructure === 5 && subjectOptions.length > 0;
 
     const packageSessionId =
         getPackageSessionId({
@@ -76,6 +111,9 @@ const AssessmentCreateForm = () => {
     );
 
     const [name, setName] = useState('');
+    // Prefilled with the subject this slide already lives under; the admin can
+    // retag the assessment to another subject of the same course.
+    const [selectedSubjectId, setSelectedSubjectId] = useState(subjectId || '');
     const [description, setDescription] = useState('');
     // Max marks — applied to the single placeholder question so manual
     // evaluation can award up to this and the learner's score reads "X / total".
@@ -196,7 +234,7 @@ const AssessmentCreateForm = () => {
                     assessment_type: 'ASSESSMENT',
                     test_creation: {
                         assessment_name: trimmed,
-                        subject_id: subjectId || '',
+                        subject_id: selectedSubjectId || subjectId || '',
                         assessment_instructions_html: instructionsHtml,
                     },
                     test_boundation: {
@@ -368,6 +406,33 @@ const AssessmentCreateForm = () => {
                 size="large"
                 className="w-full"
             />
+
+            {showSubjectField && (
+                <div className="flex flex-col gap-1.5">
+                    <span className="text-sm font-medium text-neutral-700">
+                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                    </span>
+                    <SearchableSelect
+                        options={subjectOptions}
+                        value={selectedSubjectId}
+                        onChange={setSelectedSubjectId}
+                        placeholder={`Select ${getTerminology(
+                            ContentTerms.Subjects,
+                            SystemTerms.Subjects
+                        ).toLowerCase()}`}
+                        className="w-full"
+                        triggerClassName="w-full"
+                    />
+                    <span className="text-xs text-neutral-500">
+                        Defaults to the{' '}
+                        {getTerminology(
+                            ContentTerms.Subjects,
+                            SystemTerms.Subjects
+                        ).toLowerCase()}{' '}
+                        this slide sits under. Change it to tag the assessment elsewhere.
+                    </span>
+                </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-neutral-700">Task description</span>

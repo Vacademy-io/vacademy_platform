@@ -16,6 +16,12 @@ public class PaymentLogDTO {
     private String vendor;
     private String vendorId;
     private Date date;
+    /**
+     * Real payment timestamp. {@code date} maps to a DATE column (no time component), so it
+     * serializes as UTC midnight and cannot be shown as a time. This carries payment_log.created_at
+     * — the column the listing is already ordered by — as a UTC instant.
+     */
+    private Date createdAt;
     private String currency;
     private String paymentSpecificData;
     private Double paymentAmount;

@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Date;
 
 @AllArgsConstructor
@@ -103,6 +104,10 @@ public class PaymentLog {
         paymentLogDTO.setVendor(vendor);
         paymentLogDTO.setVendorId(vendorId);
         paymentLogDTO.setDate(date);
+        // createdAt is stored as a UTC LocalDateTime (the JVM runs in UTC); converting it to a
+        // java.util.Date makes Jackson emit an explicit +00:00 offset so clients don't have to
+        // guess the zone — unlike a naked LocalDateTime, which browsers parse as local time.
+        paymentLogDTO.setCreatedAt(createdAt != null ? Date.from(createdAt.toInstant(ZoneOffset.UTC)) : null);
         paymentLogDTO.setCurrency(currency);
         paymentLogDTO.setPaymentAmount(paymentAmount);
         paymentLogDTO.setTrackingId(trackingId);

@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, createContext, useContext } from 'react
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
-import type { PaymentLogEntry, PaymentLogsResponse } from '@/types/payment-logs';
+import type { PaymentLog, PaymentLogEntry, PaymentLogsResponse } from '@/types/payment-logs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -260,15 +260,25 @@ const formatCurrency = (amount: number, currency: string) => {
     }).format(amount);
 };
 
-const formatDate = (dateString: string) => {
+/**
+ * `payment_log.date` is a DATE column (no time), so it arrives as UTC midnight — rendering it
+ * with hour/minute produced a meaningless "05:30 AM" on every row. `created_at` carries the real
+ * payment timestamp (and is what the listing is ordered by); fall back to `date` for rows served
+ * by an API build that predates it.
+ */
+const paymentTimestamp = (log?: PaymentLog | null) => log?.created_at || log?.date || '';
+
+const formatDate = (dateString: string, hasTime: boolean) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '-';
     return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
+        // Date-only fallback: pin to UTC so the UTC-midnight marker never renders as the
+        // previous day for admins west of UTC.
+        ...(hasTime ? { hour: '2-digit', minute: '2-digit' } : { timeZone: 'UTC' }),
     });
 };
 
@@ -439,13 +449,18 @@ export function PaymentLogsTable({
             {
                 id: 'payment_date',
                 header: 'Date & Time',
-                accessorFn: (row) => row?.payment_log?.date || '',
+                accessorFn: (row) => paymentTimestamp(row?.payment_log),
                 cell: ({ row }) => {
-                    const date = row.original?.payment_log?.date;
+                    const log = row.original?.payment_log;
+                    const timestamp = paymentTimestamp(log);
                     return (
                         <div className="space-y-1">
-                            <div className="font-medium text-neutral-700">{formatDate(date)}</div>
-                            <div className="text-xs text-neutral-500">{formatRelativeTime(date)}</div>
+                            <div className="font-medium text-neutral-700">
+                                {formatDate(timestamp, Boolean(log?.created_at))}
+                            </div>
+                            <div className="text-xs text-neutral-500">
+                                {formatRelativeTime(timestamp)}
+                            </div>
                         </div>
                     );
                 },

@@ -40,7 +40,8 @@ export const derivePaymentTypeLabel = (entry: PaymentLogEntry): string => {
 const toCsvRow = (entry: PaymentLogEntry): Record<string, string | number> => {
     const { payment_log: log, user_plan: plan, user } = entry;
     return {
-        'Date & Time': log?.date ?? '',
+        // created_at is the real timestamp; `date` is a DATE column (UTC midnight, no time).
+        'Date & Time': log?.created_at ?? log?.date ?? '',
         'User Name': user?.full_name ?? '',
         Email: user?.email ?? '',
         'Mobile Number': user?.mobile_number ?? '',

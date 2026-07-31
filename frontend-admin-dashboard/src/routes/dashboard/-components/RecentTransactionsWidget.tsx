@@ -137,7 +137,12 @@ export default function RecentTransactionsWidget({ instituteId }: RecentTransact
                                             </span>
                                             <span className="line-clamp-1 text-[11px] text-neutral-500">
                                                 {(log.vendor || 'Manual').replace(/_/g, ' ')}
-                                                {log.date ? ` · ${formatDate(log.date)}` : ''}
+                                                {/* created_at is a real instant; `date` is a
+                                                    DATE column (UTC midnight) that renders as the
+                                                    previous day west of UTC. */}
+                                                {log.created_at || log.date
+                                                    ? ` · ${formatDate(log.created_at || log.date)}`
+                                                    : ''}
                                             </span>
                                         </span>
                                         <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-900">

@@ -205,7 +205,7 @@ public class RenewalChargeService {
         } catch (Exception e) {
             log.warn("[RenewalCharge] Plan {} charge failed (attempt {}): {}",
                     plan.getId(), plan.getRenewalAttemptCount(), e.getMessage());
-            applyDunning(plan, reArmAt, now);
+            applyDunning(plan, reArmAt, now, instituteId);
             return Outcome.FAILED;
         }
     }
@@ -215,9 +215,10 @@ public class RenewalChargeService {
      * deactivate access. Reuses the same EXPIRED semantics as the enrolment
      * processor.
      */
-    private void applyDunning(UserPlan plan, Date reArmAt, Date now) {
+    private void applyDunning(UserPlan plan, Date reArmAt, Date now, String instituteId) {
         int maxAttempts = resolveMaxAttempts(plan);
-        if (plan.getRenewalAttemptCount() >= maxAttempts) {
+        boolean exhausted = plan.getRenewalAttemptCount() >= maxAttempts;
+        if (exhausted) {
             plan.setStatus(UserPlanStatusEnum.EXPIRED.name());
             plan.setNextChargeAt(null);
             userPlanRepository.save(plan);
@@ -235,6 +236,8 @@ public class RenewalChargeService {
             userPlanRepository.save(plan);
             log.info("[RenewalCharge] Plan {} will retry on {}", plan.getId(), c.getTime());
         }
+        // Let workflows react (dunning WhatsApp/email, admin alerts). Never blocks the money path.
+        renewalPaymentService.emitRenewalPaymentFailed(plan, instituteId, exhausted);
     }
 
     private void deactivateMappings(UserPlan plan) {

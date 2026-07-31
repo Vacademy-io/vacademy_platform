@@ -53,7 +53,7 @@ const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'DRAFT'];
 
 type OutputDataPoint = {
     fieldName?: string;
-    value?: string;
+    value?: unknown;
     compute?: string;
     [key: string]: unknown;
 };
@@ -108,7 +108,23 @@ function OutputDataPointsEditor({
 
     const renderRow = (point: OutputDataPoint, index: number) => {
         const isCompute = point.compute !== undefined;
-        const text = isCompute ? (point.compute ?? '') : (point.value ?? '');
+        // Structured values (arrays/objects, e.g. a sessions spec) can't be edited
+        // as flat text without corruption — point to the raw JSON editor instead.
+        if (!isCompute && point.value !== undefined && typeof point.value !== 'string') {
+            return (
+                <div key={index} className="flex items-center gap-2">
+                    <Input
+                        value={point.fieldName ?? ''}
+                        readOnly
+                        className="h-8 w-44 shrink-0 bg-neutral-100 font-mono text-xs"
+                    />
+                    <span className="text-caption text-neutral-400">
+                        structured value — edit in config_json below
+                    </span>
+                </div>
+            );
+        }
+        const text = isCompute ? (point.compute ?? '') : ((point.value as string | undefined) ?? '');
         return (
             <div key={index} className="flex items-start gap-2">
                 <Input

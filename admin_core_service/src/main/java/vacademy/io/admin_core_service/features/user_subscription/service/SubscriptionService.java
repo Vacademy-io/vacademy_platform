@@ -14,10 +14,14 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.Subscriptio
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Learner self-service for subscriptions + autopay mandates: list the learner's
@@ -34,6 +38,7 @@ public class SubscriptionService {
     private final UserPlanRepository userPlanRepository;
     private final UserInstitutePaymentGatewayMappingService mandateService;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
+    private final WorkflowTriggerService workflowTriggerService;
 
     private static final List<String> VISIBLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
@@ -68,6 +73,25 @@ public class SubscriptionService {
         userPlanRepository.save(plan);
         log.info("Cancelled autopay for plan {} (user {}); access retained until {}",
                 userPlanId, userId, plan.getEndDate());
+
+        // Same SUBSCRIPTION_CANCELLED trigger the admin cancel path fires
+        // (UserPlanService.cancelUserPlan) so cancel-reaction workflows cover
+        // learner self-service too. Wrapped so a workflow failure can't undo the cancel.
+        try {
+            Map<String, Object> ctx = new HashMap<>();
+            ctx.put("userPlanId", plan.getId());
+            ctx.put("userId", plan.getUserId());
+            ctx.put("enrollInviteId", plan.getEnrollInviteId());
+            ctx.put("paymentPlanId", plan.getPaymentPlanId());
+            ctx.put("endDate", plan.getEndDate() != null ? plan.getEndDate().toString() : null);
+            ctx.put("selfService", true);
+            String eventId = plan.getEnrollInviteId() != null ? plan.getEnrollInviteId() : instituteId;
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.SUBSCRIPTION_CANCELLED.name(), eventId, instituteId, ctx);
+        } catch (Exception wfe) {
+            log.warn("Failed to trigger SUBSCRIPTION_CANCELLED workflow for plan {}: {}",
+                    userPlanId, wfe.getMessage());
+        }
 
         return toDto(plan, userId, instituteId);
     }

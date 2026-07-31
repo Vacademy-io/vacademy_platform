@@ -50,6 +50,7 @@ import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
 import { Route as AssignmentSlideIdRouteImport } from './routes/assignment/$slideId'
 import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
+import { Route as SubscriptionsUsernameIndexRouteImport } from './routes/subscriptions/$username/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
 import { Route as ReportsAttendanceIndexRouteImport } from './routes/reports/attendance/index'
@@ -320,6 +321,12 @@ const UserProfileEditIndexRoute = UserProfileEditIndexRouteImport.update({
   path: '/user-profile/edit/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubscriptionsUsernameIndexRoute =
+  SubscriptionsUsernameIndexRouteImport.update({
+    id: '/subscriptions/$username/',
+    path: '/subscriptions/$username/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryLiveClassIndexRoute =
   StudyLibraryLiveClassIndexRouteImport.update({
     id: '/study-library/live-class/',
@@ -750,6 +757,7 @@ export interface FileRoutesByFullPath {
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
+  '/subscriptions/$username': typeof SubscriptionsUsernameIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
@@ -853,6 +861,7 @@ export interface FileRoutesByTo {
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
+  '/subscriptions/$username': typeof SubscriptionsUsernameIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
@@ -959,6 +968,7 @@ export interface FileRoutesById {
   '/reports/attendance/': typeof ReportsAttendanceIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
+  '/subscriptions/$username/': typeof SubscriptionsUsernameIndexRoute
   '/user-profile/edit/': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
@@ -1066,6 +1076,7 @@ export interface FileRouteTypes {
     | '/reports/attendance'
     | '/study-library/courses'
     | '/study-library/live-class'
+    | '/subscriptions/$username'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
     | '/assessment/examination/$assessmentId/assessmentPreview'
@@ -1169,6 +1180,7 @@ export interface FileRouteTypes {
     | '/reports/attendance'
     | '/study-library/courses'
     | '/study-library/live-class'
+    | '/subscriptions/$username'
     | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
     | '/assessment/examination/$assessmentId/assessmentPreview'
@@ -1274,6 +1286,7 @@ export interface FileRouteTypes {
     | '/reports/attendance/'
     | '/study-library/courses/'
     | '/study-library/live-class/'
+    | '/subscriptions/$username/'
     | '/user-profile/edit/'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
     | '/assessment/examination/$assessmentId/assessmentPreview'
@@ -1379,6 +1392,7 @@ export interface RootRouteChildren {
   ReportsAttendanceIndexRoute: typeof ReportsAttendanceIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
   StudyLibraryLiveClassIndexRoute: typeof StudyLibraryLiveClassIndexRoute
+  SubscriptionsUsernameIndexRoute: typeof SubscriptionsUsernameIndexRoute
   UserProfileEditIndexRoute: typeof UserProfileEditIndexRoute
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute: typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
   AssessmentExaminationAssessmentIdAssessmentPreviewRoute: typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
@@ -1689,6 +1703,13 @@ declare module '@tanstack/react-router' {
       path: '/user-profile/edit'
       fullPath: '/user-profile/edit'
       preLoaderRoute: typeof UserProfileEditIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/subscriptions/$username/': {
+      id: '/subscriptions/$username/'
+      path: '/subscriptions/$username'
+      fullPath: '/subscriptions/$username'
+      preLoaderRoute: typeof SubscriptionsUsernameIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/': {
@@ -2243,6 +2264,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsAttendanceIndexRoute: ReportsAttendanceIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
   StudyLibraryLiveClassIndexRoute: StudyLibraryLiveClassIndexRoute,
+  SubscriptionsUsernameIndexRoute: SubscriptionsUsernameIndexRoute,
   UserProfileEditIndexRoute: UserProfileEditIndexRoute,
   AssessmentExaminationAssessmentIdLearnerLiveTestRoute:
     AssessmentExaminationAssessmentIdLearnerLiveTestRoute,

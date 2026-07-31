@@ -56,12 +56,23 @@ interface SessionLoginFormProps {
   username: string;
   instituteId: string;
   onLoginSuccess: () => void;
+  /**
+   * Post-login navigation override. Default keeps the original behavior
+   * (re-navigate to the live-class username route). Pages that host this form
+   * elsewhere (e.g. the public subscription-manage route) pass their own
+   * handler — usually a no-op, since onLoginSuccess re-renders them in place.
+   */
+  onNavigate?: () => void;
+  /** Success-toast subtitle; defaults to the live-session wording. */
+  successToastDescription?: string;
 }
 
 export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
   username: urlUsername,
   instituteId,
   onLoginSuccess,
+  onNavigate,
+  successToastDescription = "Welcome to your live session",
 }) => {
   const [step, setStep] = useState<"username" | "otp">("username");
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
@@ -140,13 +151,17 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
               }
 
               toast.success("Login successful! Redirecting...", {
-                description: "Welcome to your live session",
+                description: successToastDescription,
               });
 
-              navigate({
-                to: "/study-library/live-class/$username",
-                params: { username: urlUsername },
-              });
+              if (onNavigate) {
+                onNavigate();
+              } else {
+                navigate({
+                  to: "/study-library/live-class/$username",
+                  params: { username: urlUsername },
+                });
+              }
 
               onLoginSuccess();
             }
@@ -260,14 +275,18 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
           }
 
           toast.success("Login successful! Redirecting...", {
-            description: "Welcome to your live session",
+            description: successToastDescription,
           });
 
-          // Navigate to live class route
-          navigate({
-            to: "/study-library/live-class/$username",
-            params: { username: urlUsername },
-          });
+          // Navigate to live class route (or the host page's own destination)
+          if (onNavigate) {
+            onNavigate();
+          } else {
+            navigate({
+              to: "/study-library/live-class/$username",
+              params: { username: urlUsername },
+            });
+          }
 
           // Call success callback
           onLoginSuccess();

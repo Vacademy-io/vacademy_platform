@@ -19,6 +19,8 @@ import {
     Warning,
     BracketsCurly,
     Info,
+    Plus,
+    Trash,
 } from '@phosphor-icons/react';
 
 /** Pretty-print a JSON string; returns the original text if it can't be parsed. */
@@ -48,6 +50,139 @@ function jsonObjectError(text: string, { allowEmpty }: { allowEmpty: boolean }):
 }
 
 const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'DRAFT'];
+
+type OutputDataPoint = {
+    fieldName?: string;
+    value?: string;
+    compute?: string;
+    [key: string]: unknown;
+};
+
+/**
+ * Friendly editor for a node's `outputDataPoints` (the workflow's "settings" —
+ * template text, links, audience lists). Reads and writes the SAME config text
+ * the raw JSON editor below shows, so both stay in sync and the normal
+ * validate/save flow applies. Rows with `value` are plain text; rows with
+ * `compute` are SpEL expressions (marked, still editable).
+ */
+function OutputDataPointsEditor({
+    configText,
+    onChange,
+}: {
+    configText: string;
+    onChange: (next: string) => void;
+}) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        const p: unknown = JSON.parse(configText);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+            parsed = p as Record<string, unknown>;
+        }
+    } catch {
+        // Invalid JSON — the raw editor is already showing the error; hide this panel.
+    }
+    const points = parsed && Array.isArray(parsed.outputDataPoints)
+        ? (parsed.outputDataPoints as OutputDataPoint[])
+        : null;
+    if (!parsed || !points) return null;
+
+    const write = (next: OutputDataPoint[]) =>
+        onChange(JSON.stringify({ ...parsed, outputDataPoints: next }, null, 2));
+    const updateRow = (index: number, patch: Partial<OutputDataPoint>) =>
+        write(points.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    const removeRow = (index: number) => write(points.filter((_, i) => i !== index));
+    const toggleMode = (index: number) => {
+        const row = points[index];
+        if (!row) return;
+        const { value, compute, ...rest } = row;
+        write(
+            points.map((p, i) =>
+                i === index
+                    ? compute !== undefined
+                        ? { ...rest, value: compute }
+                        : { ...rest, compute: value ?? '' }
+                    : p
+            )
+        );
+    };
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+                <Label className="text-xs text-neutral-600">
+                    Workflow settings
+                    <span className="ml-1.5 text-caption text-neutral-400">
+                        outputDataPoints — template text, links &amp; audience values
+                    </span>
+                </Label>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-neutral-500"
+                    onClick={() => write([...points, { fieldName: '', value: '' }])}
+                >
+                    <Plus size={12} /> Add setting
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {points.length === 0 && (
+                    <p className="text-caption text-neutral-400">No settings yet — add one above.</p>
+                )}
+                {points.map((point, index) => {
+                    const isCompute = point.compute !== undefined;
+                    const text = isCompute ? (point.compute ?? '') : (point.value ?? '');
+                    return (
+                        <div key={index} className="flex items-start gap-2">
+                            <Input
+                                value={point.fieldName ?? ''}
+                                onChange={(e) => updateRow(index, { fieldName: e.target.value })}
+                                placeholder="fieldName"
+                                spellCheck={false}
+                                className="h-8 w-44 shrink-0 font-mono text-xs"
+                            />
+                            <Textarea
+                                value={text}
+                                onChange={(e) =>
+                                    updateRow(
+                                        index,
+                                        isCompute
+                                            ? { compute: e.target.value }
+                                            : { value: e.target.value }
+                                    )
+                                }
+                                spellCheck={false}
+                                rows={Math.min(6, Math.max(1, Math.ceil(text.length / 80)))}
+                                className="min-h-8 flex-1 font-mono text-xs"
+                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 shrink-0 px-2 text-caption"
+                                onClick={() => toggleMode(index)}
+                                title={
+                                    isCompute
+                                        ? 'SpEL expression — click to treat as plain text'
+                                        : 'Plain text — click to treat as SpEL expression'
+                                }
+                            >
+                                {isCompute ? 'SpEL' : 'Text'}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 shrink-0 px-2 text-neutral-400 hover:text-red-600"
+                                onClick={() => removeRow(index)}
+                                title="Remove setting"
+                            >
+                                <Trash size={14} />
+                            </Button>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
 
 function NodeConfigEditorCard({
     workflowId,
@@ -229,6 +364,9 @@ function NodeConfigEditorCard({
                         <span className="text-xs text-neutral-600">End node</span>
                     </label>
                 </div>
+
+                {/* Friendly settings editor — only shows when config has outputDataPoints */}
+                <OutputDataPointsEditor configText={configText} onChange={setConfigText} />
 
                 {/* config_json editor */}
                 <div>

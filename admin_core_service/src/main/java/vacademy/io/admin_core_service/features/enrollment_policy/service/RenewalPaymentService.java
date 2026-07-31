@@ -5,21 +5,28 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +37,11 @@ public class RenewalPaymentService {
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final SubOrgService subOrgService;
     private final PaymentLogRepository paymentLogRepository;
+    private final WorkflowTriggerService workflowTriggerService;
+    private final AuthService authService;
+
+    /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
+    private static final int MAX_RENEWAL_ATTEMPTS = 3;
 
     /**
      * Handles renewal payment confirmation from webhook
@@ -89,23 +101,121 @@ public class RenewalPaymentService {
             // Send success notification
             sendRenewalSuccessNotification(userPlan, instituteId, newEndDate);
 
+            // Fire PAYMENT_SUCCESS so workflows (renewal-confirmation WhatsApp/email) can react.
+            // Renewals previously emitted NO workflow events at all.
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("newEndDate", newEndDate.toString());
+            emitRenewalEvent(WorkflowTriggerEvent.PAYMENT_SUCCESS, userPlan, instituteId, extra);
+
         } catch (Exception e) {
             log.error("Error processing successful renewal for UserPlan: {}", userPlan.getId(), e);
         }
     }
 
     /**
-     * Handles failed renewal payment
+     * Handles failed renewal payment (async gateway path — Razorpay payment.failed webhook).
+     *
+     * Previously this only called a TODO notification stub, leaving the plan ACTIVE with
+     * {@code next_charge_at = NULL} forever (never retried, never expired — the learner kept
+     * free access indefinitely). Now it applies the same dunning as the synchronous path:
+     * the attempt was already counted by {@code claimForRenewal}, so either re-arm the charge
+     * for tomorrow or — on exhaustion — expire the plan and deactivate access. Either way a
+     * PAYMENT_FAILED workflow event fires so messaging workflows can react.
      */
     private void handleFailedRenewal(UserPlan userPlan, String instituteId) {
         log.info("Processing failed renewal for UserPlan: {}", userPlan.getId());
 
         try {
+            int attempts = userPlan.getRenewalAttemptCount() != null ? userPlan.getRenewalAttemptCount() : 0;
+            boolean exhausted = attempts >= MAX_RENEWAL_ATTEMPTS;
+            if (exhausted) {
+                userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+                userPlan.setNextChargeAt(null);
+                userPlanRepository.save(userPlan);
+                List<StudentSessionInstituteGroupMapping> active = mappingRepository
+                        .findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.ACTIVE.name());
+                for (StudentSessionInstituteGroupMapping m : active) {
+                    m.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
+                    mappingRepository.save(m);
+                }
+                log.warn("Plan {} exhausted {} renewal attempts (async failure) — expired, {} mapping(s) deactivated",
+                        userPlan.getId(), attempts, active.size());
+            } else {
+                Calendar c = Calendar.getInstance();
+                c.add(Calendar.DAY_OF_MONTH, 1);
+                userPlan.setNextChargeAt(c.getTime());
+                userPlanRepository.save(userPlan);
+                log.info("Plan {} async charge failed (attempt {}) — will retry on {}",
+                        userPlan.getId(), attempts, c.getTime());
+            }
+
             // Send failure notification to user or ROOT_ADMIN (for SUB_ORG)
             sendRenewalFailureNotification(userPlan, instituteId);
 
+            emitRenewalPaymentFailed(userPlan, instituteId, exhausted);
+
         } catch (Exception e) {
             log.error("Error processing failed renewal for UserPlan: {}", userPlan.getId(), e);
+        }
+    }
+
+    /**
+     * Fire PAYMENT_FAILED for a failed renewal charge. Public so the synchronous dunning path
+     * ({@code RenewalChargeService.applyDunning}) emits through the same code.
+     */
+    public void emitRenewalPaymentFailed(UserPlan userPlan, String instituteId, boolean finalAttempt) {
+        Map<String, Object> extra = new HashMap<>();
+        extra.put("finalAttempt", finalAttempt);
+        extra.put("attempt", userPlan.getRenewalAttemptCount());
+        emitRenewalEvent(WorkflowTriggerEvent.PAYMENT_FAILED, userPlan, instituteId, extra);
+    }
+
+    /**
+     * Common renewal workflow-event emission. Context mirrors PaymentLogService's initial-payment
+     * events (userId/userPlanId/enrollInviteId/packageSessionIds) plus {@code renewal: true} and a
+     * full {@code user} DTO (name/mobile/email) so SEND_WHATSAPP nodes can message directly.
+     * eventId = enrollInviteId (event_applied_type ENROLL_INVITE), falling back to instituteId.
+     * Failures are logged, never propagated — a workflow error must not affect the money path.
+     */
+    private void emitRenewalEvent(WorkflowTriggerEvent event, UserPlan userPlan, String instituteId,
+                                  Map<String, Object> extra) {
+        try {
+            Map<String, Object> ctx = new HashMap<>(extra != null ? extra : Map.of());
+            ctx.put("renewal", true);
+            ctx.put("userPlanId", userPlan.getId());
+            ctx.put("userId", userPlan.getUserId());
+            ctx.put("enrollInviteId", userPlan.getEnrollInviteId());
+            ctx.put("vendor", userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().getVendor() : null);
+            if (userPlan.getPaymentPlan() != null) {
+                ctx.put("amount", userPlan.getPaymentPlan().getActualPrice());
+            }
+            // On final-failure the mappings were just flipped INACTIVE before this event,
+            // so fall back to INACTIVE rows rather than emitting an empty batch list.
+            List<StudentSessionInstituteGroupMapping> mappings = mappingRepository
+                    .findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.ACTIVE.name());
+            if (mappings.isEmpty()) {
+                mappings = mappingRepository.findByUserPlanIdAndStatus(
+                        userPlan.getId(), LearnerSessionStatusEnum.INACTIVE.name());
+            }
+            List<String> packageSessionIds = mappings.stream()
+                    .filter(m -> m.getPackageSession() != null)
+                    .map(m -> m.getPackageSession().getId())
+                    .distinct()
+                    .toList();
+            ctx.put("packageSessionIds", packageSessionIds);
+            try {
+                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userPlan.getUserId()));
+                if (!users.isEmpty()) {
+                    ctx.put("user", users.get(0));
+                }
+            } catch (Exception ue) {
+                log.warn("Could not enrich renewal event with user {}: {}", userPlan.getUserId(), ue.getMessage());
+            }
+            String eventId = userPlan.getEnrollInviteId() != null ? userPlan.getEnrollInviteId() : instituteId;
+            workflowTriggerService.handleTriggerEvents(event.name(), eventId, instituteId, ctx);
+        } catch (Exception wfe) {
+            log.warn("Failed to trigger {} workflow for renewal of plan {}: {}",
+                    event, userPlan.getId(), wfe.getMessage());
         }
     }
 

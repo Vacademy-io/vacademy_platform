@@ -661,6 +661,26 @@ export const SlideMaterial = ({
     const stashDocDraftLocally = useCallback(
         (slideId: string, htmlString: string, guardShrink = true) => {
             if (!slideId) return;
+            // NEVER stash a draft built on a load we already know was lossy (the
+            // deserializer dropped a block on the way in). Saving is refused for this
+            // slide anyway, so the stash can't lead anywhere — but it DOES outrank the
+            // server copy on the next open, and then the load check compares the
+            // thinned draft against itself, finds nothing wrong, and lets the save
+            // through. The loss reaches the backend, whose guard is the first thing to
+            // notice: an "This will remove 1 table" confirm on a slide the author never
+            // edited down. Refusing to stash keeps the honest "could not be read"
+            // message in front of the author instead.
+            if (
+                docLoadIntegrityRef.current.lossy &&
+                docLoadIntegrityRef.current.slideId === slideId
+            ) {
+                console.warn(
+                    `⚠️ Not stashing a local draft for slide ${slideId} — its load was lossy ` +
+                        `(dropped: ${docLoadIntegrityRef.current.lost.join(', ') || 'unknown'}). ` +
+                        'Reload the slide to get the stored content back.'
+                );
+                return;
+            }
             // Anti-clobber (switch-time only): a truncated/degraded switch-time
             // serialization must not overwrite a larger draft already saved by the
             // continuous onChange stash. The continuous stash passes guardShrink=false

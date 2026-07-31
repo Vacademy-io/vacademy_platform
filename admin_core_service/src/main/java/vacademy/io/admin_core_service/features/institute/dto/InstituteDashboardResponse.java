@@ -17,7 +17,13 @@ public class InstituteDashboardResponse {
     private String id;
     private Integer profileCompletionPercentage;
     private Long batchCount;
+    /** Actively-enrolled learners. Mirrors activeStudentCount; kept for existing clients. */
     private Long studentCount;
+    // Status breakdown of the institute's learners. Each is a DISTINCT learner count,
+    // so a learner ACTIVE in one batch and TERMINATED in another appears in both.
+    private Long activeStudentCount;
+    private Long inactiveStudentCount;
+    private Long terminatedStudentCount;
     private Long courseCount;
     private Long levelCount;
     private Long subjectCount;

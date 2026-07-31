@@ -12,6 +12,15 @@ import {
 
 export type KpiFormat = 'number' | 'currency' | 'percent';
 
+export type KpiBreakdownTone = 'neutral' | 'success' | 'warning' | 'danger';
+
+/** A secondary count shown as a chip under the headline value (e.g. Inactive 29). */
+export interface KpiBreakdownItem {
+    label: string;
+    value: number;
+    tone: KpiBreakdownTone;
+}
+
 export interface DashboardKpi {
     id: string;
     label: string;
@@ -19,6 +28,7 @@ export interface DashboardKpi {
     format: KpiFormat;
     deepLink?: string;
     subtitle?: string;
+    breakdown?: KpiBreakdownItem[];
 }
 
 const safe = async <T>(p: Promise<T>): Promise<T | null> => {
@@ -38,6 +48,11 @@ const todayKey = (): string => {
 
 interface InstituteCounts {
     student_count?: number;
+    // Learner status breakdown. Each is a distinct-learner count, so a learner
+    // active in one batch and terminated in another is in both buckets.
+    active_student_count?: number;
+    inactive_student_count?: number;
+    terminated_student_count?: number;
     batch_count?: number;
     course_count?: number;
     subject_count?: number;
@@ -89,6 +104,10 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
     const classesToday =
         sessions?.find((d) => (d.date || '').slice(0, 10) === today)?.sessions?.length || 0;
 
+    const activeLearners = counts?.active_student_count ?? counts?.student_count ?? 0;
+    const inactiveLearners = counts?.inactive_student_count ?? 0;
+    const terminatedLearners = counts?.terminated_student_count ?? 0;
+
     const learnersPlural = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
     const coursesPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
     const batchesPlural = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
@@ -101,10 +120,25 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
         {
             id: 'activeLearners',
             label: `Total ${learnersPlural}`,
-            value: counts?.student_count || 0,
+            value: activeLearners,
             format: 'number',
-            subtitle: `Enrolled across ${batchesPlural.toLowerCase()}`,
+            subtitle: `Active across ${batchesPlural.toLowerCase()}`,
             deepLink: '/manage-students/students-list',
+            // Always rendered, zeros included — "0 terminated" is itself the answer
+            // an admin is looking for. Empty buckets drop to a neutral tone so a
+            // healthy institute isn't showing amber/red chips for nothing.
+            breakdown: [
+                {
+                    label: 'Inactive',
+                    value: inactiveLearners,
+                    tone: inactiveLearners > 0 ? 'warning' : 'neutral',
+                },
+                {
+                    label: 'Terminated',
+                    value: terminatedLearners,
+                    tone: terminatedLearners > 0 ? 'danger' : 'neutral',
+                },
+            ] as KpiBreakdownItem[],
         },
         {
             id: 'totalCourses',

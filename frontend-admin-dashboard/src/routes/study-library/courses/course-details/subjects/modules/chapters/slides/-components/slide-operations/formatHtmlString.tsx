@@ -187,8 +187,13 @@ export const formatHTMLString = (htmlString: string) => {
     // blocks with src=null; if the user opens the uploader and closes it
     // without uploading, the template literal serializes src="null" and
     // the block re-appears as a broken thumbnail on every reload.
+    // The negative lookahead keeps this off a CUSTOM BLOCK's own div: a callout
+    // whose image upload failed is `<div data-yoopta-type="callout"><img src=""></div>`,
+    // and deleting the wrapper here would take the whole block (and its theme) with
+    // it — reported to the author as "this will remove 1 callout". Only Yoopta's
+    // anonymous image wrapper is meant to go.
     cleanedHtml = cleanedHtml.replace(
-        /<div[^>]*>\s*<img[^>]*\ssrc="(?:null|undefined|)"[^>]*\/?>\s*<\/div>/gi,
+        /<div(?![^>]*data-yoopta-type)[^>]*>\s*<img[^>]*\ssrc="(?:null|undefined|)"[^>]*\/?>\s*<\/div>/gi,
         ''
     );
     cleanedHtml = cleanedHtml.replace(

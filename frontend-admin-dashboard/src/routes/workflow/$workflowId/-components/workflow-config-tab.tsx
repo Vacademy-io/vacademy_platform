@@ -53,10 +53,95 @@ const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'DRAFT'];
 
 type OutputDataPoint = {
     fieldName?: string;
-    value?: string;
+    value?: unknown;
     compute?: string;
     [key: string]: unknown;
 };
+
+/** True for a two-level map of strings: { day1: { "05:30": "url", ... }, ... } */
+function isNestedStringMap(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const outer = Object.values(value as Record<string, unknown>);
+    if (outer.length === 0) return false;
+    return outer.every(
+        (inner) =>
+            inner &&
+            typeof inner === 'object' &&
+            !Array.isArray(inner) &&
+            Object.values(inner as Record<string, unknown>).every((v) => typeof v === 'string')
+    );
+}
+
+/**
+ * Grid editor for a two-level string map (e.g. the session-link schedule:
+ * day 1–14 sections, each with slot → link inputs). Empty cells mean
+ * "use the default link" — the workflow falls back server-side.
+ */
+function NestedMapGridEditor({
+    label,
+    grid,
+    onChange,
+}: {
+    label: string;
+    grid: Record<string, Record<string, string>>;
+    onChange: (next: Record<string, Record<string, string>>) => void;
+}) {
+    const outerKeys = Object.keys(grid).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true })
+    );
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2">
+            <p className="mb-1 text-xs font-medium text-neutral-600">
+                {label}
+                <span className="ml-1.5 text-caption font-normal text-neutral-400">
+                    empty = use the default link
+                </span>
+            </p>
+            <div className="space-y-1">
+                {outerKeys.map((outerKey) => {
+                    const inner = grid[outerKey] ?? {};
+                    const filled = Object.values(inner).filter(
+                        (v) => v && v.trim().length > 0
+                    ).length;
+                    return (
+                        <details key={outerKey} className="rounded border border-neutral-100">
+                            <summary className="cursor-pointer px-2 py-1 text-xs text-neutral-600">
+                                {outerKey}
+                                <span className="ml-2 text-caption text-neutral-400">
+                                    {filled > 0 ? `${filled} link(s) set` : 'using default'}
+                                </span>
+                            </summary>
+                            <div className="space-y-1 p-2">
+                                {Object.keys(inner).map((slot) => (
+                                    <div key={slot} className="flex items-center gap-2">
+                                        <span className="w-14 shrink-0 text-right font-mono text-xs text-neutral-500">
+                                            {slot}
+                                        </span>
+                                        <Input
+                                            value={inner[slot] ?? ''}
+                                            onChange={(e) =>
+                                                onChange({
+                                                    ...grid,
+                                                    [outerKey]: {
+                                                        ...inner,
+                                                        [slot]: e.target.value,
+                                                    },
+                                                })
+                                            }
+                                            placeholder="default link"
+                                            spellCheck={false}
+                                            className="h-8 flex-1 text-xs"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
 
 /**
  * Friendly editor for a node's `outputDataPoints` (the workflow's "settings" —
@@ -100,7 +185,7 @@ function OutputDataPointsEditor({
                 i === index
                     ? compute !== undefined
                         ? { ...rest, value: compute }
-                        : { ...rest, compute: value ?? '' }
+                        : { ...rest, compute: typeof value === 'string' ? value : '' }
                     : p
             )
         );
@@ -108,7 +193,33 @@ function OutputDataPointsEditor({
 
     const renderRow = (point: OutputDataPoint, index: number) => {
         const isCompute = point.compute !== undefined;
-        const text = isCompute ? (point.compute ?? '') : (point.value ?? '');
+        // Two-level string maps (e.g. a day → slot → link schedule) get a grid
+        // editor; other structured values point to the raw JSON editor.
+        if (!isCompute && isNestedStringMap(point.value)) {
+            return (
+                <NestedMapGridEditor
+                    key={index}
+                    label={point.fieldName ?? 'schedule'}
+                    grid={point.value as Record<string, Record<string, string>>}
+                    onChange={(next) => updateRow(index, { value: next })}
+                />
+            );
+        }
+        if (!isCompute && point.value !== undefined && typeof point.value !== 'string') {
+            return (
+                <div key={index} className="flex items-center gap-2">
+                    <Input
+                        value={point.fieldName ?? ''}
+                        readOnly
+                        className="h-8 w-44 shrink-0 bg-neutral-100 font-mono text-xs"
+                    />
+                    <span className="text-caption text-neutral-400">
+                        structured value — edit in config_json below
+                    </span>
+                </div>
+            );
+        }
+        const text = isCompute ? (point.compute ?? '') : ((point.value as string | undefined) ?? '');
         return (
             <div key={index} className="flex items-start gap-2">
                 <Input

@@ -109,33 +109,33 @@ public class BbbHealthCheckService {
     /**
      * Scheduled start — Sunday at 9:30 AM IST.
      */
-    @Scheduled(cron = "0 30 9 * * SUN", zone = "Asia/Kolkata")
-    public void scheduledStartSunday() {
-        log.info("[BBB Pool] Scheduled START (Sunday) triggered");
+    // @Scheduled(cron = "0 30 9 * * SUN", zone = "Asia/Kolkata")
+    // public void scheduledStartSunday() {
+    //     log.info("[BBB Pool] Scheduled START (Sunday) triggered");
 
-        int serverCount = getServersToStart();
-        log.info("[BBB Pool] Starting {} server(s)", serverCount);
+    //     int serverCount = getServersToStart();
+    //     log.info("[BBB Pool] Starting {} server(s)", serverCount);
 
-        triggerPoolAction("start", "all", serverCount);
-    }
+    //     triggerPoolAction("start", "all", serverCount);
+    // }
 
     /**
      * Scheduled health check — Sunday at 9:45 AM IST.
      */
-    @Scheduled(cron = "0 45 9 * * SUN", zone = "Asia/Kolkata")
-    public void scheduledHealthCheckSunday() {
-        log.info("[BBB Pool HealthCheck] Scheduled check (Sunday) triggered");
-        runPoolHealthCheck(true);
-    }
+    // @Scheduled(cron = "0 45 9 * * SUN", zone = "Asia/Kolkata")
+    // public void scheduledHealthCheckSunday() {
+    //     log.info("[BBB Pool HealthCheck] Scheduled check (Sunday) triggered");
+    //     runPoolHealthCheck(true);
+    // }
 
     /**
      * Scheduled stop — Sunday at 4:00 PM IST.
      */
-    @Scheduled(cron = "0 0 16 * * SUN", zone = "Asia/Kolkata")
-    public void scheduledStopSunday() {
-        log.info("[BBB Pool] Scheduled STOP (Sunday) triggered");
-        triggerPoolAction("stop", "all", 0);
-    }
+    // @Scheduled(cron = "0 0 16 * * SUN", zone = "Asia/Kolkata")
+    // public void scheduledStopSunday() {
+    //     log.info("[BBB Pool] Scheduled STOP (Sunday) triggered");
+    //     triggerPoolAction("stop", "all", 0);
+    // }
 
     // -----------------------------------------------------------------------
     // Pool API client (talks to admin_core_service)

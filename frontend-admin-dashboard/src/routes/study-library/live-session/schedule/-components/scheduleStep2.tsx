@@ -48,6 +48,8 @@ import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listPaymentGateways } from '@/routes/settings/-services/payment-gateway-service';
 import { fetchWhatsAppTemplates } from '@/routes/automation/chatbot-flows/-services/chatbot-flow-api';
+import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import { MultiSelect } from '@/components/design-system/multi-select';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
 import { Loader2 } from 'lucide-react';
@@ -316,6 +318,8 @@ export default function ScheduleStep2() {
             requireEmailVerification: false,
             requirePhoneVerification: false,
             whatsappOtpTemplateName: '',
+            audiencePushEnabled: false,
+            audiencePushAudienceIds: [],
         },
     });
 
@@ -348,6 +352,13 @@ export default function ScheduleStep2() {
         form.setValue('requireEmailVerification', !!sessionDetails.requireEmailVerification);
         form.setValue('requirePhoneVerification', !!sessionDetails.requirePhoneVerification);
         form.setValue('whatsappOtpTemplateName', sessionDetails.whatsappOtpTemplateName ?? '');
+
+        // Prefill "save registrants to audience list(s)" (edit mode)
+        form.setValue('audiencePushEnabled', !!sessionDetails.audiencePushConfig?.enabled);
+        form.setValue(
+            'audiencePushAudienceIds',
+            sessionDetails.audiencePushConfig?.audience_ids ?? []
+        );
 
         // Set notification settings
         const defaultNotifySettings = {
@@ -525,6 +536,28 @@ export default function ScheduleStep2() {
     });
     const approvedTemplates = whatsappTemplates.filter(
         (t) => (t.status ?? '').toUpperCase() === 'APPROVED'
+    );
+    // Audience lists for the "save registrants to audience list(s)" picker,
+    // fetched lazily once the toggle is on (public sessions only).
+    const audiencePushOn = !!watch('audiencePushEnabled');
+    const { data: campaignsData } = useQuery({
+        ...handleFetchCampaignsList({
+            institute_id: wizardInstituteId,
+            status: 'ACTIVE',
+            page: 0,
+            size: 500,
+        }),
+        enabled: !!wizardInstituteId && audiencePushOn,
+    });
+    const audienceListOptions = useMemo(
+        () =>
+            (campaignsData?.content ?? [])
+                .map((campaign) => ({
+                    value: campaign.id ?? campaign.campaign_id ?? campaign.audience_id ?? '',
+                    label: campaign.campaign_name,
+                }))
+                .filter((option) => option.value !== ''),
+        [campaignsData]
     );
     const { fields, move, append, remove } = useFieldArray({
         control,
@@ -1595,6 +1628,53 @@ export default function ScheduleStep2() {
                                                 The OTP is sent on WhatsApp using this approved
                                                 template. Leave unset to use your institute&apos;s
                                                 default OTP template.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-3 rounded-md border bg-neutral-50 p-3">
+                                    <p className="text-sm font-medium">Audience lists</p>
+                                    <FormField
+                                        control={control}
+                                        name="audiencePushEnabled"
+                                        render={({ field }) => (
+                                            <label className="flex w-fit cursor-pointer items-center gap-3">
+                                                <Switch
+                                                    checked={!!field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                                <span className="text-sm">
+                                                    Save registrants to audience list(s)
+                                                </span>
+                                            </label>
+                                        )}
+                                    />
+                                    {watch('audiencePushEnabled') && (
+                                        <div className="flex flex-col gap-1">
+                                            <FormField
+                                                control={control}
+                                                name="audiencePushAudienceIds"
+                                                render={({ field, fieldState }) => (
+                                                    <FormItem className="w-full sm:w-96">
+                                                        <FormControl>
+                                                            <MultiSelect
+                                                                options={audienceListOptions}
+                                                                selected={field.value ?? []}
+                                                                onChange={field.onChange}
+                                                                placeholder="Select audience lists"
+                                                            />
+                                                        </FormControl>
+                                                        {fieldState.error?.message && (
+                                                            <p className="text-sm text-danger-600">
+                                                                {fieldState.error.message}
+                                                            </p>
+                                                        )}
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <p className="text-sm text-neutral-500">
+                                                Everyone who registers for this class is also added
+                                                as a lead to each selected list in Audience Manager.
                                             </p>
                                         </div>
                                     )}

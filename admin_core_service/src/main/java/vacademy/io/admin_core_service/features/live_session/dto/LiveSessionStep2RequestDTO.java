@@ -100,6 +100,14 @@ public class LiveSessionStep2RequestDTO {
      */
     private RecordingAutoLinkConfigDTO recordingAutoLinkConfig;
 
+    /**
+     * Optional "save registrants to audience list(s)" config for public
+     * sessions. Omitting this field on update leaves the stored config
+     * unchanged (older clients keep working); sending {"enabled": false}
+     * turns the push off.
+     */
+    private LiveSessionAudiencePushConfigDTO audiencePushConfig;
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotificationActionDTO {

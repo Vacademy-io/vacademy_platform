@@ -666,8 +666,44 @@ public class AudienceService {
         if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(email)) {
             return null;
         }
+        return submitLiveClassLeadToAudience(getOrCreateLiveClassAudience(instituteId),
+                fullName, email, mobileNumber, extraCustomFieldValues, sourceId);
+    }
 
-        Audience audience = getOrCreateLiveClassAudience(instituteId);
+    /**
+     * Same live-class lead capture as {@link #submitLiveClassLead}, but into a specific
+     * admin-selected audience list (the session's "save registrants to audience list(s)"
+     * setting) instead of the auto-provisioned default. The audience is resolved by
+     * id + institute so a stale/foreign id can never leak a lead across institutes, and
+     * non-ACTIVE lists are skipped (same rule as submitLeadV2). Best-effort like the
+     * default path: returns null rather than throwing.
+     */
+    public String submitLiveClassLeadToAudienceId(String audienceId, String instituteId, String fullName,
+                                                  String email, String mobileNumber,
+                                                  Map<String, String> extraCustomFieldValues, String sourceId) {
+        if (!StringUtils.hasText(audienceId) || !StringUtils.hasText(instituteId) || !StringUtils.hasText(email)) {
+            return null;
+        }
+        java.util.Optional<Audience> audienceOpt = audienceRepository.findByIdAndInstituteId(audienceId, instituteId);
+        if (audienceOpt.isEmpty()) {
+            logger.warn("Live-class lead: audience {} not found for institute {} — skipping push",
+                    audienceId, instituteId);
+            return null;
+        }
+        Audience audience = audienceOpt.get();
+        if (StringUtils.hasText(audience.getStatus()) && !"ACTIVE".equalsIgnoreCase(audience.getStatus())) {
+            logger.warn("Live-class lead: audience {} is {} — skipping push", audienceId, audience.getStatus());
+            return null;
+        }
+        return submitLiveClassLeadToAudience(audience, fullName, email, mobileNumber,
+                extraCustomFieldValues, sourceId);
+    }
+
+    /** Shared body of the live-class lead capture, parameterized by target audience. */
+    private String submitLiveClassLeadToAudience(Audience audience, String fullName, String email,
+                                                 String mobileNumber, Map<String, String> extraCustomFieldValues,
+                                                 String sourceId) {
+        final String instituteId = audience.getInstituteId();
 
         UserDTO userDTO = UserDTO.builder()
                 .fullName(fullName)

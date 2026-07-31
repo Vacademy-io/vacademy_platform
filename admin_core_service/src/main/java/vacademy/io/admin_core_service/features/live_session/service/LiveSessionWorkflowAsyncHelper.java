@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEve
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -101,11 +102,16 @@ public class LiveSessionWorkflowAsyncHelper {
      * double-messaged on top of their seat-confirmation. Pinned to the same bounded
      * {@code workflowTaskExecutor} as form-submission so a webinar burst cannot spawn
      * unbounded threads; fire-and-forget, errors logged and swallowed.
+     *
+     * <p>{@code extraAudienceIds} — the session's "save registrants to audience list(s)"
+     * selection (empty/null when the toggle is off). The registrant is pushed into each,
+     * on top of the always-on default audience; each push is isolated so one bad list
+     * cannot block the others.
      */
     @Async("workflowTaskExecutor")
     public void createLiveClassLeadAsync(String instituteId, String fullName, String email,
                                          String mobileNumber, Map<String, String> extraFieldsById,
-                                         String sessionId) {
+                                         String sessionId, List<String> extraAudienceIds) {
         if (instituteId == null || email == null || email.isBlank()) return;
         try {
             audienceService.submitLiveClassLead(instituteId, fullName, email, mobileNumber,
@@ -113,6 +119,16 @@ public class LiveSessionWorkflowAsyncHelper {
         } catch (Exception e) {
             log.warn("Async live-class lead capture failed for institute={} session={}: {}",
                     instituteId, sessionId, e.getMessage(), e);
+        }
+        if (extraAudienceIds == null) return;
+        for (String audienceId : extraAudienceIds) {
+            try {
+                audienceService.submitLiveClassLeadToAudienceId(audienceId, instituteId, fullName,
+                        email, mobileNumber, extraFieldsById, sessionId);
+            } catch (Exception e) {
+                log.warn("Async live-class lead push to audience {} failed for institute={} session={}: {}",
+                        audienceId, instituteId, sessionId, e.getMessage(), e);
+            }
         }
     }
 }

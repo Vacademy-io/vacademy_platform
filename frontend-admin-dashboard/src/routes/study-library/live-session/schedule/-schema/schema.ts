@@ -259,6 +259,10 @@ export const addParticipantsSchema = z.object({
     requirePhoneVerification: z.boolean().optional(),
     // WhatsApp template for the phone OTP; '' = institute default template.
     whatsappOtpTemplateName: z.string().optional(),
+    // Public registration: also push each registrant as a lead into these
+    // Audience Manager lists (on top of the always-on default webinar list).
+    audiencePushEnabled: z.boolean().optional(),
+    audiencePushAudienceIds: z.array(z.string()).optional(),
     // "Auto-add recordings to course" (see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md).
     // Kept optional/untouched-tracking so the DTO transform can omit the field
     // entirely in edit mode when the admin never opened this section.
@@ -296,6 +300,17 @@ export const addParticipantsSchema = z.object({
                 path: ['paymentCurrency'],
             });
         }
+    }
+    if (
+        data.accessType === AccessType.PUBLIC &&
+        data.audiencePushEnabled &&
+        (data.audiencePushAudienceIds?.length ?? 0) === 0
+    ) {
+        ctx.addIssue({
+            code: 'custom',
+            message: 'Select at least one audience list, or turn the toggle off.',
+            path: ['audiencePushAudienceIds'],
+        });
     }
 });
 

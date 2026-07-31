@@ -99,9 +99,9 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
         }));
     };
 
-    const updateCourseViewSettings = (
-        key: keyof typeof formData.courseViewSettings,
-        value: 'outline' | 'structure'
+    const updateCourseViewSettings = <K extends keyof CourseSettingsData['courseViewSettings']>(
+        key: K,
+        value: CourseSettingsData['courseViewSettings'][K]
     ) => {
         setFormData((prev) => ({
             ...prev,
@@ -560,6 +560,28 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     or is always published. Draft copies are not visible to learners.
                                 </p>
                             </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <Label htmlFor="show-content-descriptions">
+                                    Show Module &amp; Chapter Descriptions
+                                </Label>
+                                <p className="text-caption text-neutral-500">
+                                    Display the description entered for a module or chapter under
+                                    its title on the content cards — in Course Details and in the
+                                    learner app. Turn off to keep those cards title-only.
+                                </p>
+                            </div>
+                            <Switch
+                                id="show-content-descriptions"
+                                checked={
+                                    formData.courseViewSettings.showContentDescriptions !== false
+                                }
+                                onCheckedChange={(value) =>
+                                    updateCourseViewSettings('showContentDescriptions', value)
+                                }
+                            />
                         </div>
                     </CardContent>
                 </Card>

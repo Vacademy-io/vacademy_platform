@@ -26,10 +26,21 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId, isUserAdmin } from '@/utils/userDetails';
 import { Upload, X } from 'lucide-react';
 import { getDisplaySettingsWithFallback } from '@/services/display-settings';
+import {
+    CONTENT_DESCRIPTION_MAX_LENGTH,
+    getAuthoredChapterDescription,
+} from '@/constants/study-library/content-description';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 const formSchema = z.object({
     chapterName: z.string().min(1, 'Chapter name is required'),
+    description: z
+        .string()
+        .max(
+            CONTENT_DESCRIPTION_MAX_LENGTH,
+            `Description must be ${CONTENT_DESCRIPTION_MAX_LENGTH} characters or fewer`
+        )
+        .optional(),
     visibility: z.record(z.string(), z.array(z.string())),
     thumbnailFileId: z.string().optional(),
 });
@@ -174,6 +185,8 @@ export const AddChapterForm = ({
         resolver: zodResolver(formSchema),
         defaultValues: {
             chapterName: initialValues?.chapter.chapter_name || '',
+            // Legacy boilerplate is treated as "no description" so editing starts blank
+            description: getAuthoredChapterDescription(initialValues?.chapter.description),
             thumbnailFileId: initialValues?.chapter.file_id || '',
             visibility:
                 initialValues?.chapter_in_package_sessions && mode === 'edit'
@@ -479,8 +492,7 @@ export const AddChapterForm = ({
                         chapter_name: data.chapterName,
                         status: 'true',
                         file_id: data.thumbnailFileId || '',
-                        description:
-                            'Click to view and access eBooks and video lectures for this chapter.',
+                        description: data.description?.trim() || '',
                         chapter_order: 0,
                     };
 
@@ -501,6 +513,7 @@ export const AddChapterForm = ({
                     const updatedChapter = {
                         ...initialValues.chapter,
                         chapter_name: data.chapterName,
+                        description: data.description?.trim() || '',
                         file_id: data.thumbnailFileId || '',
                     };
 
@@ -582,6 +595,39 @@ export const AddChapterForm = ({
                                     disabled={isFormDisabled}
                                 />
                             </FormControl>
+                        </FormItem>
+                    )}
+                />
+
+                {/* Chapter Description field */}
+                <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormControl>
+                                <MyInput
+                                    label="Description (Optional)"
+                                    inputType="text"
+                                    inputPlaceholder={`Enter ${getTerminology(
+                                        ContentTerms.Chapters,
+                                        SystemTerms.Chapters
+                                    ).toLowerCase()} description`}
+                                    className="w-full"
+                                    input={field.value || ''}
+                                    onChangeFunction={(e) => field.onChange(e.target.value)}
+                                    disabled={isFormDisabled}
+                                    maxLength={CONTENT_DESCRIPTION_MAX_LENGTH}
+                                />
+                            </FormControl>
+                            <p className="text-caption text-neutral-400">
+                                Shown on the {getTerminology(
+                                    ContentTerms.Chapters,
+                                    SystemTerms.Chapters
+                                ).toLowerCase()} card — {(field.value || '').length}/
+                                {CONTENT_DESCRIPTION_MAX_LENGTH} characters
+                            </p>
+                            <FormMessage />
                         </FormItem>
                     )}
                 />

@@ -5,9 +5,15 @@ import { Chapter } from "@/stores/study-library/use-modules-with-chapters-store"
 import { CompletionStatusComponent } from "@/components/common/completion-status-component";
 import { toTitleCase } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { getAuthoredChapterDescription } from "@/constants/chapter-description";
+import { useShowContentDescriptions } from "@/hooks/use-content-descriptions";
 
 export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
     const { t } = useTranslation("studyContent");
+    const showDescription = useShowContentDescriptions();
+    const description = showDescription
+        ? getAuthoredChapterDescription(chapter.description)
+        : "";
     const router = useRouter();
     const {  subjectId, moduleId } = router.state.location.search;
     const navigate = useNavigate();
@@ -47,6 +53,14 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
                         <p className="text-body text-neutral-500">{t("progress.percentCompletedParenthetical", { percent: chapter.percentage_completed.toFixed(2) })}</p>
                     </div>
                 </div>
+                {description && (
+                    <p
+                        className="line-clamp-2 break-words text-caption text-neutral-500"
+                        title={description}
+                    >
+                        {description}
+                    </p>
+                )}
                 <div className="flex items-center justify-between">
                     <div className="flex gap-4 text-body font-semibold">
                         <div className="flex items-center gap-2">

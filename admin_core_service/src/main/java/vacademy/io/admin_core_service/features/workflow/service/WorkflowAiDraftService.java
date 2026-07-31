@@ -585,11 +585,29 @@ public class WorkflowAiDraftService {
             NEVER use EVENT_BASED for enrollment events — its key has no learner in it, so it would \
             let only the FIRST learner of the batch ever enter the workflow.
 
+            ADMIN-EDITABLE SCHEDULED SEQUENCES (per-day roster pattern): when the goal says each \
+            learner should get content for THEIR day-in-program at a fixed daily time, or that \
+            non-technical admins must be able to edit each day's message afterwards, do NOT build a \
+            DELAY chain. Build ONE SCHEDULED (cron) workflow instead: \
+            [1] TRIGGER named "Workflow settings" — every editable setting (link bases, timings \
+            text, batch id lists) as outputDataPoints rows; \
+            [2] QUERY getSSIGMByStatusAndPackageSessionIds — the roster with enrolledDate/expiryDate; \
+            [3] one SEND_WHATSAPP node PER DAY, named "Day N message — <topic>", chained \
+            day1 -> day2 -> ... -> dayN -> end. Each day node self-filters the roster (see the \
+            per-day 'on' expression in catalog.generationRules) and carries node-level \
+            templateName/languageCode/templateVars where DAY-SPECIFIC TEXT IS A PLAIN LITERAL \
+            (admins edit it as a text box) and only auto-filled values (name, links, dates) use \
+            '#' SpEL. Name pure-logic nodes with a "(do not edit)" suffix. The same shape with a \
+            single send node fits one-off scheduled sends whose audience is a date filter (e.g. \
+            "trial ends tomorrow": filter on expiryDate == today+1).
+
             You are given a CATALOG (below) of node types, read queries with their exact output \
             field names, common triggers, and a set of GENERATION RULES. Obey every rule in \
-            catalog.generationRules. Never use a node in catalog.avoidNodeTypes. Never put a \
-            catalog.mutatingQueryKeys query in the workflow. Reference query outputs by their real \
-            keys/fields from catalog.readQueries — field-name casing matters.
+            catalog.generationRules. Never use a node in catalog.avoidNodeTypes. Use a \
+            catalog.mutatingQueryKeys query ONLY when the goal explicitly asks to create or modify \
+            data (sessions, schedules, participants) — follow the DAILY SESSION-CREATOR PATTERN \
+            rule and warn in rationale that it writes real data when active. Reference query \
+            outputs by their real keys/fields from catalog.readQueries — field-name casing matters.
 
             ENTITY IDS: never invent an audienceId, batchId, inviteId, or templateName. If the goal \
             needs one you were not given (see the user's provided answers), return it as a \
@@ -615,9 +633,14 @@ public class WorkflowAiDraftService {
             You never activate anything.
 
             APPROACH (template-first hybrid): map the goal onto a common pattern when possible. Obey \
-            every rule in catalog.generationRules. Never use catalog.avoidNodeTypes or \
-            catalog.mutatingQueryKeys. Reference query outputs by their real keys/fields from \
-            catalog.readQueries — casing matters.
+            every rule in catalog.generationRules. Never use catalog.avoidNodeTypes. Use \
+            catalog.mutatingQueryKeys ONLY when the goal explicitly asks to create/modify data \
+            (follow the DAILY SESSION-CREATOR PATTERN rule; warn in the plan that it writes real \
+            data when active). Reference query outputs by their real keys/fields from \
+            catalog.readQueries — casing matters. When the goal asks for per-day editable content \
+            on a daily schedule, plan the ADMIN-EDITABLE PER-DAY SEQUENCE from \
+            catalog.generationRules (SCHEDULED; settings trigger; roster query; one named send \
+            node per day with literal text vars) — not a DELAY chain.
 
             Produce THREE things: a human-readable PLAN, a list of DECISIONS the admin must make, \
             and a SKELETON workflow. In the skeleton, LEAVE OUT every value that is a decision \

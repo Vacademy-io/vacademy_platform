@@ -465,7 +465,7 @@ export function UseCaseWizardStep({
     onBack: () => void;
     instituteId: string;
 }) {
-    const { workflowType, triggerConfig, setNodes, setEdges, setWorkflowName, setWorkflowDescription } = useWorkflowBuilderStore();
+    const { workflowType, triggerConfig, setNodes, setEdges, setWorkflowName, setWorkflowDescription, setEditingWorkflowId, setEditingWorkflowStatus } = useWorkflowBuilderStore();
 
     const templates = getTemplatesForTrigger(triggerConfig.eventName || undefined, workflowType);
 
@@ -542,6 +542,12 @@ export function UseCaseWizardStep({
                 n.data.isEndNode = true;
             }
         });
+
+        // A generated draft is a NEW workflow. If the builder was opened in edit
+        // mode, keeping editingWorkflowId would make Save PUT this draft over the
+        // existing workflow's nodes — clear it so Save creates instead.
+        setEditingWorkflowId(null);
+        setEditingWorkflowStatus(null);
 
         setNodes(result.nodes);
         setEdges(result.edges);

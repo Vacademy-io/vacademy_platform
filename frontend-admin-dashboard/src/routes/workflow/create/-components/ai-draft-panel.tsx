@@ -88,6 +88,8 @@ export function AiDraftPanel({
         setWorkflowType,
         setTriggerConfig,
         setScheduleConfig,
+        setEditingWorkflowId,
+        setEditingWorkflowStatus,
     } = useWorkflowBuilderStore();
 
     const decisions = plan?.decisions ?? [];
@@ -252,6 +254,11 @@ export function AiDraftPanel({
                 timezone: wf.schedule.timezone ?? 'Asia/Kolkata',
             });
         }
+        // An AI draft is a NEW workflow. If the builder was opened in edit mode,
+        // keeping editingWorkflowId would make Save PUT this draft over the
+        // existing workflow's nodes — clear it so Save creates instead.
+        setEditingWorkflowId(null);
+        setEditingWorkflowStatus(null);
         setNodes(rfNodes);
         setEdges(rfEdges);
         onComplete();

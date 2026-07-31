@@ -51,6 +51,14 @@ public class LearnerPackageService {
                         int pageSize) {
                 try {
 
+                // Postgres cannot infer a data type for a bare parameter, so a null list
+                // filter reaching a native query surfaces as
+                // "could not determine data type of parameter $N" instead of a result set.
+                // Null and empty mean the same thing to every one of these queries
+                // (each guards with `#param == null || #param.isEmpty()`), so normalise
+                // up front rather than at each of the six call sites below.
+                normaliseListFilters(learnerPackageFilterDTO);
+
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
                 Page<PackageDetailProjection> learnerPackageDetail;
@@ -188,6 +196,27 @@ public class LearnerPackageService {
                                         learnerPackageFilterDTO != null ? learnerPackageFilterDTO.getType() : null,
                                         userId, e);
                         throw e;
+                }
+        }
+
+        private void normaliseListFilters(LearnerPackageFilterDTO dto) {
+                if (dto == null) {
+                        return;
+                }
+                if (dto.getPackageTypes() == null) {
+                        dto.setPackageTypes(List.of());
+                }
+                if (dto.getLevelIds() == null) {
+                        dto.setLevelIds(List.of());
+                }
+                if (dto.getFacultyIds() == null) {
+                        dto.setFacultyIds(List.of());
+                }
+                if (dto.getTag() == null) {
+                        dto.setTag(List.of());
+                }
+                if (dto.getStatus() == null) {
+                        dto.setStatus(List.of());
                 }
         }
 

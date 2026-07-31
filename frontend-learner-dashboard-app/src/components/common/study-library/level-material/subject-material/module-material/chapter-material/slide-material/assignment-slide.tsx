@@ -524,9 +524,6 @@ const HtmlWithKatex = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const previewRef = useRef(onPreviewPdf);
-  // Real time the learner has had this slide open (mount → submit) so the
-  // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
-  const activityStartRef = useRef<number>(Date.now());
   useEffect(() => {
     previewRef.current = onPreviewPdf;
   }, [onPreviewPdf]);
@@ -791,6 +788,9 @@ const AssignmentSlide = ({
     Record<string, string>
   >({});
   const [pdfPreview, setPdfPreview] = useState<PreviewRequest | null>(null);
+  // Real time the learner has had this slide open (mount → submit) so the
+  // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+  const activityStartRef = useRef<number>(Date.now());
 
   // Live server-time-aware window status. Ticks every second so the submit
   // gate / banner flip in real time as the window opens or closes.

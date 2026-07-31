@@ -890,6 +890,11 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
         nodes: nodes.map((n, i) => {
             // Auto-detect end nodes: nodes with no outgoing edges
             const hasOutgoingEdge = edges.some((e) => e.source === n.id);
+            // Fall back to "first node is the start" only when nothing is marked —
+            // when editing a loaded workflow the real start node is already flagged,
+            // and forcing index 0 would corrupt workflows whose start isn't first in
+            // the array (dual-start execution or a wrong entry point on save).
+            const hasExplicitStart = nodes.some((m) => m.data.isStartNode === true);
             return {
                 id: n.id,
                 name: n.data.name,
@@ -897,7 +902,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 config: n.data.config ?? {},
                 position_x: n.position.x,
                 position_y: n.position.y,
-                is_start_node: n.data.isStartNode === true || i === 0,
+                is_start_node: n.data.isStartNode === true || (!hasExplicitStart && i === 0),
                 is_end_node: n.data.isEndNode ?? !hasOutgoingEdge,
             };
         }),

@@ -24,6 +24,15 @@ export interface CatalogueSettings {
 
 export interface CourseViewSettings {
     defaultViewMode: 'outline' | 'structure';
+    /**
+     * Show the author-entered description under a module / chapter title on the
+     * content cards — Course Details → Content Structure for admins, and the
+     * module / chapter cards in the learner app.
+     *
+     * Optional + treated as `true` when missing so institutes that saved course
+     * settings before this field existed keep showing descriptions.
+     */
+    showContentDescriptions?: boolean;
 }
 
 export interface OutlineSettings {
@@ -196,6 +205,7 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
     },
     courseViewSettings: {
         defaultViewMode: 'outline',
+        showContentDescriptions: true,
     },
     outlineSettings: {
         defaultState: 'expanded',

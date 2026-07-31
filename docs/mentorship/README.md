@@ -106,6 +106,23 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
 - **Phase 4** — hardening (booking questions via master custom-fields, slot conflicts
   vs live classes, double-book lock, Meet-space cleanup on cancel).
 
+## Post-merge enhancements
+The P1–P4 feature merged to `main` (PR #2377). Follow-ups:
+- **Add mentor from Teams + photo** (`feat/mentorship-add-mentor-ux`) — the dialog picks
+  from the institute's team members (`fetchEligibleOrgUsers`) and supports a profile-photo
+  upload, replacing the all-users search.
+- **Dashboard widgets** (`feat/mentorship-add-mentor-ux`) — learner `MyMentorsWidget`
+  (mentors + next upcoming session via `/meetings/by-lead?inviteeUserId=self`) and admin
+  `MentorshipStatsWidget` (mentors/mentees/today/upcoming); backend `today_sessions` +
+  `upcoming_sessions` counts on the dashboard endpoint. Both self-hide when empty.
+- **Per-mentor Google** (`feat/mentorship-per-mentor-google`, in progress) — each mentor
+  connects their OWN Google account (`mentor.google_account_id`); their bookings use that
+  account for Meet + Calendar (event on the mentor's own calendar), falling back to the
+  institute default. Google multi-account is already supported (`GoogleAccountStore`).
+
+## Manual test
+See [MANUAL_TEST.md](./MANUAL_TEST.md) for a step-by-step end-to-end test.
+
 ## Locked decisions (2026-07-28)
 Dedicated `MENTOR` role (not reuse TEACHER) · one-shot round-robin (no pool table) ·
 Google Calendar deferred to Phase 3 · start with Phase 0.

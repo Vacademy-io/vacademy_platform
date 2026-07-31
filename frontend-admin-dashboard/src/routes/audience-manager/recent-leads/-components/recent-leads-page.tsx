@@ -31,6 +31,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
+import { useCustomFieldSetup } from '../../list/-hooks/useCustomFieldSetup';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -186,6 +187,12 @@ const csvSafe = (val: unknown) => {
     }
     return str;
 };
+
+// Leads submitted through the simple form store the person's own identity under
+// these raw custom_field_values keys too; the export already carries them via
+// the Name / Email / Mobile base columns, so they're excluded from the
+// custom-field columns to avoid duplicate data.
+const IDENTITY_CF_KEYS = new Set(['full_name', 'email', 'phone']);
 
 /**
  * Single SLA-filter option content. Pulled out of the inline JSX so the
@@ -782,6 +789,9 @@ const RecentLeadsContent = () => {
     const [isExporting, setIsExporting] = useState(false);
     const [exportPickerOpen, setExportPickerOpen] = useState(false);
     const [selectedExportCols, setSelectedExportCols] = useState<Set<string>>(new Set());
+    // Institute custom-field catalog — names the custom-field export columns
+    // and seeds the picker options (same source the Lead List page uses).
+    const { data: customFieldSetup } = useCustomFieldSetup(instituteId);
 
     const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
         const cols: ExportColumnOption[] = [
@@ -792,6 +802,30 @@ const RecentLeadsContent = () => {
             { key: 'mobile', label: 'Mobile' },
             { key: 'audience', label: 'Audience' },
         ];
+        // Custom-field columns: the institute catalog gives the full pickable
+        // set (Recent Leads is cross-campaign, so no single form definition
+        // applies); rows on the current page can additionally surface fields
+        // that no longer exist in the setup but still hold values on old leads.
+        const seenIds = new Set<string>();
+        const seenNames = new Set<string>();
+        const pushCf = (id: string | undefined, name: string | undefined) => {
+            if (!id || !name || IDENTITY_CF_KEYS.has(id)) return;
+            if (seenIds.has(id) || seenNames.has(name)) return;
+            seenIds.add(id);
+            seenNames.add(name);
+            cols.push({ key: `cf__${id}`, label: name });
+        };
+        (customFieldSetup ?? [])
+            .filter((f) => !f.is_hidden)
+            .sort((a, b) => (a.form_order ?? 0) - (b.form_order ?? 0))
+            .forEach((f) => pushCf(f.custom_field_id, f.field_name));
+        (data?.content ?? []).forEach((lead) => {
+            const meta = lead.custom_field_metadata ?? {};
+            Object.keys(lead.custom_field_values ?? {}).forEach((id) => {
+                const m = meta[id] ?? {};
+                pushCf(id, m.fieldName ?? m.field_name ?? id);
+            });
+        });
         if (showOps) {
             cols.push(
                 { key: 'lead_status', label: 'Lead Status' },
@@ -802,7 +836,7 @@ const RecentLeadsContent = () => {
             );
         }
         return cols;
-    }, [showOps]);
+    }, [showOps, customFieldSetup, data]);
     const exportLeadsCsv = async (leads: RecentLeadDetail[], prefix: string) => {
         if (leads.length === 0) {
             toast.info('No leads to export');
@@ -830,6 +864,34 @@ const RecentLeadsContent = () => {
         if (selectedExportCols.has('email')) baseHeaders.push('Email');
         if (selectedExportCols.has('mobile')) baseHeaders.push('Mobile');
         if (selectedExportCols.has('audience')) baseHeaders.push('Audience');
+        // Custom-field columns. Fields the picker listed follow the user's
+        // selection; fields discovered only in the fetched data (not in the
+        // catalog / current page when the picker was built) are always
+        // included so no submitted answer silently drops out of the CSV.
+        const knownCfKeys = new Set(
+            exportColumnOptions.filter((c) => c.key.startsWith('cf__')).map((c) => c.key)
+        );
+        const discoveredFieldIds = new Set<string>();
+        const metaNameById = new Map<string, string>();
+        leads.forEach((lead) => {
+            const meta = lead.custom_field_metadata ?? {};
+            Object.keys(lead.custom_field_values ?? {}).forEach((id) => {
+                if (IDENTITY_CF_KEYS.has(id)) return;
+                discoveredFieldIds.add(id);
+                const m = meta[id] ?? {};
+                const name = m.fieldName ?? m.field_name;
+                if (name && !metaNameById.has(id)) metaNameById.set(id, name);
+            });
+        });
+        const setupNameById = new Map(
+            (customFieldSetup ?? []).map((f) => [f.custom_field_id, f.field_name])
+        );
+        const cfFieldIds = Array.from(discoveredFieldIds).filter((id) =>
+            knownCfKeys.has(`cf__${id}`) ? selectedExportCols.has(`cf__${id}`) : true
+        );
+        const cfHeaders = cfFieldIds.map((id) =>
+            csvSafe(setupNameById.get(id) || metaNameById.get(id) || id)
+        );
         const tail: string[] = [];
         if (showOps) {
             if (selectedExportCols.has('lead_status')) tail.push('Lead Status');
@@ -860,6 +922,9 @@ const RecentLeadsContent = () => {
             if (selectedExportCols.has('mobile'))
                 row.push(csvSafe(u.mobile_number || lead.parent_mobile || '-'));
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
+            cfFieldIds.forEach((fieldId) =>
+                row.push(csvSafe(lead.custom_field_values?.[fieldId]))
+            );
             if (showOps) {
                 const cName = userId
                     ? (prof as Record<string, { assigned_counselor_name?: string | null }>)[userId]
@@ -910,7 +975,7 @@ const RecentLeadsContent = () => {
             }
             return row.join(',');
         });
-        const csv = [[...baseHeaders, ...tail].join(','), ...rows].join('\n');
+        const csv = [[...baseHeaders, ...cfHeaders, ...tail].join(','), ...rows].join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');

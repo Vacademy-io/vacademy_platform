@@ -358,6 +358,21 @@ const CampaignUsersContent = ({
             seenNames.add(fieldName);
             cols.push({ key: `cf__${fieldId}`, label: fieldName });
         });
+        // Deep links / page refreshes lose the `customFields` route param the
+        // campaign card passes on navigation — without it the picker offered no
+        // custom-field columns at all. Fall back to the institute custom-field
+        // catalog so the columns are always pickable.
+        if (customFields.length === 0) {
+            (customFieldSetup ?? [])
+                .filter((f) => !f.is_hidden)
+                .sort((a, b) => (a.form_order ?? 0) - (b.form_order ?? 0))
+                .forEach((f) => {
+                    if (!f.custom_field_id || !f.field_name) return;
+                    if (seenNames.has(f.field_name)) return;
+                    seenNames.add(f.field_name);
+                    cols.push({ key: `cf__${f.custom_field_id}`, label: f.field_name });
+                });
+        }
         if (showOps) {
             cols.push(
                 { key: 'lead_status', label: 'Lead Status' },
@@ -368,7 +383,7 @@ const CampaignUsersContent = ({
             );
         }
         return cols;
-    }, [customFields, showOps]);
+    }, [customFields, customFieldSetup, showOps]);
 
     // ── Server query ─────────────────────────────────────────
     const leadsPayload = useMemo(() => {
@@ -831,6 +846,13 @@ const CampaignUsersContent = ({
             response.content.forEach((lead: any) => {
                 const customValues = lead.custom_field_values || {};
                 Object.keys(customValues).forEach((key) => allFieldIds.add(key));
+            });
+            // Picker options can also come from the institute catalog (the
+            // deep-link fallback in exportColumnOptions); a checked field must
+            // become a column even when neither the campaign JSON nor the row
+            // data mentioned it (it just exports empty).
+            selectedExportCols.forEach((key) => {
+                if (key.startsWith('cf__')) allFieldIds.add(key.slice('cf__'.length));
             });
             // For fields the picker knew about, respect the user's selection.
             // For fields discovered from the data only (not in picker), always include them.

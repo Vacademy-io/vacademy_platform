@@ -2543,6 +2543,19 @@ public class AudienceService {
                 ? String.join(",", filterDTO.getOverallStatuses())
                 : null;
 
+        // SECURITY: the campaign-users client sends only audienceId (no instituteId),
+        // and every RBAC block below gates on a non-blank instituteId — so the
+        // per-campaign list used to skip counsellor-hierarchy and sub-org scoping
+        // entirely (institute-wide visibility for scoped callers), while the
+        // institute_id-carrying Recent Leads request was scoped. Derive the institute
+        // from the audience up-front so scoping applies no matter what the client sends.
+        if ((filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())
+                && filterDTO.getAudienceId() != null && !filterDTO.getAudienceId().isBlank()) {
+            audienceRepository.findById(filterDTO.getAudienceId())
+                    .map(Audience::getInstituteId)
+                    .ifPresent(filterDTO::setInstituteId);
+        }
+
         // Caller-level access scoping driven by the institute's
         // AUDIENCE_ROLE_ACCESS setting. Admin / root resolve to DEFAULT;
         // pure counselors are auto-scoped; AUDIENCE_LIST roles are restricted

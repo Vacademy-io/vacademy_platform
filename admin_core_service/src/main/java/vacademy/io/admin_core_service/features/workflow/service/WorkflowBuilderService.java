@@ -248,21 +248,42 @@ public class WorkflowBuilderService {
         // Rebuild routing from the edges.
         applyEdgesAsRouting(dto, clientToDbNodeId);
 
-        // Rebuild schedule rows (scheduler reads live each tick; workflow_execution FK is SET NULL).
-        scheduleRepository.findByWorkflowId(workflowId).forEach(scheduleRepository::delete);
-        persistSchedule(workflowId, dto);
-
-        // Rebuild trigger rows, preserving webhook slug/secret keyed by eventId ("" = global).
-        Map<String, String[]> webhookByEventId = new HashMap<>();
-        List<WorkflowTrigger> oldTriggers = triggerRepository.findByWorkflowId(workflowId);
-        for (WorkflowTrigger t : oldTriggers) {
-            if (t.getWebhookUrlSlug() != null || t.getWebhookSecret() != null) {
-                webhookByEventId.put(t.getEventId() == null ? "" : t.getEventId(),
-                        new String[]{t.getWebhookUrlSlug(), t.getWebhookSecret()});
-            }
+        // Schedule handling. Previously this ALWAYS deleted every schedule row and recreated one
+        // from the DTO, which (a) wiped schedules when the DTO carried none (the edit page only
+        // loads the first ACTIVE row), (b) regenerated the id and unlinked execution history, and
+        // (c) reset next_run_at/last_run_at/status — a hand-tuned production schedule could be
+        // silently replaced by builder defaults. Now: no schedule in the DTO → leave rows alone;
+        // schedule present → update the existing row in place (recompute next_run_at only when
+        // the cron/timezone actually changed).
+        if (dto.getSchedule() != null) {
+            updateOrCreateSchedule(workflowId, dto);
         }
-        oldTriggers.forEach(triggerRepository::delete);
-        persistTriggers(workflowId, dto, webhookByEventId);
+
+        // Trigger rows: only EVENT_DRIVEN workflows own trigger rows through the builder. A
+        // SCHEDULED workflow save must not delete trigger rows it never displays.
+        if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType())) {
+            // Preserve webhook slug/secret keyed by eventId ("" = global).
+            Map<String, String[]> webhookByEventId = new HashMap<>();
+            List<WorkflowTrigger> oldTriggers = triggerRepository.findByWorkflowId(workflowId);
+            for (WorkflowTrigger t : oldTriggers) {
+                if (t.getWebhookUrlSlug() != null || t.getWebhookSecret() != null) {
+                    webhookByEventId.put(t.getEventId() == null ? "" : t.getEventId(),
+                            new String[]{t.getWebhookUrlSlug(), t.getWebhookSecret()});
+                }
+            }
+            // Preserve idempotency settings when the DTO doesn't carry its own (the edit page
+            // does not round-trip them; deleting-and-recreating used to reset CUSTOM_EXPRESSION
+            // dedup back to UUID).
+            if (dto.getTrigger() != null && dto.getTrigger().getIdempotencyGenerationSetting() == null) {
+                oldTriggers.stream()
+                        .map(WorkflowTrigger::getIdempotencyGenerationSetting)
+                        .filter(s -> s != null && !s.isBlank())
+                        .findFirst()
+                        .ifPresent(dto.getTrigger()::setIdempotencyGenerationSetting);
+            }
+            oldTriggers.forEach(triggerRepository::delete);
+            persistTriggers(workflowId, dto, webhookByEventId);
+        }
 
         // Build response with (possibly remapped) node ids.
         dto.setId(workflowId);
@@ -430,6 +451,37 @@ public class WorkflowBuilderService {
         route.put("targetNodeId", dbTarget);
         if (edge.getLabel() != null) route.put("label", edge.getLabel());
         routing.add(route);
+    }
+
+    /**
+     * Update-in-place variant used by {@code updateWorkflow}: keeps the existing schedule row's
+     * id, status, last_run_at and execution-history links; recomputes next_run_at ONLY when the
+     * cron expression or timezone actually changed. Surplus rows are left untouched (the edit
+     * page only ever displays the first one). Falls back to creating a row when none exists.
+     */
+    private void updateOrCreateSchedule(String workflowId, WorkflowBuilderDTO dto) {
+        if (!"SCHEDULED".equalsIgnoreCase(dto.getWorkflowType()) || dto.getSchedule() == null) return;
+        List<WorkflowSchedule> existing = scheduleRepository.findByWorkflowId(workflowId);
+        if (existing.isEmpty()) {
+            persistSchedule(workflowId, dto);
+            return;
+        }
+        WorkflowBuilderDTO.ScheduleDTO sch = dto.getSchedule();
+        WorkflowSchedule schedule = existing.get(0);
+        boolean cronChanged = !java.util.Objects.equals(schedule.getCronExpression(), sch.getCronExpression())
+                || (sch.getTimezone() != null && !java.util.Objects.equals(schedule.getTimezone(), sch.getTimezone()));
+        schedule.setScheduleType(sch.getScheduleType());
+        schedule.setCronExpression(sch.getCronExpression());
+        schedule.setIntervalMinutes(sch.getIntervalMinutes());
+        if (sch.getTimezone() != null) schedule.setTimezone(sch.getTimezone());
+        if (sch.getStartDate() != null) schedule.setStartDate(Instant.parse(sch.getStartDate()));
+        if (sch.getEndDate() != null) schedule.setEndDate(Instant.parse(sch.getEndDate()));
+        schedule.setUpdatedAt(Instant.now());
+        if (cronChanged && schedule.getCronExpression() != null && !schedule.getCronExpression().isBlank()) {
+            schedule.setNextRunAt(workflowScheduleService.calculateNextRunTime(
+                    schedule.getCronExpression(), schedule.getTimezone()));
+        }
+        scheduleRepository.save(schedule);
     }
 
     /** Create the workflow's schedule row from the DTO (SCHEDULED workflows only). */
@@ -678,6 +730,8 @@ public class WorkflowBuilderService {
                     .eventId(allEventIds.isEmpty() ? null : allEventIds.get(0))
                     .eventIds(allEventIds.isEmpty() ? null : allEventIds)
                     .eventAppliedType(firstTrigger.getEventAppliedType())
+                    // Round-trip dedup settings so an edit-page save can't reset them to UUID.
+                    .idempotencyGenerationSetting(firstTrigger.getIdempotencyGenerationSetting())
                     .build();
         }
 

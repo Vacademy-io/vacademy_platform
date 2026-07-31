@@ -2,7 +2,8 @@
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Form, FormControl, FormField, FormItem } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import { CONTENT_DESCRIPTION_MAX_LENGTH } from '@/constants/study-library/content-description';
 import { MyInput } from '@/components/design-system/input';
 import { MyButton } from '@/components/design-system/button';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
@@ -18,7 +19,13 @@ import { useInstitute } from '@/hooks/auth/useInstitute';
 
 const formSchema = z.object({
     moduleName: z.string().min(1, 'Module name is required'),
-    description: z.string().optional(),
+    description: z
+        .string()
+        .max(
+            CONTENT_DESCRIPTION_MAX_LENGTH,
+            `Description must be ${CONTENT_DESCRIPTION_MAX_LENGTH} characters or fewer`
+        )
+        .optional(),
     thumbnailFile: z.any().optional(),
 });
 
@@ -141,7 +148,7 @@ export const AddModulesForm = ({ initialValues, onSubmitSuccess }: AddModulesFor
         const newModule = {
             id: initialValues?.id || '',
             module_name: data.moduleName,
-            description: data.description || '',
+            description: data.description?.trim() || '',
             status: initialValues?.status || '',
             thumbnail_id: thumbnailId,
         };
@@ -193,8 +200,19 @@ export const AddModulesForm = ({ initialValues, onSubmitSuccess }: AddModulesFor
                                     className="w-[352px]"
                                     input={field.value || ''}
                                     onChangeFunction={(e) => field.onChange(e.target.value)}
+                                    maxLength={CONTENT_DESCRIPTION_MAX_LENGTH}
                                 />
                             </FormControl>
+                            <p className="text-caption text-neutral-400">
+                                Shown on the{' '}
+                                {getTerminology(
+                                    ContentTerms.Modules,
+                                    SystemTerms.Modules
+                                ).toLowerCase()}{' '}
+                                card — {(field.value || '').length}/
+                                {CONTENT_DESCRIPTION_MAX_LENGTH} characters
+                            </p>
+                            <FormMessage />
                         </FormItem>
                     )}
                 />

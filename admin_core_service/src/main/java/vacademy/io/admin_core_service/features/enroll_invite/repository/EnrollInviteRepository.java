@@ -196,6 +196,26 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("instituteId") String instituteId,
             @Param("statuses") List<String> statuses);
 
+    /**
+     * Every invite a sub-org owns, across the given tags. Unlike
+     * {@link #findBySubOrgIdAndInstituteId} this is not pinned to tag='SUB_ORG', so the
+     * re-sync backfill can reach SUBORG_LEARNER mirrors too when re-applying the
+     * institute's current Naming Settings terminology to already-created invite names.
+     */
+    @Query(value = """
+        SELECT ei.* FROM enroll_invite ei
+        WHERE ei.sub_org_id = :subOrgId
+        AND ei.institute_id = :instituteId
+        AND ei.tag IN (:tags)
+        AND ei.status IN (:statuses)
+        ORDER BY ei.created_at DESC
+    """, nativeQuery = true)
+    List<EnrollInvite> findBySubOrgIdAndInstituteIdAndTags(
+            @Param("subOrgId") String subOrgId,
+            @Param("instituteId") String instituteId,
+            @Param("tags") List<String> tags,
+            @Param("statuses") List<String> statuses);
+
     @Query(value = """
         SELECT ei.* FROM enroll_invite ei
         JOIN package_session_learner_invitation_to_payment_option pslipo

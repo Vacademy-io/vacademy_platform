@@ -8,6 +8,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
@@ -75,25 +76,100 @@ public class AdminCoreServiceClient {
         return null;
     }
 
-    @Cacheable(value = "reportBranding", key = "#instituteId", unless = "#result.primaryColor == null")
+    /**
+     * Report branding for an institute, read from {@code ASSESSMENT_SETTING.reportBranding}.
+     * <p>
+     * Two things matter here beyond the plain fetch:
+     * <ul>
+     *   <li><b>Institute fallback.</b> Most admins set their logo and theme colour on the
+     *       institute itself and never open Settings → Assessment → Report Branding, so
+     *       {@code reportBranding} is absent (or still carries the untouched default colour).
+     *       Falling back to the institute's own logo/theme means reports look branded without
+     *       the admin having to configure branding twice.</li>
+     *   <li><b>Never cache a failed lookup.</b> This used to return a fully-populated default
+     *       DTO on any error, which {@code unless = "#result.primaryColor == null"} then happily
+     *       cached — one blip pinned every report to the default palette for the whole TTL.
+     *       We now return {@code null} on failure and let callers apply defaults; nulls are not
+     *       cached.</li>
+     * </ul>
+     * Callers must treat {@code null} as "unbranded" (all of them already do).
+     */
+    @Cacheable(value = "reportBranding", key = "#instituteId", unless = "#result == null")
     public ReportBrandingDto getReportBranding(String instituteId) {
+        ReportBrandingDto branding = null;
         try {
             String route = "/admin-core-service/internal/institute/v1/" + instituteId
                     + "/setting?settingKey=ASSESSMENT_SETTING";
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                     clientName, "GET", adminCoreServiceBaseUrl, route, null);
 
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null
+                    && !response.getBody().isBlank() && !"null".equals(response.getBody().trim())) {
                 Map<String, Object> settingData = objectMapper.readValue(response.getBody(), Map.class);
                 Object brandingObj = settingData.get("reportBranding");
                 if (brandingObj != null) {
-                    return objectMapper.convertValue(brandingObj, ReportBrandingDto.class);
+                    branding = objectMapper.convertValue(brandingObj, ReportBrandingDto.class);
                 }
             }
         } catch (Exception e) {
             log.warn("Failed to fetch report branding for institute {}: {}", instituteId, e.getMessage());
+            return null;
         }
-        return ReportBrandingDto.builder().build();
+
+        try {
+            return applyInstituteFallback(branding, instituteId);
+        } catch (Exception e) {
+            log.warn("Failed to apply institute branding fallback for institute {}: {}", instituteId, e.getMessage());
+            return branding;
+        }
+    }
+
+    /** Default primary colour baked into {@link ReportBrandingDto} — treated as "not configured". */
+    private static final String DEFAULT_PRIMARY_COLOR = "#FF6B35";
+
+    /**
+     * Fills the logo and primary colour from the institute profile when report branding
+     * leaves them unset. Anything the admin explicitly configured always wins.
+     */
+    private ReportBrandingDto applyInstituteFallback(ReportBrandingDto branding, String instituteId) {
+        boolean logoMissing = branding == null || !StringUtils.hasText(branding.getLogoFileId());
+        boolean colorMissing = branding == null || !StringUtils.hasText(branding.getPrimaryColor())
+                || DEFAULT_PRIMARY_COLOR.equalsIgnoreCase(branding.getPrimaryColor());
+        if (!logoMissing && !colorMissing) return branding;
+
+        Map<String, Object> institute = getInstituteInfo(instituteId);
+        if (institute == null || institute.isEmpty()) return branding;
+
+        String themeCode = firstNonBlank(institute, "institute_theme_code", "instituteThemeCode");
+        String logoFileId = firstNonBlank(institute, "institute_logo_file_id", "instituteLogoFileId");
+
+        ReportBrandingDto result = branding != null ? branding : ReportBrandingDto.builder().build();
+        if (logoMissing && StringUtils.hasText(logoFileId)) result.setLogoFileId(logoFileId);
+        if (colorMissing && StringUtils.hasText(themeCode)) result.setPrimaryColor(themeCode);
+        return result;
+    }
+
+    /** Institute profile as a raw map (naming strategy differs per environment, so read both forms). */
+    private Map<String, Object> getInstituteInfo(String instituteId) {
+        try {
+            String route = "/admin-core-service/internal/institute/v1/" + instituteId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return objectMapper.readValue(response.getBody(), Map.class);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch institute {} for branding fallback: {}", instituteId, e.getMessage());
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value != null && StringUtils.hasText(value.toString())) return value.toString();
+        }
+        return null;
     }
 
     private static final String STUDENT = "STUDENT";

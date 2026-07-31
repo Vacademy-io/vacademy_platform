@@ -305,23 +305,13 @@ public class LearnerReportService {
                                                         String attemptId, String instituteId) {
         AssessmentUserRegistration registration = validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
 
-        // Check if a pre-generated PDF exists
-        Optional<StudentAttempt> attemptOpt = studentAttemptRepository.findById(attemptId);
-        if (attemptOpt.isPresent() && attemptOpt.get().getReportPdfFileId() != null) {
-            try {
-                byte[] cachedPdf = fileService.getFileFromFileId(attemptOpt.get().getReportPdfFileId());
-                if (cachedPdf != null && cachedPdf.length > 0) {
-                    return ResponseEntity.ok()
-                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
-                            .contentType(MediaType.APPLICATION_PDF)
-                            .body(cachedPdf);
-                }
-            } catch (Exception e) {
-                // Cached file unavailable, fall through to generate on-the-fly
-            }
-        }
-
-        // Generate on-the-fly if no cached PDF
+        // Always render fresh. There IS a pre-generated PDF on the attempt
+        // (report_pdf_file_id, produced at result-release time for the email
+        // attachment), but it is frozen with whatever report branding existed
+        // back then — serving it meant an institute could change its logo/theme
+        // and every already-released assessment kept the old (usually default)
+        // look forever. The generation below is the same builder, so the only
+        // cost of re-rendering is CPU on an explicit user download.
         StudentReportOverallDetailDto reportDetail = assessmentParticipantsManager
                 .createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
 
@@ -335,7 +325,7 @@ public class LearnerReportService {
             optionDist = self.computeOptionDistribution(assessmentId);
         } catch (Exception ignored) {}
 
-        // Fetch report branding
+        // Fetch report branding (null => the builder falls back to defaults)
         ReportBrandingDto branding = null;
         try {
             branding = adminCoreServiceClient.getReportBranding(instituteId);
@@ -569,7 +559,9 @@ public class LearnerReportService {
             // Get branding
             ReportBrandingDto branding = ReportBrandingDto.builder().build();
             try {
-                branding = adminCoreServiceClient.getReportBranding(instituteId);
+                // null means "couldn't read branding" — keep the defaults rather than NPE downstream.
+                ReportBrandingDto fetched = adminCoreServiceClient.getReportBranding(instituteId);
+                if (fetched != null) branding = fetched;
             } catch (Exception e) {
                 log.warn("Failed to fetch branding for AI report PDF: {}", e.getMessage());
             }

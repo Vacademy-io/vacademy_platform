@@ -15,6 +15,7 @@ import {
     useLinkSessionContent,
     useSessionContentLinks,
     summarizeContentLinkOutcomes,
+    extractContentLinkErrorMessage,
 } from '../../-services/content-link-service';
 import {
     SessionContentDestinationPicker,
@@ -92,8 +93,7 @@ export function AddRecordingToCourseCard({
             setOpen(false);
             void syncedFirst; // informational only — no separate toast needed
         } catch (err) {
-            const message =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+            const message = extractContentLinkErrorMessage(err);
             if (message?.toLowerCase().includes('save recording to library')) {
                 toast.error('Save the recording to the library first, then try again.');
             } else {

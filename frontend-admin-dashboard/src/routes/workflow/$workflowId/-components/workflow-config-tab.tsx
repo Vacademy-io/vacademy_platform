@@ -19,6 +19,8 @@ import {
     Warning,
     BracketsCurly,
     Info,
+    Plus,
+    Trash,
 } from '@phosphor-icons/react';
 
 /** Pretty-print a JSON string; returns the original text if it can't be parsed. */
@@ -48,6 +50,256 @@ function jsonObjectError(text: string, { allowEmpty }: { allowEmpty: boolean }):
 }
 
 const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'DRAFT'];
+
+type OutputDataPoint = {
+    fieldName?: string;
+    value?: string;
+    compute?: string;
+    [key: string]: unknown;
+};
+
+/**
+ * Friendly editor for a node's `outputDataPoints` (the workflow's "settings" —
+ * template text, links, audience lists). Reads and writes the SAME config text
+ * the raw JSON editor below shows, so both stay in sync and the normal
+ * validate/save flow applies. Rows with `value` are plain text; rows with
+ * `compute` are SpEL expressions (marked, still editable).
+ */
+function OutputDataPointsEditor({
+    configText,
+    onChange,
+}: {
+    configText: string;
+    onChange: (next: string) => void;
+}) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        const p: unknown = JSON.parse(configText);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+            parsed = p as Record<string, unknown>;
+        }
+    } catch {
+        // Invalid JSON — the raw editor is already showing the error; hide this panel.
+    }
+    const points = parsed && Array.isArray(parsed.outputDataPoints)
+        ? (parsed.outputDataPoints as OutputDataPoint[])
+        : null;
+    if (!parsed || !points) return null;
+
+    const write = (next: OutputDataPoint[]) =>
+        onChange(JSON.stringify({ ...parsed, outputDataPoints: next }, null, 2));
+    const updateRow = (index: number, patch: Partial<OutputDataPoint>) =>
+        write(points.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    const removeRow = (index: number) => write(points.filter((_, i) => i !== index));
+    const toggleMode = (index: number) => {
+        const row = points[index];
+        if (!row) return;
+        const { value, compute, ...rest } = row;
+        write(
+            points.map((p, i) =>
+                i === index
+                    ? compute !== undefined
+                        ? { ...rest, value: compute }
+                        : { ...rest, compute: value ?? '' }
+                    : p
+            )
+        );
+    };
+
+    const renderRow = (point: OutputDataPoint, index: number) => {
+        const isCompute = point.compute !== undefined;
+        const text = isCompute ? (point.compute ?? '') : (point.value ?? '');
+        return (
+            <div key={index} className="flex items-start gap-2">
+                <Input
+                    value={point.fieldName ?? ''}
+                    onChange={(e) => updateRow(index, { fieldName: e.target.value })}
+                    placeholder="fieldName"
+                    spellCheck={false}
+                    className="h-8 w-44 shrink-0 font-mono text-xs"
+                />
+                <Textarea
+                    value={text}
+                    onChange={(e) =>
+                        updateRow(
+                            index,
+                            isCompute ? { compute: e.target.value } : { value: e.target.value }
+                        )
+                    }
+                    spellCheck={false}
+                    rows={Math.min(6, Math.max(1, Math.ceil(text.length / 80)))}
+                    className="min-h-8 flex-1 font-mono text-xs"
+                />
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-caption"
+                    onClick={() => toggleMode(index)}
+                    title={
+                        isCompute
+                            ? 'SpEL expression — click to treat as plain text'
+                            : 'Plain text — click to treat as SpEL expression'
+                    }
+                >
+                    {isCompute ? 'SpEL' : 'Text'}
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-neutral-400 hover:text-red-600"
+                    onClick={() => removeRow(index)}
+                    title="Remove setting"
+                >
+                    <Trash size={14} />
+                </Button>
+            </div>
+        );
+    };
+
+    // Editable text rows front and center; formula (SpEL) rows folded away so
+    // non-technical admins only see what's safe to change.
+    const textEntries = points
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => p.compute === undefined);
+    const formulaEntries = points
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => p.compute !== undefined);
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+                <Label className="text-xs text-neutral-600">
+                    Workflow settings
+                    <span className="ml-1.5 text-caption text-neutral-400">
+                        template text, links &amp; audience values
+                    </span>
+                </Label>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-neutral-500"
+                    onClick={() => write([...points, { fieldName: '', value: '' }])}
+                >
+                    <Plus size={12} /> Add setting
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {textEntries.length === 0 && (
+                    <p className="text-caption text-neutral-400">
+                        No editable text settings on this node.
+                    </p>
+                )}
+                {textEntries.map(({ p, i }) => renderRow(p, i))}
+            </div>
+            {formulaEntries.length > 0 && (
+                <details className="mt-2">
+                    <summary className="cursor-pointer text-caption text-neutral-400">
+                        Advanced formulas ({formulaEntries.length}) — edit only if you know SpEL
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                        {formulaEntries.map(({ p, i }) => renderRow(p, i))}
+                    </div>
+                </details>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Friendly editor for a send node's message: template name + per-variable rows
+ * ({{1}}, {{2}}, ...). Plain-text variables (a day's message line) are editable
+ * up front; values starting with '#' are SpEL formulas and live in the advanced
+ * fold. Writes into the same config text as the raw JSON editor.
+ */
+function TemplateVarsEditor({
+    configText,
+    onChange,
+}: {
+    configText: string;
+    onChange: (next: string) => void;
+}) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        const p: unknown = JSON.parse(configText);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+            parsed = p as Record<string, unknown>;
+        }
+    } catch {
+        // Invalid JSON — the raw editor is already showing the error; hide this panel.
+    }
+    const vars =
+        parsed &&
+        parsed.templateVars &&
+        typeof parsed.templateVars === 'object' &&
+        !Array.isArray(parsed.templateVars)
+            ? (parsed.templateVars as Record<string, string>)
+            : null;
+    if (!parsed || !vars) return null;
+
+    const cfg = parsed;
+    const writeVar = (key: string, value: string) =>
+        onChange(
+            JSON.stringify({ ...cfg, templateVars: { ...vars, [key]: value } }, null, 2)
+        );
+    const writeField = (field: string, value: string) =>
+        onChange(JSON.stringify({ ...cfg, [field]: value }, null, 2));
+
+    const entries = Object.entries(vars).sort(([a], [b]) =>
+        a.localeCompare(b, undefined, { numeric: true })
+    );
+    const textVars = entries.filter(([, v]) => !String(v ?? '').trim().startsWith('#'));
+    const formulaVars = entries.filter(([, v]) => String(v ?? '').trim().startsWith('#'));
+
+    const renderVar = ([key, value]: [string, string]) => (
+        <div key={key} className="flex items-start gap-2">
+            <span className="mt-1.5 w-12 shrink-0 text-right font-mono text-xs text-neutral-500">
+                {'{{'}
+                {key}
+                {'}}'}
+            </span>
+            <Textarea
+                value={value ?? ''}
+                onChange={(e) => writeVar(key, e.target.value)}
+                spellCheck={false}
+                rows={Math.min(6, Math.max(1, Math.ceil(String(value ?? '').length / 80)))}
+                className="min-h-8 flex-1 text-xs"
+            />
+        </div>
+    );
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <Label className="mb-2 block text-xs text-neutral-600">
+                Message content
+                <span className="ml-1.5 text-caption text-neutral-400">
+                    what this node sends — edit the text freely
+                </span>
+            </Label>
+            {typeof cfg.templateName === 'string' && (
+                <div className="mb-2 flex items-center gap-2">
+                    <span className="w-12 shrink-0 text-right text-caption text-neutral-500">
+                        Template
+                    </span>
+                    <Input
+                        value={cfg.templateName}
+                        onChange={(e) => writeField('templateName', e.target.value)}
+                        spellCheck={false}
+                        className="h-8 flex-1 font-mono text-xs"
+                    />
+                </div>
+            )}
+            <div className="space-y-2">{textVars.map(renderVar)}</div>
+            {formulaVars.length > 0 && (
+                <details className="mt-2">
+                    <summary className="cursor-pointer text-caption text-neutral-400">
+                        Auto-filled variables ({formulaVars.length}) — name, links, dates
+                    </summary>
+                    <div className="mt-2 space-y-2">{formulaVars.map(renderVar)}</div>
+                </details>
+            )}
+        </div>
+    );
+}
 
 function NodeConfigEditorCard({
     workflowId,
@@ -229,6 +481,10 @@ function NodeConfigEditorCard({
                         <span className="text-xs text-neutral-600">End node</span>
                     </label>
                 </div>
+
+                {/* Friendly settings editors — each shows only when the config has its section */}
+                <OutputDataPointsEditor configText={configText} onChange={setConfigText} />
+                <TemplateVarsEditor configText={configText} onChange={setConfigText} />
 
                 {/* config_json editor */}
                 <div>

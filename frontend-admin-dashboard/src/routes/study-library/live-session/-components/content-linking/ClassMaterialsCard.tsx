@@ -25,6 +25,7 @@ import {
     useLinkSessionContent,
     useSessionContentLinks,
     summarizeContentLinkOutcomes,
+    extractContentLinkErrorMessage,
     type ContentLinkSourceKind,
 } from '../../-services/content-link-service';
 import {
@@ -134,8 +135,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
             toast.success(summarizeContentLinkOutcomes(outcomes));
             openPanel(null);
         } catch (err) {
-            const message =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+            const message = extractContentLinkErrorMessage(err);
             toast.error(message || (err instanceof Error ? err.message : 'Could not add this material.'));
         } finally {
             setIsUploading(false);

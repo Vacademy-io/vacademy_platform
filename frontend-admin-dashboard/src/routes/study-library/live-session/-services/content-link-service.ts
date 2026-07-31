@@ -107,6 +107,27 @@ export const unlinkSessionContent = async (linkId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(LIVE_SESSION_CONTENT_UNLINK(linkId));
 };
 
+/**
+ * Pulls the readable reason out of a failed link/unlink call.
+ *
+ * admin-core-service serialises errors as `ErrorInfo { url, ex, responseCode, date }` —
+ * there is no `message` field, so reading `data.message` always yields undefined and
+ * the caller falls back to axios's opaque "Request failed with status code 511".
+ * Deliberate server-side messages (e.g. "Save recording to library first") live in `ex`.
+ *
+ * `responseCode` is deliberately NOT used as a fallback: it holds a status string
+ * ("510 NOT_EXTENDED") for VacademyException and `String.valueOf(ex.getMessage())` —
+ * i.e. the literal text "null" for a message-less RuntimeException — so falling back
+ * to it surfaces garbage instead of letting the caller show its own copy.
+ */
+export const extractContentLinkErrorMessage = (err: unknown): string | undefined => {
+    const data = (err as { response?: { data?: { ex?: string; message?: string } } })?.response
+        ?.data;
+    const candidate = data?.ex || data?.message;
+    if (!candidate || candidate === 'null' || candidate === 'undefined') return undefined;
+    return candidate;
+};
+
 /** Human summary of a link response, e.g. "Added to 2 chapters, 1 already linked". */
 export const summarizeContentLinkOutcomes = (outcomes: ContentLinkOutcome[]): string => {
     const created = outcomes.filter((o) => o.outcome === 'CREATED').length;

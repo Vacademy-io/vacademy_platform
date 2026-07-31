@@ -5,7 +5,10 @@ export interface PaymentLog {
     user_id: string;
     vendor: string;
     vendor_id: string;
+    /** DATE column — no time component (serialized as UTC midnight). Use `created_at` for time. */
     date: string;
+    /** Real payment timestamp (UTC, with offset). Absent on very old API builds. */
+    created_at?: string | null;
     currency: string;
     payment_amount: number;
     payment_specific_data: string | null;

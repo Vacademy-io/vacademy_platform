@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { SignOut, UserSwitch } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -14,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useParentPortalSwitch } from "@/hooks/use-parent-portal-switch";
 import { getPublicUrl } from "@/services/upload_file";
+import { isOnboardingEnabled } from "@/services/onboarding-settings";
 import { cn, isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Student } from "@/types/user/user-detail";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -49,6 +51,16 @@ export const UserMenu = ({ className }: { className?: string }) => {
     undefined,
   );
   const [filteredItems, setFilteredItems] = useState(HamBurgerSidebarItemsData);
+
+  // Institute-wide feature toggle (ONBOARDING_SETTING, same one the admin
+  // dashboard's sidebar entry gates on) — the menu item exists for every
+  // institute, so it must be hidden unless the institute has actually turned
+  // the feature on.
+  const { data: onboardingEnabled } = useQuery({
+    queryKey: ["onboarding-setting-enabled"],
+    queryFn: () => isOnboardingEnabled(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Permission-filtered account items — same source of truth as the
   // hamburger sheet so visibility rules stay in one place.
@@ -126,7 +138,10 @@ export const UserMenu = ({ className }: { className?: string }) => {
   // Account navigation items, minus the destructive ones which get their
   // own grouping below the separator.
   const navItems = filteredItems.filter(
-    (item) => item.to !== "/logout" && item.to !== "/delete-user",
+    (item) =>
+      item.to !== "/logout" &&
+      item.to !== "/delete-user" &&
+      (item.id !== "onboarding" || onboardingEnabled === true),
   );
   const deleteAccountItem = filteredItems.find(
     (item) => item.to === "/delete-user",

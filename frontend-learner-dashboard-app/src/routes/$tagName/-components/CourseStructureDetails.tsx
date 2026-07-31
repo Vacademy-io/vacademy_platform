@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getAuthoredChapterDescription } from "@/constants/chapter-description";
 
 interface SubjectType {
   id: string;
@@ -533,7 +534,35 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     );
   };
 
-  const renderSlides = (chapterId: string) => {
+  const findChapterById = (chapterId: string): Chapter | undefined => {
+    for (const modules of Object.values(subjectModulesMap)) {
+      for (const moduleWithChapters of modules) {
+        const match = (moduleWithChapters.chapters || []).find(
+          (chapter) => chapter.id === chapterId
+        );
+        if (match) return match;
+      }
+    }
+    return undefined;
+  };
+
+  // Author-entered chapter description, shown above the chapter's slides.
+  // Mirrors how the module description is rendered one level up.
+  const renderChapterDescription = (chapterId: string) => {
+    const description = getAuthoredChapterDescription(
+      findChapterById(chapterId)?.description
+    );
+
+    if (!description) return null;
+
+    return (
+      <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2 break-words">
+        {description}
+      </div>
+    );
+  };
+
+  const renderSlideList = (chapterId: string) => {
     const slides = slidesMap[chapterId] || [];
 
     // If slides haven't been fetched yet, show loading state
@@ -577,6 +606,15 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       </div>
     );
   };
+
+  // Wraps the slide list so every chapter row shows its description first —
+  // all six chapter render paths go through here.
+  const renderSlides = (chapterId: string) => (
+    <>
+      {renderChapterDescription(chapterId)}
+      {renderSlideList(chapterId)}
+    </>
+  );
 
   const renderModules = (subjectId: string) => {
     const modules = subjectModulesMap[subjectId] || [];

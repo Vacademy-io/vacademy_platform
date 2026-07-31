@@ -32,6 +32,11 @@ for the mentor and student so you can see calendar invites.
 
 ## B. Mentor's view
 9. Log in as the **mentor** → **Mentorship → My Mentorship** → see the assigned student(s).
+9a. **(Per-mentor Google, optional)** In the **Connect Google** card, click **Connect** →
+    authorize **your own** Google account. You return to Settings with a success toast; back
+    on My Mentorship the card shows **Connected · <email>**. From now on this mentor's
+    bookings create the Meet + calendar event on **their own** Google calendar. Skip this to
+    use the institute's default Google account (Part D still works either way).
 10. **Details** on a student → add a **Note**; **Scheduled calls** is empty until they book;
     **Message** opens the DM.
 

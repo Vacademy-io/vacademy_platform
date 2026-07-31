@@ -26,6 +26,14 @@ public class NotificationService {
     @Value("${NOTIFICATION_SERVER_BASE_URL}")
     private String notificationServerBaseUrl;
 
+    /**
+     * notification-service rejects a send with no instituteId — it attributes every batch to one.
+     * Team-facing alerts (onboarding leads, saved quotes) belong to no customer, so they are
+     * attributed to a platform institute instead of an empty string.
+     */
+    @Value("${PLATFORM_INSTITUTE_ID:c8a5d265-858b-4a8e-9449-25be857db538}")
+    private String platformInstituteId;
+
     public void sendEmail(EmailRequestDto emailRequest) {
         try {
             // Build unified send request
@@ -48,7 +56,10 @@ public class NotificationService {
             options.put("sourceId", emailRequest.getSourceId());
 
             Map<String, Object> request = new HashMap<>();
-            request.put("instituteId", "");
+            request.put("instituteId",
+                    emailRequest.getInstituteId() != null && !emailRequest.getInstituteId().isBlank()
+                            ? emailRequest.getInstituteId()
+                            : platformInstituteId);
             request.put("channel", "EMAIL");
             request.put("recipients", recipients);
             request.put("options", options);

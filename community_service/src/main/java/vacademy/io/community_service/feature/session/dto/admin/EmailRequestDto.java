@@ -13,6 +13,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EmailRequestDto {
+
+    /** Optional: attributes the send to a customer institute. Team alerts leave it null. */
+    private String instituteId;
+
     private String body;
     @JsonProperty("notification_type")
     private String notificationType;

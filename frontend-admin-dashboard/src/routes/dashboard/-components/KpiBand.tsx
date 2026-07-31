@@ -12,7 +12,11 @@ import {
     VideoCamera,
     type Icon,
 } from '@phosphor-icons/react';
-import { getDashboardKpisQuery, type DashboardKpi } from '../-services/dashboard-kpis-service';
+import {
+    getDashboardKpisQuery,
+    type DashboardKpi,
+    type KpiBreakdownTone,
+} from '../-services/dashboard-kpis-service';
 
 interface KpiBandProps {
     instituteId: string;
@@ -72,6 +76,15 @@ const DEFAULT_VISUAL: KpiVisual = {
     iconBg: 'bg-neutral-100',
     iconColor: 'text-neutral-600',
     cardBg: 'bg-white',
+};
+
+// Breakdown chips sit under the headline value, so they must read as secondary:
+// tinted surface, no border, same tabular-nums as the main figure.
+const BREAKDOWN_TONE: Record<KpiBreakdownTone, string> = {
+    neutral: 'bg-neutral-100 text-neutral-600',
+    success: 'bg-success-50 text-success-600',
+    warning: 'bg-warning-50 text-warning-700',
+    danger: 'bg-danger-50 text-danger-600',
 };
 
 const formatValue = (k: DashboardKpi): string => {
@@ -160,7 +173,7 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                                    <div className="text-2xs font-medium uppercase tracking-wide text-neutral-500">
                                         {k.label}
                                     </div>
                                 </div>
@@ -171,13 +184,27 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
                                 </span>
                             </div>
                             <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                <span className="text-2xl font-semibold tabular-nums text-neutral-900 sm:text-[26px]">
+                                <span className="text-2xl font-semibold tabular-nums text-neutral-900">
                                     {formatValue(k)}
                                 </span>
                             </div>
+                            {!!k.breakdown?.length && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                    {k.breakdown.map((b) => (
+                                        <span
+                                            key={b.label}
+                                            className={`rounded-sm px-1.5 py-0.5 text-2xs font-medium tabular-nums ${
+                                                BREAKDOWN_TONE[b.tone]
+                                            }`}
+                                        >
+                                            {b.value.toLocaleString('en-IN')} {b.label.toLowerCase()}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                             {k.subtitle && (
                                 <div className="mt-1 flex items-center justify-between gap-2">
-                                    <span className="line-clamp-1 text-[11px] text-neutral-500">
+                                    <span className="line-clamp-1 text-2xs text-neutral-500">
                                         {k.subtitle}
                                     </span>
                                     {clickable && (

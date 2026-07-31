@@ -34,16 +34,14 @@ public class WorkflowAiCatalogController {
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAiCatalog() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("version", "2026-07-23");
+        out.put("version", "2026-07-31");
         out.put("workflowJsonShape", workflowJsonShape());
         out.put("generationRules", generationRules());
         out.put("nodeTypes", nodeTypes());
         out.put("readQueries", readQueries());
-        out.put("mutatingQueryKeys", List.of(
-                "createLiveSession", "createSessionSchedule", "createSessionParticipent",
-                "upsertUserCustomField", "updateSSIGMRemaingDaysByOne"));
+        out.put("mutatingQueryKeys", new ArrayList<>(
+                vacademy.io.admin_core_service.features.workflow.engine.MutatingQueryKeys.KEYS));
         out.put("unsafeInDryRun", List.of(
-                "QUERY (any mutating prebuiltKey — QueryNodeHandler has no dryRun gate)",
                 "SET_LEAD_STATUS (mutates lead status even in Test Run)",
                 "COMBOT (sends real WhatsApp even in Test Run)"));
         out.put("avoidNodeTypes", m(
@@ -96,21 +94,28 @@ public class WorkflowAiCatalogController {
             "Recipient and templateVars field names must exist in the source query's output item fields. Casing differs per query (snake_case vs camelCase) — copy from readQueries[].itemFields.",
             "Trigger scoping is by event_id only; event_applied_type is metadata and does NOT scope. Set event_id to a real institute-owned entity, or null for 'all'.",
             "Idempotency: set trigger.idempotency_generation_setting. Per-person flows (enrollment/lead drips) need CUSTOM_EXPRESSION including the person, e.g. {\"strategy\":\"CUSTOM_EXPRESSION\",\"customExpression\":\"'wf_' + #ctx['triggerId'] + '_' + #ctx['eventId'] + '_' + #ctx['user']['id']\"}. EVENT_BASED is ONLY for periodic-scan emitters (LIVE_SESSION_START/END, MEMBERSHIP_EXPIRY) — its key has no person in it, so on an enrollment event it would let only the first learner ever enter. Omitted = UUID = no dedup (event retries double-fire).",
-            "Never emit a mutating prebuiltKey in a workflow the admin will Test Run — QueryNodeHandler has no dryRun gate. See mutatingQueryKeys.",
+            "Mutating prebuilt keys (see mutatingQueryKeys) are allowed ONLY when the goal explicitly asks to create/modify data (e.g. 'create the live sessions every morning'). They are skipped in Test Run (dryRun gate), but ALWAYS warn in rationale that the workflow writes real data when active. Never use them for read/reporting goals.",
             "Never use ROUTER (no handler) or SEND_PUSH_NOTIFICATION (stub). See avoidNodeTypes.",
             "DELAY config is nested: config.delay.{value,unit} or config.delay.{until:NEXT_DAY_OF_WEEK,dayOfWeek,time,timezone}. Never flat delayValue/delayUnit (executes as 0-delay).",
             "A multi-day drip/nurture sequence is ONE event-driven workflow: TRIGGER -> [DELAY until weekday, if it must start on a fixed day] -> SEND -> DELAY {value,unit} -> SEND -> ... -> end. Never one workflow per message, never a LOOP node for the days.",
             "Every node must be reachable from the start node; every path must reach a routing {type:end}; every routing targetNodeId must reference a real node id.",
             "templateName must reference an ACTIVE institute template of the right channel (EMAIL/WHATSAPP). If none exists, ask the admin to create it rather than inventing one.",
             "All entity ids (event_id, batchId, audienceId, ...) must belong to the requesting institute — never cross-tenant.",
-            "Warn (in rationale) when using INVITE_FORM_FILL (fires on invite-page view, not submit) or LIVE_SESSION_START/END (5-min scan approximations).");
+            "Warn (in rationale) when using INVITE_FORM_FILL (fires on invite-page view, not submit) or LIVE_SESSION_START/END (5-min scan approximations).",
+            "ADMIN-EDITABLE PER-DAY SEQUENCE (scheduled roster drip): when a daily message's content depends on each learner's OWN day-in-program (day 1..N since enrollment) and admins must edit each day's text, do NOT use the DELAY-chain drip. Build ONE SCHEDULED workflow: TRIGGER named 'Workflow settings' (outputDataPoints value rows hold every editable setting: template name, link bases, timing text) -> QUERY getSSIGMByStatusAndPackageSessionIds -> one SEND_WHATSAPP node PER DAY named 'Day N message — <topic>'. Each day node filters the roster inline: on = \"#ctx['ssigmList'].?[#this['enrolledDate'] != null && T(java.time.temporal.ChronoUnit).DAYS.between(T(java.time.LocalDate).parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(#this['enrolledDate'])), T(java.time.LocalDate).now(T(java.time.ZoneId).of('Asia/Kolkata'))) + 1 == N]\" with forEach.eval = \"#ctx['item']\" and node-level templateName/languageCode/templateVars. Day nodes chain goto day1->day2->...->dayN->end (non-matching days simply send nothing).",
+            "ADMIN-EDITABILITY: in templateVars, day-specific message text MUST be plain literal strings (admins edit them in the Configuration tab); use '#'-prefixed SpEL ONLY for auto-filled values (learner name via item field 'name', links like \"#ctx['joinBaseUrl'] + #item['username']\", dates). Name logic nodes with a '(do not edit)' suffix. Editable settings live as TRIGGER outputDataPoints VALUE rows and are referenced from other nodes via #ctx['<fieldName>'].",
+            "TRIGGER outputDataPoints rows are evaluated against the ORIGINAL context — one row canNOT reference another trigger row. Derived values (e.g. a computed day key or a looked-up sub-map) go in a TRANSFORM node placed after the trigger: TRANSFORM rows DO evaluate sequentially and can reference earlier rows.",
+            "DAILY SESSION-CREATOR PATTERN (mutating): to create live sessions every morning for a batch, build a SCHEDULED workflow: [1] TRIGGER 'Workflow settings' with a sessions spec as a VALUE array of objects (every string field SpEL-quoted for OBJECT_PARSER, e.g. \"'Yoga'\") plus editable link/time settings; [2] optional TRANSFORM for derived values; [3] ACTION ITERATOR forEach OBJECT_PARSER over the spec; [4] ACTION ITERATOR forEach QUERY createLiveSession — createdByUserId is REQUIRED (NOT NULL column; omitting it fails silently per item); [5] ACTION ITERATOR forEach QUERY createSessionSchedule — returns NO scheduleId and its success status is the literal 'SUCCEESS' (typo, do not 'fix'); [6] ACTION ITERATOR forEach QUERY createSessionParticipent with sourceType 'BATCH' (uppercase) and sourceId = the packageSessionId. Always warn in rationale that this writes real sessions when active (Test Run skips the writes).");
     }
 
     private List<Map<String, Object>> nodeTypes() {
         List<Map<String, Object>> nodes = new ArrayList<>();
-        nodes.add(node("TRIGGER", "Marks the start node; no execution behavior.", true, false,
-                "{\"triggerEvent\":\"AUDIENCE_LEAD_SUBMISSION\",\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
-                "isStartNode=true on its mapping."));
+        nodes.add(node("TRIGGER", "Marks the start node; can seed context via outputDataPoints.", true, false,
+                "{\"outputDataPoints\":[{\"fieldName\":\"joinBaseUrl\",\"value\":\"https://...\"},{\"fieldName\":\"psIds\",\"compute\":\"T(java.util.Arrays).asList('<id>')\"}],\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
+                "isStartNode=true on its mapping. outputDataPoints VALUE rows are the workflow's admin-editable "
+                        + "settings (rendered as plain fields in the Configuration tab) — put every editable text/link "
+                        + "there and name the node 'Workflow settings'. Rows are evaluated against the ORIGINAL "
+                        + "context: one row cannot reference another (use a TRANSFORM node for derived values)."));
         nodes.add(node("QUERY", "Runs a prebuilt query; flat-merges output keys into context.", true, false,
                 "{\"prebuiltKey\":\"fetch_students_by_batch\",\"params\":{\"batchId\":\"#ctx['packageSessionIds']\"},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
                 "resultKey ignored. instituteId auto-injected. NO dryRun gate — mutating keys run for real."));
@@ -141,6 +146,13 @@ public class WorkflowAiCatalogController {
         nodes.add(node("TRANSFORM", "Computes context fields via SpEL (outputDataPoints).", true, false,
                 "{\"outputDataPoints\":[{\"fieldName\":\"whatsappMessages\",\"compute\":\"...SpEL...\"}],\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
                 "Returns only the diff, flat-merged."));
+        nodes.add(node("ACTION", "ITERATOR data processor: runs a forEach operation per item of a list.", true, false,
+                "{\"dataProcessor\":\"ITERATOR\",\"config\":{\"on\":\"#ctx['liveSessions']\",\"forEach\":{\"operation\":\"QUERY\",\"prebuiltKey\":\"createLiveSession\",\"params\":{\"title\":\"#ctx['item']['title']\"}}},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
+                "forEach.operation ∈ OBJECT_PARSER (evaluates every string field of each item as SpEL in place — "
+                        + "string literals must be SpEL-quoted like \"'Yoga'\"), QUERY (runs prebuiltKey per item, merges "
+                        + "result keys back INTO the item), SPEL_EVALUATOR (stamps eval=<fieldName> with compute's result "
+                        + "on each item), SWITCH, SEND_WHATSAPP, HTTP_REQUEST. CAVEAT: an inner error map still counts "
+                        + "as a processed success — verify created data, don't trust the success counter."));
         nodes.add(node("SET_LEAD_STATUS", "Sets a CRM lead's status.", false, true,
                 "{\"statusKey\":\"INTERESTED\",\"routing\":[{\"type\":\"end\"}]}",
                 "Resolves lead by responseId/leadId. NO dryRun gate — mutates in Test Run."));
@@ -173,6 +185,14 @@ public class WorkflowAiCatalogController {
                 List.of("instituteId"), List.of("batchId", "statusList"),
                 List.of("ssigm_list", "mapping_count"),
                 "ssigm_list[]: mapping_id, user_id, expiry_date, full_name, mobile_number, email, username, package_session_id (snake_case)"));
+        q.add(query("getSSIGMByStatusAndPackageSessionIds",
+                List.of("instituteId", "packageSessionIds", "statusList"), List.of(),
+                List.of("ssigmList"),
+                "ssigmList[]: ssigmId, userId, name, mobileNumber, email, username, packageSessionId, "
+                        + "enrolledDate, expiryDate, remainingDays, daysPastExpiry (camelCase). THE roster for "
+                        + "per-day sequences: enrolledDate drives day-in-program filters, expiryDate drives "
+                        + "'trial ends tomorrow' filters. packageSessionIds/statusList are SpEL list params, "
+                        + "e.g. \"#ctx['psIds']\" from a trigger settings row."));
         q.add(query("fetch_institute_admin_emails",
                 List.of("instituteId"), List.of("roles"),
                 List.of("adminContacts"),

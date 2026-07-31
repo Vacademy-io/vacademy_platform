@@ -9,6 +9,7 @@ import {
     fetchMenteeCalls,
     fetchMentors,
     fetchMyMentees,
+    fetchMyMentorProfile,
     fetchStudentTimeline,
     provisionMentorBookingPage,
     unassignMentee,
@@ -77,6 +78,15 @@ export const useMyMentees = (instituteId: string | undefined) =>
         queryFn: () => fetchMyMentees(instituteId ?? ''),
         enabled: !!instituteId,
         staleTime: 30 * 1000,
+    });
+
+export const useMyMentorProfile = (instituteId: string | undefined) =>
+    useQuery({
+        queryKey: ['mentorship-my-mentor-profile', instituteId],
+        queryFn: () => fetchMyMentorProfile(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+        retry: false,
     });
 
 const useInvalidateMentorship = () => {

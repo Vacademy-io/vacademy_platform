@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { ChatCircle, NotePencil, UsersThree } from '@phosphor-icons/react';
+import { ChatCircle, CheckCircle, GoogleLogo, NotePencil, UsersThree } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { createDirectConversation } from '@/services/chat/chatApi';
-import { useMyMentees } from '../-hooks/use-mentorship';
+import { useMyMentees, useMyMentorProfile } from '../-hooks/use-mentorship';
+import { initiateMyGoogle } from '../-services/mentorship-service';
 import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 
@@ -38,10 +39,25 @@ function MyMentorshipPage() {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const { data, isLoading, isError, refetch } = useMyMentees(instituteId);
+    const profileQuery = useMyMentorProfile(instituteId);
     const [messagingId, setMessagingId] = useState<string | null>(null);
     const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
+    const [connecting, setConnecting] = useState(false);
 
     const mentees = data ?? [];
+    const profile = profileQuery.data;
+
+    const connectGoogle = async () => {
+        if (!instituteId) return;
+        setConnecting(true);
+        try {
+            const { oauth_url } = await initiateMyGoogle(instituteId);
+            window.location.href = oauth_url;
+        } catch {
+            toast.error("Couldn't start Google connect. Please try again.");
+            setConnecting(false);
+        }
+    };
 
     const message = async (mentee: MenteeDTO) => {
         setMessagingId(mentee.student_user_id);
@@ -65,6 +81,39 @@ function MyMentorshipPage() {
                 <h2 className="text-title font-semibold text-neutral-700">My mentees</h2>
                 <p className="text-body text-neutral-500">Students assigned to you for mentorship.</p>
             </div>
+
+            {profile && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <GoogleLogo size={20} weight="bold" className="text-primary-600" />
+                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-body font-medium text-neutral-700">Google Calendar</span>
+                            <span className="text-caption text-neutral-500">
+                                {profile.google_connected
+                                    ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
+                                    : 'Connect your Google so your 1:1 bookings land on your own calendar with a Meet link.'}
+                            </span>
+                        </div>
+                    </div>
+                    {profile.google_connected ? (
+                        <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                            <CheckCircle size={14} weight="fill" /> Connected
+                        </span>
+                    ) : (
+                        <MyButton
+                            type="button"
+                            buttonType="primary"
+                            scale="small"
+                            onClick={connectGoogle}
+                            disable={connecting}
+                        >
+                            {connecting ? 'Redirecting…' : 'Connect Google'}
+                        </MyButton>
+                    )}
+                </div>
+            )}
 
             {isLoading ? (
                 <div className="text-body text-neutral-400">Loading mentees…</div>

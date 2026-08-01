@@ -21,7 +21,9 @@ const block = (id: string, type: string, props: any = {}) => ({
     id,
     type,
     meta: { order: 0, depth: 0 },
-    value: [{ id: `e-${id}`, type, children: [{ text: '' }], props: { nodeType: 'block', ...props } }],
+    value: [
+        { id: `e-${id}`, type, children: [{ text: '' }], props: { nodeType: 'block', ...props } },
+    ],
 });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const value = (...blocks: any[]) => Object.fromEntries(blocks.map((b) => [b.id, b]));
@@ -65,11 +67,15 @@ describe('detectSerializeLoss', () => {
     });
 
     it('ignores placeholder media with no src (stripped by formatHTMLString by design)', () => {
-        expect(detectSerializeLoss(value(block('b1', 'Image', { src: '' })), '<p>x</p>')).toEqual([]);
-        expect(detectSerializeLoss(value(block('b1', 'Image', { src: 'null' })), '<p>x</p>')).toEqual(
+        expect(detectSerializeLoss(value(block('b1', 'Image', { src: '' })), '<p>x</p>')).toEqual(
             []
         );
-        expect(detectSerializeLoss(value(block('b1', 'Video', { src: '' })), '<p>x</p>')).toEqual([]);
+        expect(
+            detectSerializeLoss(value(block('b1', 'Image', { src: 'null' })), '<p>x</p>')
+        ).toEqual([]);
+        expect(detectSerializeLoss(value(block('b1', 'Video', { src: '' })), '<p>x</p>')).toEqual(
+            []
+        );
     });
 
     it('still reports a real image that was dropped', () => {
@@ -90,10 +96,12 @@ describe('detectSerializeLoss', () => {
 
     it('handles the two blocks that emit no data-yoopta-type marker', () => {
         // mermaid is recognised by its class; Code is not structural at all.
-        expect(detectSerializeLoss(value(block('b1', 'mermaid')), '<div class="mermaid">g</div>')).toEqual(
-            []
-        );
-        expect(detectSerializeLoss(value(block('b1', 'mermaid')), '<p>gone</p>')).toEqual(['1 mermaid']);
+        expect(
+            detectSerializeLoss(value(block('b1', 'mermaid')), '<div class="mermaid">g</div>')
+        ).toEqual([]);
+        expect(detectSerializeLoss(value(block('b1', 'mermaid')), '<p>gone</p>')).toEqual([
+            '1 mermaid',
+        ]);
         expect(detectSerializeLoss(value(block('b1', 'Code')), '<p>whatever</p>')).toEqual([]);
     });
 
@@ -102,9 +110,9 @@ describe('detectSerializeLoss', () => {
             block('b1', 'Video', { src: 'https://x/v.mp4' }),
             block('b2', 'Embed', { src: 'https://youtube.com/embed/x' })
         );
-        expect(detectSerializeLoss(v, '<iframe src="https://youtube.com/embed/x"></iframe>')).toEqual([
-            '1 video/embed',
-        ]);
+        expect(
+            detectSerializeLoss(v, '<iframe src="https://youtube.com/embed/x"></iframe>')
+        ).toEqual(['1 video/embed']);
         expect(
             detectSerializeLoss(v, '<video src="https://x/v.mp4"></video><iframe src="y"></iframe>')
         ).toEqual([]);

@@ -123,7 +123,8 @@ export function detectDeserializeLoss(
         const edTable = tc['Table'] || 0;
         const edImg = tc['Image'] || 0;
         const edVideo = (tc['Video'] || 0) + (tc['Embed'] || 0);
-        const edHeading = (tc['HeadingOne'] || 0) + (tc['HeadingTwo'] || 0) + (tc['HeadingThree'] || 0);
+        const edHeading =
+            (tc['HeadingOne'] || 0) + (tc['HeadingTwo'] || 0) + (tc['HeadingThree'] || 0);
 
         Object.keys(srcCustom).forEach((t) => {
             const drop = (srcCustom[t] || 0) - (tc[t] || 0);
@@ -149,28 +150,30 @@ export function detectDeserializeLoss(
  * at all — treating "unknown type" as checkable would report a loss on every
  * save. A NEW custom block must be added here to be covered.
  */
-const CHECKED_BLOCK_TYPES: Record<string, 'table' | 'image' | 'video/embed' | 'mermaid' | 'custom'> =
-    {
-        Table: 'table',
-        Image: 'image',
-        Video: 'video/embed',
-        Embed: 'video/embed',
-        mermaid: 'mermaid',
-        flashcard: 'custom',
-        quizBlock: 'custom',
-        tabbedContent: 'custom',
-        timeline: 'custom',
-        columnsLayout: 'custom',
-        accordion: 'custom',
-        codeBlock: 'custom',
-        mathBlock: 'custom',
-        audioPlayer: 'custom',
-        pdfViewer: 'custom',
-        fillBlanks: 'custom',
-        jupyterNotebook: 'custom',
-        scratchProject: 'custom',
-        tableOfContents: 'custom',
-    };
+const CHECKED_BLOCK_TYPES: Record<
+    string,
+    'table' | 'image' | 'video/embed' | 'mermaid' | 'custom'
+> = {
+    Table: 'table',
+    Image: 'image',
+    Video: 'video/embed',
+    Embed: 'video/embed',
+    mermaid: 'mermaid',
+    flashcard: 'custom',
+    quizBlock: 'custom',
+    tabbedContent: 'custom',
+    timeline: 'custom',
+    columnsLayout: 'custom',
+    accordion: 'custom',
+    codeBlock: 'custom',
+    mathBlock: 'custom',
+    audioPlayer: 'custom',
+    pdfViewer: 'custom',
+    fillBlanks: 'custom',
+    jupyterNotebook: 'custom',
+    scratchProject: 'custom',
+    tableOfContents: 'custom',
+};
 
 /** Structural markers present in serialized HTML, keyed like CHECKED_BLOCK_TYPES. */
 function structuralHtmlCounts(serializedHtml: string): Record<string, number> {

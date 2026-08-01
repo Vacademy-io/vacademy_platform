@@ -123,7 +123,9 @@ describe('callout: nested content is not flattened', () => {
 
     it('preserves inline formatting in a callout', () => {
         const out = roundTrip(
-            wrap('<div data-yoopta-type="callout" data-theme="info"><strong>Stay safe</strong> — ask an adult</div>')
+            wrap(
+                '<div data-yoopta-type="callout" data-theme="info"><strong>Stay safe</strong> — ask an adult</div>'
+            )
         );
         expect(out).toContain('<strong>Stay safe</strong>');
     });
@@ -131,7 +133,9 @@ describe('callout: nested content is not flattened', () => {
     it('round-trips a legacy plaintext callout unchanged on the second pass', () => {
         // The unsaved-changes baseline is an exact string compare, so a re-save of an
         // untouched slide must be byte-stable.
-        const pass1 = roundTrip(wrap('<div data-yoopta-type="callout" data-theme="info">plain words</div>'));
+        const pass1 = roundTrip(
+            wrap('<div data-yoopta-type="callout" data-theme="info">plain words</div>')
+        );
         expect(roundTrip(pass1)).toBe(pass1);
     });
 });
@@ -142,7 +146,9 @@ describe('blast radius: things the fixes must NOT change', () => {
     // traded a lost callout for a lost image.
     it('imports an image that is still inside a wrapper div', () => {
         const out = roundTrip(
-            wrap('<div style="display: flex;">caption text<img src="https://s3.example.com/w.png" alt="w"/></div>')
+            wrap(
+                '<div style="display: flex;">caption text<img src="https://s3.example.com/w.png" alt="w"/></div>'
+            )
         );
         expect(out).toContain('https://s3.example.com/w.png');
         expect(out).toContain('caption text');
@@ -168,7 +174,9 @@ describe('blast radius: things the fixes must NOT change', () => {
     });
 
     it('promotes a legacy multi-line callout to <br> exactly once', () => {
-        const pass1 = roundTrip(wrap('<div data-yoopta-type="callout" data-theme="info">line one\nline two</div>'));
+        const pass1 = roundTrip(
+            wrap('<div data-yoopta-type="callout" data-theme="info">line one\nline two</div>')
+        );
         expect(pass1).toContain('line one<br>line two');
         // Stable afterwards — no runaway <br> growth across save cycles.
         expect(roundTrip(pass1)).toBe(pass1);

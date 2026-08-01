@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.slide.dto.DocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "document_slide")
@@ -45,7 +46,8 @@ public class DocumentSlide {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Column(name = "updated_at")
     private Timestamp updatedAt;
 
     public DocumentSlide() {

@@ -1829,10 +1829,20 @@ export const SlideMaterial = ({
                 prevGoodBlocks >= 3 && outBlockCount < prevGoodBlocks * 0.5;
             if (collapsedVsBaseline) {
                 lastSerializeDegradedRef.current = true;
+                // Report BOTH sides. `outBlockCount` alone cannot distinguish the two
+                // very different causes, and they need opposite fixes:
+                //   valueBlocks ~ 0  -> the editor's own state emptied (mount/reload race)
+                //   valueBlocks high -> the state is fine and html.serialize lost it
+                // Block types are listed because "which block types survived" is what
+                // identifies the offending serializer.
+                const valueTypes = Object.values((data || {}) as Record<string, { type?: string }>)
+                    .map((b) => b?.type ?? '?')
+                    .join(', ');
                 console.error(
                     `[Save] editor collapsed: about to write ${outBlockCount} block(s) where this ` +
-                        `slide last held ${prevGoodBlocks}. Refusing — the editor is mid-reload, ` +
-                        'not edited down. (rename / slide-switch race)'
+                        `slide last held ${prevGoodBlocks}. Editor value holds ${inBlockCount} ` +
+                        `block(s) [${valueTypes || 'none'}]. Recovering from the last good ` +
+                        'snapshot instead of writing this.'
                 );
             }
 

@@ -27,10 +27,12 @@ const formatDate = (value?: string | null): string | null => {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
+  // UTC-anchored to match the renewal sweep's charge day (see subscriptions page).
   return d.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 };
 

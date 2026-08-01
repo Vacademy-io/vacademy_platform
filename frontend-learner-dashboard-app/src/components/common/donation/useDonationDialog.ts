@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Preferences } from "@capacitor/preferences";
+import { invalidateDonationStatusCache } from "@/services/user-enrollment-status";
 import {
   formatCurrency,
   getCurrencySymbol,
@@ -528,6 +529,11 @@ export const useDonationDialog = ({
           userData: userData || undefined, // Pass real user data for payment too
         });
       }
+
+      // Payment recorded — drop the memoized learner-info/user-plan reads so
+      // the next hasUserDonated() check (e.g. course-details remount) hits the
+      // network and sees the new "Paid" log instead of the pre-donation cache.
+      invalidateDonationStatusCache();
 
       // Success - after donation, always redirect to slides if slide details are available
       if (targetSlideDetails) {

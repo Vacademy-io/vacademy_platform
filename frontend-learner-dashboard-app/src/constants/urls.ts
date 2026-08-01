@@ -120,6 +120,7 @@ export const MODULES_WITH_CHAPTERS_PRIVATE = `${BASE_URL}/admin-core-service/v1/
 export const CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/chapters-with-slides`;
 export const GET_SLIDES_PUBLIC = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/slides`;
 export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
+export const GET_SLIDES_BY_PACKAGE_SESSION = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides-by-package-session`;
 
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;

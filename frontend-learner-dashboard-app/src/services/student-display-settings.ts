@@ -366,6 +366,14 @@ export function applyUiSkinFromSettings(
   }
 }
 
+// Course-details alone reads settings from three components at once; on a
+// cold localStorage cache each would fire its own network GET. Share one
+// in-flight request per institute (non-forced reads only).
+const inFlightSettingsByInstitute = new Map<
+  string,
+  Promise<StudentDisplaySettingsData>
+>();
+
 export async function getStudentDisplaySettings(
   forceRefresh = false,
   instituteId?: string
@@ -382,7 +390,28 @@ export async function getStudentDisplaySettings(
       writeCacheForInstitute(instituteId, cached);
     }
     if (cached) return mergeWithDefaults(cached);
+
+    const inFlight = inFlightSettingsByInstitute.get(instituteId);
+    if (inFlight) return inFlight;
+    const request = fetchAndCacheStudentDisplaySettings(
+      instituteId,
+      forceRefresh
+    );
+    inFlightSettingsByInstitute.set(instituteId, request);
+    request.finally(() => {
+      if (inFlightSettingsByInstitute.get(instituteId!) === request) {
+        inFlightSettingsByInstitute.delete(instituteId!);
+      }
+    });
+    return request;
   }
+  return fetchAndCacheStudentDisplaySettings(instituteId, forceRefresh);
+}
+
+async function fetchAndCacheStudentDisplaySettings(
+  instituteId: string,
+  forceRefresh: boolean
+): Promise<StudentDisplaySettingsData> {
   if (!instituteId) {
     const defaults = DEFAULT_STUDENT_DISPLAY_SETTINGS;
     await writeCacheForInstitute(null, defaults);

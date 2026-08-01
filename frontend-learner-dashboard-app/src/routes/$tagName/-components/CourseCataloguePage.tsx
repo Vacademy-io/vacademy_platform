@@ -10,7 +10,6 @@ import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracki
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
-import { MobileActionBar } from "./MobileActionBar";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";

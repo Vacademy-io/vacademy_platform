@@ -41,6 +41,7 @@ import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSlidesByChapterId,
+  fetchSlidesByPackageSession,
   Slide,
 } from "@/hooks/study-library/use-slides";
 import { Button } from "@/components/ui/button";
@@ -876,7 +877,16 @@ export const CourseStructureDetails = ({
     slidesRequestsRef.current.add(key);
 
     try {
-      const raw = await fetchSlidesByChapterId(chapterId);
+      // Fetch through the query cache under the same key the slide route's
+      // useSlides uses, so the eager-load warms the slide screen. Short
+      // staleTime: long enough to absorb the level-settling double-run,
+      // short enough that per-user progress (chapter %, drip locks) doesn't
+      // sit visibly stale after completing a slide.
+      const raw = await queryClient.fetchQuery({
+        queryKey: ["slides", chapterId],
+        queryFn: () => fetchSlidesByChapterId(chapterId),
+        staleTime: 15_000,
+      });
       const slides = Array.isArray(raw)
         ? raw
         : (raw && typeof raw === "object" && (raw as { data?: unknown[] }).data)
@@ -889,7 +899,81 @@ export const CourseStructureDetails = ({
     } finally {
       slidesRequestsRef.current.delete(key);
     }
-  }, []);
+  }, [queryClient]);
+
+  // Bulk eager-load: ONE request for every chapter's slides instead of one GET
+  // per chapter (hundreds on large courses). Seeds the local slidesMap AND the
+  // per-chapter ["slides", chapterId] query cache, so expanding chapters and
+  // opening the slide screen do no further fetches. Returns false when the
+  // bulk endpoint is unavailable (older backend) — caller must fall back to
+  // per-chapter fetches.
+  const loadAllSlidesBulk = useCallback(
+    async (chapterIds: string[]): Promise<boolean> => {
+      if (!packageSessionId) return false;
+      // Mark requested chapters as loading so the open-chapter effect doesn't
+      // start parallel per-chapter fetches while the bulk request is in flight.
+      setSlidesLoadingStatus((prev) => {
+        const next = { ...prev };
+        chapterIds.forEach((id) => {
+          if (next[id] !== "loaded") next[id] = "loading";
+        });
+        return next;
+      });
+      try {
+        // staleTime 0: every course-details mount refetches — ONE request —
+        // so per-user progress (chapter %, drip locks) is always current,
+        // matching the old per-chapter flow's freshness. Concurrent callers
+        // still share the in-flight request, and the seeded per-chapter
+        // caches below are network-fresh at seeding time.
+        const chapters = await queryClient.fetchQuery({
+          queryKey: ["slides", "by-package-session", packageSessionId],
+          queryFn: () => fetchSlidesByPackageSession(packageSessionId),
+          staleTime: 0,
+        });
+        const mapUpdates: Record<string, Slide[]> = {};
+        // Chapters missing from the response simply have no slides — same as
+        // the per-chapter endpoint returning [].
+        chapterIds.forEach((id) => {
+          mapUpdates[id] = [];
+        });
+        chapters.forEach((entry) => {
+          if (!entry?.chapter_id) return;
+          mapUpdates[entry.chapter_id] = Array.isArray(entry.slides)
+            ? entry.slides
+            : [];
+        });
+        Object.entries(mapUpdates).forEach(([id, slides]) => {
+          queryClient.setQueryData(["slides", id], slides);
+        });
+        setSlidesMap((prev) => ({ ...prev, ...mapUpdates }));
+        setSlidesLoadingStatus((prev) => {
+          const next = { ...prev };
+          Object.keys(mapUpdates).forEach((id) => {
+            next[id] = "loaded";
+          });
+          return next;
+        });
+        return true;
+      } catch {
+        // Roll the loading marks back so the per-chapter fallback (and the
+        // open-chapter effect) can fetch normally.
+        setSlidesLoadingStatus((prev) => {
+          const next = { ...prev };
+          chapterIds.forEach((id) => {
+            if (next[id] === "loading") next[id] = "idle";
+          });
+          return next;
+        });
+        return false;
+      }
+    },
+    [packageSessionId, queryClient],
+  );
+
+  const loadAllSlidesBulkRef = useRef(loadAllSlidesBulk);
+  useEffect(() => {
+    loadAllSlidesBulkRef.current = loadAllSlidesBulk;
+  }, [loadAllSlidesBulk]);
 
   const useModulesMutation = () => {
     return useMutation({
@@ -907,24 +991,43 @@ export const CourseStructureDetails = ({
 
         const results = await Promise.all(
           currentSubjects?.map(async (subject) => {
-            // For depth 5 courses, try using the public endpoint first
-            let res;
-
-            res = await fetchModulesWithChapters(subject.id, packageSessionId);
-            // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
-            if (Array.isArray(res) && res.length === 0) {
-              try {
-                const alt = await fetchModulesWithChaptersPublic(
+            // Cache the RESOLVED result (private + public fallback) per
+            // subject/packageSession: the selection effects can legitimately
+            // run this twice while session/level settle (course-init subjects
+            // first, form subjects after reset), and without a cache each
+            // round re-fires every request. Own key namespace — the shared
+            // GET_MODULES_WITH_CHAPTERS query's queryFn writes to a zustand
+            // store as a side effect, which serving from cache would skip.
+            const res = await queryClient.fetchQuery({
+              queryKey: [
+                "MODULES_WITH_CHAPTERS_RESOLVED",
+                subject.id,
+                packageSessionId,
+              ],
+              queryFn: async () => {
+                // For depth 5 courses, try using the public endpoint first
+                let r = await fetchModulesWithChapters(
                   subject.id,
                   packageSessionId
                 );
-                if (Array.isArray(alt) && alt.length > 0) {
-                  res = alt;
+                // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
+                if (Array.isArray(r) && r.length === 0) {
+                  try {
+                    const alt = await fetchModulesWithChaptersPublic(
+                      subject.id,
+                      packageSessionId
+                    );
+                    if (Array.isArray(alt) && alt.length > 0) {
+                      r = alt;
+                    }
+                  } catch {
+                    // ignore
+                  }
                 }
-              } catch {
-                // ignore
-              }
-            }
+                return r;
+              },
+              staleTime: 60_000,
+            });
 
             return { subjectId: subject.id, modules: res };
           })
@@ -956,6 +1059,14 @@ export const CourseStructureDetails = ({
     if (!packageSessionId) {
       return;
     }
+    // Explicit user refresh (pull-to-refresh): drop the cached modules/slides
+    // so the reload below actually hits the network.
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["MODULES_WITH_CHAPTERS_RESOLVED"],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["slides"] }),
+    ]);
     // Refresh by reloading modules
     try {
       setIsModulesLoading(true);
@@ -1067,9 +1178,15 @@ export const CourseStructureDetails = ({
     setOpenModules(allModuleIds);
     setOpenChapters(allChapterIds);
 
-    // Eager-load slides for all chapters so slide list shows when expanded
+    // Eager-load slides for all chapters so slide list shows when expanded.
+    // Skip chapters the bulk load already covered or is covering — without
+    // this, tapping Expand All while the bulk request is in flight refires
+    // the per-chapter storm the bulk endpoint exists to prevent.
     allChapterIds.forEach((chapterId) => {
-      getSlidesWithChapterId(chapterId);
+      const status = slidesLoadingStatus[chapterId] ?? "idle";
+      if (status !== "loading" && status !== "loaded") {
+        getSlidesWithChapterId(chapterId);
+      }
     });
   };
 
@@ -2983,7 +3100,10 @@ export const CourseStructureDetails = ({
           }
         }
 
-        // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page)
+        // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page).
+        // Bulk endpoint first (one request for the whole package session);
+        // per-chapter fallback when it's unavailable. Fire-and-forget so the
+        // modules loading gate doesn't wait on slide data.
         const allChapterIds: string[] = [];
         Object.values(modulesMap).forEach((mods) => {
           mods.forEach((m) => {
@@ -2992,9 +3112,14 @@ export const CourseStructureDetails = ({
             });
           });
         });
-        allChapterIds.forEach((chapterId) => {
-          getSlidesWithChapterIdRef.current(chapterId);
-        });
+        void (async () => {
+          const bulkLoaded = await loadAllSlidesBulkRef.current(allChapterIds);
+          if (!bulkLoaded) {
+            allChapterIds.forEach((chapterId) => {
+              getSlidesWithChapterIdRef.current(chapterId);
+            });
+          }
+        })();
 
         // Update module stats for parent component
         if (updateModuleStatsRef.current) {

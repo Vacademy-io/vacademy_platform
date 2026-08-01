@@ -54,6 +54,7 @@ import {
     flattenSemanticWrappers,
     detectDeserializeLoss,
     countSerializedBlocks,
+    detectSerializeLoss,
     normalizeHtmlForDirtyCompare,
 } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
@@ -1835,13 +1836,34 @@ export const SlideMaterial = ({
                 );
             }
 
+            // (3) A SINGLE structural block vanished between the editor value and the
+            // HTML — the case checks (1) and (2) are both blind to, because one dropped
+            // table out of twenty is nowhere near their 50% collapse threshold. This is
+            // the mid-session "This will remove 1 table from the slide" confirm: the
+            // serialize quietly lost a block the author never touched, and the backend
+            // guard was the first thing to see it — where all it can say is "you are
+            // removing a table", which to the author is simply false. Comparing the
+            // value against its OWN serialization means a real deletion (gone from
+            // both sides) can never trigger it, and no debounce/timing is involved.
+            const structurallyLost = detectSerializeLoss(
+                (data || {}) as Record<string, unknown>,
+                formatted
+            );
+            if (structurallyLost.length > 0) {
+                lastSerializeDegradedRef.current = true;
+                console.error(
+                    `[Save] serialize dropped ${structurallyLost.join(', ')} that the editor still ` +
+                        'holds — refusing to overwrite stored content with a lossy payload.'
+                );
+            }
+
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
             // at path" Slate bug) have something to fall back to. Only cache a
-            // NON-empty, NON-collapsed result: a transient empty/degenerate
+            // NON-empty, NON-collapsed, NON-lossy result: a transient degenerate
             // serialize (e.g. mid slide-switch) must not poison the fallback, or
             // the catch block below would itself recover reduced content.
-            if (!checkIsHtmlEmpty(formatted) && !collapsedVsBaseline) {
+            if (!checkIsHtmlEmpty(formatted) && !collapsedVsBaseline && !structurallyLost.length) {
                 currentDocHtmlRef.current = {
                     slideId: baselineSlideId,
                     html: formatted,

@@ -251,7 +251,10 @@ public class PipelineReportService {
      * Leads assigned to each counsellor that have never had a status change recorded — i.e.
      * zero rows in lead_status_history across any of their audience_responses in this institute.
      * Scoped to the report window via ar2.submitted_at, matching Recent Leads and the other
-     * disposition metrics — a lead only counts as "pending" here if it was submitted in-window.
+     * disposition metrics — a lead only counts as "pending" here if it was submitted in-window,
+     * on a NON-deleted, non-opted-out response (same ACTIVE + OPTED_OUT guards as the leads
+     * list and the current-status matrix — without them a deleted lead kept counting as
+     * "pending" while every other surface hid it, and the columns didn't reconcile).
      * audienceId filter is honoured so the count scopes to a single campaign when selected.
      */
     private static final String PENDING_LEADS_SQL = """
@@ -265,6 +268,8 @@ public class PipelineReportService {
                   SELECT 1 FROM audience_response ar2
                   WHERE (ar2.user_id = ulp.user_id OR ar2.student_user_id = ulp.user_id)
                     AND ar2.submitted_at >= :fromTs AND ar2.submitted_at < :toTs
+                    AND ar2.audience_status = 'ACTIVE'
+                    AND (ar2.overall_status IS NULL OR ar2.overall_status != 'OPTED_OUT')
                     AND (:audienceId IS NULL OR ar2.audience_id = :audienceId)
               )
               AND NOT EXISTS (

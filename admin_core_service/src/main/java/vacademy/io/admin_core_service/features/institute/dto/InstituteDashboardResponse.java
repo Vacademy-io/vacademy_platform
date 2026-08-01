@@ -19,8 +19,10 @@ public class InstituteDashboardResponse {
     private Long batchCount;
     /** Actively-enrolled learners. Mirrors activeStudentCount; kept for existing clients. */
     private Long studentCount;
-    // Status breakdown of the institute's learners. Each is a DISTINCT learner count,
-    // so a learner ACTIVE in one batch and TERMINATED in another appears in both.
+    // Status breakdown, matching the learner list's header badges. Each is a DISTINCT
+    // learner count, so a learner ACTIVE in one batch and TERMINATED in another appears
+    // in both — and the buckets need not sum to totalStudentCount.
+    private Long totalStudentCount;
     private Long activeStudentCount;
     private Long inactiveStudentCount;
     private Long terminatedStudentCount;

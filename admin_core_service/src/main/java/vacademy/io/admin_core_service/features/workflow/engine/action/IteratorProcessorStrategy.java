@@ -280,6 +280,15 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             });
         }
 
+        // Test Run safety: mirror QueryNodeHandler — mutating prebuilt keys are
+        // skipped when the workflow context carries dryRun=true.
+        if (Boolean.TRUE.equals(loopContext.get("dryRun"))
+                && vacademy.io.admin_core_service.features.workflow.engine.MutatingQueryKeys.isMutating(prebuiltKey)) {
+            log.info("[DRY RUN] Skipping mutating QUERY '{}' inside iterator (params: {})", prebuiltKey,
+                    processedParams);
+            return Map.of("status", "dry_run_skipped", "prebuiltKey", prebuiltKey);
+        }
+
         log.info("Executing QUERY: {} with params: {}", prebuiltKey, processedParams);
         Map<String, Object> queryResult = queryService.execute(prebuiltKey, processedParams);
 

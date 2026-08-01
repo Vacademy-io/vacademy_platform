@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistrationRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionAudiencePushConfigDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
@@ -46,6 +48,8 @@ public class RegistrationService {
     LiveSessionWorkflowAsyncHelper liveSessionWorkflowAsyncHelper;
     @Autowired
     WorkflowTriggerService workflowTriggerService;
+    @Autowired
+    ObjectMapper objectMapper;
 
 
     /**
@@ -181,10 +185,29 @@ public class RegistrationService {
 
             liveSessionWorkflowAsyncHelper.createLiveClassLeadAsync(
                     instituteId, identity.fullName, identity.email, identity.mobileNumber,
-                    identity.extraById, session.getId());
+                    identity.extraById, session.getId(), resolveConfiguredAudienceIds(session));
         } catch (Exception e) {
             log.warn("Failed to capture live-class lead for sessionId={}: {}",
                     requestDto.getSessionId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The audience lists this session's admin selected under "save registrants to
+     * audience list(s)" — empty when the toggle is off, absent, or unparseable.
+     * Never throws: a malformed config must not disturb lead capture.
+     */
+    private List<String> resolveConfiguredAudienceIds(LiveSession session) {
+        String json = session.getAudiencePushConfigJson();
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            LiveSessionAudiencePushConfigDTO config =
+                    objectMapper.readValue(json, LiveSessionAudiencePushConfigDTO.class);
+            return config.isPushEnabled() ? config.getAudienceIds() : List.of();
+        } catch (Exception e) {
+            log.warn("Unparseable audience_push_config_json on session {}: {}",
+                    session.getId(), e.getMessage());
+            return List.of();
         }
     }
 

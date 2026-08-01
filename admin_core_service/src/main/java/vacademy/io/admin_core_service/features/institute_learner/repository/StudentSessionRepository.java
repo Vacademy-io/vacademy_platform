@@ -118,33 +118,34 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
   List<StudentSessionInstituteGroupMapping> findAllBySubOrgIdAndStatusIn(String subOrgId, List<String> status);
 
   /**
-   * Dashboard "students" tile: DISTINCT actively-enrolled learners.
+   * Dashboard learner tile. Deliberately mirrors the learner list's header badges
+   * (findPagedCombinedUserIdsForLearnerList with statuses:["ACTIVE"] / ["INACTIVE"]),
+   * so the dashboard and Learner Management never disagree.
    *
-   * Two things this must NOT do, both of which it used to:
-   * - COUNT(ss.id) counted mapping rows, so a learner in N batches counted N
-   *   times (361 rows vs 74 learners for one institute). Count distinct user_id,
-   *   matching the super-admin institute-list query.
-   * - status NOT IN (DELETED, INACTIVE, TERMINATED) swept in INVITED and
-   *   PENDING_FOR_APPROVAL, who have not enrolled. Pass a positive ACTIVE list
-   *   instead, so the tile agrees with the learner list's statuses:["ACTIVE"].
+   * That means matching the list's scope exactly:
+   * - DISTINCT user_id, not COUNT(ss.id) — a learner in N batches is one learner.
+   *   (This alone was 361 vs 74 for one institute.)
+   * - No package_session status filter and no package_session join. Deleting a
+   *   batch does NOT cascade its mappings to DELETED, so those learners stay in
+   *   the learner list; filtering them out here is what made the tile read 74
+   *   against the list's 76.
+   * - Positive per-status buckets rather than a NOT IN blacklist, which used to
+   *   sweep in INVITED and PENDING_FOR_APPROVAL as if they were enrolled.
    *
-   * The package_session status filter stays: an enrollment whose batch was
-   * deleted is not an active enrollment.
+   * totalCount is every learner ever mapped to the institute, any status — the
+   * list header's "Total" badge.
    */
   @Query(value = """
               SELECT
+                COUNT(DISTINCT ss.user_id)                                        AS totalCount,
                 COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'ACTIVE')     AS activeCount,
                 COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'INACTIVE')   AS inactiveCount,
                 COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'TERMINATED') AS terminatedCount
               FROM student_session_institute_group_mapping ss
-              JOIN package_session ps ON ss.package_session_id = ps.id
               WHERE ss.institute_id = :instituteId
-                AND ss.package_session_id IS NOT NULL
-                AND ps.status IN (:packageSessionStatusList)
           """, nativeQuery = true)
   LearnerStatusCountProjection countLearnersByStatusForInstitute(
-          @Param("instituteId") String instituteId,
-          @Param("packageSessionStatusList") List<String> packageSessionStatusList);
+          @Param("instituteId") String instituteId);
 
   @Query(value = """
                 SELECT ps.id AS packageSessionId,

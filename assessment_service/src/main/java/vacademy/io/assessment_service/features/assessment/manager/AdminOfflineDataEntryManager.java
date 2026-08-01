@@ -118,6 +118,9 @@ public class AdminOfflineDataEntryManager {
             attempt.setMaxTime(assessment.getDuration() != null ? assessment.getDuration() : 0);
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
             attempt.setResultStatus(AttemptResultStatusEnum.PENDING.name());
+            // Seed empty JSON so downstream attempt_data readers/updaters (manual
+            // evaluation upload, set assignment) don't trip on a NULL column.
+            attempt.setAttemptData("{}");
             attempt.setTotalMarks(0.0);
             attempt.setResultMarks(0.0);
             attempt.setTotalTimeInSeconds(0L);

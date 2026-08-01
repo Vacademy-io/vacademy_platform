@@ -139,8 +139,13 @@ export const ParticipantSidebar = ({
                     });
             }
         } catch (err) {
+            // Backend errors carry the admin-facing message in `ex` (ErrorInfo shape),
+            // e.g. "The student's attempt is still in progress (LIVE)…".
+            const backendMessage = (err as { response?: { data?: { ex?: string } } })?.response
+                ?.data?.ex;
             const errorMessage =
-                err instanceof Error ? err.message : 'Upload failed. Please try again.';
+                backendMessage ??
+                (err instanceof Error ? err.message : 'Upload failed. Please try again.');
             setError(errorMessage);
             toast.error(errorMessage);
         } finally {
@@ -171,7 +176,7 @@ export const ParticipantSidebar = ({
 
                 <SidebarMenu className="no-scrollbar flex size-full flex-col gap-10 overflow-y-scroll">
                     <SidebarMenuItem className="flex w-full flex-col gap-6">
-                        <div className="size-[240px] w-full items-center justify-center">
+                        <div className="size-60 w-full items-center justify-center">
                             <div className="size-full rounded-full object-cover">
                                 {faceLoader ? (
                                     <DashboardLoader />
@@ -182,7 +187,7 @@ export const ParticipantSidebar = ({
                                         <img
                                             src={imageUrl}
                                             alt="face profile"
-                                            className={`size-[240px] rounded-full object-cover`}
+                                            className={`size-60 rounded-full object-cover`}
                                         />
                                     </div>
                                 )}

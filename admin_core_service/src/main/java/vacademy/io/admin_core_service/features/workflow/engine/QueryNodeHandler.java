@@ -87,11 +87,21 @@ public class QueryNodeHandler implements NodeHandler {
                     queryParams.put("instituteId", context.get("instituteId"));
                 }
 
-                log.debug("Executing query with key: {}, params: {}", prebuiltKey, queryParams);
-                Map<String, Object> queryResult = queryService.execute(prebuiltKey, queryParams);
-                if (queryResult != null) {
-                    changes.putAll(queryResult);
-                    rowsReturned = queryResult.size(); // Approximation
+                // Test Run safety: never execute a WRITE query in dry-run mode. Read
+                // queries still run (a dry run should show real audience/roster data);
+                // only mutations are skipped, with the intent logged.
+                boolean dryRun = Boolean.TRUE.equals(context.get("dryRun"));
+                if (dryRun && MutatingQueryKeys.isMutating(prebuiltKey)) {
+                    log.info("[DRY RUN] Skipping mutating query '{}' (params: {})", prebuiltKey, queryParams);
+                    changes.put("dryRun", true);
+                    changes.put("skippedMutatingQuery", prebuiltKey);
+                } else {
+                    log.debug("Executing query with key: {}, params: {}", prebuiltKey, queryParams);
+                    Map<String, Object> queryResult = queryService.execute(prebuiltKey, queryParams);
+                    if (queryResult != null) {
+                        changes.putAll(queryResult);
+                        rowsReturned = queryResult.size(); // Approximation
+                    }
                 }
             }
 

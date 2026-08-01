@@ -91,8 +91,13 @@ export const UploadAnswerSheetDialog = ({
             reset();
         } catch (error) {
             console.error('Failed to upload answer sheet:', error);
+            // Backend errors carry the admin-facing message in `ex` (ErrorInfo shape),
+            // e.g. "The student's attempt is still in progress (LIVE)…".
+            const backendMessage = (error as { response?: { data?: { ex?: string } } })?.response
+                ?.data?.ex;
             toast.error(
-                error instanceof Error ? error.message : 'Could not upload the answer sheet'
+                backendMessage ??
+                    (error instanceof Error ? error.message : 'Could not upload the answer sheet')
             );
         } finally {
             setIsProcessing(false);

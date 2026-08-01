@@ -139,6 +139,13 @@ public class LiveSession {
     @Column(name = "recording_auto_link_json", columnDefinition = "text")
     private String recordingAutoLinkJson;
 
+    /**
+     * JSON config for pushing public registrants into admin-selected audience
+     * lists (enabled, audienceIds). See LiveSessionAudiencePushConfigDTO.
+     */
+    @Column(name = "audience_push_config_json", columnDefinition = "text")
+    private String audiencePushConfigJson;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

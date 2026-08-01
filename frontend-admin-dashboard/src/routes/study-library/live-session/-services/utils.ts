@@ -280,6 +280,12 @@ export interface SessionBySessionIdResponse {
     requireEmailVerification?: boolean | null;
     requirePhoneVerification?: boolean | null;
     whatsappOtpTemplateName?: string | null;
+    // "Save registrants to audience list(s)" config (camelCase wrapper key;
+    // inner keys snake via the DTO's snake_case naming).
+    audiencePushConfig?: {
+        enabled?: boolean | null;
+        audience_ids?: string[] | null;
+    } | null;
 }
 
 export const getLiveSessions = async (instituteId: string) => {

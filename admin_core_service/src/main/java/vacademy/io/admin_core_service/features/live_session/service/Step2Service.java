@@ -87,6 +87,7 @@ public class Step2Service {
         processCustomFields(request, session);
         liveSessionPaymentService.upsertPaymentConfig(session, request.getPaymentConfig());
         processRecordingAutoLinkConfig(request, session);
+        processAudiencePushConfig(request, session);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -441,6 +442,33 @@ public class Step2Service {
             session.setRecordingAutoLinkJson(objectMapper.writeValueAsString(request.getRecordingAutoLinkConfig()));
         } catch (JsonProcessingException e) {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert recording_auto_link_config to JSON");
+        }
+    }
+
+    /**
+     * Serializes the optional "save registrants to audience list(s)" config onto
+     * the session, same JSON-column pattern as recording_auto_link_json. Omitting
+     * the field on the request leaves the stored config untouched. Blank/duplicate
+     * audience ids are dropped; ownership of each id is enforced at push time
+     * (the push resolves audiences by id + institute).
+     */
+    private void processAudiencePushConfig(LiveSessionStep2RequestDTO request, LiveSession session) {
+        vacademy.io.admin_core_service.features.live_session.dto.LiveSessionAudiencePushConfigDTO config =
+                request.getAudiencePushConfig();
+        if (config == null) {
+            return;
+        }
+        if (config.getAudienceIds() != null) {
+            config.setAudienceIds(config.getAudienceIds().stream()
+                    .filter(id -> id != null && !id.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList());
+        }
+        try {
+            session.setAudiencePushConfigJson(objectMapper.writeValueAsString(config));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert audience_push_config to JSON");
         }
     }
 

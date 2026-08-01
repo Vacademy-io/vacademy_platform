@@ -35,12 +35,56 @@ const LearnerButtonConfigSchema = z.object({
   visible: z.boolean(),
 });
 
+// A session may carry ONE button (legacy) or a LIST of buttons (e.g. YouTube
+// subscribe + Instagram + Facebook, set by the session-creator workflow).
+const LearnerButtonsSchema = z.union([
+  LearnerButtonConfigSchema,
+  z.array(LearnerButtonConfigSchema),
+]);
+
+type LearnerButton = z.infer<typeof LearnerButtonConfigSchema>;
+
+/** Normalize single-or-array config to the list of visible buttons. */
+const toVisibleButtons = (config: unknown): LearnerButton[] => {
+  const parsed = LearnerButtonsSchema.safeParse(config);
+  if (!parsed.success) return [];
+  const list = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+  return list.filter((b) => b.visible && b.url);
+};
+
+/** Right-aligned action buttons row under the player (YouTube/IG/FB etc.). */
+const LearnerActionButtons = ({ config }: { config: unknown }) => {
+  const buttons = toVisibleButtons(config);
+  if (buttons.length === 0) return null;
+  return (
+    <div className="mt-2 flex w-full flex-wrap justify-end gap-2">
+      {buttons.map((button, index) => (
+        <Button
+          key={index}
+          variant="default"
+          size="sm"
+          className="h-9 rounded-full px-6 text-sm font-medium shadow-sm transition-all duration-200 hover:shadow"
+          style={{
+            backgroundColor: button.background_color,
+            color: button.text_color,
+            border: `1px solid ${button.background_color}20`,
+          }}
+          onClick={() => window.open(button.url, "_blank")}
+        >
+          <span>{button.text}</span>
+          <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
+        </Button>
+      ))}
+    </div>
+  );
+};
+
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
     sessionId: z.string().optional(),
     videoUrl: z.string().optional(),
     title: z.string().optional(),
-    learnerButtonConfig: LearnerButtonConfigSchema.optional(),
+    learnerButtonConfig: LearnerButtonsSchema.optional(),
   }),
   component: EmbedComponent,
 });
@@ -358,24 +402,7 @@ function EmbedComponent() {
             }
             enableConcentrationScore={false}
           />
-          {learnerButtonConfig?.visible && (
-            <div className="flex justify-end w-full mt-2">
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
-                style={{
-                  backgroundColor: learnerButtonConfig.background_color,
-                  color: learnerButtonConfig.text_color,
-                  border: `1px solid ${learnerButtonConfig.background_color}20`,
-                }}
-                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
-              >
-                <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
-              </Button>
-            </div>
-          )}
+          <LearnerActionButtons config={learnerButtonConfig} />
         </div>
       );
     }
@@ -388,24 +415,7 @@ function EmbedComponent() {
       return (
         <div className="w-full h-full flex flex-col gap-4">
           <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />
-          {learnerButtonConfig?.visible && (
-            <div className="flex justify-end w-full mt-2">
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
-                style={{
-                  backgroundColor: learnerButtonConfig.background_color,
-                  color: learnerButtonConfig.text_color,
-                  border: `1px solid ${learnerButtonConfig.background_color}20`,
-                }}
-                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
-              >
-                <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
-              </Button>
-            </div>
-          )}
+          <LearnerActionButtons config={learnerButtonConfig} />
         </div>
       );
     }
@@ -423,24 +433,7 @@ function EmbedComponent() {
             providerHostUrl={sessionDetails.providerHostUrl}
             meetingUrl={zohoUrl}
           />
-          {learnerButtonConfig?.visible && (
-            <div className="flex justify-end w-full mt-2">
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
-                style={{
-                  backgroundColor: learnerButtonConfig.background_color,
-                  color: learnerButtonConfig.text_color,
-                  border: `1px solid ${learnerButtonConfig.background_color}20`,
-                }}
-                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
-              >
-                <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
-              </Button>
-            </div>
-          )}
+          <LearnerActionButtons config={learnerButtonConfig} />
         </div>
       );
     }

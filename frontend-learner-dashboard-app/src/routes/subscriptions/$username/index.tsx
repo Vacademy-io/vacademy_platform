@@ -50,10 +50,14 @@ const formatDate = (value?: string | null): string | null => {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
+  // UTC-anchored: charge/end timestamps are stored UTC and the renewal sweep
+  // charges on the UTC date. Local-tz rendering shifted late-evening charges to
+  // the next day (message said 11 Aug, page said 12 Aug).
   return d.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 };
 

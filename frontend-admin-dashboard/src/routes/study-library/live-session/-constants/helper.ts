@@ -141,6 +141,16 @@ export interface LiveSessionStep2RequestDTO {
      * see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md.
      */
     recording_auto_link_config?: RecordingAutoLinkConfig;
+
+    /**
+     * "Save registrants to audience list(s)": push each public registrant as a
+     * lead into the selected Audience Manager lists. Always sent so unchecking
+     * the toggle turns the push off server-side.
+     */
+    audience_push_config?: {
+        enabled: boolean;
+        audience_ids: string[];
+    };
 }
 
 export interface LiveSessionPaymentConfigDTO {
@@ -480,6 +490,8 @@ export function transformFormToDTOStep2(
         requirePhoneVerification,
         whatsappOtpTemplateName,
         recordingAutoLink,
+        audiencePushEnabled,
+        audiencePushAudienceIds,
     } = formData;
 
     const addedNotificationActions: NotificationActionDTO[] = [];
@@ -595,6 +607,10 @@ export function transformFormToDTOStep2(
         whatsapp_otp_template_name: requirePhoneVerification
             ? (whatsappOtpTemplateName ?? '')
             : '',
+        audience_push_config: {
+            enabled: !!audiencePushEnabled,
+            audience_ids: audiencePushEnabled ? (audiencePushAudienceIds ?? []) : [],
+        },
     };
 
     // Add individual user IDs if individual selection is used

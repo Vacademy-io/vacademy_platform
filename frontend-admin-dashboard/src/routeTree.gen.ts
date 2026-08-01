@@ -150,6 +150,7 @@ import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/red
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as AudienceManagerOnboardingFlowIdRouteImport } from "./routes/audience-manager/onboarding/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
+import { Route as WorkflowWorkflowIdConfigurationIndexRouteImport } from "./routes/workflow/$workflowId/configuration/index"
 import { Route as VimStudioProjectIdIndexRouteImport } from "./routes/vim/studio/$projectId/index"
 import { Route as VimReelsReelIdIndexRouteImport } from "./routes/vim/reels/$reelId/index"
 import { Route as VimEditVideoIdIndexRouteImport } from "./routes/vim/edit/$videoId/index"
@@ -1293,6 +1294,12 @@ const WorkflowWorkflowIdEditIndexRoute =
       (d) => d.Route,
     ),
   )
+const WorkflowWorkflowIdConfigurationIndexRoute =
+  WorkflowWorkflowIdConfigurationIndexRouteImport.update({
+    id: "/workflow/$workflowId/configuration/",
+    path: "/workflow/$workflowId/configuration/",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const VimStudioProjectIdIndexRoute = VimStudioProjectIdIndexRouteImport.update({
   id: "/vim/studio/$projectId/",
   path: "/vim/studio/$projectId/",
@@ -1903,6 +1910,7 @@ export interface FileRoutesByFullPath {
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
   "/vim/studio/$projectId/": typeof VimStudioProjectIdIndexRoute
+  "/workflow/$workflowId/configuration/": typeof WorkflowWorkflowIdConfigurationIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -2099,6 +2107,7 @@ export interface FileRoutesByTo {
   "/vim/edit/$videoId": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId": typeof VimReelsReelIdIndexRoute
   "/vim/studio/$projectId": typeof VimStudioProjectIdIndexRoute
+  "/workflow/$workflowId/configuration": typeof WorkflowWorkflowIdConfigurationIndexRoute
   "/workflow/$workflowId/edit": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -2297,6 +2306,7 @@ export interface FileRoutesById {
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
   "/vim/studio/$projectId/": typeof VimStudioProjectIdIndexRoute
+  "/workflow/$workflowId/configuration/": typeof WorkflowWorkflowIdConfigurationIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -2496,6 +2506,7 @@ export interface FileRouteTypes {
     | "/vim/edit/$videoId/"
     | "/vim/reels/$reelId/"
     | "/vim/studio/$projectId/"
+    | "/workflow/$workflowId/configuration/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2692,6 +2703,7 @@ export interface FileRouteTypes {
     | "/vim/edit/$videoId"
     | "/vim/reels/$reelId"
     | "/vim/studio/$projectId"
+    | "/workflow/$workflowId/configuration"
     | "/workflow/$workflowId/edit"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId"
@@ -2889,6 +2901,7 @@ export interface FileRouteTypes {
     | "/vim/edit/$videoId/"
     | "/vim/reels/$reelId/"
     | "/vim/studio/$projectId/"
+    | "/workflow/$workflowId/configuration/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -3086,6 +3099,7 @@ export interface RootRouteChildren {
   VimEditVideoIdIndexRoute: typeof VimEditVideoIdIndexRoute
   VimReelsReelIdIndexRoute: typeof VimReelsReelIdIndexRoute
   VimStudioProjectIdIndexRoute: typeof VimStudioProjectIdIndexRoute
+  WorkflowWorkflowIdConfigurationIndexRoute: typeof WorkflowWorkflowIdConfigurationIndexRoute
   WorkflowWorkflowIdEditIndexRoute: typeof WorkflowWorkflowIdEditIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -4113,6 +4127,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof WorkflowWorkflowIdEditIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/workflow/$workflowId/configuration/": {
+      id: "/workflow/$workflowId/configuration/"
+      path: "/workflow/$workflowId/configuration"
+      fullPath: "/workflow/$workflowId/configuration/"
+      preLoaderRoute: typeof WorkflowWorkflowIdConfigurationIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/vim/studio/$projectId/": {
       id: "/vim/studio/$projectId/"
       path: "/vim/studio/$projectId"
@@ -4696,6 +4717,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimEditVideoIdIndexRoute: VimEditVideoIdIndexRoute,
   VimReelsReelIdIndexRoute: VimReelsReelIdIndexRoute,
   VimStudioProjectIdIndexRoute: VimStudioProjectIdIndexRoute,
+  WorkflowWorkflowIdConfigurationIndexRoute:
+    WorkflowWorkflowIdConfigurationIndexRoute,
   WorkflowWorkflowIdEditIndexRoute: WorkflowWorkflowIdEditIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,

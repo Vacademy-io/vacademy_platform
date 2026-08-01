@@ -23,6 +23,7 @@ import vacademy.io.assessment_service.features.learner_assessment.enums.Assessme
 import vacademy.io.assessment_service.features.learner_assessment.enums.AssessmentAttemptResultEnum;
 import vacademy.io.assessment_service.features.learner_assessment.service.AssessmentLLMAnalyticsService;
 import vacademy.io.assessment_service.features.learner_assessment.service.RestartAssessmentService;
+import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
@@ -185,9 +186,32 @@ public class LearnerAssessmentAttemptStatusManager {
                         attempt = handleAttemptLiveStatus(studentAttempt, request.getJsonContent());
 
                 try {
-                        // Update the student attempt asynchronously
-                        studentAttemptService
-                                        .updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional.of(attempt));
+                        // MANUAL-evaluation assessments (PDF answer-sheet upload, and
+                        // coding/subjective) are graded by a human or the AI evaluator, never by
+                        // this auto-scorer. Re-scoring every question on every 60s sync is pure
+                        // waste for them: the total it computes is discarded, because on submit
+                        // updateStudentAttemptWithResultAfterMarksCalculation explicitly refuses
+                        // to set resultMarks for MANUAL.
+                        //
+                        // Safe to skip because question_wise_marks rows are always produced by
+                        // one of the terminal paths, never by this sync:
+                        //   - PDF upload            -> /manual-status/submit
+                        //                              (createOrUpdateQuestionWiseMarksDataForManualAssessment)
+                        //   - coding/subjective     -> /status/submit (full calculation)
+                        //   - learner never submits -> hourly AssessmentAttemptEndTaskExecutor
+                        //                              (updateStudentAttemptResultAfterMarksCalculationAsync)
+                        //
+                        // The learner's work is still persisted every 60s -- handleAttemptLive/
+                        // EndedStatus above already saved attempt_data before this point. Only the
+                        // scoring pass is skipped, so nothing is lost if the browser dies.
+                        if (isManualEvaluation(assessment)) {
+                                log.debug("Skipping live-sync marks calculation for MANUAL assessment: assessmentId={}, attemptId={}",
+                                                assessmentId, attemptId);
+                        } else {
+                                // Update the student attempt asynchronously
+                                studentAttemptService
+                                                .updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional.of(attempt));
+                        }
                 } catch (Exception e) {
                         log.error("Error while updating student attempt or calculating marks: {}", e.getMessage());
                         SentryLogger.SentryEventBuilder.error(e)
@@ -204,6 +228,21 @@ public class LearnerAssessmentAttemptStatusManager {
                 LearnerUpdateStatusResponse response = createResponseForUpdateStatus(Optional.of(assessment),
                                 Optional.of(attempt));
                 return ResponseEntity.ok(response);
+        }
+
+        /**
+         * True when the assessment is graded by a human/AI evaluator rather than the
+         * auto-scorer. Defaults to false on any failure so an unexpected state falls
+         * back to the previous behaviour (score it) rather than silently skipping.
+         */
+        private boolean isManualEvaluation(Assessment assessment) {
+                try {
+                        return assessment != null
+                                        && EvaluationTypes.MANUAL.name().equals(assessment.getEvaluationType());
+                } catch (Exception e) {
+                        log.error("Failed to resolve evaluation type, will score as usual: {}", e.getMessage());
+                        return false;
+                }
         }
 
         /**

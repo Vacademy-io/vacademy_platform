@@ -7,6 +7,9 @@ package vacademy.io.admin_core_service.features.institute_learner.dto.projection
  * batch and TERMINATED in another lands in both buckets.
  */
 public interface LearnerStatusCountProjection {
+    /** Every learner mapped to the institute, any status. */
+    Long getTotalCount();
+
     Long getActiveCount();
 
     Long getInactiveCount();

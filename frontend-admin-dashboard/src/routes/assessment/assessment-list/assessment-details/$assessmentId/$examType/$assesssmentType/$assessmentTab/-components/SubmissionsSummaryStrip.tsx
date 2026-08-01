@@ -93,9 +93,9 @@ const StatTile = ({
                 : 'text-neutral-700';
     return (
         <div className="flex min-w-36 flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
-            <div className={cn('flex items-center', accentText)}>{icon}</div>
-            <div className="flex flex-col">
-                <span className="whitespace-nowrap text-caption text-neutral-500">{label}</span>
+            <div className={cn('flex shrink-0 items-center', accentText)}>{icon}</div>
+            <div className="flex min-w-0 flex-col">
+                <span className="text-caption text-neutral-500">{label}</span>
                 <span className={cn('whitespace-nowrap text-body font-semibold', accentText)}>
                     {value}
                 </span>

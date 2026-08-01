@@ -56,6 +56,8 @@ public class GetSessionByIdService {
         private Boolean requirePhoneVerification;
         // WhatsApp template used for the phone-verification OTP (null = default).
         private String whatsappOtpTemplateName;
+        // "Save registrants to audience list(s)" config, for edit-wizard prefill.
+        private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionAudiencePushConfigDTO audiencePushConfig;
     }
 
     public SessionDetailsResponse getFullSessionDetails(String sessionId) {
@@ -76,6 +78,15 @@ public class GetSessionByIdService {
             response.setRequireEmailVerification(session.getRequireEmailVerification());
             response.setRequirePhoneVerification(session.getRequirePhoneVerification());
             response.setWhatsappOtpTemplateName(session.getWhatsappOtpTemplateName());
+            if (session.getAudiencePushConfigJson() != null && !session.getAudiencePushConfigJson().isBlank()) {
+                try {
+                    response.setAudiencePushConfig(new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                            session.getAudiencePushConfigJson(),
+                            vacademy.io.admin_core_service.features.live_session.dto.LiveSessionAudiencePushConfigDTO.class));
+                } catch (Exception e) {
+                    System.err.println("Error deserializing audiencePushConfigJson: " + e.getMessage());
+                }
+            }
         });
         return response;
     }

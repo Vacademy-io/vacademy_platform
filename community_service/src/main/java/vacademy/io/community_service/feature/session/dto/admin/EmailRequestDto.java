@@ -13,6 +13,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EmailRequestDto {
+
     private String body;
     @JsonProperty("notification_type")
     private String notificationType;
@@ -21,6 +22,23 @@ public class EmailRequestDto {
     @JsonProperty("source_id")
     private String sourceId;
     private List<EmailUserDto> users;
+
+    /** Optional: attributes the send to a customer institute. Team alerts leave it null. */
+    private String instituteId;
+
+    /**
+     * The original field order, kept so existing callers compile unchanged after instituteId
+     * was added. Lombok's @AllArgsConstructor now takes seven arguments; this is the six.
+     */
+    public EmailRequestDto(String body, String notificationType, String subject, String source,
+                           String sourceId, List<EmailUserDto> users) {
+        this.body = body;
+        this.notificationType = notificationType;
+        this.subject = subject;
+        this.source = source;
+        this.sourceId = sourceId;
+        this.users = users;
+    }
 }
 
 // DTO for the user object within the request

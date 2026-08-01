@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.LearnerStatusCountProjection;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -208,9 +209,14 @@ public class UserInstituteService {
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
         Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteIdAndStatusIn(instituteId,
                 List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
-        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(
-                instituteId, List.of("DELETED", "INACTIVE", "TERMINATED"),
-                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
+        // Distinct learners per status, scoped exactly like the learner list's header
+        // badges so the two screens can't disagree. ACTIVE is the headline studentCount.
+        LearnerStatusCountProjection learnerCounts = studentSessionRepository
+                .countLearnersByStatusForInstitute(instituteId);
+        Long totalLearnerCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getTotalCount());
+        Long activeCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getActiveCount());
+        Long inactiveCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getInactiveCount());
+        Long terminatedCount = zeroIfNull(learnerCounts == null ? null : learnerCounts.getTerminatedCount());
         Long courseCount = packageRepository.countDistinctPackagesByInstituteId(instituteId);
         Long levelCount = packageRepository.countDistinctLevelsByInstituteId(instituteId);
         Long subjectCount = subjectPackageSessionRepository.countDistinctSubjectsByInstituteId(instituteId);
@@ -218,11 +224,19 @@ public class UserInstituteService {
                 .id(instituteId)
                 .profileCompletionPercentage(percentage)
                 .batchCount(batchCount)
-                .studentCount(studentCount)
+                .studentCount(activeCount)
+                .totalStudentCount(totalLearnerCount)
+                .activeStudentCount(activeCount)
+                .inactiveStudentCount(inactiveCount)
+                .terminatedStudentCount(terminatedCount)
                 .courseCount(courseCount)
                 .levelCount(levelCount)
                 .subjectCount(subjectCount)
                 .build());
+    }
+
+    private static Long zeroIfNull(Long value) {
+        return value == null ? 0L : value;
     }
 
     public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId,

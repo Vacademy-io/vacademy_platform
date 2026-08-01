@@ -118,10 +118,26 @@ public class SlideService {
         return slideId;
     }
 
+    /**
+     * "Notify learners" is a side effect of publishing a slide, never a
+     * precondition for it. Every caller runs inside a transaction, so letting a
+     * notification failure propagate rolls back the slide, its chapter mapping
+     * and (for the live-session flow) the content link — the teacher's material
+     * silently disappears while the emails still go out. Swallow and log
+     * instead: the send is queued asynchronously by NotificationService, so the
+     * only exceptions reaching here are genuine delivery-side failures.
+     */
     private void notifyIfPublished(String status, boolean notify, String instituteId, ChapterToSlides chapterToSlides) {
         if (SlideStatus.PUBLISHED.name().equals(status) && notify) {
-            slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(),
-                    chapterToSlides.getSlide());
+            try {
+                slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(),
+                        chapterToSlides.getSlide());
+            } catch (Exception e) {
+                log.error("Slide published but 'notify learners' email failed for slide {} in chapter {}: {}",
+                        chapterToSlides.getSlide() != null ? chapterToSlides.getSlide().getId() : null,
+                        chapterToSlides.getChapter() != null ? chapterToSlides.getChapter().getId() : null,
+                        e.getMessage(), e);
+            }
         }
     }
 

@@ -3896,7 +3896,10 @@ export const SlideMaterial = ({
                     if (!confirmed) return;
                     try {
                         await saveDocDraft(true);
-                        toast.success('Slide saved (forced override).');
+                        // Plain wording on purpose: the author already answered the
+                        // confirm, so "forced override" only reads as something having
+                        // gone wrong. The save succeeded — say exactly that.
+                        toast.success('Slide saved.');
                         lastSaveDraftOutcomeRef.current = 'success';
                     } catch {
                         toast.error('Error in saving the slide');

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.EvaluationDraftDto;
@@ -313,9 +314,6 @@ public class AdminManualEvaluationManager {
                 throw new VacademyException("Attempt is LIVE or PREVIEW");
             }
 
-            if (Objects.isNull(attemptOptional.get().getAttemptData()))
-                throw new VacademyException("No Attempt Data Found");
-
             String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "setId", setId);
 
             attemptOptional.get().setAssessmentSetMapping(assessmentSetMapping.get());
@@ -333,8 +331,11 @@ public class AdminManualEvaluationManager {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
 
-            // Convert JSON string to Map
-            Map<String, Object> jsonMap = objectMapper.readValue(jsonString, Map.class);
+            // Offline data-entry attempts are created with NULL attempt_data, so a
+            // missing/blank JSON must start a fresh map instead of failing the update.
+            Map<String, Object> jsonMap = (jsonString == null || jsonString.isBlank())
+                    ? new HashMap<>()
+                    : objectMapper.readValue(jsonString, Map.class);
 
             // Update (or insert) the specified key. Must always put — a re-attempt's
             // attempt_data has no "fileId" key at all, and the old containsKey guard
@@ -350,18 +351,20 @@ public class AdminManualEvaluationManager {
     }
 
     public ResponseEntity<String> updateAttemptResponse(CustomUserDetails userDetails, String attemptId, String fileId) {
+        // Business rejections are thrown OUTSIDE the try so their message and status
+        // reach the admin as-is (no "Failed to Update:" wrapping). The only functional
+        // restriction on this upload is an in-progress (LIVE/PREVIEW) attempt.
+        Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
+        if (attemptOptional.isEmpty())
+            throw new VacademyException(HttpStatus.NOT_FOUND, "Could not find this student's attempt. Please refresh and try again.");
+
+        String status = attemptOptional.get().getStatus();
+        if (AssessmentAttemptEnum.PREVIEW.name().equals(status) || AssessmentAttemptEnum.LIVE.name().equals(status)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "The student's attempt is still in progress (" + status + "). The answer sheet can be uploaded only after the attempt is submitted.");
+        }
+
         try {
-            Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
-
-
-            if (attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.PREVIEW.name()) || attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.LIVE.name())) {
-                throw new VacademyException("Attempt is LIVE or PREVIEW");
-            }
-
-            if (Objects.isNull(attemptOptional.get().getAttemptData()))
-                throw new VacademyException("No Attempt Data Found");
-
             String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId", fileId);
 
             attemptOptional.get().setAttemptData(updatedAttemptJson);
@@ -375,7 +378,7 @@ public class AdminManualEvaluationManager {
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
-            throw new VacademyException("Failed to Update: " + e.getMessage());
+            throw new VacademyException("Failed to save the uploaded answer sheet: " + e.getMessage());
         }
     }
 
@@ -413,14 +416,14 @@ public class AdminManualEvaluationManager {
             if (!attemptOptional.get().getStatus().equals(AssessmentAttemptEnum.ENDED.name())) {
                 throw new VacademyException("Attempt is LIVE or PREVIEW");
             }
-            if (Objects.isNull(attemptOptional.get().getAttemptData()))
-                throw new VacademyException("No Attempt Data Found");
-
-            ObjectMapper objectMapper = new ObjectMapper();
-
-            // Convert JSON string to Map
-            Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
-            String fileId = (String) jsonMap.get("fileId");
+            // NULL attempt_data (offline data-entry attempts) is not an error here —
+            // resolution just falls through to the evaluated_file_id column below.
+            String fileId = null;
+            if (!Objects.isNull(attemptOptional.get().getAttemptData())) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
+                fileId = (String) jsonMap.get("fileId");
+            }
 
             // Fall back to the persisted evaluated_file_id column when the answer file
             // was attached (Upload Answer Sheet / re-attempt) but never made it into the

@@ -10,7 +10,7 @@ import { WorkflowConfigTab } from './workflow-config-tab';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, PencilSimple, Trash, Eye, Play, Warning } from '@phosphor-icons/react';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Calendar, Clock } from '@phosphor-icons/react';
@@ -33,7 +33,27 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { setNavHeading } = useNavHeadingStore();
-    const [activeTab, setActiveTab] = useState('diagram');
+    // ?tab=... deep-links a tab (e.g. /workflow/<id>?tab=configuration, also
+    // reachable via the /workflow/<id>/configuration redirect route).
+    const { tab: tabFromUrl } = useSearch({ from: '/workflow/$workflowId/' });
+    const [activeTab, setActiveTabState] = useState<string>(tabFromUrl ?? 'diagram');
+    const setActiveTab = (tab: string) => {
+        setActiveTabState(tab);
+        // Keep the URL shareable for whichever tab is open.
+        navigate({
+            to: '/workflow/$workflowId',
+            params: { workflowId },
+            search: tab === 'diagram' ? {} : { tab: tab as 'configuration' | 'executions' | 'debug' },
+            replace: true,
+        });
+    };
+    // Follow browser back/forward between tab URLs.
+    useEffect(() => {
+        if (tabFromUrl && tabFromUrl !== activeTab) {
+            setActiveTabState(tabFromUrl);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tabFromUrl]);
     const [debugExecutionId, setDebugExecutionId] = useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);

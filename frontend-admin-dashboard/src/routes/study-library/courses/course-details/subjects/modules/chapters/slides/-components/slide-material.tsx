@@ -28,7 +28,9 @@ import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
     Slide,
     useSlidesMutations,
+    useSlidesQuery,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
+import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
 import { Check, PencilSimpleLine, Trash, FloppyDisk, LinkSimple, Warning } from '@phosphor-icons/react';
 import { AlertCircle } from 'lucide-react';
@@ -250,6 +252,18 @@ import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
 import { SlideHistoryDialog } from './slide-history-dialog';
 import { SlideContentErrorBoundary } from './slide-content-error-boundary';
+
+/**
+ * Shown while the slide's content is on its way — never the "no study material"
+ * illustration, which tells the author their work is missing. Mirrors the loader
+ * the slides sidebar already shows for the very same wait.
+ */
+const SlideContentLoading = () => (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg py-20">
+        <DashboardLoader />
+        <p className="text-neutral-500">Loading slide…</p>
+    </div>
+);
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -533,6 +547,10 @@ export const SlideMaterial = ({
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
         searchParams;
+    // Same query key as the sidebar, so React Query serves it from cache — no extra
+    // request. Without this the content pane cannot tell "still loading" from
+    // "this slide is empty", and defaults to claiming the slide is empty.
+    const { isLoading: isSlidesLoading } = useSlidesQuery(chapterId || '');
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
     // Bumped after a version-history restore to force loadContent to re-run (and
@@ -2283,13 +2301,35 @@ export const SlideMaterial = ({
         const isPlaceholderItem = activeItem != null && !activeItem.source_type;
         lastLoadContentSlideIdRef.current = isPlaceholderItem ? null : (activeItem?.id ?? null);
 
+        const emptyState = (
+            <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
+                <EmptySlideMaterial />
+                <p className="mt-4 text-neutral-500">No study material has been added yet</p>
+            </div>
+        );
+
+        // The placeholder carries no source_type, so it matches no branch below and
+        // used to fall through to "No study material has been added yet" — the app
+        // telling the author their slide is EMPTY while it is still fetching it.
+        // Authors read that as "my slide is gone". Show the same loader the sidebar
+        // shows for the same wait instead.
+        //
+        // "Still arriving" must be provable, or a URL naming a deleted slide would
+        // spin forever: either the list is genuinely still loading, or it has already
+        // arrived AND contains this id (so the real item is about to replace this
+        // stub). A stub whose id is absent from a loaded list is a slide that no
+        // longer exists — that IS the empty state.
+        if (isPlaceholderItem) {
+            const stillArriving =
+                isSlidesLoading ||
+                (Array.isArray(items) && items.some((s) => s?.id === activeItem?.id));
+            setContent(stillArriving ? <SlideContentLoading /> : emptyState);
+            return;
+        }
+
         if (activeItem == null) {
-            setContent(
-                <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
-                    <EmptySlideMaterial />
-                    <p className="mt-4 text-neutral-500">No study material has been added yet</p>
-                </div>
-            );
+            // No item yet while the list is in flight is a wait, not an empty slide.
+            setContent(isSlidesLoading ? <SlideContentLoading /> : emptyState);
             return;
         }
 
@@ -4227,6 +4267,11 @@ export const SlideMaterial = ({
         activeItem?.video_slide?.published_url,
         // Reload the editor with the restored content after a history restore.
         historyRestoreNonce,
+        // Loading -> loaded must re-render, or a chapter with no slides (activeItem
+        // stays null, so no other dep changes) would sit on the loader forever.
+        // Safe next to the `items` note above: isLoading only flips on a first load
+        // per query key, not on the refetches an auto-save triggers.
+        isSlidesLoading,
     ]);
 
     // ⋯ menu entries for the relocated header actions, per slide type.

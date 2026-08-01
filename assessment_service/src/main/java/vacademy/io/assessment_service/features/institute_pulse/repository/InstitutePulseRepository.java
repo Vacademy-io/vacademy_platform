@@ -151,7 +151,7 @@ public interface InstitutePulseRepository extends JpaRepository<StudentAttempt, 
                    CAST(EXTRACT(EPOCH FROM (now() - sa.server_last_sync)) AS bigint) AS secondsSinceSync,
                    CAST(EXTRACT(EPOCH FROM (
                        sa.start_time + make_interval(mins => sa.max_time) - now()
-                   )) AS bigint) AS secondsRemaining,
+                   )) AS bigint) AS secondsRemaining
             FROM student_attempt sa
                 JOIN assessment_user_registration aur ON aur.id = sa.registration_id
                 JOIN assessment a ON a.id = aur.assessment_id

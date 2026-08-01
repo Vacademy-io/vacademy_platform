@@ -11,11 +11,21 @@ import java.util.List;
 @Service
 public class AttemptDataParserService {
 
+    /**
+     * Shared, immutable mapper.
+     *
+     * <p>
+     * ObjectMapper is thread-safe once configured but costly to construct — each
+     * instance builds its own serializer/deserializer caches. Every method in this
+     * class used to allocate a fresh one, and these methods are called several times
+     * per question inside the per-minute scoring loop, so a single 50-question paper
+     * built hundreds of mappers per learner per sync on a 750m-CPU pod.
+     */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public String getClientLastSyncTime(String jsonString) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(jsonString);
+            JsonNode root = MAPPER.readTree(jsonString);
 
             JsonNode clientLastSyncNode = root.path("clientLastSync");
             return clientLastSyncNode.asText();
@@ -29,9 +39,7 @@ public class AttemptDataParserService {
             if (jsonString == null || jsonString.isEmpty()) {
                 return null;
             }
-
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(jsonString);
+            JsonNode root = MAPPER.readTree(jsonString);
 
             JsonNode timeNode = root.path("assessment").path("timeElapsedInSeconds");
 
@@ -53,15 +61,13 @@ public class AttemptDataParserService {
             if (jsonString == null || jsonString.isEmpty()) {
                 return sectionJsonList;
             }
-
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(jsonString);
+            JsonNode root = MAPPER.readTree(jsonString);
 
             JsonNode sectionsNode = root.path("sections");
 
             if (sectionsNode.isArray()) {
                 for (JsonNode sectionNode : sectionsNode) {
-                    String sectionJson = mapper.writeValueAsString(sectionNode);
+                    String sectionJson = MAPPER.writeValueAsString(sectionNode);
                     sectionJsonList.add(sectionJson);
                 }
             }
@@ -75,17 +81,16 @@ public class AttemptDataParserService {
 
     public List<String> extractQuestionJsonsFromSection(String sectionJson) {
         List<String> questionJsons = new ArrayList<>();
-        ObjectMapper mapper = new ObjectMapper();
 
         try {
             if (sectionJson == null || sectionJson.isEmpty()) return questionJsons;
 
-            JsonNode sectionNode = mapper.readTree(sectionJson);
+            JsonNode sectionNode = MAPPER.readTree(sectionJson);
             JsonNode questionsNode = sectionNode.path("questions");
 
             if (questionsNode.isArray()) {
                 for (JsonNode questionNode : questionsNode) {
-                    questionJsons.add(mapper.writeValueAsString(questionNode));
+                    questionJsons.add(MAPPER.writeValueAsString(questionNode));
                 }
             }
 
@@ -97,12 +102,11 @@ public class AttemptDataParserService {
     }
 
     public String extractSectionIdFromSectionJson(String sectionJson) {
-        ObjectMapper mapper = new ObjectMapper();
 
         try {
             if (sectionJson == null || sectionJson.isEmpty()) return null;
 
-            JsonNode sectionNode = mapper.readTree(sectionJson);
+            JsonNode sectionNode = MAPPER.readTree(sectionJson);
             JsonNode sectionIdNode = sectionNode.path("sectionId");
 
             if (!sectionIdNode.isMissingNode() && !sectionIdNode.isNull()) {
@@ -117,12 +121,11 @@ public class AttemptDataParserService {
     }
 
     public String extractQuestionIdFromQuestionJson(String questionJson) {
-        ObjectMapper mapper = new ObjectMapper();
 
         try {
             if (questionJson == null || questionJson.isEmpty()) return null;
 
-            JsonNode sectionNode = mapper.readTree(questionJson);
+            JsonNode sectionNode = MAPPER.readTree(questionJson);
             JsonNode questionIdNode = sectionNode.path("questionId");
 
             if (!questionIdNode.isMissingNode() && !questionIdNode.isNull()) {
@@ -137,12 +140,11 @@ public class AttemptDataParserService {
     }
 
     public String extractResponseTypeFromQuestionJson(String questionJson) {
-        ObjectMapper mapper = new ObjectMapper();
 
         try {
             if (questionJson == null || questionJson.isEmpty()) return null;
 
-            JsonNode questionNode = mapper.readTree(questionJson);
+            JsonNode questionNode = MAPPER.readTree(questionJson);
             JsonNode responseNode = questionNode.path("responseData");
             JsonNode typeNode = responseNode.path("type");
 
@@ -158,12 +160,11 @@ public class AttemptDataParserService {
     }
 
     public Long extractTimeTakenInSecondsFromQuestionJson(String questionJson) {
-        ObjectMapper mapper = new ObjectMapper();
 
         try {
             if (questionJson == null || questionJson.isEmpty()) return null;
 
-            JsonNode questionNode = mapper.readTree(questionJson);
+            JsonNode questionNode = MAPPER.readTree(questionJson);
             JsonNode timeTakenNode = questionNode.path("timeTakenInSeconds");
 
             if (!timeTakenNode.isMissingNode() && !timeTakenNode.isNull()) {

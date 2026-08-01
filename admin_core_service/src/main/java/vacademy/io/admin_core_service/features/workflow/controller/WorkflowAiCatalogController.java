@@ -185,6 +185,14 @@ public class WorkflowAiCatalogController {
                 List.of("instituteId"), List.of("batchId", "statusList"),
                 List.of("ssigm_list", "mapping_count"),
                 "ssigm_list[]: mapping_id, user_id, expiry_date, full_name, mobile_number, email, username, package_session_id (snake_case)"));
+        q.add(query("getUpcomingAutopayCharges",
+                List.of("packageSessionIds"), List.of("daysAhead"),
+                List.of("autopayDueList", "autopayDueCount"),
+                "autopayDueList[]: userPlanId, userId, name, mobileNumber, username, nextChargeAt, "
+                        + "endDate, chargeDate ('11 Aug 2026' label). THE audience for pre-charge notices "
+                        + "('we auto-deduct tomorrow'): plans whose next charge is exactly daysAhead days "
+                        + "away (default 1), autopay still ON — cancelled learners excluded. Use this, "
+                        + "NOT ssigm expiryDate (that is the batch ACCESS window, a different date)."));
         q.add(query("getSSIGMByStatusAndPackageSessionIds",
                 List.of("instituteId", "packageSessionIds", "statusList"), List.of(),
                 List.of("ssigmList"),

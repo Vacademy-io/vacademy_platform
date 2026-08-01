@@ -33,6 +33,38 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("psIds") List<String> packageSessionIds,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * Learners whose next autopay charge lands exactly N days from today (UTC date
+   * math — the renewal sweep charges on the UTC date of next_charge_at). Only
+   * ACTIVE plans with autopay still enabled are returned, so learners who
+   * already cancelled are naturally excluded. charge_date_label is preformatted
+   * for messages ("11 Aug 2026").
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.id)
+          up.id AS user_plan_id,
+          up.user_id AS user_id,
+          s.full_name AS full_name,
+          s.mobile_number AS mobile_number,
+          s.username AS username,
+          up.next_charge_at AS next_charge_at,
+          up.end_date AS end_date,
+          to_char(up.next_charge_at, 'DD Mon YYYY') AS charge_date_label
+      FROM user_plan up
+      JOIN student_session_institute_group_mapping ssigm
+        ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
+      JOIN student s ON s.user_id = up.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND up.status = 'ACTIVE'
+        AND up.auto_renewal_enabled = true
+        AND up.next_charge_at IS NOT NULL
+        AND CAST(up.next_charge_at AS date) = CURRENT_DATE + CAST(:daysAhead AS int)
+      ORDER BY up.id
+      """, nativeQuery = true)
+  List<Object[]> findUpcomingAutopayCharges(
+      @Param("psIds") List<String> packageSessionIds,
+      @Param("daysAhead") int daysAhead);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,

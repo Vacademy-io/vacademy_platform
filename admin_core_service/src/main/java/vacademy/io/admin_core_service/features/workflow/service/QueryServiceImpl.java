@@ -93,6 +93,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchSSIGMByPackage(params);
             case "getSSIGMByStatusAndPackageSessionIds":
                 return getSSIGMByStatusAndSessions(params);
+            case "getUpcomingAutopayCharges":
+                return getUpcomingAutopayCharges(params);
             case "updateSSIGMRemaingDaysByOne":
                 return updateSSIGMRemainingDaysByOne(params);
             case "createSessionSchedule":
@@ -218,6 +220,47 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     }
 
     // In QueryServiceImpl.java
+
+    /**
+     * Payment-aware "due for autopay" audience: learners in the given batches whose
+     * NEXT CHARGE is exactly daysAhead days from today (default 1 = "we deduct
+     * tomorrow"). Backed by user_plan (not ssigm.expiry_date, which is the batch
+     * ACCESS window and can differ by weeks). Cancelled/off autopay are excluded.
+     */
+    private Map<String, Object> getUpcomingAutopayCharges(Map<String, Object> params) {
+        try {
+            List<String> packageSessionIds = (List<String>) params.get("packageSessionIds");
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return Map.of("error", "Missing required parameter packageSessionIds");
+            }
+            int daysAhead = 1;
+            Object rawDays = params.get("daysAhead");
+            if (rawDays instanceof Number n) {
+                daysAhead = n.intValue();
+            } else if (rawDays instanceof String s && !s.isBlank()) {
+                daysAhead = Integer.parseInt(s.trim());
+            }
+
+            List<Object[]> rows = ssigmRepo.findUpcomingAutopayCharges(packageSessionIds, daysAhead);
+            List<Map<String, Object>> autopayDueList = new ArrayList<>();
+            for (Object[] row : rows) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("userPlanId", String.valueOf(row[0]));
+                item.put("userId", String.valueOf(row[1]));
+                item.put("name", row[2] != null ? String.valueOf(row[2]) : "");
+                item.put("mobileNumber", row[3] != null ? String.valueOf(row[3]) : "");
+                item.put("username", row[4] != null ? String.valueOf(row[4]) : "");
+                item.put("nextChargeAt", row[5]);
+                item.put("endDate", row[6]);
+                item.put("chargeDate", row[7] != null ? String.valueOf(row[7]) : "");
+                autopayDueList.add(item);
+            }
+            return Map.of("autopayDueList", autopayDueList, "autopayDueCount", autopayDueList.size());
+        } catch (Exception e) {
+            log.error("Error executing getUpcomingAutopayCharges", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
 
     private Map<String, Object> getSSIGMByStatusAndSessions(Map<String, Object> params) {
         try {

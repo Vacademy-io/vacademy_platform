@@ -3792,20 +3792,39 @@ export const SlideMaterial = ({
                 return;
             }
 
-            const currentHtml = getCurrentEditorHTMLContent();
+            let currentHtml = getCurrentEditorHTMLContent();
 
             // A degraded serialize is NOT user intent — the editor still holds the
             // blocks; only the HTML we just produced is missing them. Persisting it
             // writes that loss into `data`, which is what an UNSYNC slide reopens
-            // from, so the blocks are gone on the next load. Refuse, like the
-            // auto-save and publish paths do. (This used to warn and save anyway.)
+            // from, so the blocks would be gone on the next load.
+            //
+            // But refusing the save is a dead end: the author is told to reload and
+            // redo their work, and if the glitch repeats they can never save at all.
+            // We hold a last-known-good serialization of THIS slide, refreshed on
+            // every edit (500ms debounce) and itself collapse-guarded, so it is at
+            // most a moment behind the screen. Saving that keeps every block AND the
+            // author's work, and turns a dead end into a save that just works.
+            let savedFromSnapshot = false;
             if (lastSerializeDegradedRef.current) {
-                toast.error(
-                    'This slide could not be read correctly, so it was NOT saved. ' +
-                        'Your saved content is safe — reload the page to get it back, then redo ' +
-                        'any recent edits.'
-                );
-                return;
+                const lastGoodHtml =
+                    currentDocHtmlRef.current.slideId === slide?.id
+                        ? currentDocHtmlRef.current.html
+                        : null;
+                if (lastGoodHtml && !checkIsHtmlEmpty(lastGoodHtml)) {
+                    console.warn(
+                        '[SaveDraft] serialize was degraded — saving this slide’s last good ' +
+                            'snapshot instead of the lossy one.'
+                    );
+                    currentHtml = lastGoodHtml;
+                    savedFromSnapshot = true;
+                } else {
+                    // Nothing safe to fall back on (e.g. the glitch happened before the
+                    // first edit landed). Keep it calm and actionable — no alarming
+                    // talk of unreadable slides or content being at risk.
+                    toast.error('Could not save just now. Please refresh the page and try again.');
+                    return;
+                }
             }
 
             // Process images in HTML content before saving
@@ -3880,7 +3899,15 @@ export const SlideMaterial = ({
                 await saveDocDraft(false);
                 lastSaveDraftOutcomeRef.current = 'success';
                 if (!containsBase64Images(currentHtml) || uploadedImagesCount === 0) {
-                    toast.success(`slide saved in draft successfully!`);
+                    // When we saved the recovered snapshot, the live editor session is
+                    // the broken one — further typing would go into a document the
+                    // editor no longer holds, and be lost on the next save. Say so in
+                    // one calm line instead of leaving the author to find out.
+                    toast.success(
+                        savedFromSnapshot
+                            ? 'Slide saved. Please refresh the page before editing it further.'
+                            : 'slide saved in draft successfully!'
+                    );
                 }
             } catch (error) {
                 const response = (
@@ -4729,12 +4756,31 @@ export const SlideMaterial = ({
                                                     // confirm, which reads as a false alarm after
                                                     // they've merely ADDED content — they click OK
                                                     // and the lesson is gone.
+                                                    // Same recovery as Save draft: prefer this
+                                                    // slide's last-known-good serialization over
+                                                    // refusing outright, so a transient glitch
+                                                    // can't block publishing.
                                                     if (lastSerializeDegradedRef.current) {
-                                                        toast.error(
-                                                            'Some blocks on this slide could not be read, so publishing was stopped to protect your content. Please reload the page and try again.'
-                                                        );
-                                                        setIsPublishDialogOpen(false);
-                                                        return;
+                                                        const lastGoodHtml =
+                                                            currentDocHtmlRef.current.slideId ===
+                                                            activeItem?.id
+                                                                ? currentDocHtmlRef.current.html
+                                                                : null;
+                                                        if (
+                                                            lastGoodHtml &&
+                                                            !checkIsHtmlEmpty(lastGoodHtml)
+                                                        ) {
+                                                            console.warn(
+                                                                '[Publish] serialize was degraded — publishing this slide’s last good snapshot instead.'
+                                                            );
+                                                            currentHtml = lastGoodHtml;
+                                                        } else {
+                                                            toast.error(
+                                                                'Could not publish just now. Please refresh the page and try again.'
+                                                            );
+                                                            setIsPublishDialogOpen(false);
+                                                            return;
+                                                        }
                                                     }
                                                     if (containsBase64Images(currentHtml)) {
                                                         const { processedHtml } =

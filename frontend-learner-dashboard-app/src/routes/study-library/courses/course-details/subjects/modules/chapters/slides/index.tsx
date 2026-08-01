@@ -21,6 +21,11 @@ import {
   calculateOverallCompletion,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseTreeSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/course-tree-sidebar";
+import {
+  computeDisplayTitles,
+  getSlideMeta,
+  getSlideTitle,
+} from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-display-utils";
 import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNameById";
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
@@ -1098,6 +1103,36 @@ function Slides() {
     }
   }, [nextChapter, navigate, courseId, subjectId, sessionId]);
 
+  // The next unviewed slide within the current chapter. This — not the next
+  // chapter — is what "Up next" should point at mid-chapter: the old pill
+  // showed the next chapter while slides were still unwatched here, which
+  // read as "next thing to play" and steered learners past them. The next
+  // chapter only takes over on the chapter's last slide.
+  const nextSlide = useMemo(() => {
+    if (!slides || slides.length === 0) return null;
+    const currentId = activeItem?.id || slideId || "";
+    if (!currentId || currentId === "feedback-slide") return null;
+    const list = slides.filter((s) => s.id !== "feedback-slide");
+    const idx = list.findIndex((s) => s.id === currentId);
+    if (idx === -1 || idx + 1 >= list.length) return null;
+    return list[idx + 1] ?? null;
+  }, [slides, activeItem?.id, slideId]);
+
+  const handleNextSlide = useCallback(() => {
+    if (!nextSlide) return;
+    navigate({
+      to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+      search: {
+        courseId,
+        subjectId,
+        moduleId,
+        chapterId,
+        slideId: nextSlide.id,
+        sessionId,
+      },
+    });
+  }, [nextSlide, navigate, courseId, subjectId, moduleId, chapterId, sessionId]);
+
   const previousChapter = useMemo(() => {
     if (!modulesWithChaptersData?.length) return null;
 
@@ -1177,11 +1212,22 @@ function Slides() {
             <h3 className="text-caption font-semibold text-gray-900 leading-tight truncate">
               {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
             </h3>
-            <p className="text-caption text-gray-400 font-medium tracking-wide uppercase mt-0.5">
-              {levelName && levelName.toLowerCase() !== "default"
-                ? toTitleCase(levelName)
-                : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
-            </p>
+            {/* Batch names routinely embed the level ("Class 8 | MGP | B 3"
+                under level "Class 8") — repeating it as a subtitle said the
+                same thing twice, so the subtitle is dropped when redundant. */}
+            {!(
+              levelName &&
+              courseName &&
+              courseName
+                .toLowerCase()
+                .includes(levelName.trim().toLowerCase())
+            ) && (
+              <p className="text-caption text-gray-400 font-medium tracking-wide uppercase mt-0.5">
+                {levelName && levelName.toLowerCase() !== "default"
+                  ? toTitleCase(levelName)
+                  : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
+              </p>
+            )}
           </div>
           {/* Focus mode: hides this sidebar + tightens content margins.
               Desktop only — on mobile the sidebar is already an offcanvas
@@ -1198,10 +1244,14 @@ function Slides() {
         </div>
 
         {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
-            Subject crumb is only rendered when the course structure actually
-            has subjects (`subjectId` set + studyLibraryData populated) —
-            otherwise the crumb collapses to Module > Chapter as before. */}
-        {showLearningPath && (() => {
+            Rendered only in "breadcrumb" (flat list) mode — in "ancestors"
+            tree mode the expanded tree below already shows the full path, so
+            the crumb was pure duplication (and truncated into noise at
+            sidebar width). Subject crumb is only rendered when the course
+            structure actually has subjects (`subjectId` set +
+            studyLibraryData populated) — otherwise the crumb collapses to
+            Module > Chapter as before. */}
+        {showLearningPath && sidebarNavigation === "breadcrumb" && (() => {
           // Backends frequently emit a "Default"-named subject / module /
           // chapter as a placeholder when that level isn't really part of
           // the course. Those crumbs aren't useful navigation context — hide
@@ -1222,8 +1272,7 @@ function Slides() {
                 at the modules list per HIG's "show the landing, don't guess"). */}
             {showSubjectCrumb && (
               <>
-                {sidebarNavigation === "breadcrumb" ? (
-                  <Popover>
+                <Popover>
                     <PopoverTrigger asChild>
                       <button
                         className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
@@ -1280,17 +1329,7 @@ function Slides() {
                         })}
                       </div>
                     </PopoverContent>
-                  </Popover>
-                ) : (
-                  // Tree mode: crumb is a passive label; the sidebar tree
-                  // already exposes every cross-subject jump.
-                  <span
-                    className="truncate max-w-24 sm:max-w-32"
-                    title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
-                  >
-                    {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
-                  </span>
-                )}
+                </Popover>
 
                 {(showModuleCrumb || showChapterCrumb) && (
                   <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
@@ -1298,14 +1337,10 @@ function Slides() {
               </>
             )}
 
-            {/* Module — in breadcrumb mode this is a popover that lists all
-                modules (tap to jump). In tree mode we drop the popover since
-                the sidebar already shows the full module list; crumb becomes
-                a passive label. */}
+            {/* Module — a popover that lists all modules (tap to jump). */}
             {showModuleCrumb && (
               <>
-                {sidebarNavigation === "breadcrumb" ? (
-                  <Popover>
+                <Popover>
                     <PopoverTrigger asChild>
                       <button
                         className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
@@ -1353,15 +1388,7 @@ function Slides() {
                         ))}
                       </div>
                     </PopoverContent>
-                  </Popover>
-                ) : (
-                  <span
-                    className="truncate max-w-24 sm:max-w-32"
-                    title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
-                  >
-                    {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
-                  </span>
-                )}
+                </Popover>
 
                 {showChapterCrumb && (
                   <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
@@ -1452,14 +1479,52 @@ function Slides() {
             </button>
           )}
 
-          {nextChapter && (
+          {nextSlide ? (
+            (() => {
+              const nextSlideTitle = toTitleCase(
+                computeDisplayTitles(slides || [], [
+                  subjectName || "",
+                  moduleName || "",
+                  chapterName || "",
+                ]).get(nextSlide.id) ?? getSlideTitle(nextSlide)
+              );
+              const nextSlideMeta = getSlideMeta(nextSlide);
+              return (
+                <button
+                  onClick={handleNextSlide}
+                  title={`Up next: ${toTitleCase(getSlideTitle(nextSlide))}`}
+                  className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-start [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
+                >
+                  <span className="text-caption font-bold text-primary-500 uppercase tracking-wider shrink-0">
+                    Up next
+                  </span>
+                  <span className="text-caption font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
+                    {nextSlideTitle}
+                  </span>
+                  {nextSlideMeta && (
+                    <span className="text-caption text-primary-500 tabular-nums shrink-0">
+                      {nextSlideMeta}
+                    </span>
+                  )}
+                  <CaretRight
+                    size={12}
+                    className="text-primary-500 shrink-0 transition-transform group-hover/next:translate-x-0.5"
+                    weight="bold"
+                  />
+                </button>
+              );
+            })()
+          ) : nextChapter ? (
             <button
               onClick={handleNextChapter}
-              title={`Up next: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
+              title={`Next ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
               className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-start [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
+              {/* "Next Chapter", not "Up next" — this pill jumps out of the
+                  current chapter, and labeling that jump "Up next" mid-chapter
+                  misread as the next thing to play. */}
               <span className="text-caption font-bold text-primary-500 uppercase tracking-wider shrink-0">
-                Up next
+                Next {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
               </span>
               <span className="text-caption font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
                 {toTitleCase(nextChapter.chapter.chapter_name)}
@@ -1470,30 +1535,35 @@ function Slides() {
                 weight="bold"
               />
             </button>
-          )}
+          ) : null}
 
           {/* Progress Bar — labeled so the bar is never an anonymous strip:
-              "Chapter progress · 40%" (terminology-aware chapter term). */}
-          <div className="space-y-1">
-            <p className="text-caption font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
-              {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
-              progress{" · "}
-              <span className="text-gray-800 normal-case tracking-normal tabular-nums [.ui-play_&]:font-black">
-                {Math.min(calculateOverallCompletion(slides), 100)}%
-              </span>
-            </p>
-            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
-              <div
-                className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out [.ui-play_&]:rounded-full [.ui-play_&]:h-3"
-                style={{
-                  width: `${Math.min(
-                    calculateOverallCompletion(slides),
-                    100
-                  )}%`,
-                }}
-              />
+              "Chapter progress · 40%" (terminology-aware chapter term).
+              Breadcrumb mode only: the tree shows progress inline on the
+              current chapter's row, so repeating it here duplicated the
+              chip and detached the number from the chapter it describes. */}
+          {sidebarNavigation === "breadcrumb" && (
+            <div className="space-y-1">
+              <p className="text-caption font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+                {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
+                progress{" · "}
+                <span className="text-gray-800 normal-case tracking-normal tabular-nums [.ui-play_&]:font-black">
+                  {Math.min(calculateOverallCompletion(slides), 100)}%
+                </span>
+              </p>
+              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
+                <div
+                  className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out [.ui-play_&]:rounded-full [.ui-play_&]:h-3"
+                  style={{
+                    width: `${Math.min(
+                      calculateOverallCompletion(slides),
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Feedback Button (Ghost) */}
           {feedbackVisible && (

@@ -354,7 +354,7 @@ function SupportOptions() {
     const [open, setOpen] = React.useState(false);
     const [hover, setHover] = React.useState(false);
     const config = useSupportConfig();
-    const planKey = config.data?.plan.key;
+    const planKey = config.data?.plan?.key;
     const planLabel = planKey ? SUPPORT_PLAN_SHORT[planKey] ?? planKey : null;
 
     return (

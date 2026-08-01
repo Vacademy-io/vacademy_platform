@@ -25,8 +25,12 @@ data:
     ; Primary (read-write)
     admin_core_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=admin_core_service
     auth_service         = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=auth_service
-    ; community_service also writes here (live session persistence) — higher pool needed
-    assessment_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service pool_size=15
+    ; community_service also writes here (live session persistence) — higher pool needed.
+    ; 25 (was 15) gives headroom for the submit burst at the end of a live exam,
+    ; when every learner's attempt is scored at once. Transaction-mode pooling
+    ; means these server connections are shared across all assessment-service
+    ; client connections, so this stays well inside the DB's max_connections=200.
+    assessment_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service pool_size=25
     community_service    = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=community_service
     media_service        = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=media_service
     notification_service = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=notification_service

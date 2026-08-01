@@ -41,6 +41,13 @@ import java.util.*;
 @Component
 public class LearnerAssessmentAttemptStatusManager {
 
+        /**
+         * Shared thread-safe mapper. convertToDurationList runs on every learner
+         * status update, so a per-call instance meant one construction per learner
+         * per minute for the whole exam.
+         */
+        private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
         @Autowired
         StudentAttemptRepository studentAttemptRepository;
 
@@ -77,9 +84,7 @@ public class LearnerAssessmentAttemptStatusManager {
 
                         if (Objects.isNull(durationData))
                                 return durationResponses;
-
-                        ObjectMapper objectMapper = new ObjectMapper();
-                        DataDurationDistributionDto dataDurationDistributionDto = objectMapper.readValue(durationData,
+                        DataDurationDistributionDto dataDurationDistributionDto = OBJECT_MAPPER.readValue(durationData,
                                         DataDurationDistributionDto.class);
 
                         return mapToDurationResponses(dataDurationDistributionDto);

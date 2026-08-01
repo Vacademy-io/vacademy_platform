@@ -29,6 +29,9 @@ import java.util.Optional;
 @Service
 public class QuestionWiseMarksService {
 
+    /** Shared thread-safe mapper; constructing one per call is expensive. */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Autowired
     QuestionWiseMarksRepository questionWiseMarksRepository;
 
@@ -158,8 +161,7 @@ public class QuestionWiseMarksService {
 
     public String getQuestionDetails(String questionId, String attemptDataJson) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            JsonNode rootNode = objectMapper.readTree(attemptDataJson);
+            JsonNode rootNode = OBJECT_MAPPER.readTree(attemptDataJson);
 
             // Iterate over the sections array
             JsonNode sections = rootNode.path(AttemptJsonConstants.sections);
@@ -170,7 +172,7 @@ public class QuestionWiseMarksService {
                 for (JsonNode question : questions) {
                     // Compare question_id to find the correct question
                     if (question.path(AttemptJsonConstants.questionId).asText().equals(questionId)) {
-                        return objectMapper.writeValueAsString(question); // Return question as JSON string
+                        return OBJECT_MAPPER.writeValueAsString(question); // Return question as JSON string
                     }
                 }
             }

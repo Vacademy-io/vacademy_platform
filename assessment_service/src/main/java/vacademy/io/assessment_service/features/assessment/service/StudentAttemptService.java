@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
@@ -61,6 +62,38 @@ public class StudentAttemptService {
     @Autowired
     AttemptDataParserService attemptDataParserService;
 
+    /**
+     * Self-reference through the Spring proxy.
+     *
+     * <p>
+     * The scoring entry points below are called from the {@code @Async} wrappers in
+     * this same class. A plain {@code this.} call bypasses the proxy, which silently
+     * disabled the {@code @Transactional} on
+     * {@link #calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks} and the
+     * {@code @CacheEvict} on the calculation methods. Without a surrounding
+     * transaction every single repository call ran in its own auto-commit
+     * transaction, taking and releasing a pool connection each time — roughly four
+     * checkouts per question, so ~200 for a 50-question paper on every learner sync.
+     *
+     * <p>
+     * Routing through the proxy restores one transaction per scoring pass, which also
+     * lets Hibernate batch the question_wise_marks writes (batch_size=50,
+     * order_updates=true are already configured) into a couple of round trips instead
+     * of one per question. {@code @Lazy} breaks the circular self-dependency at
+     * construction time.
+     */
+    @Lazy
+    @Autowired
+    private StudentAttemptService self;
+
+    /**
+     * ObjectMapper is thread-safe once configured and is expensive to construct — it
+     * builds serializer/deserializer caches each time. It used to be instantiated per
+     * call inside the per-question scoring loop, so a 50-question paper built hundreds
+     * of them per learner per minute on a pod capped at 750m CPU.
+     */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt) {
         return studentAttemptRepository.save(studentAttempt);
     }
@@ -84,17 +117,18 @@ public class StudentAttemptService {
 
 
     @Async
-    @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
-        return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
+        // via self (proxy) so @Transactional/@CacheEvict on the target actually apply
+        return CompletableFuture.completedFuture(self.updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
     }
 
     @Async
-    @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
-        return CompletableFuture.completedFuture(updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
+        // via self (proxy) so @Transactional/@CacheEvict on the target actually apply
+        return CompletableFuture.completedFuture(self.updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
     }
 
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
         if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
@@ -147,6 +181,7 @@ public class StudentAttemptService {
     }
 
 
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithTotalAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
         if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
@@ -193,6 +228,46 @@ public class StudentAttemptService {
     }
 
     /**
+     * Indexes every question in the attempt payload by question id, in a single parse.
+     *
+     * <p>
+     * The scoring loop previously called {@link #getQuestionDetails(String, String)}
+     * once per question, and each of those calls re-parsed the <em>entire</em> attempt
+     * blob to find one question — O(Q&sup2;) parsing per learner per sync. Attempt
+     * payloads run to 293 KB at the top end, so a long paper re-parsed megabytes of
+     * JSON every minute, per learner, on a 750m-CPU pod.
+     *
+     * <p>
+     * Values are produced by the same {@code writeValueAsString} call on the same node
+     * as before, so the strings persisted to {@code question_wise_marks.response_json}
+     * are unchanged.
+     */
+    private Map<String, String> buildQuestionJsonIndex(String attemptDataJson) {
+        Map<String, String> index = new HashMap<>();
+        if (Objects.isNull(attemptDataJson)) return index;
+        try {
+            JsonNode rootNode = OBJECT_MAPPER.readTree(attemptDataJson);
+            for (JsonNode section : rootNode.path(AttemptJsonConstants.sections)) {
+                for (JsonNode question : section.path(AttemptJsonConstants.questions)) {
+                    String questionId = question.path(AttemptJsonConstants.questionId).asText();
+                    if (questionId != null && !questionId.isEmpty()) {
+                        // putIfAbsent, NOT put: getQuestionDetails returns on its FIRST
+                        // match and stops. 930 assessments in prod map the same
+                        // question_id into more than one section, so last-write-wins
+                        // here would score those against a different section's response
+                        // than the original code did.
+                        index.putIfAbsent(questionId, OBJECT_MAPPER.writeValueAsString(question));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Fall back to the per-question lookup path rather than failing the scoring pass.
+            log.error("Failed to index attempt question payloads: {}", e.getMessage());
+        }
+        return index;
+    }
+
+    /**
      * This method calculates the total marks for a learner's assessment attempt based on the questions
      * they answered and their responses. It iterates over the sections and questions, applying the
      * appropriate marking strategy for each question type.
@@ -215,8 +290,11 @@ public class StudentAttemptService {
 
             List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
 
+            // Parse the attempt payload once up front instead of once per question.
+            Map<String, String> questionJsonIndex = buildQuestionJsonIndex(attemptData);
+
             for (String section : sectionList) {
-                totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
+                totalMarks += calculateMarksForSection(section, attemptData, questionJsonIndex, assessment, studentAttempt);
             }
 
             return totalMarks;
@@ -226,18 +304,18 @@ public class StudentAttemptService {
         }
     }
 
-    private double calculateMarksForSection(String sectionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+    private double calculateMarksForSection(String sectionJson, String attemptData, Map<String, String> questionJsonIndex, Assessment assessment, StudentAttempt studentAttempt) {
         double sectionMarks = 0.0;
         List<String> questionJsons = attemptDataParserService.extractQuestionJsonsFromSection(sectionJson);
 
         for (String question : questionJsons) {
-            sectionMarks += calculateMarksForQuestion(sectionJson, question, attemptData, assessment, studentAttempt);
+            sectionMarks += calculateMarksForQuestion(sectionJson, question, attemptData, questionJsonIndex, assessment, studentAttempt);
         }
 
         return sectionMarks;
     }
 
-    private double calculateMarksForQuestion(String sectionJson, String questionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+    private double calculateMarksForQuestion(String sectionJson, String questionJson, String attemptData, Map<String, String> questionJsonIndex, Assessment assessment, StudentAttempt studentAttempt) {
         String sectionId = attemptDataParserService.extractSectionIdFromSectionJson(sectionJson);
         String questionId = attemptDataParserService.extractQuestionIdFromQuestionJson(questionJson);
 
@@ -252,7 +330,10 @@ public class StudentAttemptService {
 
         QuestionAssessmentSectionMapping markingScheme = questionAssessmentSectionMapping.get();
         Question questionAsked = markingScheme.getQuestion();
-        String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
+        // Prebuilt index; falls back to the original full-blob scan if indexing failed.
+        String questionWiseResponseData = questionJsonIndex.containsKey(questionId)
+                ? questionJsonIndex.get(questionId)
+                : getQuestionDetails(questionId, attemptData);
 
         QuestionWiseBasicDetailDto questionWiseBasicDetailDto = QuestionBasedStrategyFactory.calculateMarks(
                 markingScheme.getMarkingJson(),
@@ -275,8 +356,7 @@ public class StudentAttemptService {
 
     public LearnerAssessmentAttemptDataDto validateAndCreateJsonObject(String jsonContent) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.readValue(jsonContent, LearnerAssessmentAttemptDataDto.class);
+            return OBJECT_MAPPER.readValue(jsonContent, LearnerAssessmentAttemptDataDto.class);
         } catch (Exception e) {
             throw new VacademyException("Invalid json format: " + e.getMessage());
         }
@@ -284,8 +364,7 @@ public class StudentAttemptService {
 
     public LearnerManualAttemptDataDto validateAndCreateManualAttemptJsonObject(String jsonContent) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.readValue(jsonContent, LearnerManualAttemptDataDto.class);
+            return OBJECT_MAPPER.readValue(jsonContent, LearnerManualAttemptDataDto.class);
         } catch (Exception e) {
             throw new VacademyException("Invalid json format: " + e.getMessage());
         }
@@ -293,8 +372,7 @@ public class StudentAttemptService {
 
     public String getQuestionDetails(String questionId, String attemptDataJson) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            JsonNode rootNode = objectMapper.readTree(attemptDataJson);
+            JsonNode rootNode = OBJECT_MAPPER.readTree(attemptDataJson);
 
             // Iterate over the sections array
             JsonNode sections = rootNode.path(AttemptJsonConstants.sections);
@@ -305,7 +383,7 @@ public class StudentAttemptService {
                 for (JsonNode question : questions) {
                     // Compare question_id to find the correct question
                     if (question.path(AttemptJsonConstants.questionId).asText().equals(questionId)) {
-                        return objectMapper.writeValueAsString(question); // Return question as JSON string
+                        return OBJECT_MAPPER.writeValueAsString(question); // Return question as JSON string
                     }
                 }
             }
@@ -331,11 +409,14 @@ public class StudentAttemptService {
     }
 
     public void revaluateAssessmentForAttempts(List<StudentAttempt> allAttempts) {
+        // Through the proxy (see the `self` field) so each attempt is rescored in its
+        // own transaction and its question_wise_marks writes batch, instead of one
+        // auto-commit round trip per question across the whole participant list.
         allAttempts.forEach(attempt -> {
             if (attempt.getStatus().equals("ENDED")) {
-                updateStudentAttemptWithResultAfterMarksCalculation(Optional.of(attempt));
+                self.updateStudentAttemptWithResultAfterMarksCalculation(Optional.of(attempt));
             } else if (attempt.getStatus().equals("LIVE")) {
-                updateStudentAttemptWithTotalAfterMarksCalculation(Optional.of(attempt));
+                self.updateStudentAttemptWithTotalAfterMarksCalculation(Optional.of(attempt));
             }
 
         });

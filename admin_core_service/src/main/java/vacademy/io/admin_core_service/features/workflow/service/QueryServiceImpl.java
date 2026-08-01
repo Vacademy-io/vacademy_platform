@@ -725,6 +725,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // Parse Integer fields
             Integer waitingRoomTime = parseInteger(params.get("waitingRoomTime"));
 
+            // Learner action button(s) shown on the live-class screen. Accept a JSON
+            // string as-is, or a SpEL-built List/Map and serialize it here.
+            String learnerButtonConfig = null;
+            Object rawButtonConfig = params.get("learnerButtonConfig");
+            if (rawButtonConfig instanceof String s && !s.isBlank()) {
+                learnerButtonConfig = s;
+            } else if (rawButtonConfig != null) {
+                try {
+                    learnerButtonConfig = objectMapper.writeValueAsString(rawButtonConfig);
+                } catch (Exception e) {
+                    log.warn("Could not serialize learnerButtonConfig, ignoring: {}", e.getMessage());
+                }
+            }
+
             // Create the LiveSession entity
             LiveSession liveSession = LiveSession.builder()
                     .instituteId(instituteId)
@@ -751,6 +765,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .allowRewind(allowRewind)
                     .sessionStreamingServiceType((String) params.get("sessionStreamingServiceType"))
                     .allowPlayPause(allowPlayPause != null ? allowPlayPause : false)
+                    .learnerButtonConfig(learnerButtonConfig)
                     .build();
 
             // Save the live session

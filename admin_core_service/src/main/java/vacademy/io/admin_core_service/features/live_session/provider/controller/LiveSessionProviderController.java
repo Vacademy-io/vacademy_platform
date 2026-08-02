@@ -780,38 +780,16 @@ public class LiveSessionProviderController {
 
     private void markBbbAttendance(String sessionId, String scheduleId, String userId,
                                     String fullName, String role, String providerMeetingId) {
-        Optional<LiveSessionLogs> existing = liveSessionLogsRepository
-                .findExistingAttendanceRecord(scheduleId, userId);
-
-        String joinTimeIso = java.time.Instant.now().toString();
-
-        if (existing.isPresent()) {
-            // User already has an attendance record for this schedule.
-            // Update join time and provider meeting ID (handles retry/recreate scenario).
-            LiveSessionLogs log = existing.get();
-            log.setProviderJoinTime(joinTimeIso);
-            log.setProviderMeetingId(providerMeetingId);
-            log.setStatus("PRESENT");
-            log.setStatusType("ONLINE");
-            log.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-            liveSessionLogsRepository.save(log);
-        } else {
-            LiveSessionLogs logEntry = LiveSessionLogs.builder()
-                    .sessionId(sessionId)
-                    .scheduleId(scheduleId)
-                    .userSourceType("USER")
-                    .userSourceId(userId)
-                    .logType(SessionLog.ATTENDANCE_RECORDED.name())
-                    .status("PRESENT")
-                    .statusType("ONLINE")
-                    .details(fullName + " | role=" + role)
-                    .providerJoinTime(joinTimeIso)
-                    .providerMeetingId(providerMeetingId)
-                    .createdAt(new Timestamp(System.currentTimeMillis()))
-                    .updatedAt(new Timestamp(System.currentTimeMillis()))
-                    .build();
-            liveSessionLogsRepository.save(logEntry);
-        }
+        // Atomic upsert (V415 unique index) — the join endpoint takes the whole
+        // class concurrently at start time, so no check-then-save here.
+        liveSessionLogsRepository.upsertBbbJoinAttendance(
+                java.util.UUID.randomUUID().toString(),
+                sessionId,
+                scheduleId,
+                userId,
+                fullName + " | role=" + role,
+                java.time.Instant.now().toString(),
+                providerMeetingId);
     }
 
     // ───────────────────────────── Feedback endpoints ─────────────────────────────

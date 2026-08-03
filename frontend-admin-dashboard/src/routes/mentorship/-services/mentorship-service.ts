@@ -11,7 +11,9 @@ import {
     MENTORSHIP_MENTORS,
     MENTORSHIP_MENTOR_BOOKING_PAGE,
     MENTORSHIP_MENTOR_BY_ID,
+    MENTORSHIP_MY_GOOGLE_INITIATE,
     MENTORSHIP_MY_MENTEES,
+    MENTORSHIP_MY_MENTOR_PROFILE,
 } from '@/constants/urls';
 import type {
     AssignMentorRequest,
@@ -107,6 +109,28 @@ export const provisionMentorBookingPage = async (
         params: { instituteId },
     });
     return res.data as MentorDTO;
+};
+
+/** The caller's own mentor profile (incl. Google-connected status). */
+export const fetchMyMentorProfile = async (instituteId: string): Promise<MentorDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MY_MENTOR_PROFILE,
+        params: { instituteId },
+    });
+    return res.data as MentorDTO;
+};
+
+/** Start the mentor's own Google connect — returns the consent URL to redirect to. */
+export const initiateMyGoogle = async (
+    instituteId: string
+): Promise<{ oauth_url: string; session_key: string }> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_MY_GOOGLE_INITIATE,
+        params: { instituteId },
+    });
+    return res.data as { oauth_url: string; session_key: string };
 };
 
 export const fetchMyMentees = async (instituteId: string): Promise<MenteeDTO[]> => {

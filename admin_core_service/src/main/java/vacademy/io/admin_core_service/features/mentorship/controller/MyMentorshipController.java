@@ -7,9 +7,11 @@ import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.mentorship.dto.MenteeDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Self-service mentorship reads for the two non-admin audiences:
@@ -24,6 +26,7 @@ import java.util.List;
 public class MyMentorshipController {
 
     private final MentorAssignmentService assignmentService;
+    private final MentorService mentorService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     @GetMapping("/my-mentees")
@@ -40,5 +43,23 @@ public class MyMentorshipController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(assignmentService.mentorsForStudent(instituteId, user.getUserId()));
+    }
+
+    /** The caller's own mentor profile (incl. Google-connected status) — for the Connect Google card. */
+    @GetMapping("/my-mentor-profile")
+    public ResponseEntity<MentorDTO> myMentorProfile(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(mentorService.getMyMentorProfile(instituteId, user));
+    }
+
+    /** Mentor self-connects their OWN Google account — returns the Google consent URL. */
+    @PostMapping("/my-google/initiate")
+    public ResponseEntity<Map<String, String>> initiateMyGoogle(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(mentorService.initiateGoogleConnect(instituteId, user));
     }
 }

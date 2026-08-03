@@ -10,6 +10,9 @@ export interface MentorDTO {
     bio?: string | null;
     booking_page_id?: string | null;
     booking_page_slug?: string | null;
+    google_account_id?: string | null;
+    google_connected?: boolean | null;
+    google_email?: string | null;
     status: string;
     assigned_student_count?: number | null;
     // auth-hydrated identity

@@ -1207,6 +1207,8 @@ export const MENTORSHIP_ASSIGNMENTS_BULK = `${MENTORSHIP_BASE}/assignments/bulk-
 export const MENTORSHIP_ASSIGNMENT_BY_ID = (id: string) => `${MENTORSHIP_BASE}/assignments/${id}`;
 export const MENTORSHIP_MY_MENTEES = `${MENTORSHIP_BASE}/my-mentees`;
 export const MENTORSHIP_MY_MENTORS = `${MENTORSHIP_BASE}/my-mentors`;
+export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profile`;
+export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;

@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.audience.entity.OAuthConnectState;
 import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.dto.google.GoogleAccount;
 import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleOAuthService;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -49,6 +51,7 @@ public class GoogleOAuthController {
     private final GoogleOAuthService googleOAuthService;
     private final OAuthConnectStateRepository stateRepository;
     private final InstituteAccessValidator instituteAccessValidator;
+    private final MentorRepository mentorRepository;
 
     @Value("${google.oauth.frontend.callback.url:https://dash.vacademy.io/settings}")
     private String frontendCallbackUrl;
@@ -92,7 +95,15 @@ public class GoogleOAuthController {
             return redirect("google_error=invalid_state");
         }
         try {
-            googleOAuthService.completeConnection(code, st.getInstituteId());
+            GoogleAccount saved = googleOAuthService.completeConnection(code, st.getInstituteId());
+            // Per-mentor Google: if this connect was initiated by a mentor, link the
+            // freshly-connected account to their mentor record so their bookings use it.
+            if (saved != null && st.getMentorId() != null && !st.getMentorId().isBlank()) {
+                mentorRepository.findById(st.getMentorId()).ifPresent(m -> {
+                    m.setGoogleAccountId(saved.getId());
+                    mentorRepository.save(m);
+                });
+            }
             // Single-shot flow: mark CONSUMED so the same ?state= can't be replayed within
             // its TTL
             // (findValidById only accepts PENDING/AUTHORIZED). Unlike Meta's

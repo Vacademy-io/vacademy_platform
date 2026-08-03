@@ -219,3 +219,25 @@ def test_reconciled_count_drives_the_fault():
     v = dg.verdict(d)
     assert v["health"] == dg.RED and v["headline"] == dg.ANSWER_DELETED
     assert dg.to_payload(d)["turnTaking"]["answersDeletedSrc"] == "measured"
+
+
+# ── REGRESSION 2026-08-03: a false SLOW_TTS on the founder's own call ────────
+# "ResilientSarvamSTTService".lower() CONTAINS the substring "tts"
+# (...sarvams-TTS-ervice), so routing that tested "tts" before "stt" filed every
+# STT latency into the TTS reservoir. The panel's first live call reported
+# SLOW_TTS while the real TTS times were all ~0.2s.
+
+def test_ttfb_routing_discriminates_stt_from_tts():
+    import inspect
+    import app.bot as b
+    src = inspect.getsource(b.TtfbObserver)
+    body = src[src.index("proc = (d.processor"):]
+    body = body[:body.index("except Exception")] if "except Exception" in body else body
+    assert body.index('"stt" in proc') < body.index('"tts" in proc'), (
+        "stt must be tested BEFORE tts: the STT class name contains 'tts'"
+    )
+    # And prove the discrimination on the real class names.
+    stt = "ResilientSarvamSTTService#0".lower()
+    tts = "ResilientSarvamTTSService#0".lower()
+    assert "tts" in stt and "stt" in stt      # the trap
+    assert "stt" not in tts                   # …which ordering resolves cleanly

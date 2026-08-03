@@ -938,3 +938,20 @@ def test_watchdog_config_call_names_every_field():
     missing = [f.name for f in dataclasses.fields(cs.WatchdogConfig)
                if f.name + "=" not in call]
     assert not missing, f"WatchdogConfig fields not plumbed from Settings: {missing}"
+
+
+def test_machine_markers_cover_devanagari_transliteration():
+    """Sarvam is pinned to hi-IN and TRANSLITERATES English audio, so an English
+    voicemail greeting arrives in Devanagari and matched none of the ASCII
+    markers — that is how a voicemail wrote disposition=Callback onto a real
+    lead (corr e461549e, 2026-08-03)."""
+    class _O:
+        transcript = [{"role": "user",
+                       "text": "इफ यू रिकॉर्ड योर नेम एंड रीज़न फॉर कॉलिंग, "
+                               "आई विल सी इफ दिस पर्सन इज़ अवेलेबल।"}]
+    hits = rpt._machine_markers(_O())
+    assert hits, "Devanagari voicemail greeting must be recognised as a machine"
+
+    class _H:
+        transcript = [{"role": "user", "text": "हाँ जी बोलिए, मैं सुन रहा हूँ"}]
+    assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"

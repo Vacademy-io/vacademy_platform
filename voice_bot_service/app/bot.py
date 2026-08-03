@@ -241,10 +241,18 @@ class TtfbObserver:
                                 # from the UI instead of docker logs.
                                 proc = (d.processor or "").lower()
                                 if outer._diag is not None:
-                                    if "tts" in proc:
-                                        outer._diag.sample("tts_ttfb", d.value)
-                                    elif "stt" in proc:
+                                    # ORDER MATTERS: "ResilientSarvamSTTService"
+                                    # lowercases to "...sarvamsttservice", which
+                                    # CONTAINS the substring "tts" (s-TTS-ervice).
+                                    # Testing "tts" first filed every STT latency
+                                    # into the TTS bucket and produced a false
+                                    # SLOW_TTS on a live call. "ttsservice" never
+                                    # contains "stt", so checking stt first is
+                                    # unambiguous both ways.
+                                    if "stt" in proc:
                                         outer._diag.sample("stt_ttfb", d.value)
+                                    elif "tts" in proc:
+                                        outer._diag.sample("tts_ttfb", d.value)
                                     elif "llm" in proc or "vertex" in proc or "google" in proc:
                                         outer._diag.sample("llm_ttfb", d.value)
                 except Exception:

@@ -421,12 +421,21 @@ function FaultBlock({
     code,
     level,
     d,
+    withheld = false,
 }: {
     code: string;
     level: string | undefined;
     d: CallDiagnostics;
+    /** Numbers exist but this role may not see them (no VIEW_CALL_NUMBERS). */
+    withheld?: boolean;
 }) {
-    const evidence = faultEvidence(code, d);
+    // WITHHELD IS NOT "NOT MEASURED". In summary-only mode `d` is empty, so every
+    // evidence line would fall through to its absent-value copy and print
+    // "not measured on this call" — while the fault FIRING proves the opposite
+    // (a live call reported ANSWER_DELETED with 14 deleted answers and the sheet
+    // still said "not measured"). Suppress the lines instead of asserting
+    // something false; the sheet already explains the withholding once, globally.
+    const evidence = withheld ? [] : faultEvidence(code, d);
     const tone = level === 'RED' ? HEALTH_TONE.RED : HEALTH_TONE.AMBER;
     return (
         <div className="flex flex-col gap-1 rounded-md border border-neutral-200 bg-neutral-50 p-3">
@@ -660,7 +669,7 @@ export function CallHealthSheet({
                     <section className="flex flex-col gap-2">
                         <SectionTitle>What happened</SectionTitle>
                         {faults.map((f) => (
-                            <FaultBlock key={f} code={f} level={undefined} d={{}} />
+                            <FaultBlock key={f} code={f} level={undefined} d={{}} withheld />
                         ))}
                         <p className="rounded-md border border-dashed border-neutral-300 p-3 text-xs text-neutral-500">
                             The numbers behind this verdict — timings, counters and the discarded

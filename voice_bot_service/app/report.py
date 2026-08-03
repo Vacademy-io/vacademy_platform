@@ -158,9 +158,19 @@ def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
 # Verbatim IVR/voicemail openers seen in the live corpus. EVIDENCE ONLY in v1 —
 # scored into the LIKELY_MACHINE fault, never used to change a disposition.
 _MACHINE_MARKERS = (
+    # English
     "forwarded to voicemail", "leave a message", "after the tone", "not available",
     "switched off", "will be recorded for monitoring", "please hold while",
     "press one", "is currently unavailable", "out of coverage",
+    "record your name", "reason for calling", "if this person is available",
+    "at the tone", "voice mail", "voicemail",
+    # Devanagari. Sarvam's saarika is pinned to hi-IN and TRANSLITERATES English
+    # audio into Devanagari, so an English voicemail greeting arrives looking like
+    # "इफ यू रिकॉर्ड योर नेम एंड रीज़न फॉर कॉलिंग…" and matched NONE of the ASCII
+    # markers above. That is exactly how a voicemail wrote disposition=Callback
+    # onto a real lead on 2026-08-03 (corr e461549e).
+    "रिकॉर्ड योर नेम", "रीज़न फॉर कॉलिंग", "लीव अ मैसेज", "वॉइस मेल", "वॉइसमेल",
+    "अवेलेबल", "आफ्टर द टोन", "स्विच ऑफ", "उपलब्ध नहीं",
 )
 
 

@@ -4,7 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MenteeDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
@@ -61,5 +63,24 @@ public class MyMentorshipController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(mentorService.initiateGoogleConnect(instituteId, user));
+    }
+
+    /** The caller's own booking page (availability, duration, buffers) — auto-provisions if missing. */
+    @GetMapping("/my-booking-page")
+    public ResponseEntity<BookingPageDTO> myBookingPage(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(mentorService.getMyBookingPage(instituteId, user));
+    }
+
+    /** Mentor edits their OWN availability / duration / buffers (never host or slug). */
+    @PutMapping("/my-booking-page")
+    public ResponseEntity<BookingPageDTO> updateMyBookingPage(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorAvailabilityRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(mentorService.updateMyBookingPage(instituteId, user, request));
     }
 }

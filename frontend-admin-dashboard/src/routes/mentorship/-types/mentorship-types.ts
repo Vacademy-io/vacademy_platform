@@ -116,3 +116,40 @@ export interface CreateNoteRequest {
     title: string;
     description?: string;
 }
+
+/** One weekly availability window (times are "HH:mm" in the page timezone). */
+export interface WeeklyWindow {
+    day_of_week: string; // MONDAY..SUNDAY
+    start_time: string;
+    end_time: string;
+}
+
+export interface BookingAvailability {
+    weekly_windows: WeeklyWindow[];
+    date_overrides?: unknown[] | null;
+}
+
+/** Subset of the mentor's booking page used by the availability editor. */
+export interface MentorBookingPage {
+    id: string;
+    duration_minutes?: number | null;
+    slot_granularity_minutes?: number | null;
+    buffer_before_minutes?: number | null;
+    buffer_after_minutes?: number | null;
+    min_notice_minutes?: number | null;
+    booking_horizon_days?: number | null;
+    timezone?: string | null;
+    availability?: BookingAvailability | null;
+}
+
+/** Mentor self-service availability update (host/slug are never sent). */
+export interface MentorAvailabilityRequest {
+    availability?: BookingAvailability;
+    duration_minutes?: number;
+    min_notice_minutes?: number;
+    buffer_before_minutes?: number;
+    buffer_after_minutes?: number;
+    booking_horizon_days?: number;
+    slot_granularity_minutes?: number;
+    timezone?: string;
+}

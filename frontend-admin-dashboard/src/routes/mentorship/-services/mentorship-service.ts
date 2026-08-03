@@ -11,6 +11,7 @@ import {
     MENTORSHIP_MENTORS,
     MENTORSHIP_MENTOR_BOOKING_PAGE,
     MENTORSHIP_MENTOR_BY_ID,
+    MENTORSHIP_MY_BOOKING_PAGE,
     MENTORSHIP_MY_GOOGLE_INITIATE,
     MENTORSHIP_MY_MENTEES,
     MENTORSHIP_MY_MENTOR_PROFILE,
@@ -23,6 +24,8 @@ import type {
     CreateMentorRequest,
     CreateNoteRequest,
     MenteeDTO,
+    MentorAvailabilityRequest,
+    MentorBookingPage,
     MentorDTO,
     MentorDashboard,
     StudentRow,
@@ -131,6 +134,30 @@ export const initiateMyGoogle = async (
         params: { instituteId },
     });
     return res.data as { oauth_url: string; session_key: string };
+};
+
+/** The caller's own booking page (availability, duration, buffers) — auto-provisions if missing. */
+export const fetchMyBookingPage = async (instituteId: string): Promise<MentorBookingPage> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MY_BOOKING_PAGE,
+        params: { instituteId },
+    });
+    return res.data as MentorBookingPage;
+};
+
+/** Mentor updates their own availability / duration / buffers. */
+export const updateMyBookingPage = async (
+    instituteId: string,
+    data: MentorAvailabilityRequest
+): Promise<MentorBookingPage> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'PUT',
+        url: MENTORSHIP_MY_BOOKING_PAGE,
+        params: { instituteId },
+        data,
+    });
+    return res.data as MentorBookingPage;
 };
 
 export const fetchMyMentees = async (instituteId: string): Promise<MenteeDTO[]> => {

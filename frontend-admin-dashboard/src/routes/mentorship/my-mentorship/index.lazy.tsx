@@ -4,6 +4,7 @@ import {
     CalendarCheck,
     ChatCircle,
     CheckCircle,
+    Clock,
     Copy,
     GoogleLogo,
     LinkSimple,
@@ -21,6 +22,7 @@ import { useMyMentees, useMyMentorProfile } from '../-hooks/use-mentorship';
 import { initiateMyGoogle } from '../-services/mentorship-service';
 import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
+import { AvailabilityDialog } from '../-components/AvailabilityDialog';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -53,6 +55,7 @@ function MyMentorshipPage() {
     const [messagingId, setMessagingId] = useState<string | null>(null);
     const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
     const [connecting, setConnecting] = useState(false);
+    const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
     const mentees = data ?? [];
     const profile = profileQuery.data;
@@ -162,26 +165,36 @@ function MyMentorshipPage() {
                             )}
                         </div>
                     </div>
-                    {myBookingUrl && (
-                        <div className="flex items-center gap-3">
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="small"
-                                onClick={copyMyBookingLink}
-                            >
-                                <Copy size={16} /> Copy link
-                            </MyButton>
-                            <a
-                                href={myBookingUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-caption font-medium text-primary-500 hover:text-primary-600"
-                            >
-                                Open
-                            </a>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-3">
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setAvailabilityOpen(true)}
+                        >
+                            <Clock size={16} /> Edit availability
+                        </MyButton>
+                        {myBookingUrl && (
+                            <>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={copyMyBookingLink}
+                                >
+                                    <Copy size={16} /> Copy link
+                                </MyButton>
+                                <a
+                                    href={myBookingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                >
+                                    Open
+                                </a>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -250,6 +263,12 @@ function MyMentorshipPage() {
                 onOpenChange={(o) => {
                     if (!o) setDetailMentee(null);
                 }}
+            />
+
+            <AvailabilityDialog
+                instituteId={instituteId}
+                open={availabilityOpen}
+                onOpenChange={setAvailabilityOpen}
             />
         </div>
     );

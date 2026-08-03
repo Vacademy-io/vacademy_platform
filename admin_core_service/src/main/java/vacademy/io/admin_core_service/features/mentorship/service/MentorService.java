@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.booking.repository.BookingInstanc
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
 import vacademy.io.admin_core_service.features.booking.service.BookingPageService;
 import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
@@ -195,11 +196,55 @@ public class MentorService {
 
     /** The caller's own mentor profile (for the "Connect Google" card in My Mentorship). */
     public MentorDTO getMyMentorProfile(String instituteId, CustomUserDetails user) {
-        Mentor mentor = mentorRepository
-                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
-                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
         int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
         return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    /**
+     * The caller's own booking page (availability, duration, buffers). Auto-provisions
+     * a default Mon–Fri 9–5 page the first time a mentor opens their availability, so
+     * the editor always has something to edit.
+     */
+    public BookingPageDTO getMyBookingPage(String instituteId, CustomUserDetails user) {
+        Mentor mentor = ensureMyBookingPage(instituteId, user);
+        return bookingPageService.getById(mentor.getBookingPageId(), instituteId);
+    }
+
+    /**
+     * Update ONLY the caller's own booking-page scheduling fields. The request DTO
+     * deliberately excludes host/slug/institute, so a mentor can only change their own
+     * availability — never repoint the page at another host.
+     */
+    public BookingPageDTO updateMyBookingPage(String instituteId, CustomUserDetails user,
+                                              MentorAvailabilityRequest req) {
+        Mentor mentor = ensureMyBookingPage(instituteId, user);
+        BookingPageDTO dto = new BookingPageDTO();
+        dto.setAvailability(req.getAvailability());
+        dto.setDurationMinutes(req.getDurationMinutes());
+        dto.setMinNoticeMinutes(req.getMinNoticeMinutes());
+        dto.setBufferBeforeMinutes(req.getBufferBeforeMinutes());
+        dto.setBufferAfterMinutes(req.getBufferAfterMinutes());
+        dto.setBookingHorizonDays(req.getBookingHorizonDays());
+        dto.setSlotGranularityMinutes(req.getSlotGranularityMinutes());
+        dto.setTimezone(req.getTimezone());
+        return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
+    }
+
+    private Mentor getMyMentorOrThrow(String instituteId, CustomUserDetails user) {
+        return mentorRepository
+                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
+                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+    }
+
+    /** Resolve the caller's mentor row, provisioning a booking page if they don't have one yet. */
+    private Mentor ensureMyBookingPage(String instituteId, CustomUserDetails user) {
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
+        if (slugFor(mentor.getBookingPageId()) == null) {
+            provisionBookingPage(mentor.getId(), instituteId, user);
+            mentor = getMyMentorOrThrow(instituteId, user);
+        }
+        return mentor;
     }
 
     public MentorDashboardDTO dashboard(String instituteId) {

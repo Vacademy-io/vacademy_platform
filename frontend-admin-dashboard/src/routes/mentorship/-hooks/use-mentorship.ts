@@ -8,18 +8,21 @@ import {
     fetchDashboard,
     fetchMenteeCalls,
     fetchMentors,
+    fetchMyBookingPage,
     fetchMyMentees,
     fetchMyMentorProfile,
     fetchStudentTimeline,
     provisionMentorBookingPage,
     unassignMentee,
     updateMentor,
+    updateMyBookingPage,
 } from '../-services/mentorship-service';
 import type {
     AssignMentorRequest,
     BulkRoundRobinRequest,
     CreateMentorRequest,
     CreateNoteRequest,
+    MentorAvailabilityRequest,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -88,6 +91,25 @@ export const useMyMentorProfile = (instituteId: string | undefined) =>
         staleTime: 30 * 1000,
         retry: false,
     });
+
+export const useMyBookingPage = (instituteId: string | undefined) =>
+    useQuery({
+        queryKey: ['mentorship-my-booking-page', instituteId],
+        queryFn: () => fetchMyBookingPage(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+        retry: false,
+    });
+
+export const useUpdateMyBookingPage = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (v: { instituteId: string; data: MentorAvailabilityRequest }) =>
+            updateMyBookingPage(v.instituteId, v.data),
+        onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: ['mentorship-my-booking-page'] }),
+    });
+};
 
 const useInvalidateMentorship = () => {
     const queryClient = useQueryClient();

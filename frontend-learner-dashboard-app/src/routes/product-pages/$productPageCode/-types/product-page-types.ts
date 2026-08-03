@@ -28,6 +28,8 @@ export interface ProductPageMappingResponse {
     session_name?: string;
     course_preview_image_media_id?: string | null;
     about_the_course_html?: string | null;
+    /** Comma-separated course tags (CBSE, ICSE, …) — drives the tag filter. */
+    tags?: string | null;
     payment_option_type?: string | null;
 }
 

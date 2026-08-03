@@ -12,6 +12,7 @@ import { CombinedPaymentStep } from "./CombinedPaymentStep";
 import { CpoInstallmentsCheckoutStep } from "./CpoInstallmentsCheckoutStep";
 import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
+import { CatalogueChrome } from "@/routes/$tagName/-components/CatalogueChrome";
 import type {
   ProductPageSettings,
   PageJson,
@@ -24,6 +25,8 @@ interface ProductPageShellProps {
   pageData: ProductPageData;
   courseIds?: string;
   defaultTab?: "CATALOG" | "CART" | "PAYMENT";
+  /** Catalogue the visitor came from — supplies header, footer and theme. */
+  tagName?: string;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -55,6 +58,7 @@ export const ProductPageShell = ({
   pageData,
   courseIds,
   defaultTab,
+  tagName,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
@@ -123,6 +127,14 @@ export const ProductPageShell = ({
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
   const vendor = (pageData.vendor || "FREE").toUpperCase();
 
+  // Matches the header/footer types PageRenderer renders itself, so a product
+  // page the admin gave its own chrome never gets a second one layered on.
+  const pageHasOwnChrome = (pageJson.components || []).some(
+    (c) =>
+      c.enabled !== false &&
+      ["Header", "header", "Footer", "footer"].includes(c.type as string),
+  );
+
   // Determine if the current selection is all-CPO (routes to CPO installments step)
   const selectedMappings = pageData.mappings.filter((m) =>
     selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
@@ -137,12 +149,24 @@ export const ProductPageShell = ({
 
   return (
     <div className="min-h-screen w-full bg-white">
+      {/* Only the browse step wears the catalogue chrome. The checkout steps
+          stay in CheckoutLayout's focused shell — dropping site navigation
+          into a payment flow invites visitors to wander out of it.
+          A page_json that already declares its own header/footer keeps them:
+          injecting the catalogue's on top would stack two headers. */}
       {step === "CATALOG" && (
-        <CatalogStep
-          pageData={pageData}
-          settings={settings}
-          onNext={() => setStep("CART")}
-        />
+        <CatalogueChrome
+          tagName={pageHasOwnChrome ? undefined : tagName}
+          instituteId={instituteId}
+        >
+          <CatalogStep
+            pageData={pageData}
+            settings={settings}
+            tagName={tagName}
+            productPageCode={productPageCode}
+            onNext={() => setStep("CART")}
+          />
+        </CatalogueChrome>
       )}
 
       {(step === "CART" || step === "FORM" || step === "PAYMENT" || step === "CPO_INSTALLMENTS") && (

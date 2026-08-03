@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { withArabicFallback } from "@/utils/branding";
-import { BASE_URL } from "@/constants/urls";
+import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -309,6 +309,12 @@ interface CourseDetailsPageProps {
   level?: string;
   price?: string;
   available_slots?: number;
+  /**
+   * Present when the visitor came from a Product Page offer section. Enrolling
+   * then hands off to that product page's checkout (same funnel as its "Enrol
+   * now" card CTA) instead of the standalone enroll-invite dialog.
+   */
+  productPageCode?: string;
 }
 
 interface CourseData {
@@ -369,6 +375,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   level,
   price,
   available_slots,
+  productPageCode,
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -564,8 +571,40 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         // Check if course is published to catalogue
         if (course.is_course_published_to_catalaouge !== true) {
-          setError("This course is not available for public viewing.");
-          return;
+          // A course sold on a Product Page is ALREADY public there — name,
+          // price and an anonymous enrol button — so the catalogue publish
+          // flag must not hide its details page. Most product-page courses are
+          // not catalogue-published (214 of 219 on Shiksha Nation), which would
+          // have dead-ended nearly every "View course" click.
+          //
+          // Membership is verified against the product page itself rather than
+          // trusted from the URL, so a hand-typed ?productPageCode= cannot open
+          // a course that page does not actually sell. Only reached for an
+          // unpublished course, so a normal catalogue visit costs no extra
+          // request (the payload carries every course on the page).
+          let offeredByProductPage = false;
+          if (productPageCode) {
+            try {
+              const productPage = await axios.get(
+                GET_PRODUCT_PAGE_BY_CODE(productPageCode, instituteId),
+              );
+              offeredByProductPage = (productPage.data?.mappings ?? []).some(
+                (m: { status?: string; package_id?: string }) =>
+                  (m.status ?? "ACTIVE") === "ACTIVE" && m.package_id === courseId,
+              );
+            } catch (productPageError) {
+              // Fail closed — an unreachable product page cannot vouch for it.
+              console.warn(
+                "[CourseDetailsPage] Product page lookup failed:",
+                productPageError,
+              );
+            }
+          }
+
+          if (!offeredByProductPage) {
+            setError("This course is not available for public viewing.");
+            return;
+          }
         }
 
         // Use banner image from props if available, otherwise use API fields (raw media IDs)
@@ -887,7 +926,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     if (courseId && instituteId) {
       fetchCourseDetails();
     }
-  }, [courseId, tagName, instituteId]);
+  }, [courseId, tagName, instituteId, productPageCode]);
 
   // Apply institute theme
   useEffect(() => {
@@ -1001,6 +1040,46 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const inviteAvailability = resolveInviteAvailability(courseData.enrollInviteAvailability);
   const isEnrollmentClosed = inviteAvailability !== "AVAILABLE";
   const unavailableMessageHtml = courseData.unavailableMessageHtml ?? "";
+
+  /**
+   * Every enroll CTA on this page (desktop sidebar, inline card, mobile bar)
+   * routes through here so the three never drift apart.
+   *
+   * Arrived from a Product Page offer section → hand back to that product
+   * page's checkout with this course preselected, which is byte-for-byte the
+   * destination its "Enrol now" card CTA uses. Otherwise keep the original
+   * behaviour: payment dialog when payment is on, lead form when it is off.
+   */
+  const handleEnrollClick = () => {
+    // Invite expired / not-yet-started / deactivated → show the admin message.
+    if (isEnrollmentClosed) {
+      setShowUnavailableDialog(true);
+      return;
+    }
+
+    const psId = courseData.packageSessionId || packageSessionId;
+    if (productPageCode && psId) {
+      navigate({
+        to: "/product-pages/$productPageCode",
+        params: { productPageCode },
+        search: {
+          ...(instituteId ? { instituteId } : {}),
+          courseIds: psId,
+          defaultTab: "CART" as const,
+        },
+      });
+      return;
+    }
+
+    // Payment disabled on the catalogue → the lead form is the conversion step.
+    const paymentEnabled =
+      (catalogueData?.globalSettings as any)?.payment?.enabled === true;
+    if (paymentEnabled) {
+      setEnrollmentDialogOpen(true);
+    } else {
+      setShowLeadCollection(true);
+    }
+  };
 
   // Honor the catalogue's light/dark mode, exactly like CourseCataloguePage.
   // Without this the details page kept light tokens under a dark catalogue:
@@ -1225,51 +1304,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     {/* Enroll Button */}
                     <div className="pt-1 space-y-2">
                       <button
-                        onClick={() => {
-                          // Invite expired / not-yet-started / deactivated → show the admin message.
-                          if (isEnrollmentClosed) {
-                            setShowUnavailableDialog(true);
-                            return;
-                          }
-                          // Check if payment is disabled and lead collection is enabled
-                          const globalSettings =
-                            catalogueData?.globalSettings as any;
-                          const leadCollectionConfig =
-                            globalSettings?.leadCollection;
-                          const paymentConfig = globalSettings?.payment;
-
-                          // Check if payment is explicitly disabled (showPayment=false)
-                          const showPayment = paymentConfig?.enabled === true;
-                          const leadCollectionEnabled =
-                            leadCollectionConfig?.enabled;
-
-                          console.log("Payment config:", paymentConfig);
-                          console.log(
-                            "Lead collection config:",
-                            leadCollectionConfig,
-                          );
-                          console.log("Show payment:", showPayment);
-                          console.log(
-                            "Lead collection enabled:",
-                            leadCollectionEnabled,
-                          );
-
-                          // Check if this is a "Get Started" button (when payment is disabled)
-                          const isGetStartedButton =
-                            catalogueData?.globalSettings?.payment
-                              ?.enabled === false;
-
-                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
-                          if (isGetStartedButton || !showPayment) {
-                            console.log(
-                              "Get Started button clicked - opening lead collection modal!",
-                            );
-                            // Force show lead collection
-                            setShowLeadCollection(true);
-                          } else {
-                            setEnrollmentDialogOpen(true);
-                          }
-                        }}
+                        onClick={handleEnrollClick}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
@@ -1414,51 +1449,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     {/* Enroll Button */}
                     <div className="pt-1 space-y-2">
                       <button
-                        onClick={() => {
-                          // Invite expired / not-yet-started / deactivated → show the admin message.
-                          if (isEnrollmentClosed) {
-                            setShowUnavailableDialog(true);
-                            return;
-                          }
-                          // Check if payment is disabled and lead collection is enabled
-                          const globalSettings =
-                            catalogueData?.globalSettings as any;
-                          const leadCollectionConfig =
-                            globalSettings?.leadCollection;
-                          const paymentConfig = globalSettings?.payment;
-
-                          // Check if payment is explicitly disabled (showPayment=false)
-                          const showPayment = paymentConfig?.enabled === true;
-                          const leadCollectionEnabled =
-                            leadCollectionConfig?.enabled;
-
-                          console.log("Payment config:", paymentConfig);
-                          console.log(
-                            "Lead collection config:",
-                            leadCollectionConfig,
-                          );
-                          console.log("Show payment:", showPayment);
-                          console.log(
-                            "Lead collection enabled:",
-                            leadCollectionEnabled,
-                          );
-
-                          // Check if this is a "Get Started" button (when payment is disabled)
-                          const isGetStartedButton =
-                            catalogueData?.globalSettings?.payment
-                              ?.enabled === false;
-
-                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
-                          if (isGetStartedButton || !showPayment) {
-                            console.log(
-                              "Get Started button clicked - opening lead collection modal!",
-                            );
-                            // Force show lead collection
-                            setShowLeadCollection(true);
-                          } else {
-                            setEnrollmentDialogOpen(true);
-                          }
-                        }}
+                        onClick={handleEnrollClick}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
@@ -1684,20 +1675,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             {/* Get Started / Enroll Button */}
             <div className="flex flex-col gap-1">
               <button
-                onClick={() => {
-                  // Invite expired / not-yet-started / deactivated → show the admin message.
-                  if (isEnrollmentClosed) {
-                    setShowUnavailableDialog(true);
-                    return;
-                  }
-                  // Mirror the desktop CTA: enroll when payment is enabled,
-                  // otherwise fall back to the lead-collection form.
-                  if (catalogueData?.globalSettings?.payment?.enabled === true) {
-                    setEnrollmentDialogOpen(true);
-                  } else {
-                    setShowLeadCollection(true);
-                  }
-                }}
+                onClick={handleEnrollClick}
                 className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
                 style={{
                   backgroundColor: `hsl(var(--primary-500, var(--primary)))`,

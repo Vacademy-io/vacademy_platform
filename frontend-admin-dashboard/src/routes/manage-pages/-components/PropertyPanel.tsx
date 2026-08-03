@@ -3887,6 +3887,24 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                 <Input className="mt-1" value={props.ctaLabel || ''} onChange={(e) => updateProp('ctaLabel', e.target.value)} placeholder="Enrol now" />
             </div>
 
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">“View course” button on each card</Label>
+                <Switch
+                    checked={props.showViewCourse !== false}
+                    onCheckedChange={(c) => updateProp('showViewCourse', c)}
+                />
+            </div>
+            {props.showViewCourse !== false && (
+                <div>
+                    <Label className="text-xs">“View course” label</Label>
+                    <Input className="mt-1" value={props.viewCourseLabel || ''} onChange={(e) => updateProp('viewCourseLabel', e.target.value)} placeholder="View course" />
+                    <p className="mt-1 text-caption text-gray-400">
+                        Opens the course details page; enrolling from there returns to this
+                        product page&apos;s checkout.
+                    </p>
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
                 <div>
                     <Label className="text-xs">Header alignment</Label>
@@ -3992,6 +4010,28 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                             : 'Visitors page through the list; the canvas shows the first page.'}
                     </p>
                 </div>
+
+                {(props.layout || 'grid') === 'carousel' && (props.pageSize ?? 9) === 0 && (
+                    <div>
+                        <Label className="text-xs">Cards in the row</Label>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                            {[8, 12, 20, 0].map((n) => (
+                                <button
+                                    key={n}
+                                    onClick={() => updateProp('railMaxCards', n)}
+                                    className={`rounded px-2.5 py-1 text-caption font-medium ${(props.railMaxCards ?? 12) === n ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
+                                >
+                                    {n === 0 ? 'All' : n}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="mt-1 text-caption text-gray-400">
+                            {(props.railMaxCards ?? 12) === 0
+                                ? 'Every course sits in one row — a long product page makes that row very long.'
+                                : 'The row stops here and ends with a card linking to the full product page.'}
+                        </p>
+                    </div>
+                )}
 
                 <div className="flex items-center justify-between">
                     <Label className="text-xs">Search box</Label>

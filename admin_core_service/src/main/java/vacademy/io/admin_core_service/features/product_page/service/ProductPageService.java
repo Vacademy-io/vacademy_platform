@@ -490,8 +490,20 @@ public class ProductPageService {
                 .getPackageSession();
         if (ps != null) {
             if (ps.getPackageEntity() != null) {
-                r.setPackageId(ps.getPackageEntity().getId());
-                r.setPackageName(ps.getPackageEntity().getPackageName());
+                vacademy.io.common.institute.entity.PackageEntity pkg = ps.getPackageEntity();
+                r.setPackageId(pkg.getId());
+                r.setPackageName(pkg.getPackageName());
+                // Card presentation data. Without these every product-page /
+                // catalogue-offer card fell back to a monogram placeholder with
+                // no blurb and no tags, because nothing else populates them.
+                r.setCoursePreviewImageMediaId(firstNonBlank(
+                        pkg.getCoursePreviewImageMediaId(),
+                        pkg.getCourseBannerMediaId(),
+                        pkg.getThumbnailFileId()));
+                r.setAboutTheCourseHtml(firstNonBlankHtml(
+                        pkg.getAboutTheCourse(),
+                        pkg.getCourseHtmlDescription()));
+                r.setTags(pkg.getTags());
             }
             if (ps.getLevel() != null)
                 r.setLevelName(ps.getLevel().getLevelName());
@@ -500,6 +512,41 @@ public class ProductPageService {
         }
 
         return r;
+    }
+
+    /**
+     * First value carrying VISIBLE text, or null when there is none.
+     *
+     * Editors persist an empty rich-text field as "&lt;p&gt;&lt;/p&gt;", which is
+     * non-blank as a string but renders as nothing — every package on a real
+     * institute stores exactly that. Returning it would push consumers past
+     * their `about_the_course_html || plan.description` fallback and leave the
+     * card with no description at all, so markup with no text counts as blank.
+     */
+    private String firstNonBlankHtml(String... values) {
+        if (values == null)
+            return null;
+        for (String v : values) {
+            if (v == null)
+                continue;
+            String text = v.replaceAll("<[^>]*>", " ")
+                    .replace("&nbsp;", " ")
+                    .replace("&#160;", " ");
+            if (StringUtils.hasText(text))
+                return v;
+        }
+        return null;
+    }
+
+    /** First value that is neither null nor blank, or null when there is none. */
+    private String firstNonBlank(String... values) {
+        if (values == null)
+            return null;
+        for (String v : values) {
+            if (StringUtils.hasText(v))
+                return v;
+        }
+        return null;
     }
 
     private String generateUniqueCode() {

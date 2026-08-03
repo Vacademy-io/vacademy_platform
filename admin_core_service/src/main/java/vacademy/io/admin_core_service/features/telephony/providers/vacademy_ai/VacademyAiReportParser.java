@@ -48,6 +48,7 @@ public class VacademyAiReportParser implements AiCallReportParser {
                 .summary(text(n, "summary"))
                 .extractedQa(readMap(n.get("extractedQa")))
                 .metadata(metadata)
+                .diagnostics(readMap(n.get("diagnostics")))
                 .recordingUrl(text(n, "recordingUrl"))
                 .transcript(text(n, "transcript"))
                 .callbackRequested(boolOrNull(n, "callbackRequested"))

@@ -16,7 +16,6 @@ import {
   shouldFilterItem,
 } from "@/components/drip-conditions/helpers";
 import {
-  CaretDown,
   CaretRight,
   CheckCircle,
   Circle,
@@ -41,6 +40,7 @@ import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSlidesByChapterId,
+  fetchSlidesByPackageSession,
   Slide,
 } from "@/hooks/study-library/use-slides";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,7 @@ import { CourseLeaderboard } from "./CourseLeaderboard";
 import { calculateOverallCompletion } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getFilePublicUrlQuery } from "@/services/file-url-cache";
 import { getLatestResume } from "@/services/resume-thread";
+import { useTranslation } from "react-i18next";
 
 export interface Chapter {
   id: string;
@@ -166,18 +167,16 @@ export const CourseStructureDetails = ({
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
   const [showContentPrefixes, setShowContentPrefixes] = useState<boolean>(true);
   // Helper: format video duration from millis to h:mm:ss or m:ss
+  // Outline meta shows rounded minutes ("48 min", "1h 22m") — second
+  // precision is noise in a course outline and the old "47:36 mins" read as
+  // a mislabeled clock time.
   const formatDuration = useCallback((millis?: number | null): string => {
     if (!millis || millis <= 0) return "";
-    const totalSeconds = Math.round(millis / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return `${hours}:${String(minutes).padStart(2, "0")}:${String(
-        seconds
-      ).padStart(2, "0")}`;
-    }
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+    const totalMinutes = Math.max(1, Math.round(millis / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    return `${totalMinutes} min`;
   }, []);
 
   // Helper: compute short meta text for a slide
@@ -196,7 +195,7 @@ export const CourseStructureDetails = ({
             .published_video_length_in_millis ??
           slide.video_slide.video_length_in_millis;
         const text = formatDuration(ms);
-        if (text) return text + " mins";
+        if (text) return text;
       }
       if (slide.question_slide) {
         const qType = slide.question_slide.question_type;
@@ -209,7 +208,9 @@ export const CourseStructureDetails = ({
           // with legacy date-only ("2026-03-25") still possible. Normalize.
           try {
             const normalized = end.length <= 10 ? `${end}T00:00:00` : end;
-            return `Due ${format(parseISO(normalized), "MMM d, yyyy h:mm a")}`;
+            // Short form keeps the meta cluster inline on mobile; the exact
+            // time lives on the slide page itself.
+            return `Due ${format(parseISO(normalized), "MMM d")}`;
           } catch {
             return `Due ${end}`;
           }
@@ -219,10 +220,6 @@ export const CourseStructureDetails = ({
     },
     [formatDuration]
   );
-
-  // Single quiet chip style for slide type/meta info (one status language)
-  const quietBadgeClasses =
-    "border border-border bg-transparent font-normal text-muted-foreground";
 
   // Helper: calculate module progress from chapters
   const calculateModuleProgress = (moduleChapters: Chapter[]): number => {
@@ -264,7 +261,7 @@ export const CourseStructureDetails = ({
 
     return (
       <div
-        className={`w-full ${height} bg-neutral-200 ${radius} overflow-hidden`}
+        className={`w-full ${height} bg-muted ${radius} overflow-hidden`}
       >
         <div
           className={`${height} bg-primary-500 [.ui-play_&]:bg-play-success ${radius} transition-all duration-300 ease-in-out`}
@@ -278,11 +275,11 @@ export const CourseStructureDetails = ({
   // (complete / in progress / not started / locked).
   const renderStatusIcon = (
     percentage: number,
-    options?: { locked?: boolean; size?: number }
+    options?: { locked?: boolean; size?: number; hideEmpty?: boolean }
   ) => {
     const size = options?.size ?? 16;
     if (options?.locked) {
-      return <Lock size={size} className="shrink-0 text-neutral-400" />;
+      return <Lock size={size} className="shrink-0 text-muted-foreground" />;
     }
     if (percentage >= getSlideCompletionThreshold()) {
       return (
@@ -302,7 +299,11 @@ export const CourseStructureDetails = ({
         />
       );
     }
-    return <Circle size={size} className="shrink-0 text-neutral-300" />;
+    // Not started: status is only shown once earned. hideEmpty renders
+    // nothing (slide meta cluster); otherwise an invisible spacer keeps
+    // titles column-aligned between started/unstarted sibling rows.
+    if (options?.hideEmpty) return null;
+    return <Circle size={size} aria-hidden className="shrink-0 opacity-0" />;
   };
 
   // Helper: quiet completion text (status itself lives in the left icon).
@@ -327,6 +328,12 @@ export const CourseStructureDetails = ({
     );
   };
   // (removed) renderSlideSkeletonRow - unused helper
+
+  // getSlideTypeDisplay (slide-type chips) reads the studyContent catalog via
+  // raw i18n.t(); without this subscription the namespace never lazy-loads on
+  // this page and the chips render literal keys ("slideType.video"). The hook
+  // both loads the catalog and re-renders this component when it arrives.
+  useTranslation("studyContent");
 
   type LocalTab = { label: string; value: string };
   const [filteredTabs, setFilteredTabs] = useState<LocalTab[]>([]);
@@ -846,12 +853,11 @@ export const CourseStructureDetails = ({
   };
 
   // Helper function to get slide styling based on clickability
-  const getSlideStyling = (textSize: "xs" | "sm" = "xs") => {
-    const sizeClass = textSize === "sm" ? "text-sm" : "text-xs";
+  const getSlideStyling = () => {
     if (isSlideClickable()) {
-      return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-600 rounded hover:bg-muted/60 transition-colors`;
+      return "group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-muted/60";
     } else {
-      return `group flex items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-400 rounded bg-muted/40`;
+      return "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground";
     }
   };
 
@@ -876,7 +882,16 @@ export const CourseStructureDetails = ({
     slidesRequestsRef.current.add(key);
 
     try {
-      const raw = await fetchSlidesByChapterId(chapterId);
+      // Fetch through the query cache under the same key the slide route's
+      // useSlides uses, so the eager-load warms the slide screen. Short
+      // staleTime: long enough to absorb the level-settling double-run,
+      // short enough that per-user progress (chapter %, drip locks) doesn't
+      // sit visibly stale after completing a slide.
+      const raw = await queryClient.fetchQuery({
+        queryKey: ["slides", chapterId],
+        queryFn: () => fetchSlidesByChapterId(chapterId),
+        staleTime: 15_000,
+      });
       const slides = Array.isArray(raw)
         ? raw
         : (raw && typeof raw === "object" && (raw as { data?: unknown[] }).data)
@@ -889,7 +904,81 @@ export const CourseStructureDetails = ({
     } finally {
       slidesRequestsRef.current.delete(key);
     }
-  }, []);
+  }, [queryClient]);
+
+  // Bulk eager-load: ONE request for every chapter's slides instead of one GET
+  // per chapter (hundreds on large courses). Seeds the local slidesMap AND the
+  // per-chapter ["slides", chapterId] query cache, so expanding chapters and
+  // opening the slide screen do no further fetches. Returns false when the
+  // bulk endpoint is unavailable (older backend) — caller must fall back to
+  // per-chapter fetches.
+  const loadAllSlidesBulk = useCallback(
+    async (chapterIds: string[]): Promise<boolean> => {
+      if (!packageSessionId) return false;
+      // Mark requested chapters as loading so the open-chapter effect doesn't
+      // start parallel per-chapter fetches while the bulk request is in flight.
+      setSlidesLoadingStatus((prev) => {
+        const next = { ...prev };
+        chapterIds.forEach((id) => {
+          if (next[id] !== "loaded") next[id] = "loading";
+        });
+        return next;
+      });
+      try {
+        // staleTime 0: every course-details mount refetches — ONE request —
+        // so per-user progress (chapter %, drip locks) is always current,
+        // matching the old per-chapter flow's freshness. Concurrent callers
+        // still share the in-flight request, and the seeded per-chapter
+        // caches below are network-fresh at seeding time.
+        const chapters = await queryClient.fetchQuery({
+          queryKey: ["slides", "by-package-session", packageSessionId],
+          queryFn: () => fetchSlidesByPackageSession(packageSessionId),
+          staleTime: 0,
+        });
+        const mapUpdates: Record<string, Slide[]> = {};
+        // Chapters missing from the response simply have no slides — same as
+        // the per-chapter endpoint returning [].
+        chapterIds.forEach((id) => {
+          mapUpdates[id] = [];
+        });
+        chapters.forEach((entry) => {
+          if (!entry?.chapter_id) return;
+          mapUpdates[entry.chapter_id] = Array.isArray(entry.slides)
+            ? entry.slides
+            : [];
+        });
+        Object.entries(mapUpdates).forEach(([id, slides]) => {
+          queryClient.setQueryData(["slides", id], slides);
+        });
+        setSlidesMap((prev) => ({ ...prev, ...mapUpdates }));
+        setSlidesLoadingStatus((prev) => {
+          const next = { ...prev };
+          Object.keys(mapUpdates).forEach((id) => {
+            next[id] = "loaded";
+          });
+          return next;
+        });
+        return true;
+      } catch {
+        // Roll the loading marks back so the per-chapter fallback (and the
+        // open-chapter effect) can fetch normally.
+        setSlidesLoadingStatus((prev) => {
+          const next = { ...prev };
+          chapterIds.forEach((id) => {
+            if (next[id] === "loading") next[id] = "idle";
+          });
+          return next;
+        });
+        return false;
+      }
+    },
+    [packageSessionId, queryClient],
+  );
+
+  const loadAllSlidesBulkRef = useRef(loadAllSlidesBulk);
+  useEffect(() => {
+    loadAllSlidesBulkRef.current = loadAllSlidesBulk;
+  }, [loadAllSlidesBulk]);
 
   const useModulesMutation = () => {
     return useMutation({
@@ -907,24 +996,43 @@ export const CourseStructureDetails = ({
 
         const results = await Promise.all(
           currentSubjects?.map(async (subject) => {
-            // For depth 5 courses, try using the public endpoint first
-            let res;
-
-            res = await fetchModulesWithChapters(subject.id, packageSessionId);
-            // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
-            if (Array.isArray(res) && res.length === 0) {
-              try {
-                const alt = await fetchModulesWithChaptersPublic(
+            // Cache the RESOLVED result (private + public fallback) per
+            // subject/packageSession: the selection effects can legitimately
+            // run this twice while session/level settle (course-init subjects
+            // first, form subjects after reset), and without a cache each
+            // round re-fires every request. Own key namespace — the shared
+            // GET_MODULES_WITH_CHAPTERS query's queryFn writes to a zustand
+            // store as a side effect, which serving from cache would skip.
+            const res = await queryClient.fetchQuery({
+              queryKey: [
+                "MODULES_WITH_CHAPTERS_RESOLVED",
+                subject.id,
+                packageSessionId,
+              ],
+              queryFn: async () => {
+                // For depth 5 courses, try using the public endpoint first
+                let r = await fetchModulesWithChapters(
                   subject.id,
                   packageSessionId
                 );
-                if (Array.isArray(alt) && alt.length > 0) {
-                  res = alt;
+                // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
+                if (Array.isArray(r) && r.length === 0) {
+                  try {
+                    const alt = await fetchModulesWithChaptersPublic(
+                      subject.id,
+                      packageSessionId
+                    );
+                    if (Array.isArray(alt) && alt.length > 0) {
+                      r = alt;
+                    }
+                  } catch {
+                    // ignore
+                  }
                 }
-              } catch {
-                // ignore
-              }
-            }
+                return r;
+              },
+              staleTime: 60_000,
+            });
 
             return { subjectId: subject.id, modules: res };
           })
@@ -956,6 +1064,14 @@ export const CourseStructureDetails = ({
     if (!packageSessionId) {
       return;
     }
+    // Explicit user refresh (pull-to-refresh): drop the cached modules/slides
+    // so the reload below actually hits the network.
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["MODULES_WITH_CHAPTERS_RESOLVED"],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["slides"] }),
+    ]);
     // Refresh by reloading modules
     try {
       setIsModulesLoading(true);
@@ -1067,9 +1183,15 @@ export const CourseStructureDetails = ({
     setOpenModules(allModuleIds);
     setOpenChapters(allChapterIds);
 
-    // Eager-load slides for all chapters so slide list shows when expanded
+    // Eager-load slides for all chapters so slide list shows when expanded.
+    // Skip chapters the bulk load already covered or is covering — without
+    // this, tapping Expand All while the bulk request is in flight refires
+    // the per-chapter storm the bulk endpoint exists to prevent.
     allChapterIds.forEach((chapterId) => {
-      getSlidesWithChapterId(chapterId);
+      const status = slidesLoadingStatus[chapterId] ?? "idle";
+      if (status !== "loading" && status !== "loaded") {
+        getSlidesWithChapterId(chapterId);
+      }
     });
   };
 
@@ -1189,7 +1311,7 @@ export const CourseStructureDetails = ({
             courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const subjectContentIndent = "ps-1 sm:ps-struct-subject";
+              const subjectContentIndent = "ps-1 sm:ps-6";
               return (
                 <Collapsible
                   key={subject.id}
@@ -1208,19 +1330,11 @@ export const CourseStructureDetails = ({
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      {isSubjectOpen ? (
-                        <CaretDown
-                          size={18}
-                          weight="bold"
-                          className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90"
-                        />
-                      ) : (
-                        <CaretRight
-                          size={18}
-                          weight="bold"
-                          className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90"
-                        />
-                      )}
+                      <CaretRight
+                        size={18}
+                        weight="bold"
+                        className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
+                      />
                       {renderStatusIcon(calculateSubjectProgress(subject.id), {
                         size: 18,
                       })}
@@ -1228,36 +1342,32 @@ export const CourseStructureDetails = ({
                         <img
                           src={thumbUrlById[`subject:${subject.id}`]}
                           alt={toTitleCase(subject.subject_name)}
-                          className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                          className="w-6 h-6 rounded-sm object-cover border border-border"
                           crossOrigin="anonymous"
                           referrerPolicy="no-referrer"
                           loading="eager"
-                          onError={(e) => {
-                            e.currentTarget.classList.add("border-red-400");
-                          }}
                         />
                       )}
                       {showContentPrefixes && (
-                        <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                        <span className="w-7 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
                           S{idx + 1}
                         </span>
                       )}
                       <span
-                        className="break-words font-medium"
+                        className="min-w-0 flex-1 break-words"
                         title={toTitleCase(subject.subject_name)}
                       >
                         {toTitleCase(subject.subject_name)}
                       </span>
-                      {/* Subject Progress Indicator — same treatment modules and
-                          chapters get, so every level of the outline reads the
-                          same way. onDark: the subject row sits on the navy
-                          surface in the Play theme. */}
-                      <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
+                      {/* Subject keeps the ONLY progress bar in its branch.
+                          onDark: the subject row sits on the navy surface in
+                          the Play theme. */}
+                      <div className="flex items-center gap-2 ms-auto shrink-0">
                         {(() => {
                           const progress = calculateSubjectProgress(subject.id);
                           return (
                             <>
-                              <div className="w-14 sm:w-16 hidden sm:block">
+                              <div className="w-16 hidden sm:block">
                                 {renderProgressBar(progress, "sm")}
                               </div>
                               {renderCompletionBadge(progress, {
@@ -1276,7 +1386,7 @@ export const CourseStructureDetails = ({
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `ps-1 sm:ps-struct-module`;
+                          const moduleContentIndent = `ps-1 sm:ps-5`;
                           return (
                             <Collapsible
                               key={mod.module.id}
@@ -1285,7 +1395,7 @@ export const CourseStructureDetails = ({
                             >
                               <CollapsibleTrigger
                                 className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                                   // Vibrant Styles
                                   "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                   // Play Styles — quiet hover, ink text
@@ -1293,17 +1403,11 @@ export const CourseStructureDetails = ({
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  {isModuleOpen ? (
-                                    <CaretDown
-                                      size={16}
-                                      className="shrink-0 text-neutral-500"
-                                    />
-                                  ) : (
-                                    <CaretRight
-                                      size={16}
-                                      className="shrink-0 text-neutral-500"
-                                    />
-                                  )}
+                                  <CaretRight
+                                    size={16}
+                                    weight="bold"
+                                    className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                  />
                                   {renderStatusIcon(
                                     calculateModuleProgress(mod.chapters || [])
                                   )}
@@ -1313,44 +1417,31 @@ export const CourseStructureDetails = ({
                                         thumbUrlById[`module:${mod.module.id}`]
                                       }
                                       alt={mod.module.module_name}
-                                      className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                      className="w-5 h-5 rounded-sm object-cover border border-border"
                                       crossOrigin="anonymous"
                                       referrerPolicy="no-referrer"
                                       loading="eager"
-                                      onError={(e) => {
-                                        e.currentTarget.classList.add(
-                                          "border-red-400"
-                                        );
-                                      }}
                                     />
                                   )}
                                   {showContentPrefixes && (
-                                    <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                    <span className="w-6 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
                                       M{modIdx + 1}
                                     </span>
                                   )}
                                   <span
-                                    className="break-words"
+                                    className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
                                     title={mod.module.module_name}
                                   >
                                     {mod.module.module_name}
                                   </span>
-                                  {/* Module Progress Indicator */}
-                                  <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
-                                    {(() => {
-                                      const progress = calculateModuleProgress(
+                                  {/* Module progress: % text only (bar lives on the branch top level) */}
+                                  <span className="ms-auto flex shrink-0 items-center gap-2">
+                                    {renderCompletionBadge(
+                                      calculateModuleProgress(
                                         mod.chapters || []
-                                      );
-                                      return (
-                                        <>
-                                          <div className="w-14 sm:w-16 hidden sm:block">
-                                            {renderProgressBar(progress, "sm")}
-                                          </div>
-                                          {renderCompletionBadge(progress)}
-                                        </>
-                                      );
-                                    })()}
-                                  </div>
+                                      )
+                                    )}
+                                  </span>
                                 </div>
                               </CollapsibleTrigger>
 
@@ -1391,31 +1482,25 @@ export const CourseStructureDetails = ({
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
                                           className={cn(
-                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                               isChapterLocked
                                                 ? "cursor-not-allowed opacity-60"
-                                                : "hover:bg-muted/60 cursor-pointer"
+                                                : "hover:bg-muted/60 cursor-pointer data-[state=open]:bg-muted/40"
                                             }`,
                                             // Vibrant Styles
                                             !isChapterLocked &&
                                               "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
-                                            // Play Styles — quiet hover; open chapter gets a calm navy edge marker
+                                            // Play Styles — calm navy-soft surface, no border jump
                                             !isChapterLocked &&
-                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
+                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink [.ui-play_&]:data-[state=open]:bg-play-navy-soft [.ui-play_&]:data-[state=open]:text-play-navy-soft-ink"
                                           )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            {isChapterOpen ? (
-                                              <CaretDown
-                                                size={14}
-                                                className="shrink-0 text-neutral-500"
-                                              />
-                                            ) : (
-                                              <CaretRight
-                                                size={14}
-                                                className="shrink-0 text-neutral-500"
-                                              />
-                                            )}
+                                            <CaretRight
+                                              size={14}
+                                              weight="bold"
+                                              className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                            />
                                             {renderStatusIcon(
                                               calculateChapterProgress(ch.id),
                                               { locked: isChapterLocked }
@@ -1432,24 +1517,19 @@ export const CourseStructureDetails = ({
                                                 alt={toTitleCase(
                                                   ch.chapter_name
                                                 )}
-                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                                className="w-4 h-4 rounded-sm object-cover border border-border"
                                                 crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 loading="eager"
-                                                onError={(e) => {
-                                                  e.currentTarget.classList.add(
-                                                    "border-red-400"
-                                                  );
-                                                }}
                                               />
                                             )}
                                             {showContentPrefixes && (
-                                              <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                              <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
                                                 C{chIdx + 1}
                                               </span>
                                             )}
                                             <span
-                                              className="break-words text-base font-semibold text-neutral-800"
+                                              className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1465,13 +1545,9 @@ export const CourseStructureDetails = ({
                                                 }
                                               />
                                             )}
-                                            {/* Chapter Progress Indicator */}
-                                            <div className="flex items-center gap-1.5 ms-auto shrink-0">
+                                            {/* Earned-only slide count */}
+                                            <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
                                               {(() => {
-                                                const progress =
-                                                  calculateChapterProgress(
-                                                    ch.id
-                                                  );
                                                 const slidesForChapter =
                                                   slidesMap[ch.id] || [];
                                                 const completedSlides =
@@ -1485,34 +1561,33 @@ export const CourseStructureDetails = ({
                                                   slidesForChapter.length;
 
                                                 return (
-                                                  <>
-                                                    <div className="w-12 hidden sm:block">
-                                                      {renderProgressBar(
-                                                        progress,
-                                                        "sm"
+                                                  slidesMap[ch.id] !==
+                                                    undefined &&
+                                                  totalSlides > 0 &&
+                                                  completedSlides > 0 && (
+                                                    <span
+                                                      className={cn(
+                                                        "min-w-8 text-end text-caption tabular-nums",
+                                                        completedSlides ===
+                                                          totalSlides
+                                                          ? "text-success-500"
+                                                          : "text-muted-foreground",
+                                                        "[.ui-play_&]:text-play-navy-soft-ink"
                                                       )}
-                                                    </div>
-                                                    {slidesMap[ch.id] !==
-                                                      undefined && (
-                                                      <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
-                                                        {completedSlides}/
-                                                        {totalSlides}
-                                                      </span>
-                                                    )}
-                                                    {renderCompletionBadge(
-                                                      progress
-                                                    )}
-                                                  </>
+                                                    >
+                                                      {completedSlides}/
+                                                      {totalSlides}
+                                                    </span>
+                                                  )
                                                 );
                                               })()}
-                                            </div>
+                                            </span>
                                           </div>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                           <div
-                                            className={`space-y-px ms-5 border-s border-border/50 py-1 ps-2 relative `}
+                                            className={`space-y-px ms-5 border-s border-border py-1 ps-2 relative `}
                                           >
-                                            <div className="absolute start-0 top-0 w-px h-full bg-border/50"></div>
                                             {(() => {
                                               const slidesForChapter =
                                                 slidesMap[ch.id] ?? [];
@@ -1582,8 +1657,7 @@ export const CourseStructureDetails = ({
                                                     <div
                                                       key={slide.id}
                                                       className={cn(
-                                                        getSlideStyling() +
-                                                          " rounded-md",
+                                                        getSlideStyling(),
                                                         // Vibrant Styles
                                                         "[.ui-vibrant_&]:hover:bg-primary/5",
                                                         // Play Styles — solid, bold, Duolingo-style
@@ -1604,8 +1678,8 @@ export const CourseStructureDetails = ({
                                                       }
                                                     >
                                                       {showContentPrefixes && (
-                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                          S{sIdx + 1}
+                                                        <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                                                          {sIdx + 1}
                                                         </span>
                                                       )}
                                                       <span
@@ -1616,17 +1690,10 @@ export const CourseStructureDetails = ({
                                                           ) || undefined
                                                         }
                                                       >
-                                                        {renderStatusIcon(
-                                                          slide.percentage_completed ||
-                                                            0,
-                                                          {
-                                                            locked:
-                                                              !!isSlideLocked,
-                                                          }
-                                                        )}
+                                                        {getIcon(slide, "4")}
                                                       </span>
                                                       <span
-                                                        className="break-words text-sm font-normal text-neutral-700"
+                                                        className="min-w-0 flex-1 truncate text-sm text-foreground"
                                                         title={slide.title}
                                                       >
                                                         {slide.title}
@@ -1643,39 +1710,26 @@ export const CourseStructureDetails = ({
                                                           }
                                                         />
                                                       )}
-                                                      {/* Slide Meta Row */}
-                                                      <div className="flex flex-wrap items-center gap-2 ms-auto shrink-0 text-xs text-muted-foreground w-full sm:w-auto sm:ms-auto">
-                                                        {(() => {
-                                                          const meta =
-                                                            getSlideMetaText(
+                                                      {/* Meta: one quiet fact + earned-only status */}
+                                                      <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
+                                                        {getSlideMetaText(
+                                                          slide
+                                                        ) && (
+                                                          <span>
+                                                            {getSlideMetaText(
                                                               slide
-                                                            );
-                                                          const typeLabel =
-                                                            getSlideTypeDisplay(
-                                                              slide
-                                                            );
-
-                                                          return (
-                                                            <>
-                                                              {typeLabel && (
-                                                                <Badge
-                                                                  variant="outline"
-                                                                  className={
-                                                                    quietBadgeClasses
-                                                                  }
-                                                                >
-                                                                  {typeLabel}
-                                                                </Badge>
-                                                              )}
-                                                              {meta && (
-                                                                <span className="text-xs text-muted-foreground">
-                                                                  {meta}
-                                                                </span>
-                                                              )}
-                                                            </>
-                                                          );
-                                                        })()}
-                                                      </div>
+                                                            )}
+                                                          </span>
+                                                        )}
+                                                        {renderStatusIcon(
+                                                          slide.percentage_completed ||
+                                                            0,
+                                                          {
+                                                            size: 14,
+                                                            hideEmpty: true,
+                                                          }
+                                                        )}
+                                                      </span>
                                                     </div>
                                                   );
                                                 }
@@ -1724,24 +1778,24 @@ export const CourseStructureDetails = ({
                       )}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                        {isModuleOpen ? (
-                          <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
-                        ) : (
-                          <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
-                        )}
+                        <CaretRight
+                          size={18}
+                          weight="bold"
+                          className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
+                        />
                         {renderStatusIcon(
                           calculateModuleProgress(mod.chapters || []),
                           { size: 18 }
                         )}
                         {showContentPrefixes && (
-                          <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                          <span className="w-7 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
                             M{globalIdx + 1}
                           </span>
                         )}
-                        <span className="break-words font-medium" title={toTitleCase(mod.module.module_name)}>
+                        <span className="min-w-0 flex-1 break-words" title={toTitleCase(mod.module.module_name)}>
                           {toTitleCase(mod.module.module_name)}
                         </span>
-                        {/* Module Progress Indicator */}
+                        {/* Top-level module keeps the branch bar */}
                         <div className="flex items-center gap-2 ms-auto shrink-0">
                           {(() => {
                             const progress = calculateModuleProgress(mod.chapters || []);
@@ -1780,55 +1834,58 @@ export const CourseStructureDetails = ({
                               <CollapsibleTrigger
                                 disabled={isChapterLocked}
                                 className={cn(
-                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                     isChapterLocked
                                       ? "cursor-not-allowed opacity-60"
-                                      : "hover:bg-muted/60 cursor-pointer"
+                                      : "hover:bg-muted/60 cursor-pointer data-[state=open]:bg-muted/40"
                                   }`,
-                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
+                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink [.ui-play_&]:data-[state=open]:bg-play-navy-soft [.ui-play_&]:data-[state=open]:text-play-navy-soft-ink"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                  {isChapterOpen ? (
-                                    <CaretDown size={14} className="shrink-0 text-neutral-500" />
-                                  ) : (
-                                    <CaretRight size={14} className="shrink-0 text-neutral-500" />
-                                  )}
+                                  <CaretRight
+                                    size={14}
+                                    weight="bold"
+                                    className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                  />
                                   {renderStatusIcon(calculateChapterProgress(ch.id), {
                                     locked: !!isChapterLocked,
                                   })}
                                   {showContentPrefixes && (
-                                    <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                    <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
                                       C{chIdx + 1}
                                     </span>
                                   )}
-                                  <span className="break-words text-base font-semibold text-neutral-800" title={toTitleCase(ch.chapter_name)}>
+                                  <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground" title={toTitleCase(ch.chapter_name)}>
                                     {toTitleCase(ch.chapter_name)}
                                   </span>
                                   {isChapterLocked && (
                                     <LockedBadge size="sm" unlockMessage={chapterEval?.unlockMessage} />
                                   )}
-                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
+                                  <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
                                     {(() => {
-                                      const progress = calculateChapterProgress(ch.id);
                                       const slidesForChapter = slidesMap[ch.id] || [];
                                       const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= getSlideCompletionThreshold()).length;
                                       const totalSlides = slidesForChapter.length;
                                       return (
-                                        <>
-                                          <div className="w-12 hidden sm:block">
-                                            {renderProgressBar(progress, "sm")}
-                                          </div>
-                                          {slidesMap[ch.id] !== undefined && (
-                                            <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
-                                              {completedSlides}/{totalSlides}
-                                            </span>
-                                          )}
-                                          {renderCompletionBadge(progress)}
-                                        </>
+                                        slidesMap[ch.id] !== undefined &&
+                                        totalSlides > 0 &&
+                                        completedSlides > 0 && (
+                                          <span
+                                            className={cn(
+                                              "min-w-8 text-end text-caption tabular-nums",
+                                              completedSlides === totalSlides
+                                                ? "text-success-500"
+                                                : "text-muted-foreground",
+                                              "[.ui-play_&]:text-play-navy-soft-ink"
+                                            )}
+                                          >
+                                            {completedSlides}/{totalSlides}
+                                          </span>
+                                        )
                                       );
                                     })()}
-                                  </div>
+                                  </span>
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent>
@@ -1862,7 +1919,7 @@ export const CourseStructureDetails = ({
                                       <div
                                         key={slide.id}
                                         className={cn(
-                                          getSlideStyling() + " rounded-md",
+                                          getSlideStyling(),
                                           "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors"
                                         )}
                                         onClick={
@@ -1872,32 +1929,26 @@ export const CourseStructureDetails = ({
                                         }
                                       >
                                         {showContentPrefixes && (
-                                          <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                            S{sIdx + 1}
+                                          <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                                            {sIdx + 1}
                                           </span>
                                         )}
                                         <span
                                           className="shrink-0"
                                           title={getSlideTypeDisplay(slide) || undefined}
                                         >
-                                          {renderStatusIcon(slide.percentage_completed || 0)}
+                                          {getIcon(slide, "4")}
                                         </span>
-                                        <span className="break-words text-sm font-normal text-neutral-700" title={slide.title}>
+                                        <span className="min-w-0 flex-1 truncate text-sm text-foreground" title={slide.title}>
                                           {slide.title}
                                         </span>
                                         {renderContinueChip(slide.id)}
-                                        <div className="flex items-center gap-1.5 ms-auto shrink-0">
-                                          {getSlideTypeDisplay(slide) && (
-                                            <Badge variant="outline" className={`hidden sm:inline text-caption ${quietBadgeClasses}`}>
-                                              {getSlideTypeDisplay(slide)}
-                                            </Badge>
-                                          )}
+                                        <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
                                           {getSlideMetaText(slide) && (
-                                            <span className="hidden sm:inline text-xs text-muted-foreground">
-                                              {getSlideMetaText(slide)}
-                                            </span>
+                                            <span>{getSlideMetaText(slide)}</span>
                                           )}
-                                        </div>
+                                          {renderStatusIcon(slide.percentage_completed || 0, { size: 14, hideEmpty: true })}
+                                        </span>
                                       </div>
                                     ));
                                   })()}
@@ -1958,35 +2009,30 @@ export const CourseStructureDetails = ({
                                     >
                                       <CollapsibleTrigger
                                         disabled={isChapterLocked}
-                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                        className={cn(
+                                          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                                           isChapterLocked
                                             ? "cursor-not-allowed opacity-60"
-                                            : "hover:bg-muted/60 cursor-pointer"
-                                        }`}
+                                            : "hover:bg-muted/60 cursor-pointer data-[state=open]:bg-muted/40"
+                                        )}
                                       >
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                          {isChapterOpen ? (
-                                            <CaretDown
-                                              size={14}
-                                              className="shrink-0 text-neutral-500"
-                                            />
-                                          ) : (
-                                            <CaretRight
-                                              size={14}
-                                              className="shrink-0 text-neutral-500"
-                                            />
-                                          )}
+                                          <CaretRight
+                                            size={14}
+                                            weight="bold"
+                                            className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                          />
                                           {renderStatusIcon(
                                             calculateChapterProgress(ch.id),
                                             { locked: !!isChapterLocked }
                                           )}
                                           {showContentPrefixes && (
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                            <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
                                               C{chIdx + 1}
                                             </span>
                                           )}
                                           <span
-                                            className="break-words text-base font-semibold text-neutral-800"
+                                            className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -2000,8 +2046,8 @@ export const CourseStructureDetails = ({
                                               }
                                             />
                                           )}
-                                          {/* Chapter Progress Indicator */}
-                                          <div className="flex items-center gap-1.5 ms-auto shrink-0">
+                                          {/* Chapters are the top level at this depth: keep the branch bar */}
+                                          <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
                                             {(() => {
                                               const progress =
                                                 calculateChapterProgress(ch.id);
@@ -2019,26 +2065,37 @@ export const CourseStructureDetails = ({
 
                                               return (
                                                 <>
-                                                  <div className="w-12 hidden sm:block">
+                                                  <div className="w-16 hidden sm:block">
                                                     {renderProgressBar(
                                                       progress,
                                                       "sm"
                                                     )}
                                                   </div>
                                                   {slidesMap[ch.id] !==
-                                                    undefined && (
-                                                    <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
-                                                  )}
+                                                    undefined &&
+                                                    totalSlides > 0 &&
+                                                    completedSlides > 0 && (
+                                                      <span
+                                                        className={cn(
+                                                          "min-w-8 text-end text-caption tabular-nums",
+                                                          completedSlides ===
+                                                            totalSlides
+                                                            ? "text-success-500"
+                                                            : "text-muted-foreground",
+                                                          "[.ui-play_&]:text-play-navy-soft-ink"
+                                                        )}
+                                                      >
+                                                        {completedSlides}/
+                                                        {totalSlides}
+                                                      </span>
+                                                    )}
                                                   {renderCompletionBadge(
                                                     progress
                                                   )}
                                                 </>
                                               );
                                             })()}
-                                          </div>
+                                          </span>
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
@@ -2084,10 +2141,7 @@ export const CourseStructureDetails = ({
                                               (slide, sIdx) => (
                                                 <div
                                                   key={slide.id}
-                                                  className={
-                                                    getSlideStyling() +
-                                                    " rounded-md"
-                                                  }
+                                                  className={getSlideStyling()}
                                                   onClick={
                                                     isSlideClickable()
                                                       ? () => {
@@ -2102,8 +2156,8 @@ export const CourseStructureDetails = ({
                                                   }
                                                 >
                                                   {showContentPrefixes && (
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
+                                                    <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                                                      {sIdx + 1}
                                                     </span>
                                                   )}
                                                   <span
@@ -2114,42 +2168,35 @@ export const CourseStructureDetails = ({
                                                       ) || undefined
                                                     }
                                                   >
-                                                    {renderStatusIcon(
-                                                      slide.percentage_completed ||
-                                                        0
-                                                    )}
+                                                    {getIcon(slide, "4")}
                                                   </span>
                                                   <span
-                                                    className="truncate text-sm font-normal text-neutral-700"
+                                                    className="min-w-0 flex-1 truncate text-sm text-foreground"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
                                                   </span>
                                                   {renderContinueChip(slide.id)}
                                                   {/* Slide Meta */}
-                                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
-                                                    {getSlideTypeDisplay(
-                                                      slide
-                                                    ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className={`hidden sm:inline text-caption ${quietBadgeClasses}`}
-                                                      >
-                                                        {getSlideTypeDisplay(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                  <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <span className="hidden sm:inline text-xs text-muted-foreground">
+                                                      <span>
                                                         {getSlideMetaText(
                                                           slide
                                                         )}
                                                       </span>
                                                     )}
-                                                  </div>
+                                                    {renderStatusIcon(
+                                                      slide.percentage_completed ||
+                                                        0,
+                                                      {
+                                                        size: 14,
+                                                        hideEmpty: true,
+                                                      }
+                                                    )}
+                                                  </span>
                                                 </div>
                                               )
                                             );
@@ -2182,32 +2229,29 @@ export const CourseStructureDetails = ({
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      {isSubjectOpen ? (
-                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
-                      ) : (
-                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
-                      )}
+                      <CaretRight
+                        size={18}
+                        weight="bold"
+                        className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
+                      />
                       {renderStatusIcon(calculateSubjectProgress(subject.id), {
                         size: 18,
                       })}
                       {showContentPrefixes && (
-                        <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                        <span className="w-7 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
                           S{idx + 1}
                         </span>
                       )}
-                      <span className="break-words font-medium" title={toTitleCase(subject.subject_name)}>
+                      <span className="min-w-0 flex-1 break-words" title={toTitleCase(subject.subject_name)}>
                         {toTitleCase(subject.subject_name)}
                       </span>
-                      {/* Subject Progress Indicator — matches the module and
-                          chapter rows below so every outline level reads the
-                          same way. onDark: this row sits on the navy surface in
-                          the Play theme. */}
-                      <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
+                      {/* Subject keeps the ONLY progress bar in its branch. */}
+                      <div className="flex items-center gap-2 ms-auto shrink-0">
                         {(() => {
                           const progress = calculateSubjectProgress(subject.id);
                           return (
                             <>
-                              <div className="w-14 sm:w-16 hidden sm:block">
+                              <div className="w-16 hidden sm:block">
                                 {renderProgressBar(progress, "sm")}
                               </div>
                               {renderCompletionBadge(progress, { onDark: true })}
@@ -2227,23 +2271,29 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink")}>
+                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-sm font-medium hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink")}>
                               <div className="flex min-w-0 flex-1 items-center gap-2">
-                                {isModuleOpen ? (
-                                  <CaretDown size={16} className="shrink-0 text-neutral-500" />
-                                ) : (
-                                  <CaretRight size={16} className="shrink-0 text-neutral-500" />
-                                )}
+                                <CaretRight
+                                  size={16}
+                                  weight="bold"
+                                  className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                />
                                 {renderStatusIcon(
                                   calculateModuleProgress(mod.chapters || [])
                                 )}
                                 {showContentPrefixes && (
-                                  <span className="w-6 shrink-0 text-center font-mono text-xs text-neutral-500 bg-neutral-100 rounded px-1">
+                                  <span className="w-6 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
                                     M{modIdx + 1}
                                   </span>
                                 )}
-                                <span className="break-words" title={toTitleCase(mod.module.module_name)}>
+                                <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground" title={toTitleCase(mod.module.module_name)}>
                                   {toTitleCase(mod.module.module_name)}
+                                </span>
+                                {/* Module progress: % text only */}
+                                <span className="ms-auto flex shrink-0 items-center gap-2">
+                                  {renderCompletionBadge(
+                                    calculateModuleProgress(mod.chapters || [])
+                                  )}
                                 </span>
                               </div>
                             </CollapsibleTrigger>
@@ -2261,23 +2311,59 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink")}>
+                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm hover:bg-muted/60 data-[state=open]:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink [.ui-play_&]:data-[state=open]:bg-play-navy-soft [.ui-play_&]:data-[state=open]:text-play-navy-soft-ink")}>
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                          {isChapterOpen ? (
-                                            <CaretDown size={14} className="shrink-0 text-neutral-500" />
-                                          ) : (
-                                            <CaretRight size={14} className="shrink-0 text-neutral-500" />
-                                          )}
+                                          <CaretRight
+                                            size={14}
+                                            weight="bold"
+                                            className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
+                                          />
                                           {renderStatusIcon(
                                             calculateChapterProgress(ch.id)
                                           )}
                                           {showContentPrefixes && (
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                            <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
                                               C{chIdx + 1}
                                             </span>
                                           )}
-                                          <span className="break-words text-base font-semibold text-neutral-800" title={toTitleCase(ch.chapter_name)}>
+                                          <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground" title={toTitleCase(ch.chapter_name)}>
                                             {toTitleCase(ch.chapter_name)}
+                                          </span>
+                                          {/* Earned-only slide count */}
+                                          <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+                                            {(() => {
+                                              const slidesForChapter =
+                                                slidesMap[ch.id] || [];
+                                              const completedSlides =
+                                                slidesForChapter.filter(
+                                                  (slide) =>
+                                                    (slide.percentage_completed ||
+                                                      0) >=
+                                                    getSlideCompletionThreshold()
+                                                ).length;
+                                              const totalSlides =
+                                                slidesForChapter.length;
+                                              return (
+                                                slidesMap[ch.id] !==
+                                                  undefined &&
+                                                totalSlides > 0 &&
+                                                completedSlides > 0 && (
+                                                  <span
+                                                    className={cn(
+                                                      "min-w-8 text-end text-caption tabular-nums",
+                                                      completedSlides ===
+                                                        totalSlides
+                                                        ? "text-success-500"
+                                                        : "text-muted-foreground",
+                                                      "[.ui-play_&]:text-play-navy-soft-ink"
+                                                    )}
+                                                  >
+                                                    {completedSlides}/
+                                                    {totalSlides}
+                                                  </span>
+                                                )
+                                              );
+                                            })()}
                                           </span>
                                         </div>
                                       </CollapsibleTrigger>
@@ -2294,7 +2380,7 @@ export const CourseStructureDetails = ({
                                                 <div
                                                   key={slide.id}
                                                   className={cn(
-                                                    getSlideStyling("sm"),
+                                                    getSlideStyling(),
                                                     "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors"
                                                   )}
                                                   onClick={() => {
@@ -2307,8 +2393,8 @@ export const CourseStructureDetails = ({
                                                   }}
                                                 >
                                                   {showContentPrefixes && (
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
+                                                    <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                                                      {sIdx + 1}
                                                     </span>
                                                   )}
                                                   <span
@@ -2319,42 +2405,35 @@ export const CourseStructureDetails = ({
                                                       ) || undefined
                                                     }
                                                   >
-                                                    {renderStatusIcon(
-                                                      slide.percentage_completed ||
-                                                        0
-                                                    )}
+                                                    {getIcon(slide, "4")}
                                                   </span>
                                                   <span
-                                                    className="truncate text-sm font-normal text-neutral-700"
+                                                    className="min-w-0 flex-1 truncate text-sm text-foreground"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
                                                   </span>
                                                   {renderContinueChip(slide.id)}
                                                   {/* Slide Meta */}
-                                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
-                                                    {getSlideTypeDisplay(
-                                                      slide
-                                                    ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className={`hidden sm:inline text-caption ${quietBadgeClasses}`}
-                                                      >
-                                                        {getSlideTypeDisplay(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                  <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <span className="hidden sm:inline text-xs text-muted-foreground">
+                                                      <span>
                                                         {getSlideMetaText(
                                                           slide
                                                         )}
                                                       </span>
                                                     )}
-                                                  </div>
+                                                    {renderStatusIcon(
+                                                      slide.percentage_completed ||
+                                                        0,
+                                                      {
+                                                        size: 14,
+                                                        hideEmpty: true,
+                                                      }
+                                                    )}
+                                                  </span>
                                                 </div>
                                               )
                                             )
@@ -2983,7 +3062,10 @@ export const CourseStructureDetails = ({
           }
         }
 
-        // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page)
+        // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page).
+        // Bulk endpoint first (one request for the whole package session);
+        // per-chapter fallback when it's unavailable. Fire-and-forget so the
+        // modules loading gate doesn't wait on slide data.
         const allChapterIds: string[] = [];
         Object.values(modulesMap).forEach((mods) => {
           mods.forEach((m) => {
@@ -2992,9 +3074,14 @@ export const CourseStructureDetails = ({
             });
           });
         });
-        allChapterIds.forEach((chapterId) => {
-          getSlidesWithChapterIdRef.current(chapterId);
-        });
+        void (async () => {
+          const bulkLoaded = await loadAllSlidesBulkRef.current(allChapterIds);
+          if (!bulkLoaded) {
+            allChapterIds.forEach((chapterId) => {
+              getSlidesWithChapterIdRef.current(chapterId);
+            });
+          }
+        })();
 
         // Update module stats for parent component
         if (updateModuleStatsRef.current) {

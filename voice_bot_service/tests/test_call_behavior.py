@@ -677,3 +677,281 @@ def test_stt_sdk_close_chain_resolves_on_pinned_wheel():
     h = getattr(getattr(sdk, "_client_wrapper", None), "httpx_client", None)
     inner = getattr(h, "httpx_client", h)
     assert callable(getattr(inner, "aclose", None))
+
+
+# ═══ 2026-08-03 "Now" wave ════════════════════════════════════════════════════
+
+import unittest.mock as um
+
+# ── Item 1: the TTS socket wedge (root cause of the founder's 8-10.4s dead air)
+
+def test_has_word_char_predicate():
+    assert not pv.has_word_char('"')
+    assert not pv.has_word_char('  " ')
+    assert not pv.has_word_char("—…!?,.")
+    assert not pv.has_word_char("")
+    assert not pv.has_word_char(None)
+    assert pv.has_word_char('"Okay.')
+    assert pv.has_word_char("SSC")
+    assert pv.has_word_char("क")          # Devanagari counts
+    assert pv.has_word_char("2")
+
+
+@pytest.mark.asyncio
+async def test_aggregator_never_emits_letterless_unit_and_preserves_text():
+    """A lone closing quote must never become its own TTS chunk — that exact
+    input is what Sarvam rejects, wedging the socket open-but-dead."""
+    agg = pv.ClauseFlushAggregator()
+    fed, out = "", []
+    for piece in ['"Okay, SSC." ', '" ', "And what's the name of the school?"]:
+        fed += piece
+        r = await agg.aggregate(piece)
+        while r:
+            assert pv.has_word_char(r), f"letterless unit emitted: {r!r}"
+            out.append(r)
+            r = None
+    # Nothing is lost: everything emitted plus the buffered remainder equals input.
+    joined = "".join(out) + agg._text
+    assert joined.replace(" ", "") == fed.replace(" ", ""), (joined, fed)
+
+
+@pytest.mark.asyncio
+async def test_run_tts_skips_letterless_and_never_arms_stall_stamp():
+    """Skipping must happen BEFORE _on_generate, else the watchdog would try to
+    'recover' a stall for a chunk we deliberately never sent."""
+    svc = pv.ResilientSarvamTTSService.__new__(pv.ResilientSarvamTTSService)
+    stamped = []
+    svc._on_generate = lambda: stamped.append(1)
+    svc._wedged = False
+    frames = [f async for f in pv.ResilientSarvamTTSService.run_tts(svc, '"')]
+    assert frames == [] and stamped == []
+
+
+@pytest.mark.asyncio
+async def test_tts_error_marks_socket_wedged_then_reconnects_once():
+    """pipecat only logs Sarvam's error and pushes an ErrorFrame — it never
+    closes the socket, so run_tts's CLOSED guard can't see it. We must."""
+    from pipecat.frames.frames import ErrorFrame
+
+    svc = pv.ResilientSarvamTTSService.__new__(pv.ResilientSarvamTTSService)
+    svc._wedged = False
+    svc._on_generate = None
+    pushed = []
+
+    async def fake_super_push(frame, *a, **k):
+        pushed.append(frame)
+
+    with um.patch.object(pv.SarvamTTSService, "push_frame", new=fake_super_push):
+        await pv.ResilientSarvamTTSService.push_frame(
+            svc, ErrorFrame(error="TTS Error: Text must contain at least one character"))
+    assert svc._wedged is True
+    assert len(pushed) == 1          # the frame is still forwarded, not swallowed
+
+    calls = []
+
+    async def fake_disconnect():
+        calls.append("disconnect")
+
+    async def fake_connect():
+        calls.append("connect")
+
+    async def fake_super_run(text):
+        calls.append(f"synth:{text}")
+        if False:
+            yield None
+
+    svc._disconnect = fake_disconnect
+    svc._connect = fake_connect
+    with um.patch.object(pv.SarvamTTSService, "run_tts", new=lambda self, t: fake_super_run(t)):
+        _ = [f async for f in pv.ResilientSarvamTTSService.run_tts(svc, "Hello there.")]
+    assert calls == ["disconnect", "connect", "synth:Hello there."]
+    assert svc._wedged is False      # cleared, so the next turn doesn't reconnect again
+
+
+def test_clean_opening_strips_wrapping_quotes():
+    assert b._clean_opening('"Hi, this is Avni."') == "Hi, this is Avni."
+    assert b._clean_opening('“Hello there.”') == "Hello there."
+    assert b._clean_opening('Hi there.') == "Hi there."
+    assert pv.has_word_char(b._clean_opening('"Hi."'))
+
+
+# ── Item 3: the glitch cue must not tell the model to shorten unheard content
+
+def test_stall_recovery_cue_demands_full_replay_not_brief():
+    src = inspect.getsource(b.run_bot)
+    tail = src[src.index("if d.kind == STALL_RECOVER"):]
+    # …to the NEXT branch, not the first `continue` (the re-check guard has one).
+    block = tail[:tail.index("if d.kind == ORPHAN_ASK")]
+    # Comment lines are stripped: the comment here NAMES the removed word, and
+    # asserting over it would fail on its own documentation (same trap as the A5
+    # 'except Exception' test).
+    cue = "\n".join(l for l in block.splitlines() if not l.strip().startswith("#"))
+    assert "briefly" not in cue, "the 'briefly' cue deleted announcements the caller never heard"
+    assert "IN FULL" in cue
+    # And the handler re-checks the world before tearing down the socket.
+    # The guard must NOT read tts_gen_t (apply_decision has already zeroed it —
+    # that spelling silently disables every recovery). It must use the pure
+    # helper, which the timeline harness covers.
+    assert "stall_recovery_still_needed(flags, time.time())" in cue
+    # …and a real yield point before it, else the re-check is dead code.
+    assert "await asyncio.sleep(" in cue
+    assert 'flags["tts_gen_t"] == 0.0' not in cue
+
+
+def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    intr = src[src.index("InterruptionFrame"):]
+    assert "self._on_interrupted()" in intr[:intr.index("return")]
+    # Wiring must come AFTER sentinel exists (the 2026-07-27 forward-ref class of bug).
+    rb = inspect.getsource(b.run_bot)
+    assert rb.index("sentinel = SentinelGate") < rb.index("sentinel.set_on_interrupted")
+    # The hook must MEASURE ONLY. pipecat pushes an InterruptionFrame on every
+    # Silero onset while the bot is quiet — the wedge window — so mutating the
+    # stamp here (clear OR re-stamp) disarms the founder's own recovery.
+    body = rb[rb.index("def _note_killed_before_playout"):]
+    body = body[:body.index("sentinel.set_on_interrupted")]
+    assert 'diag.bump("replies_never_played")' in body
+    assert 'flags["tts_gen_t"] =' not in body, "interruption hook must not mutate the stall stamp"
+
+
+# ── Item 6: prompt placeholders must never render as holes
+
+def test_placeholders_resolve_from_lead_fields():
+    ctx = {"leadName": "Devaki", "leadFields": {"children name": "Kyoto"}}
+    out = b._fill_placeholders("with {{parent_name}}, whose child {{child_name}} studies", ctx)
+    assert out == "with Devaki, whose child Kyoto studies"
+    assert "{{" not in out
+    # The exact live failure: 141/141 prompts read "with , whose child  studies".
+    assert "  " not in out and ", whose child  " not in out
+
+
+def test_placeholder_unknown_key_falls_back_and_warns(caplog):
+    ctx = {"leadName": "Devaki", "leadFields": {}}
+    with caplog.at_level("WARNING"):
+        out = b._fill_placeholders("Hi {{totally_unknown}}!", ctx)
+    assert out == "Hi !"
+    assert any("unresolved" in r.getMessage() for r in caplog.records)
+    # NO generic *_name -> lead_name fallback: endswith("name") also matches
+    # {{school_name}}/{{child_name}}, so it would confidently speak the PARENT's
+    # name as the school's or the child's. A hole beats a wrong name.
+    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi !"
+    assert b._fill_placeholders("child {{child_name}}", ctx) == "child "
+    # …but the person we are CALLING is the parent, so this one does resolve.
+    assert b._fill_placeholders("Hi {{parent_name}}!", ctx) == "Hi Devaki!"
+
+
+def test_known_placeholders_unchanged():
+    ctx = {"leadName": "Devaki", "leadFields": {"institute": "DPS"}}
+    assert b._fill_placeholders("{{lead_name}}", ctx) == "Devaki"
+    assert b._fill_placeholders("{{institute_name}}", ctx) == "DPS"
+
+
+# ── Item 5: a non-conversation can never produce a substantive disposition
+
+class _ConvOutcome:
+    def __init__(self, transcript):
+        self.corr = "c"
+        self.transcript = transcript
+        self.crashed = False
+        self.context = {"agent": {}, "instituteId": "i"}
+        self.connected_at = time.time() - 10
+        self.ended_at = time.time()
+        self.transfer_requested = False
+        self.transfer_registered = False
+
+    def duration_seconds(self):
+        return 10
+
+
+def test_is_conversation_requires_a_real_caller_turn_only():
+    voicemail = _ConvOutcome([
+        {"role": "assistant", "text": "Good morning, this is Avni…"},
+        {"role": "user", "text": "Your call has been forwarded to voicemail."},
+    ])
+    # Voicemail text IS caller text — this gate does NOT catch machines (that is
+    # a separate fix). Asserted so nobody mistakes it for one.
+    assert rpt._is_conversation(voicemail) is True
+    # No caller turn at all -> never a disposition.
+    assert rpt._is_conversation(_ConvOutcome([{"role": "assistant", "text": "Hi"}])) is False
+    assert rpt._is_conversation(_ConvOutcome([
+        {"role": "assistant", "text": "Hi"},
+        {"role": "user", "text": "[unclear sound from the caller]"}])) is False
+    assert rpt._is_conversation(_ConvOutcome([])) is False
+    # CRITICAL: a caller who spoke while OUR audio never played is still a real
+    # conversation — otherwise a terminal refusal becomes a retry and we re-dial
+    # someone who said no.
+    assert rpt._is_conversation(_ConvOutcome([
+        {"role": "user", "text": "not interested, please stop calling"}])) is True
+
+
+@pytest.mark.asyncio
+async def test_no_caller_turn_forces_incomplete_and_skips_analysis(monkeypatch):
+    analysed = []
+
+    async def spy_analyze(o):
+        analysed.append(1)
+        return {"disposition": "Demo_Booked"}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([{"role": "assistant", "text": "Good morning, this is Avni…"}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert analysed == [], "the classifier judged the bot's own monologue"
+    assert posted["disposition"] == "Incomplete"
+    assert posted["status"] == "no-answer"
+
+
+@pytest.mark.asyncio
+async def test_real_conversation_still_analysed(monkeypatch):
+    async def spy_analyze(o):
+        return {"disposition": "Interested"}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([{"role": "assistant", "text": "Which board?"},
+                      {"role": "user", "text": "CBSE"}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert posted["disposition"] == "Interested"
+
+
+def test_watchdog_config_call_names_every_field():
+    """Item 2's real guarantee: run_bot must pass EVERY WatchdogConfig field, so
+    no live turn-taking threshold can silently fall back to a dataclass default
+    with no env knob. (The timeline test only proves the fields are settable.)"""
+    import dataclasses
+    import app.callstate as cs
+    src = inspect.getsource(b.run_bot)
+    call = src[src.index("cfg = WatchdogConfig("):]
+    call = call[:call.index("\n        )")]
+    missing = [f.name for f in dataclasses.fields(cs.WatchdogConfig)
+               if f.name + "=" not in call]
+    assert not missing, f"WatchdogConfig fields not plumbed from Settings: {missing}"
+
+
+def test_machine_markers_cover_devanagari_transliteration():
+    """Sarvam is pinned to hi-IN and TRANSLITERATES English audio, so an English
+    voicemail greeting arrives in Devanagari and matched none of the ASCII
+    markers — that is how a voicemail wrote disposition=Callback onto a real
+    lead (corr e461549e, 2026-08-03)."""
+    class _O:
+        transcript = [{"role": "user",
+                       "text": "इफ यू रिकॉर्ड योर नेम एंड रीज़न फॉर कॉलिंग, "
+                               "आई विल सी इफ दिस पर्सन इज़ अवेलेबल।"}]
+    hits = rpt._machine_markers(_O())
+    assert hits, "Devanagari voicemail greeting must be recognised as a machine"
+
+    class _H:
+        transcript = [{"role": "user", "text": "हाँ जी बोलिए, मैं सुन रहा हूँ"}]
+    assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"

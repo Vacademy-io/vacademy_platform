@@ -15,7 +15,9 @@
  *      tab-local filter bar (status / direction / type / provider / disposition
  *      / number / lead name / has-recording).
  *   3. Paginated call table — status pill, AI/human badge, inline recording
- *      playback, and a per-row quick-disposition that syncs lead status.
+ *      playback, and a per-row quick-disposition that syncs lead status. Admins
+ *      additionally get a per-row health dot opening the technical post-mortem
+ *      for AI calls (see ./CallHealth.tsx).
  *   4. Export — CSV / XLSX of the current filtered view (server-rendered).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -48,6 +50,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { CallIntelligencePanel, useCallIntelligenceEnabled } from '@/components/shared/leads';
 import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
 import { fetchCreditEstimate } from '@/services/ai-credits/get-ai-credits';
@@ -68,12 +71,14 @@ import {
     fetchDispositionCatalog,
     fetchRecordingUrl,
     isCallLogEndpointMissing,
+    rowCallHealth,
     toMillis,
     type CallLogFilters,
     type CallLogScope,
     type CallRow,
     type DispositionOption,
 } from '../-services/call-log-service';
+import { CallHealthCell, CallHealthSheet } from './CallHealth';
 
 /** Scope passed in by the page (date window + RBAC narrowing), same shape the Reports tabs used. */
 export interface CallLogTabProps {
@@ -140,9 +145,20 @@ const STATUS_TONE: Record<string, string> = {
 
 /**
  * Statuses where a "why did it end this way" popover earns its place — the call
- * didn't simply connect and complete. COMPLETED never shows it.
+ * didn't simply connect and complete.
  */
 const DETAILABLE_STATUSES = new Set(['FAILED', 'BUSY', 'NO_ANSWER', 'CANCELLED']);
+
+/**
+ * Whether the status pill doubles as a details affordance. Status alone used to
+ * decide this, which meant a COMPLETED call could never be inspected — and most
+ * AI calls complete, including the ones where the caller sat through 10s of
+ * silence. A call that reported a technical verdict has something to say
+ * regardless of how it ended, so it earns the affordance too.
+ */
+function isDetailable(row: CallRow): boolean {
+    return DETAILABLE_STATUSES.has(row.status) || rowCallHealth(row) != null;
+}
 
 /**
  * Build the minimal {@link StudentTable} the shared lead side-sheet needs from a
@@ -190,6 +206,14 @@ export default function CallLogTab({
     // credits-cost confirmation. Column only shows when the feature is enabled.
     const intelEnabled = useCallIntelligenceEnabled();
     const [intelTarget, setIntelTarget] = useState<CallRow | null>(null);
+
+    // Per-call technical health (AI calls). Admin-only: the panel speaks in
+    // internal failure language ("TTS socket wedge", "answers discarded"), which
+    // is the right vocabulary for whoever debugs the agent and the wrong one for
+    // a counsellor working their list. Same gate the rest of the admin-only
+    // affordances use — the server re-checks on the detail endpoint.
+    const canSeeCallHealth = isAdminForInstitute(instituteId);
+    const [healthTarget, setHealthTarget] = useState<CallRow | null>(null);
 
     // Tab-local filters.
     const [direction, setDirection] = useState<string>(ALL);
@@ -365,6 +389,14 @@ export default function CallLogTab({
                                         <th className="py-2 pr-3">Dir</th>
                                         <th className="py-2 pr-3">Type</th>
                                         <th className="py-2 pr-3">Status</th>
+                                        {canSeeCallHealth && (
+                                            <th
+                                                className="py-2 pr-3"
+                                                title="Technical verdict from the AI voice agent"
+                                            >
+                                                Health
+                                            </th>
+                                        )}
                                         <th className="py-2 pr-3 text-right">Duration</th>
                                         <th className="py-2 pr-3">Counsellor</th>
                                         <th className="py-2 pr-3">Disposition</th>
@@ -419,6 +451,15 @@ export default function CallLogTab({
                                             <td className="py-2.5 pr-3">
                                                 <StatusCell instituteId={instituteId} row={r} />
                                             </td>
+                                            {canSeeCallHealth && (
+                                                <td className="py-2.5 pr-3">
+                                                    <CallHealthCell
+                                                        instituteId={instituteId}
+                                                        row={r}
+                                                        onOpen={() => setHealthTarget(r)}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="py-2.5 pr-3 text-right text-neutral-700">
                                                 {fmtDuration(r.duration_seconds)}
                                             </td>
@@ -474,6 +515,15 @@ export default function CallLogTab({
 
             {/* Transcript + AI intelligence dialog (credits-gated) */}
             <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
+
+            {/* Call health — technical post-mortem side sheet (admin-only) */}
+            {canSeeCallHealth && (
+                <CallHealthSheet
+                    instituteId={instituteId}
+                    call={healthTarget}
+                    onClose={() => setHealthTarget(null)}
+                />
+            )}
             </div>
 
             {/* Shared lead side-sheet — opens to the Lead Profile tab. */}
@@ -647,7 +697,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  */
 function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow }) {
     const [open, setOpen] = useState(false);
-    const detailable = DETAILABLE_STATUSES.has(row.status);
+    const detailable = isDetailable(row);
 
     const detailQuery = useQuery({
         queryKey: callDetailKey(instituteId, row.id),

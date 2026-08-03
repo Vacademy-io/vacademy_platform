@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.chapter.dto.LearnerChapterDetailsDTO;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerChapterSlidesDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
@@ -127,6 +128,35 @@ public class LearnerStudyLibraryService {
 
         // Map the JSON to List<SlideDTO>
         return mapToSlideDTOList(jsonSlides);
+    }
+
+    /**
+     * Bulk variant of {@link #getLearnerSlides}: learner slides for EVERY
+     * chapter of the package session in one call, grouped per chapter. Slide
+     * objects are byte-identical in shape to the per-chapter endpoint so the
+     * learner app can seed its per-chapter caches from this response.
+     */
+    public List<LearnerChapterSlidesDTO> getLearnerSlidesByPackageSession(String packageSessionId, CustomUserDetails user) {
+        if (!StringUtils.hasText(packageSessionId)) {
+            throw new VacademyException("Please provide packageSessionId");
+        }
+        String lang = LocaleRegistry.normalize(LocaleContextHolder.getLocale().toLanguageTag());
+        String jsonChapters = slideRepository.getLearnerSlidesByPackageSessionId(
+                packageSessionId,
+                user.getUserId(),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(QuestionStatusEnum.ACTIVE.name()),
+                lang
+        );
+        if (!StringUtils.hasText(jsonChapters)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(jsonChapters, new TypeReference<List<LearnerChapterSlidesDTO>>() {});
+        } catch (Exception e) {
+            throw new VacademyException("Unable to map chapter slides list: " + e.getMessage());
+        }
     }
 
     public List<LearnerSlidesDetailDTO> mapToSlideDTOList(String jsonSlides) {

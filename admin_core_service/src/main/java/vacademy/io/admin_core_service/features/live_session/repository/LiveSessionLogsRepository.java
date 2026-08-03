@@ -1,8 +1,10 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
 
 import java.sql.Timestamp;
@@ -22,6 +24,70 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
         List<LiveSessionLogs> records = findAllAttendanceRecords(scheduleId, userSourceId);
         return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
     }
+
+    /**
+     * Single-round-trip attendance upsert. During a live class an entire batch
+     * marks attendance on the same schedule concurrently; the previous
+     * check-then-save serialized them (and still produced duplicates under
+     * race). Conflict target is the partial unique index
+     * uq_lsl_attendance_schedule_user (V415). A null details keeps whatever the
+     * existing row already has.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            INSERT INTO live_session_logs
+                (id, session_id, schedule_id, user_source_type, user_source_id,
+                 log_type, status, status_type, details, updated_at)
+            VALUES (:id, :sessionId, :scheduleId, :userSourceType, :userSourceId,
+                    'ATTENDANCE_RECORDED', :status, :statusType, :details, now())
+            ON CONFLICT (schedule_id, user_source_id) WHERE log_type = 'ATTENDANCE_RECORDED'
+            DO UPDATE SET status      = EXCLUDED.status,
+                          status_type = EXCLUDED.status_type,
+                          details     = COALESCE(EXCLUDED.details, live_session_logs.details),
+                          updated_at  = now()
+            """, nativeQuery = true)
+    void upsertAttendance(
+            @Param("id") String id,
+            @Param("sessionId") String sessionId,
+            @Param("scheduleId") String scheduleId,
+            @Param("userSourceType") String userSourceType,
+            @Param("userSourceId") String userSourceId,
+            @Param("status") String status,
+            @Param("statusType") String statusType,
+            @Param("details") String details);
+
+    /**
+     * Upsert for the BBB meeting-join path (also a class-start stampede).
+     * Carries provider join metadata; on conflict it refreshes join
+     * time/meeting id and forces PRESENT but leaves details untouched,
+     * matching the previous update branch of markBbbAttendance.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            INSERT INTO live_session_logs
+                (id, session_id, schedule_id, user_source_type, user_source_id,
+                 log_type, status, status_type, details, provider_join_time,
+                 provider_meeting_id, updated_at)
+            VALUES (:id, :sessionId, :scheduleId, 'USER', :userSourceId,
+                    'ATTENDANCE_RECORDED', 'PRESENT', 'ONLINE', :details,
+                    :providerJoinTime, :providerMeetingId, now())
+            ON CONFLICT (schedule_id, user_source_id) WHERE log_type = 'ATTENDANCE_RECORDED'
+            DO UPDATE SET status              = 'PRESENT',
+                          status_type         = 'ONLINE',
+                          provider_join_time  = EXCLUDED.provider_join_time,
+                          provider_meeting_id = EXCLUDED.provider_meeting_id,
+                          updated_at          = now()
+            """, nativeQuery = true)
+    void upsertBbbJoinAttendance(
+            @Param("id") String id,
+            @Param("sessionId") String sessionId,
+            @Param("scheduleId") String scheduleId,
+            @Param("userSourceId") String userSourceId,
+            @Param("details") String details,
+            @Param("providerJoinTime") String providerJoinTime,
+            @Param("providerMeetingId") String providerMeetingId);
 
     /**
      * Used by the provider sync scheduler to upsert provider-sourced attendance.

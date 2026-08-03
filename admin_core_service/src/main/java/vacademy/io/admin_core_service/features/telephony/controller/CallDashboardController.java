@@ -85,7 +85,15 @@ public class CallDashboardController {
         }
         instituteAccessValidator.validateUserAccess(user, instituteId);
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
-        return ResponseEntity.ok(callDetailService.detail(callLogId, instituteId, unmask));
+        // Technical diagnostics ride the ADMIN role, NOT VIEW_CALL_NUMBERS. That
+        // authority means "may see phone numbers"; whether someone may debug a call
+        // is a different question, and coupling them left institute admins — the
+        // people who actually triage these calls — unable to see why their own call
+        // failed. Non-admins still get the verdict and fault names, just not the
+        // numbers behind them (which quote verbatim caller speech).
+        boolean canSeeDiagnostics = instituteAccessValidator.isInstituteAdmin(user);
+        return ResponseEntity.ok(
+                callDetailService.detail(callLogId, instituteId, unmask, canSeeDiagnostics));
     }
 
     /** Call-outcome catalog for the disposition picker + the dashboard's disposition filter. */

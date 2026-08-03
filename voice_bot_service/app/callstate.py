@@ -74,6 +74,15 @@ class WatchdogConfig:
     orphan_window_secs: tuple = (2.5, 10.0)
     orphan_bot_quiet_secs: float = 2.0
     orphan_connect_grace_secs: float = 6.0
+    # Clock-skew guard for the orphan discriminator. transcript_t is stamped from
+    # SARVAM's server-side final; user_started_t from pipecat's LOCAL Silero VAD.
+    # For short answers the final routinely lands BEFORE Silero even reports the
+    # onset (measured lead up to 1.2s, on 35.2% of utterances), so a strict
+    # `user_started_t > transcript_t` reads "heard perfectly" as "swallowed":
+    # 23 of 32 live re-asks (72%) apologised for answers we had already received.
+    # Only treat a transcript as belonging to an EARLIER utterance if it predates
+    # the onset by more than this margin.
+    orphan_transcript_lookback_secs: float = 1.5
     max_nudges: int = 2
     # Dead-air escalation: VAD blips (breathing/hold-music) refresh the idle
     # clock, so a noisy dead line never reached the nudge and ran to the
@@ -130,7 +139,7 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     #    the only correct discriminator — the stopped_t variant steamrolled).
     lo, hi = cfg.orphan_window_secs
     if (s.user_stopped_t > 0 and not s.orphan_used
-            and s.user_started_t > s.transcript_t
+            and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
             and s.user_started_t > 0
             and s.user_stopped_t - s.user_started_t >= cfg.orphan_min_utterance_secs
             and lo <= now - s.user_stopped_t <= hi
@@ -150,6 +159,28 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     if not s.nudged and s.nudge_count < cfg.max_nudges:
         return Decision(NUDGE)
     return Decision(IDLE_HANGUP)
+
+
+def stall_recovery_still_needed(s: CallState, now: float,
+                                grace_secs: float = 0.5) -> bool:
+    """Re-check between the watchdog's DECISION and its (awaited) I/O.
+
+    The decision is computed from a snapshot; tearing down the TTS socket is
+    awaited I/O, and on a live call (corr=230e95af) Sarvam's first byte landed
+    ~2ms AFTER the decision — the reconnect then destroyed audio that had just
+    arrived. So re-check immediately before acting.
+
+    NOTE the trap: ``apply_decision`` has ALREADY zeroed ``tts_gen_t`` for this
+    decision, so the stamp is useless as the signal here — testing it would
+    abort every recovery and silently disable the feature. Audio that arrived in
+    the meantime instead shows up as the bot SPEAKING, or — if it played and
+    finished within the tick — as a very recent ``bot_stopped_t``.
+    """
+    if s.bot_speaking:
+        return False
+    if s.bot_stopped_t and now - s.bot_stopped_t <= grace_secs:
+        return False
+    return True
 
 
 def apply_decision(s: CallState, d: Decision, now: float) -> None:

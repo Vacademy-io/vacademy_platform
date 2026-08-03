@@ -6,6 +6,7 @@ No pipecat needed — this is the harness that gates every Wave-2+ change.
 """
 from app.callstate import (
     CallState, WatchdogConfig, watchdog_decide, apply_decision,
+    stall_recovery_still_needed,
     NONE, CANCEL_STARVED, REISSUE_STOP, CAP_FAREWELL, STALL_RECOVER,
     ORPHAN_ASK, NUDGE, IDLE_HANGUP,
 )
@@ -201,3 +202,117 @@ def test_stall_disabled_never_fires():
     s.tts_gen_t = T0 + 1.0
     ds = run_ticks(s, c, T0 + 2.0, T0 + 30.0)
     assert STALL_RECOVER not in kinds(ds)
+
+
+# ═══ 2026-08-03 "Now" wave ════════════════════════════════════════════════════
+
+# ── INCIDENT: 72% of "Sorry, I missed that" re-asks apologised for answers we
+#    heard perfectly. transcript_t (Sarvam server final) routinely lands BEFORE
+#    user_started_t (local Silero onset) for the SAME short utterance.
+
+def test_transcript_arriving_before_silero_onset_never_reasks():
+    """The Kyoto call: 'SSC.' transcribed at 08:17:06.822, Silero onset reported
+    later. Strict `user_started_t > transcript_t` called that a swallowed turn."""
+    c = cfg()
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0 + 9.6,
+                  user_started_t=T0 + 10.0,   # onset lands 0.4s AFTER the final
+                  user_stopped_t=T0 + 10.5)
+    out = kinds(run_ticks(s, c, T0 + 11.0, T0 + 18.0))
+    assert ORPHAN_ASK not in out, f"apologised for an answer we heard: {out}"
+
+
+def test_genuinely_swallowed_turn_still_reasks():
+    """The guard must not blind us to a REAL drop: no transcript for this
+    utterance at all (last one is far older than the lookback)."""
+    c = cfg()
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0 + 1.0,
+                  user_started_t=T0 + 10.0, user_stopped_t=T0 + 10.6)
+    out = kinds(run_ticks(s, c, T0 + 11.0, T0 + 18.0))
+    assert out.count(ORPHAN_ASK) == 1, f"a real drop must be rescued once: {out}"
+
+
+def test_lookback_boundary_is_exact():
+    """transcript exactly at the lookback edge is treated as belonging to THIS
+    utterance (no re-ask); clearly older still re-asks."""
+    c = cfg(orphan_transcript_lookback_secs=1.5)
+    inside = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0 + 10.0 - 1.4,
+                       user_started_t=T0 + 10.0, user_stopped_t=T0 + 10.6)
+    assert ORPHAN_ASK not in kinds(run_ticks(inside, c, T0 + 11.0, T0 + 16.0))
+    outside = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0 + 10.0 - 1.6,
+                        user_started_t=T0 + 10.0, user_stopped_t=T0 + 10.6)
+    assert ORPHAN_ASK in kinds(run_ticks(outside, c, T0 + 11.0, T0 + 16.0))
+
+
+def test_lookback_zero_restores_old_behaviour_killswitch():
+    """ORPHAN_TRANSCRIPT_LOOKBACK_SECS=0 must reproduce the pre-fix comparison."""
+    c = cfg(orphan_transcript_lookback_secs=0.0)
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0 + 9.6,
+                  user_started_t=T0 + 10.0, user_stopped_t=T0 + 10.5)
+    assert ORPHAN_ASK in kinds(run_ticks(s, c, T0 + 11.0, T0 + 16.0))
+
+
+# ── INCIDENT: a reply killed BEFORE playout left tts_gen_t armed, so the
+#    watchdog "recovered" a reply the caller deliberately interrupted.
+
+def test_stall_stamp_cleared_on_interrupt_yields_no_recovery():
+    c = cfg()
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    s.tts_gen_t = T0 + 1.0          # generation began, bot still quiet
+    # SentinelGate's interruption handler disarms the stamp (bot.py wiring).
+    events = [(T0 + 2.0, lambda st: setattr(st, "tts_gen_t", 0.0))]
+    out = kinds(run_ticks(s, c, T0 + 1.0, T0 + 10.0, events=events))
+    assert STALL_RECOVER not in out, f"recovered an interrupted reply: {out}"
+
+
+def test_stall_still_recovers_when_audio_never_arrives():
+    """The Kyoto wedge: generated, never played, nothing interrupts it."""
+    c = cfg()
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    s.tts_gen_t = T0 + 1.0
+    out = kinds(run_ticks(s, c, T0 + 1.0, T0 + 12.0))
+    assert out.count(STALL_RECOVER) >= 1
+
+
+def test_all_watchdog_thresholds_are_configurable():
+    """Item 2: every WatchdogConfig field must be settable (no field reachable
+    only via its dataclass default)."""
+    import dataclasses
+    names = {f.name for f in dataclasses.fields(WatchdogConfig)}
+    required = {"connected_at", "cap_secs", "idle_timeout_secs",
+                "stall_recovery_enabled", "graceful_stop_deadline_secs"}
+    over = {n: 1.0 for n in names - required}
+    over["stall_recovery_enabled"] = True
+    over["stall_max_recoveries"] = 2
+    over["max_nudges"] = 2
+    over["orphan_window_secs"] = (2.5, 10.0)
+    c = cfg(**over)
+    for n in names:
+        assert hasattr(c, n)
+
+
+# ── REGRESSION: the re-check guard must not disable the feature it guards ─────
+# apply_decision() zeroes tts_gen_t for STALL_RECOVER, so a guard written as
+# `tts_gen_t == 0.0` is ALWAYS true and would abort every recovery — silently
+# removing the only cure for the founder's 8-10.4s dead air. Caught pre-ship.
+
+def test_stall_recheck_still_true_after_apply_decision_zeroed_the_stamp():
+    s = CallState(t=T0, bot_stopped_t=0.0)
+    s.tts_gen_t = T0 + 1.0
+    d = watchdog_decide(s, T0 + 5.0, cfg())
+    assert d.kind == STALL_RECOVER
+    apply_decision(s, d, T0 + 5.0)
+    assert s.tts_gen_t == 0.0                      # the trap
+    assert stall_recovery_still_needed(s, T0 + 5.0) is True, \
+        "guard aborted a genuine stall — recovery would be dead in production"
+
+
+def test_stall_recheck_aborts_when_audio_arrived():
+    # Bot started speaking between decision and I/O.
+    s = CallState(t=T0, bot_speaking=True)
+    assert stall_recovery_still_needed(s, T0 + 5.0) is False
+    # Or it played AND finished inside the tick.
+    s2 = CallState(t=T0, bot_speaking=False, bot_stopped_t=T0 + 4.8)
+    assert stall_recovery_still_needed(s2, T0 + 5.0) is False
+    # An OLD bot_stopped_t must not suppress a real stall.
+    s3 = CallState(t=T0, bot_speaking=False, bot_stopped_t=T0 + 1.0)
+    assert stall_recovery_still_needed(s3, T0 + 5.0) is True

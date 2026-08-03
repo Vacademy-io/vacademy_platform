@@ -319,6 +319,20 @@ const removeTokensAndLogout = async (): Promise<void> => {
   clearWebStorage();
   clearBrowserCaches();
 
+  // 5. Module-scope read memos holding user-specific responses (enrollments,
+  // learner PII, user plan). In-SPA logouts don't reload the page, so without
+  // this the next login on a shared device could be served the previous
+  // user's cached data. Dynamic import: this module is imported by that
+  // service, so a static import would be circular.
+  try {
+    const { clearUserScopedReadCaches } = await import(
+      "@/services/user-enrollment-status"
+    );
+    clearUserScopedReadCaches();
+  } catch {
+    /* best-effort */
+  }
+
   // Restore the preserved institute id into Capacitor + localStorage so
   // branding / course comparison still work on the login screen.
   if (preservedInstituteId) {

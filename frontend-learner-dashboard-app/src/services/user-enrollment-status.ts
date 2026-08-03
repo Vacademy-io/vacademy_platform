@@ -34,6 +34,36 @@ interface LearnerPackagesSearchResponse {
 
 const ENROLLED_PAGE_SIZE = 100;
 
+// Read-only response memo. Course-details mounts two useEnrollmentStatus
+// instances (page + course structure), and each re-reads on mount,
+// instituteId arrival, institute-store updates and window focus — the same
+// enrollment search would otherwise fire 6-8x per page load. Callers that
+// just changed enrollment state must pass { force: true } to bypass.
+interface MemoEntry<T> {
+  ts: number;
+  promise: Promise<T>;
+}
+
+const memoized = <T>(
+  cache: Map<string, MemoEntry<T>>,
+  key: string,
+  ttlMs: number,
+  force: boolean | undefined,
+  fetcher: () => Promise<T>,
+): Promise<T> => {
+  const hit = cache.get(key);
+  if (!force && hit && Date.now() - hit.ts <= ttlMs) {
+    return hit.promise;
+  }
+  const promise = fetcher();
+  cache.set(key, { ts: Date.now(), promise });
+  // Never memoize failures — the next caller should retry the network.
+  promise.catch(() => {
+    if (cache.get(key)?.promise === promise) cache.delete(key);
+  });
+  return promise;
+};
+
 const fetchEnrolledByType = async (
   instituteId: string,
   type: "PROGRESS" | "COMPLETED",
@@ -74,15 +104,43 @@ const fetchEnrolledByType = async (
   return all;
 };
 
+const enrolledPackagesMemo = new Map<string, MemoEntry<EnrolledCourseSummary[]>>();
+const ENROLLED_PACKAGES_TTL_MS = 30_000;
+
 // Returns courses the learner is enrolled in — both in-progress and completed —
 // so the "All Courses" tab can hide "Enroll Now" for either state.
 export const fetchEnrolledCoursePackages = async (
   instituteId: string,
+  opts?: { force?: boolean },
+): Promise<EnrolledCourseSummary[]> =>
+  memoized(
+    enrolledPackagesMemo,
+    instituteId,
+    ENROLLED_PACKAGES_TTL_MS,
+    opts?.force,
+    () => fetchEnrolledCoursePackagesUncached(instituteId),
+  );
+
+const fetchEnrolledCoursePackagesUncached = async (
+  instituteId: string,
 ): Promise<EnrolledCourseSummary[]> => {
-  const [progress, completed] = await Promise.all([
-    fetchEnrolledByType(instituteId, "PROGRESS").catch(() => []),
-    fetchEnrolledByType(instituteId, "COMPLETED").catch(() => []),
+  const [progressResult, completedResult] = await Promise.allSettled([
+    fetchEnrolledByType(instituteId, "PROGRESS"),
+    fetchEnrolledByType(instituteId, "COMPLETED"),
   ]);
+  const progress =
+    progressResult.status === "fulfilled" ? progressResult.value : [];
+  const completed =
+    completedResult.status === "fulfilled" ? completedResult.value : [];
+  if (
+    progressResult.status === "rejected" ||
+    completedResult.status === "rejected"
+  ) {
+    // Degraded result (network blip): serve what we have — same as before the
+    // memo existed — but evict the entry so the next read retries the network
+    // instead of pinning a partial/empty enrollment list for the whole TTL.
+    enrolledPackagesMemo.delete(instituteId);
+  }
 
   const byPackageSessionId = new Map<
     string,
@@ -168,60 +226,101 @@ export interface UserPlan {
   paymentLogs: PaymentLog[];
 }
 
+const learnerInfoMemo = new Map<string, MemoEntry<LearnerInfo[]>>();
+const LEARNER_INFO_TTL_MS = 60_000;
+
 /**
  * Get learner information from the API
  */
-export const getLearnerInfo = async (instituteId: string): Promise<LearnerInfo[]> => {
-  try {
-    const token = await getTokenFromStorage(TokenKey.accessToken);
-    if (!token) {
-      throw new Error("No access token found");
-    }
+export const getLearnerInfo = async (
+  instituteId: string,
+  opts?: { force?: boolean },
+): Promise<LearnerInfo[]> =>
+  memoized(
+    learnerInfoMemo,
+    instituteId,
+    LEARNER_INFO_TTL_MS,
+    opts?.force,
+    async () => {
+      const token = await getTokenFromStorage(TokenKey.accessToken);
+      if (!token) {
+        throw new Error("No access token found");
+      }
 
-    const response = await axios.get<LearnerInfo[]>(LEARNER_INFO_URL, {
-      params: { instituteId },
-      headers: {
-        accept: "*/*",
-        Authorization: `Bearer ${token}`,
-      },
-    });
+      const response = await axios.get<LearnerInfo[]>(LEARNER_INFO_URL, {
+        params: { instituteId },
+        headers: {
+          accept: "*/*",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
+      return response.data;
+    },
+  );
+
+const userPlanMemo = new Map<string, MemoEntry<UserPlan>>();
+const USER_PLAN_TTL_MS = 60_000;
+
+// Call after any flow that records a payment/donation so the next
+// hasUserDonated()/getLearnerInfo() read hits the network instead of the
+// pre-payment memo (e.g. DonationDialog success → remount within the TTL).
+export const invalidateDonationStatusCache = (): void => {
+  learnerInfoMemo.clear();
+  userPlanMemo.clear();
+};
+
+// These memos cache USER-specific responses but are keyed by instituteId, so
+// an in-SPA logout (no page reload) would otherwise serve the previous user's
+// enrollments/PII to the next login on a shared device. Logout must call this.
+export const clearUserScopedReadCaches = (): void => {
+  enrolledPackagesMemo.clear();
+  learnerInfoMemo.clear();
+  userPlanMemo.clear();
 };
 
 /**
  * Get user plan details to check donation status
  */
-export const getUserPlanDetails = async (userPlanId: string): Promise<UserPlan> => {
-  try {
-    const token = await getTokenFromStorage(TokenKey.accessToken);
-    if (!token) {
-      throw new Error("No access token found");
-    }
+export const getUserPlanDetails = async (
+  userPlanId: string,
+  opts?: { force?: boolean },
+): Promise<UserPlan> =>
+  memoized(
+    userPlanMemo,
+    userPlanId,
+    USER_PLAN_TTL_MS,
+    opts?.force,
+    async () => {
+      const token = await getTokenFromStorage(TokenKey.accessToken);
+      if (!token) {
+        throw new Error("No access token found");
+      }
 
-    const response = await axios.get<UserPlan>(`${USER_PLAN_URL}/${userPlanId}/with-payment-logs`, {
-      headers: {
-        accept: "*/*",
-        Authorization: `Bearer ${token}`,
-      },
-    });
+      const response = await axios.get<UserPlan>(
+        `${USER_PLAN_URL}/${userPlanId}/with-payment-logs`,
+        {
+          headers: {
+            accept: "*/*",
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
 
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
+      return response.data;
+    },
+  );
 
 /**
  * Check if user has donated at least once
  */
-export const hasUserDonated = async (instituteId: string): Promise<boolean> => {
+export const hasUserDonated = async (
+  instituteId: string,
+  opts?: { force?: boolean },
+): Promise<boolean> => {
   try {
     // Get learner info to find user_plan_id
-    const learnerInfo = await getLearnerInfo(instituteId);
+    const learnerInfo = await getLearnerInfo(instituteId, opts);
 
     if (!learnerInfo || learnerInfo.length === 0) {
       return false;
@@ -236,13 +335,13 @@ export const hasUserDonated = async (instituteId: string): Promise<boolean> => {
     }
 
     // Get user plan details to check payment logs
-    const userPlan = await getUserPlanDetails(userPlanId);
+    const userPlan = await getUserPlanDetails(userPlanId, opts);
 
     // Check if any payment log has "Paid" status
     const hasDonated = userPlan.paymentLogs?.some(log => log.payment_status === "Paid") || false;
 
     return hasDonated;
-  } catch (error) {
+  } catch {
     return false;
   }
 };
@@ -252,6 +351,7 @@ export const hasUserDonated = async (instituteId: string): Promise<boolean> => {
  */
 export const isUserEnrolledInCourse = async (
   instituteId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   courseId: string
 ): Promise<boolean> => {
   try {
@@ -266,7 +366,7 @@ export const isUserEnrolledInCourse = async (
     return learnerInfo.some(learner =>
       learner.package_session_id && learner.institute_enrollment_id
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 };

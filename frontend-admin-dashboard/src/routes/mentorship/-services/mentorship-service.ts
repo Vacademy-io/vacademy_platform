@@ -10,6 +10,7 @@ import {
     MENTORSHIP_DASHBOARD,
     MENTORSHIP_MENTORS,
     MENTORSHIP_MENTOR_BOOKING_PAGE,
+    MEETINGS_MY_CALENDAR,
     MENTORSHIP_MENTOR_BY_ID,
     MENTORSHIP_MY_BOOKING_PAGE,
     MENTORSHIP_MY_GOOGLE_INITIATE,
@@ -158,6 +159,23 @@ export const updateMyBookingPage = async (
         data,
     });
     return res.data as MentorBookingPage;
+};
+
+/**
+ * The mentor's own sessions (as host) in [startDate, endDate] (yyyy-MM-dd). Reuses
+ * the meetings /my-calendar endpoint — a mentor IS the host on their booking page.
+ */
+export const fetchMySchedule = async (
+    instituteId: string,
+    startDate: string,
+    endDate: string
+): Promise<BookingInstance[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MEETINGS_MY_CALENDAR,
+        params: { instituteId, startDate, endDate },
+    });
+    return (res.data as BookingInstance[]) ?? [];
 };
 
 export const fetchMyMentees = async (instituteId: string): Promise<MenteeDTO[]> => {

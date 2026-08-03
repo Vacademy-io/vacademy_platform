@@ -11,6 +11,7 @@ import {
     fetchMyBookingPage,
     fetchMyMentees,
     fetchMyMentorProfile,
+    fetchMySchedule,
     fetchStudentTimeline,
     provisionMentorBookingPage,
     unassignMentee,
@@ -90,6 +91,18 @@ export const useMyMentorProfile = (instituteId: string | undefined) =>
         enabled: !!instituteId,
         staleTime: 30 * 1000,
         retry: false,
+    });
+
+export const useMySchedule = (
+    instituteId: string | undefined,
+    startDate: string,
+    endDate: string
+) =>
+    useQuery({
+        queryKey: ['mentorship-my-schedule', instituteId, startDate, endDate],
+        queryFn: () => fetchMySchedule(instituteId ?? '', startDate, endDate),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
     });
 
 export const useMyBookingPage = (instituteId: string | undefined) =>

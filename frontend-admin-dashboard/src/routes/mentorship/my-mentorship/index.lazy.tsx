@@ -23,6 +23,7 @@ import { initiateMyGoogle } from '../-services/mentorship-service';
 import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 import { AvailabilityDialog } from '../-components/AvailabilityDialog';
+import { MyScheduleCard } from '../-components/MyScheduleCard';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -197,6 +198,8 @@ function MyMentorshipPage() {
                     </div>
                 </div>
             )}
+
+            <MyScheduleCard instituteId={instituteId} />
 
             {isLoading ? (
                 <div className="text-body text-neutral-400">Loading mentees…</div>

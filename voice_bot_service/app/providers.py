@@ -335,8 +335,18 @@ class ResilientSarvamSTTService(SarvamSTTService):
         super().__init__(*args, **kwargs)
         self._last_reconnect_at = 0.0
 
+    _diag = None
+
+    def set_diagnostics(self, diag):
+        self._diag = diag
+
     async def _reconnect_once(self):
         import time as _time
+        try:
+            if self._diag is not None:
+                self._diag.bump("stt_reconnects")
+        except Exception:
+            pass
         now = _time.monotonic()
         if now - self._last_reconnect_at < self._RECONNECT_COOLDOWN_SECS:
             return False
@@ -397,6 +407,17 @@ class ResilientSarvamTTSService(SarvamTTSService):
     # `state is State.CLOSED` guard can't see it. We treat any TTS error as
     # socket death and force a reconnect before the next synthesis.
     _wedged = False
+    _diag = None
+
+    def set_diagnostics(self, diag):
+        self._diag = diag
+
+    def _diag_bump(self, name):
+        try:
+            if self._diag is not None:
+                self._diag.bump(name)
+        except Exception:
+            pass
 
     async def push_frame(self, frame, direction=None):
         # Cheap isinstance on the frame stream — the ONLY place the Sarvam error
@@ -405,6 +426,7 @@ class ResilientSarvamTTSService(SarvamTTSService):
             from pipecat.frames.frames import ErrorFrame as _ErrF
             if isinstance(frame, _ErrF) and "TTS Error" in str(getattr(frame, "error", "")):
                 if not self._wedged:
+                    self._diag_bump("tts_wedges")
                     logger.error("tts: Sarvam rejected input — marking socket wedged, "
                                  "will reconnect before next synthesis: %s",
                                  str(getattr(frame, "error", ""))[:160])
@@ -422,11 +444,13 @@ class ResilientSarvamTTSService(SarvamTTSService):
         #    chunk we never send can't arm the audio-stall stamp (which would
         #    make the watchdog "recover" from a stall that cannot happen).
         if not has_word_char(text):
+            self._diag_bump("tts_letterless_skipped")
             logger.info("tts: skipping letterless chunk %r", (text or "")[:40])
             return
         # 2) A previously-wedged socket produces ZERO audio forever. Rebuild it
         #    before synthesizing rather than waiting ~3.5s for the stall watchdog.
         if self._wedged:
+            self._diag_bump("tts_wedge_reconnects")
             logger.warning("tts: reconnecting wedged socket before synthesis")
             self._wedged = False
             try:
@@ -434,6 +458,7 @@ class ResilientSarvamTTSService(SarvamTTSService):
                 await self._connect()
             except Exception as e:
                 logger.warning("tts: wedge reconnect failed: %s", e)
+        self._diag_bump("replies_generated")
         if self._on_generate is not None:
             try:
                 self._on_generate()

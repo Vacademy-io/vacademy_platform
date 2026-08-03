@@ -798,20 +798,20 @@ def test_stall_recovery_cue_demands_full_replay_not_brief():
     assert 'flags["tts_gen_t"] == 0.0' not in cue
 
 
-def test_sentinel_restamps_stall_clock_on_interruption():
+def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
     src = inspect.getsource(b.SentinelGate.process_frame)
     intr = src[src.index("InterruptionFrame"):]
     assert "self._on_interrupted()" in intr[:intr.index("return")]
     # Wiring must come AFTER sentinel exists (the 2026-07-27 forward-ref class of bug).
     rb = inspect.getsource(b.run_bot)
     assert rb.index("sentinel = SentinelGate") < rb.index("sentinel.set_on_interrupted")
-    # RE-STAMP, never clear: pipecat pushes an InterruptionFrame on every VAD
-    # onset while the bot is quiet, so clearing would disarm wedge detection
-    # exactly when a wedge is pending.
-    body = rb[rb.index("def _restamp_on_interrupt"):]
+    # The hook must MEASURE ONLY. pipecat pushes an InterruptionFrame on every
+    # Silero onset while the bot is quiet — the wedge window — so mutating the
+    # stamp here (clear OR re-stamp) disarms the founder's own recovery.
+    body = rb[rb.index("def _note_killed_before_playout"):]
     body = body[:body.index("sentinel.set_on_interrupted")]
-    assert 'flags["tts_gen_t"] = time.time()' in body
-    assert 'flags["tts_gen_t"] = 0.0' not in body
+    assert 'diag.bump("replies_never_played")' in body
+    assert 'flags["tts_gen_t"] =' not in body, "interruption hook must not mutate the stall stamp"
 
 
 # ── Item 6: prompt placeholders must never render as holes

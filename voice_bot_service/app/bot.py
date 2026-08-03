@@ -62,6 +62,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
 from .config import get_settings
+from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,10 @@ class CallOutcome:
     # Set by main.py when run_bot raises: the report must say "failed", not
     # "no-answer" — a crash is our fault and must never read as the lead's.
     crashed: bool = False
+    crash_detail: Optional[str] = None
+    # Per-call technical diagnostics (app/diagnostics.CallDiagnostics). Owned by
+    # run_bot; None when the pipeline died before setup.
+    diagnostics: Any = None
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -207,7 +212,7 @@ class TtfbObserver:
     line per service per turn tagged with the call corr, so 'replies were slow on
     that call' is answerable from docker logs:  grep 'ttfb corr=<id>'."""
 
-    def __init__(self, corr: str):
+    def __init__(self, corr: str, diag=None):
         from pipecat.observers.base_observer import BaseObserver
 
         outer = self
@@ -231,11 +236,23 @@ class TtfbObserver:
                             if isinstance(d, TTFBMetricsData) and d.value:
                                 logger.info("ttfb corr=%s service=%s value=%.3f",
                                             outer._corr, d.processor, d.value)
+                                # Same numbers, now CARRIED (not just logged) so
+                                # "replies were slow on that call" is answerable
+                                # from the UI instead of docker logs.
+                                proc = (d.processor or "").lower()
+                                if outer._diag is not None:
+                                    if "tts" in proc:
+                                        outer._diag.sample("tts_ttfb", d.value)
+                                    elif "stt" in proc:
+                                        outer._diag.sample("stt_ttfb", d.value)
+                                    elif "llm" in proc or "vertex" in proc or "google" in proc:
+                                        outer._diag.sample("llm_ttfb", d.value)
                 except Exception:
                     pass
 
         self._corr = corr
         self._seen: list = []
+        self._diag = diag
         self.observer = _Obs()
 
 
@@ -573,7 +590,7 @@ def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
     return None
 
 
-def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
+def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     """Substitute the author's {{placeholders}} with real call values BEFORE the model
     sees the prompt. Left literal, `{{institute_name}}` etc. reach the model, which then
     improvises or fills them wrong (observed: {{institute_name}} became our account's
@@ -627,6 +644,13 @@ def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
         #    the parent's name. A hole in the sentence is bad; confidently
         #    speaking the wrong person's name is worse.
         logger.warning("prompt placeholder %r unresolved — rendering empty", key)
+        # `sink` is passed per-call (never a module global): up to 10 calls run
+        # concurrently in one process and a shared buffer would cross-contaminate.
+        if sink is not None:
+            try:
+                sink(key)
+            except Exception:
+                pass
         return ""
 
     return _PLACEHOLDER_RE.sub(repl, text)
@@ -686,7 +710,7 @@ def _now_line(context: Dict[str, Any]) -> str:
     )
 
 
-def build_system_prompt(context: Dict[str, Any]) -> str:
+def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
     extraction = agent.get("extractionQuestions") or []
@@ -820,7 +844,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "it in under 8 words."
     )
 
-    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
+    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context, sink=sink)
 
     # Pieces the bot knows that NO agent prompt can — kept in BOTH paths:
     # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
@@ -1043,6 +1067,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # Explicit state machine (see app/callstate.py — field docs + transition
     # contract live there; dict-style access kept for the frame callbacks).
     flags = CallState(t=time.time())
+    # Per-call technical diagnostics. Pure counters; every hook below is cheap and
+    # total (a diagnostics bug must never break a call). Carried to admin_core in
+    # the end-of-call report so a bad call is a hover in the UI, not an SSH sweep.
+    diag = diag_mod.CallDiagnostics()
+    outcome.diagnostics = diag
+    # Timestamps of orphan re-asks. A real transcript landing within 6s means we
+    # apologised for something we HAD heard (the 72%-false-re-ask class).
+    flags_orphan_marker: list = []
 
     def on_activity(user: bool = True):
         # VAD blips reset the idle CLOCK but no longer re-arm the nudge: on lines
@@ -1052,6 +1084,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["t"] = time.time()
 
     def set_bot_speaking(speaking: bool):
+        if speaking and not flags["bot_speaking"]:
+            # Gap since either side last spoke = what the CALLER experienced as
+            # silence. Measured on speech START only, so it is per-turn not
+            # per-frame. The configured greet beat is recorded separately.
+            _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            if _last:
+                diag.sample("dead_air", max(0.0, time.time() - _last))
+            diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         # Clear the pending-audio stamp on BOTH transitions: audio starting means
         # no stall; audio STOPPING means the response played (a clause stamped
@@ -1063,6 +1103,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["bot_spoke_once"] = True
 
     def set_user_speaking(speaking: bool):
+        if speaking and not flags["user_speaking"]:
+            _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            if _last:
+                diag.sample("dead_air", max(0.0, time.time() - _last))
+            if flags["bot_speaking"]:
+                diag.bump("barge_ins")
+        elif not speaking and flags["user_speaking"]:
+            _dur = time.time() - (flags["user_started_t"] or time.time())
+            if _dur > diag.longest_user_secs:
+                diag.longest_user_secs = _dur
         flags["user_speaking"] = speaking
         if speaking:
             flags["user_started_t"] = time.time()
@@ -1116,6 +1166,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # Audio-stall watchdog stamp: run_tts marks "audio pending"; BotStartedSpeaking
     # clears it. MUST be wired after tts exists (a pre-assignment hasattr(tts, …)
     # here crashed EVERY call with UnboundLocalError on 2026-07-27).
+    for _svc in (stt, tts):
+        if hasattr(_svc, "set_diagnostics"):
+            _svc.set_diagnostics(diag)
     if hasattr(tts, "set_generate_callback"):
         def _stamp_generate():
             # Only stamp while the bot is QUIET: a clause generated mid-playout is
@@ -1125,7 +1178,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         tts.set_generate_callback(_stamp_generate)
 
     llm_context = LLMContext(
-        messages=[{"role": "system", "content": build_system_prompt(context)}]
+        messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
     )
     aggregators = LLMContextAggregatorPair(
         llm_context,
@@ -1181,7 +1234,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # derail it. A real correction (more words) still barges in immediately.
             interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
-        observers=[TtfbObserver(corr).observer],
+        observers=[TtfbObserver(corr, diag).observer],
     )
     sentinel.set_task(task)
 
@@ -1219,6 +1272,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         while (time.time() - connect_t < 2.5
                and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
             if flags["transcript_t"] > connect_t + 0.05:
+                diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
@@ -1228,6 +1282,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # pipecat 0.0.95 source), so the model didn't know it had already greeted and
             # re-greeted from scratch on the caller's first reply — the observed
             # double/triple-greeting. run_llm omitted => append only, no generation.
+            diag.greet_path = "scripted"
+            diag.greet_delay_secs = round(time.time() - _run_bot_t0, 2)
             logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
             # transcript entry comes from PlayedTranscriptRecorder at PLAYOUT
             # (A3) — pre-crediting here recorded openings the caller never heard.
@@ -1239,6 +1295,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # context (NOT our saved transcript) and run: this reproduces the exact
             # proven caller-spoke-first path, so the model reliably emits its persona
             # opening instead of us hoping it generates from a system-only context.
+            diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)
             # Bracketed CUE, not a synthetic "Hello?": seeding a fake caller hello
             # taught the model that hello earns hello back — live calls opened with a
@@ -1279,19 +1336,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     # Same ordering rule: `sentinel` only exists from line ~1146.
     #
-    # RE-STAMP, do not clear. A reply killed before playout leaves the stamp
-    # armed, and the watchdog would "recover" a reply the caller interrupted —
-    # but CLEARING is worse: pipecat pushes an InterruptionFrame on EVERY VAD
-    # onset while the bot is quiet (base_input: `not self._bot_speaking`), which
-    # is exactly the state a wedged TTS socket leaves us in. Clearing would
-    # therefore disarm wedge detection the moment the caller made any sound —
-    # the founder's own failure mode. Restarting the clock keeps both properties,
-    # and it is safe because an armed stamp PROVES no audio has played yet
-    # (set_bot_speaking clears it on the first audio frame).
-    def _restamp_on_interrupt():
-        if flags["tts_gen_t"] != 0.0:
-            flags["tts_gen_t"] = time.time()
-    sentinel.set_on_interrupted(_restamp_on_interrupt)
+    # MEASURE ONLY — deliberately does NOT touch the stall stamp.
+    #
+    # pipecat pushes an InterruptionFrame on EVERY Silero onset while the bot is
+    # quiet (base_input: `not self._bot_speaking` — the min-words strategy is
+    # bypassed in exactly that window), and "bot quiet with a generation pending"
+    # IS the wedge window. So a cough or hold music arrives here. CLEARING the
+    # stamp would disarm wedge detection; RE-STAMPING is no better, because on a
+    # noisy line the clock is pushed forward faster than stall_after_secs and
+    # recovery never fires either. Both dressed up the founder's own bug as a
+    # fix. Measured against the live corpus: 14.7% of onsets carry no transcript
+    # at all, and two logged stalls had onsets inside their armed window.
+    #
+    # The pre-playout kill is real, but the answer is to SEE it, not to destroy
+    # the only evidence that a reply never played. The stamp keeps its pre-diff
+    # semantics; the counter feeds the diagnostics panel.
+    def _note_killed_before_playout():
+        if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
+            diag.bump("replies_never_played")
+    sentinel.set_on_interrupted(_note_killed_before_playout)
 
     async def watchdog():
         """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
@@ -1337,6 +1400,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await task.stop_when_done()
                 continue
             if d.kind == CAP_FAREWELL:
+                diag.cap_farewell = True
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
@@ -1355,6 +1419,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 if not stall_recovery_still_needed(flags, time.time()):
                     logger.info("tts stall recovery aborted corr=%s — audio arrived", corr)
                     continue
+                diag.bump("tts_stalls")
+                if flags["stall_recoveries"] >= cfg.stall_max_recoveries:
+                    diag.tts_stall_cap_hit = True
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
                              "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])
@@ -1376,6 +1443,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     run_llm=True)])
                 continue
             if d.kind == ORPHAN_ASK:
+                diag.bump("orphan_reasks")
+                _orphan_at = time.time()
+                flags_orphan_marker.append(_orphan_at)
                 logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
                             corr, d.detail)
                 await task.queue_frames([
@@ -1383,6 +1453,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     TTSSpeakFrame(repeat_line)])
                 continue
             if d.kind == NUDGE:
+                diag.bump("nudges")
                 # Context-append too: TTSSpeakFrame text never reaches the LLM
                 # context — without it the model can't react to "haan sun raha hoon".
                 await task.queue_frames([
@@ -1390,6 +1461,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     TTSSpeakFrame(nudge_text)])
                 continue
             if d.kind == IDLE_HANGUP:
+                diag.idle_hangup = True
                 # Speak a brief closing BEFORE dropping — a silent hangup read as
                 # "disconnected without a proper close" (live feedback).
                 logger.info("idle hangup corr=%s", corr)

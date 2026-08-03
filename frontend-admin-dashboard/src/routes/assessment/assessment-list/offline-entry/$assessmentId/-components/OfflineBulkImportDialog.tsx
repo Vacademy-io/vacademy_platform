@@ -765,7 +765,7 @@ const PreviewTable = ({ rows }: { rows: ManifestRow[] }) => {
                             >
                                 <td className="p-2 text-neutral-500">{row.line}</td>
                                 <td className="p-2 text-neutral-700">
-                                    {row.student?.name ?? row.username || '—'}
+                                    {row.student?.name || row.username || '—'}
                                     <span className="block text-neutral-400">{row.username}</span>
                                 </td>
                                 <td className="p-2 text-neutral-700">{row.totalMarks ?? '—'}</td>

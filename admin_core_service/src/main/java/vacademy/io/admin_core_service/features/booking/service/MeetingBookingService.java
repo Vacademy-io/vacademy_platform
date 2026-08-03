@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepos
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
 import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorshipNotificationService;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
@@ -78,6 +79,7 @@ public class MeetingBookingService {
     private final MentorRepository mentorRepository;
     private final AuthService authService;
     private final NotificationService notificationService;
+    private final MentorshipNotificationService mentorshipNotificationService;
     private final PlatformTransactionManager transactionManager;
 
     public BookingInstanceDTO createBooking(MeetingBookingRequestDTO request, CustomUserDetails user) {
@@ -158,6 +160,11 @@ public class MeetingBookingService {
         }
         sendConfirmationEmail(instance, title, zone, reminderConfig);
         sendConfirmationWhatsapp(instance, title, zone, reminderConfig);
+        // Mentorship-only extra channels (in-app bell + push). No-op unless the host
+        // is a mentor; the confirmation email above already covers the email channel.
+        mentorshipNotificationService.notifyBooking(instance.getInstituteId(), instance.getHostUserId(),
+                instance.getInviteeUserId(), instance.getInviteeEmail(), instance.getInviteeName(),
+                title, formatWhen(instance, zone), false);
 
         return toDTO(instance, Map.of(), page != null ? page.getTitle() : null);
     }
@@ -464,6 +471,13 @@ public class MeetingBookingService {
             out.put(var, val == null ? "" : val);
         }
         return out;
+    }
+
+    /** Human-readable start time in the booking's zone, e.g. "Mon, 04 Aug 2026 at 15:30 (Asia/Kolkata)". */
+    private static String formatWhen(BookingInstance instance, ZoneId zone) {
+        if (instance.getScheduledStartUtc() == null) return null;
+        return instance.getScheduledStartUtc().toInstant().atZone(zone)
+                .format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm")) + " (" + zone.getId() + ")";
     }
 
     private static NotificationToUserDTO recipient(String email, String userId, String name) {

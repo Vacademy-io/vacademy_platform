@@ -88,6 +88,45 @@ class ClauseFlushAggregator(SimpleTextAggregator):
         return None
 
 
+class _SaarasSocketProxy:
+    """Gives a TRANSCRIBE socket the surface pipecat expects of a TRANSLATE one.
+
+    pipecat branches on the model name in TWO places, not one:
+      _connect  -> chooses the endpoint      (handled by _SaarasStreamingShim)
+      run_stt   -> calls socket.translate()  (handled HERE)
+    A transcribe socket exposes only flush/on/recv/start_listening/transcribe, so
+    `translate()` raised AttributeError on EVERY audio frame: the socket connected,
+    the receive task ran, and not one byte of audio was ever sent — a live call
+    produced ZERO transcripts while the caller said "Hello" seven times. set_prompt
+    is a no-op for the same reason (it exists only on the translate socket).
+    """
+
+    def __init__(self, sock):
+        self._sock = sock
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    async def translate(self, **kwargs):
+        return await self._sock.transcribe(**kwargs)
+
+    async def set_prompt(self, *args, **kwargs):
+        return None
+
+
+class _SaarasConnectCtx:
+    """Async-CM wrapper so pipecat's __aenter__/__aexit__ get the proxied socket."""
+
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    async def __aenter__(self):
+        return _SaarasSocketProxy(await self._ctx.__aenter__())
+
+    async def __aexit__(self, *exc):
+        return await self._ctx.__aexit__(*exc)
+
+
 class _SaarasStreamingShim:
     """Makes pipecat's translate-socket call land on the TRANSCRIBE socket.
 
@@ -113,7 +152,7 @@ class _SaarasStreamingShim:
         kwargs["language_code"] = self._language_code
         kwargs["request_options"] = RequestOptions(
             additional_query_parameters={"mode": self._mode})
-        return self._client.speech_to_text_streaming.connect(**kwargs)
+        return _SaarasConnectCtx(self._client.speech_to_text_streaming.connect(**kwargs))
 
 
 def _install_saaras_shim(svc, language_code: str, mode: str) -> None:

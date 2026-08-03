@@ -1536,6 +1536,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 continue
             if d.kind == ORPHAN_ASK:
                 diag.bump("orphan_reasks")
+                # The caller audibly spoke and produced no words. Counted
+                # separately from the re-ask because the re-ask is one-shot per
+                # silent stretch, so it under-reports a persistently deaf line.
+                diag.bump("unheard_utterances")
                 _orphan_at = time.time()
                 flags_orphan_marker.append(_orphan_at)
                 logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",

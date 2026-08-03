@@ -277,3 +277,24 @@ def test_cannot_hear_outranks_a_tts_stall_in_the_headline():
 def test_giving_up_on_hearing_is_always_red():
     d = dg.CallDiagnostics(user_turns=3, bot_turns=5, hearing_failures=1)
     assert dg.verdict(d)["faults"][dg.STT_DEAF] == dg.RED
+
+
+def test_spoke_but_never_transcribed_is_red_not_green():
+    """Live call 2dcad5f2 scored GREEN "No faults detected" while the caller said
+    "Hello" SEVEN times and STT returned nothing: user_turns==0 suppressed
+    DEAD_AIR (right for an unanswered dial) and no reconnect ever happened."""
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=2, unheard_utterances=1,
+                           stt_reconnects=0, hearing_failures=0)
+    d.sample("dead_air", 7.64)
+    v = dg.verdict(d)
+    assert v["health"] == dg.RED
+    assert v["headline"] == dg.STT_DEAF
+    assert dg.to_payload(d)["infra"]["unheardUtterances"] == 1
+
+
+def test_genuinely_unanswered_dial_stays_green():
+    """The case the suppression exists for must still work: no caller speech at
+    all — no VAD utterances, nothing to transcribe."""
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=3, unheard_utterances=0)
+    d.sample("dead_air", 8.8)
+    assert dg.verdict(d)["health"] == dg.GREEN

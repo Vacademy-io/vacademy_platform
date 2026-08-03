@@ -121,6 +121,9 @@ class CallDiagnostics:
     # ── infrastructure ──
     stt_reconnects: int = 0
     hearing_failures: int = 0     # times we gave up and closed out honestly
+    # Caller utterances DETECTED by VAD that produced no transcript at all. This
+    # is the only signal that separates "nobody answered" from "we went deaf".
+    unheard_utterances: int = 0
     greet_path: str = ""                # "scripted" | "callee_spoke_first" | "llm"
     greet_delay_secs: Optional[float] = None
     setup_secs: Optional[float] = None
@@ -271,9 +274,15 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     # "We could not hear the caller" is the most caller-visible failure there is —
     # they answer, we apologise, they answer again. Giving up and closing out is
     # always RED regardless of how the sockets behaved.
-    if d.hearing_failures >= 1 or d.stt_reconnects >= 3:
+    # A call where the caller SPOKE but we transcribed nothing is the worst
+    # outcome there is, and it used to score GREEN: user_turns==0 suppressed
+    # DEAD_AIR (correct for an unanswered dial), and reconnects/hearing_failures
+    # can both be 0 when the socket is healthy but silent. A live call rated
+    # GREEN while the caller said "Hello" seven times into nothing.
+    heard_nothing = d.unheard_utterances >= 1 and d.user_turns == 0
+    if d.hearing_failures >= 1 or d.stt_reconnects >= 3 or heard_nothing:
         fire(STT_DEAF, RED)
-    elif d.stt_reconnects >= 1:
+    elif d.stt_reconnects >= 1 or d.unheard_utterances >= 1:
         fire(STT_DEAF, AMBER)
 
     for code, buf in ((SLOW_TTS, d.tts_ttfb), (SLOW_LLM, d.llm_ttfb)):
@@ -373,6 +382,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "infra": {
                 "sttReconnects": d.stt_reconnects,
                 "hearingFailures": d.hearing_failures,
+                "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,
                 "crash": d.crash,
                 "transferRequested": d.transfer_requested,

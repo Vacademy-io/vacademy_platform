@@ -71,6 +71,66 @@ public class AuthService {
     @Value("${default.learner.portal.url}")
     private String defaultLearnerPortalUrl;
 
+    private static final String STUDENT_ROLE = "STUDENT";
+
+    /**
+     * Whether the credential email being composed is going to a learner, which decides between the
+     * learner portal and the admin portal for its "Access Your Account" link.
+     *
+     * <p>Scanning only {@code rolesBeingAdded} is not enough: that set holds the roles this call is
+     * <em>adding</em>, and for a user who is already enrolled in the institute every role is skipped
+     * as a duplicate, leaving it empty. A learner re-enrolling — or getting their credentials after
+     * a payment confirms — was then classed as staff and emailed the admin portal. Only that
+     * no-signal case consults the roles the user already holds; a non-empty set is still trusted as
+     * given, so inviting someone as staff keeps linking the admin portal even if they also study here.
+     */
+    private boolean isLearnerRecipient(User user, String instituteId, Set<UserRole> rolesBeingAdded) {
+        if (rolesBeingAdded != null && !rolesBeingAdded.isEmpty()) {
+            for (UserRole userRole : rolesBeingAdded) {
+                if (userRole.getRole() != null && STUDENT_ROLE.equals(userRole.getRole().getName())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (user == null || !StringUtils.hasText(user.getId()) || !StringUtils.hasText(instituteId)) {
+            return false;
+        }
+        return userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(user.getId(), instituteId, STUDENT_ROLE);
+    }
+
+    /**
+     * Makes a configured portal URL safe to drop straight into an email href.
+     *
+     * <p>Two shapes arrive broken. Institutes store the portal as a bare host
+     * ({@code learner.shikshanation.com}) far more often than as a full origin, and a schemeless
+     * href is a <em>relative</em> link — mail clients resolve it against their own domain, so the
+     * button goes nowhere. And a URL that reached us percent-encoded (an over-encoded
+     * {@code loginUrl} query param) must be decoded before it is linked, or the href reads
+     * {@code https%3A%2F%2F…}.
+     */
+    private String normalizePortalUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return url;
+        }
+        String normalized = url.trim();
+        // Only decode when the encoding is the scheme separator itself — a genuine URL never has one.
+        if (normalized.toLowerCase().contains("%3a%2f%2f")) {
+            try {
+                normalized = java.net.URLDecoder.decode(normalized, java.nio.charset.StandardCharsets.UTF_8).trim();
+            } catch (Exception e) {
+                log.warn("Could not decode over-encoded portal URL '{}': {}", url, e.getMessage());
+            }
+        }
+        if (!normalized.toLowerCase().startsWith("http://") && !normalized.toLowerCase().startsWith("https://")) {
+            normalized = "https://" + normalized;
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
@@ -234,15 +294,7 @@ public class AuthService {
 
     public void sendWelcomeMailToUser(User user, String instituteId, Set<UserRole> roles) {
         InstituteInfoDTO instituteInfoDTO = null;
-        boolean isLearner = false;
-        if (roles != null) {
-            for (UserRole userRole : roles) {
-                if (userRole.getRole().getName().equals("STUDENT")) {
-                    isLearner = true;
-                    break;
-                }
-            }
-        }
+        boolean isLearner = isLearnerRecipient(user, instituteId, roles);
         String instituteName = "Vacademy"; // Default fallback
         String theme = "#E67E22";
         String loginUrl = "https://dash.vacademy.io";
@@ -253,7 +305,9 @@ public class AuthService {
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
             if (isLearner) {
-                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                // hasText, not != null: two institutes store the column as "" and a bare null-check
+                // let that through, emailing learners an empty href instead of the platform default.
+                if (StringUtils.hasText(instituteInfoDTO.getLearnerPortalUrl()))
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
@@ -264,7 +318,7 @@ public class AuthService {
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword(), loginUrl, theme));
+                user.getUsername(), user.getPassword(), normalizePortalUrl(loginUrl), theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
@@ -274,15 +328,7 @@ public class AuthService {
             throw new IllegalArgumentException("User or user email must not be null");
         }
         InstituteInfoDTO instituteInfoDTO = null;
-        boolean isLearner = false;
-        if (roles != null) {
-            for (UserRole userRole : roles) {
-                if (userRole.getRole().getName().equals("STUDENT")) {
-                    isLearner = true;
-                    break;
-                }
-            }
-        }
+        boolean isLearner = isLearnerRecipient(user, instituteId, roles);
         String instituteName = "Vacademy"; // Default fallback
         String theme = "#E67E22";
         String loginUrl = "https://dash.vacademy.io";
@@ -293,7 +339,9 @@ public class AuthService {
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
             if (isLearner) {
-                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                // hasText, not != null: two institutes store the column as "" and a bare null-check
+                // let that through, emailing learners an empty href instead of the platform default.
+                if (StringUtils.hasText(instituteInfoDTO.getLearnerPortalUrl()))
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
@@ -310,7 +358,7 @@ public class AuthService {
                 fullName,
                 username,
                 password,
-                loginUrl,
+                normalizePortalUrl(loginUrl),
                 theme);
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
@@ -544,15 +592,8 @@ public class AuthService {
             return;
         }
         InstituteInfoDTO instituteInfoDTO = null;
-        boolean isLearner = false;
-        if (roles != null) {
-            for (UserRole userRole : roles) {
-                if (userRole.getRole().getName().equals("STUDENT")) {
-                    isLearner = true;
-                    break;
-                }
-            }
-        }
+        // Never guess "staff" from an empty set of added roles — see isLearnerRecipient.
+        boolean isLearner = isLearnerRecipient(user, instituteId, roles);
         String instituteName = "Vacademy";
         String theme = "#E67E22";
         String loginUrl = "https://dash.vacademy.io";
@@ -563,7 +604,9 @@ public class AuthService {
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
             if (isLearner) {
-                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                // hasText, not != null: two institutes store the column as "" and a bare null-check
+                // let that through, emailing learners an empty href instead of the platform default.
+                if (StringUtils.hasText(instituteInfoDTO.getLearnerPortalUrl()))
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
@@ -579,7 +622,7 @@ public class AuthService {
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createLearnerEnrollmentNewUserEmailBody(
                 instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword(), loginUrl, theme));
+                user.getUsername(), user.getPassword(), normalizePortalUrl(loginUrl), theme));
         genericEmailRequest.setSubject("Course Enrollment - " + instituteName);
         notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
@@ -606,15 +649,9 @@ public class AuthService {
             return;
         }
         InstituteInfoDTO instituteInfoDTO = null;
-        boolean isLearner = false;
-        if (roles != null) {
-            for (UserRole userRole : roles) {
-                if (userRole.getRole().getName().equals("STUDENT")) {
-                    isLearner = true;
-                    break;
-                }
-            }
-        }
+        // An already-enrolled learner adds no new roles, so `roles` is empty here almost every
+        // time — see isLearnerRecipient. This is the path that was emailing learners the admin portal.
+        boolean isLearner = isLearnerRecipient(user, instituteId, roles);
         String instituteName = "Vacademy";
         String theme = "#E67E22";
         String loginUrl = "https://dash.vacademy.io";
@@ -625,7 +662,9 @@ public class AuthService {
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
             if (isLearner) {
-                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                // hasText, not != null: two institutes store the column as "" and a bare null-check
+                // let that through, emailing learners an empty href instead of the platform default.
+                if (StringUtils.hasText(instituteInfoDTO.getLearnerPortalUrl()))
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
@@ -645,7 +684,7 @@ public class AuthService {
                 fullName,
                 username,
                 password,
-                loginUrl,
+                normalizePortalUrl(loginUrl),
                 theme);
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());

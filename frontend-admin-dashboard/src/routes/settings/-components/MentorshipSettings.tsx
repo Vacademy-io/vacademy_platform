@@ -1,47 +1,353 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { UsersThree, CalendarPlus, CalendarX, EnvelopeSimple, BellRinging, DeviceMobile } from '@phosphor-icons/react';
+import {
+    UsersThree,
+    CalendarPlus,
+    CalendarX,
+    EnvelopeSimple,
+    BellRinging,
+    DeviceMobile,
+    WhatsappLogo,
+} from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 
 import {
     DEFAULT_MENTORSHIP_SETTINGS,
+    MENTORSHIP_PLACEHOLDERS,
     getMentorshipSettings,
     saveMentorshipSettings,
     type MentorshipSettings as MentorshipSettingsType,
+    type MentorshipTriggerSettings,
+    type MentorshipEmailTemplate,
+    type MentorshipTextTemplate,
+    type MentorshipWhatsappTemplate,
 } from '@/services/mentorship-settings';
+import { whatsappTemplateService } from '@/services/whatsapp-template-service';
+import type { MetaWhatsAppTemplate } from '@/types/message-template-types';
 
-/** Single labelled toggle row (matches the LiveSessionSettings pattern). */
-const RowToggle = ({
+/** Mentorship fields an admin can map a WhatsApp template variable to. '' = auto-match by name. */
+const WA_FIELD_OPTIONS: { value: string; label: string }[] = [
+    { value: '', label: 'Auto (match by name)' },
+    { value: 'name', label: "Recipient's name" },
+    { value: 'mentor_name', label: "Mentor's name" },
+    { value: 'student_name', label: "Student's name" },
+    { value: 'session_title', label: 'Session title' },
+    { value: 'session_datetime', label: 'Session date & time' },
+];
+
+/** Extract {{tokens}} from an approved template's BODY text. */
+const templateBodyTokens = (template: MetaWhatsAppTemplate | undefined): string[] => {
+    if (!template) return [];
+    const body = template.components?.find((c) => c.type === 'BODY')?.text ?? '';
+    const tokens = Array.from(body.matchAll(/\{\{([^}]+)\}\}/g)).map((m) => m[1]!.trim());
+    return Array.from(new Set(tokens));
+};
+
+const PlaceholderHint = () => (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-neutral-400">Placeholders:</span>
+        {MENTORSHIP_PLACEHOLDERS.map((p) => (
+            <code
+                key={p.token}
+                title={p.label}
+                className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600"
+            >
+                {p.token}
+            </code>
+        ))}
+    </div>
+);
+
+/** Email or in-app/push channel: toggle + editable subject/title + body. */
+const InlineTemplateBlock = ({
+    icon,
+    label,
+    description,
+    enabled,
+    onToggle,
+    primaryLabel,
+    primaryValue,
+    onPrimaryChange,
+    bodyValue,
+    onBodyChange,
+    idPrefix,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    description: string;
+    enabled: boolean;
+    onToggle: (v: boolean) => void;
+    primaryLabel: string;
+    primaryValue: string;
+    onPrimaryChange: (v: string) => void;
+    bodyValue: string;
+    onBodyChange: (v: string) => void;
+    idPrefix: string;
+}) => (
+    <div className="py-3">
+        <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-1 items-start gap-3">
+                <div className="mt-0.5 text-neutral-500">{icon}</div>
+                <div className="flex-1">
+                    <div className="text-sm font-medium text-neutral-800">{label}</div>
+                    <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+                </div>
+            </div>
+            <Switch checked={enabled} onCheckedChange={onToggle} />
+        </div>
+        {enabled && (
+            <div className="ml-9 mt-3 space-y-2">
+                <div>
+                    <Label htmlFor={`${idPrefix}-primary`} className="text-xs text-neutral-600">
+                        {primaryLabel}
+                    </Label>
+                    <Input
+                        id={`${idPrefix}-primary`}
+                        value={primaryValue}
+                        onChange={(e) => onPrimaryChange(e.target.value)}
+                        className="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label htmlFor={`${idPrefix}-body`} className="text-xs text-neutral-600">
+                        Message
+                    </Label>
+                    <Textarea
+                        id={`${idPrefix}-body`}
+                        value={bodyValue}
+                        onChange={(e) => onBodyChange(e.target.value)}
+                        rows={3}
+                        className="mt-1"
+                    />
+                </div>
+            </div>
+        )}
+    </div>
+);
+
+/** WhatsApp channel: toggle + approved-template picker + optional variable mapping. */
+const WhatsappBlock = ({
+    value,
+    onChange,
+    templates,
+    loading,
+}: {
+    value: MentorshipWhatsappTemplate;
+    onChange: (patch: Partial<MentorshipWhatsappTemplate>) => void;
+    templates: MetaWhatsAppTemplate[];
+    loading: boolean;
+}) => {
+    const selected = useMemo(
+        () => templates.find((t) => t.name === value.template_name),
+        [templates, value.template_name]
+    );
+    const tokens = useMemo(() => templateBodyTokens(selected), [selected]);
+
+    const setMapping = (token: string, field: string) => {
+        const next = { ...value.variable_mapping };
+        if (field) next[token] = field;
+        else delete next[token];
+        onChange({ variable_mapping: next });
+    };
+
+    return (
+        <div className="py-3">
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-1 items-start gap-3">
+                    <div className="mt-0.5 text-neutral-500">
+                        <WhatsappLogo size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <div className="text-sm font-medium text-neutral-800">WhatsApp</div>
+                        <div className="mt-0.5 text-xs text-neutral-500">
+                            Send via an approved WhatsApp template. Requires WhatsApp to be
+                            configured for the institute.
+                        </div>
+                    </div>
+                </div>
+                <Switch checked={value.enabled} onCheckedChange={(v) => onChange({ enabled: v })} />
+            </div>
+            {value.enabled && (
+                <div className="ml-9 mt-3 space-y-3">
+                    <div>
+                        <Label className="text-xs text-neutral-600">Approved template</Label>
+                        <Select
+                            value={value.template_name || undefined}
+                            onValueChange={(name) => {
+                                const t = templates.find((x) => x.name === name);
+                                onChange({
+                                    template_name: name,
+                                    language_code: t?.language || value.language_code || 'en',
+                                    variable_mapping: {},
+                                });
+                            }}
+                        >
+                            <SelectTrigger className="mt-1">
+                                <SelectValue
+                                    placeholder={
+                                        loading ? 'Loading templates…' : 'Select an approved template'
+                                    }
+                                />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {templates.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs text-neutral-500">
+                                        No approved WhatsApp templates found.
+                                    </div>
+                                ) : (
+                                    templates.map((t) => (
+                                        <SelectItem key={t.id} value={t.name}>
+                                            {t.name} ({t.language})
+                                        </SelectItem>
+                                    ))
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {selected && tokens.length > 0 && (
+                        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                            <div className="text-xs font-medium text-neutral-600">
+                                Map template variables
+                            </div>
+                            <div className="mt-0.5 text-xs text-neutral-400">
+                                Leave as “Auto” when the template variable name already matches a
+                                mentorship field.
+                            </div>
+                            <div className="mt-2 space-y-2">
+                                {tokens.map((token) => (
+                                    <div key={token} className="flex items-center gap-2">
+                                        <code className="w-40 shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+                                            {`{{${token}}}`}
+                                        </code>
+                                        <Select
+                                            value={value.variable_mapping[token] ?? ''}
+                                            onValueChange={(field) => setMapping(token, field)}
+                                        >
+                                            <SelectTrigger className="flex-1">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {WA_FIELD_OPTIONS.map((o) => (
+                                                    <SelectItem key={o.value || 'auto'} value={o.value}>
+                                                        {o.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/** One trigger card: the four channel blocks + a shared placeholder hint. */
+const TriggerCard = ({
     icon,
     title,
     description,
-    checked,
-    onChange,
-    disabled,
+    idPrefix,
+    trigger,
+    onChannelChange,
+    waTemplates,
+    waLoading,
+    children,
 }: {
-    icon?: React.ReactNode;
+    icon: React.ReactNode;
     title: string;
     description: string;
-    checked: boolean;
-    onChange: (next: boolean) => void;
-    disabled?: boolean;
+    idPrefix: string;
+    trigger: MentorshipTriggerSettings;
+    onChannelChange: (
+        channel: keyof MentorshipTriggerSettings,
+        patch: Record<string, unknown>
+    ) => void;
+    waTemplates: MetaWhatsAppTemplate[];
+    waLoading: boolean;
+    children?: React.ReactNode;
 }) => (
-    <div className="flex items-start justify-between gap-4 py-3">
-        <div className="flex flex-1 items-start gap-3">
-            {icon && <div className="mt-0.5 text-neutral-500">{icon}</div>}
-            <div className="flex-1">
-                <div className="text-sm font-medium text-neutral-800">{title}</div>
-                <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+    <Card>
+        <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-2">
+            <div className="mt-0.5 rounded-md bg-primary-50 p-2 text-primary-500">{icon}</div>
+            <div>
+                <CardTitle className="text-base">{title}</CardTitle>
+                <CardDescription>{description}</CardDescription>
             </div>
-        </div>
-        <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
-    </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4 pt-0">
+            {children}
+            <InlineTemplateBlock
+                icon={<EnvelopeSimple size={18} />}
+                label="Email"
+                description="Send an email notification."
+                enabled={trigger.email.enabled}
+                onToggle={(v) => onChannelChange('email', { enabled: v })}
+                primaryLabel="Subject"
+                primaryValue={trigger.email.subject}
+                onPrimaryChange={(v) => onChannelChange('email', { subject: v })}
+                bodyValue={trigger.email.body}
+                onBodyChange={(v) => onChannelChange('email', { body: v })}
+                idPrefix={`${idPrefix}-email`}
+            />
+            <Separator />
+            <InlineTemplateBlock
+                icon={<BellRinging size={18} />}
+                label="In-app alert"
+                description="Show an alert in the notification bell."
+                enabled={trigger.system_alert.enabled}
+                onToggle={(v) => onChannelChange('system_alert', { enabled: v })}
+                primaryLabel="Title"
+                primaryValue={trigger.system_alert.title}
+                onPrimaryChange={(v) => onChannelChange('system_alert', { title: v })}
+                bodyValue={trigger.system_alert.body}
+                onBodyChange={(v) => onChannelChange('system_alert', { body: v })}
+                idPrefix={`${idPrefix}-alert`}
+            />
+            <Separator />
+            <InlineTemplateBlock
+                icon={<DeviceMobile size={18} />}
+                label="Push notification"
+                description="Send a push notification to mobile devices."
+                enabled={trigger.push.enabled}
+                onToggle={(v) => onChannelChange('push', { enabled: v })}
+                primaryLabel="Title"
+                primaryValue={trigger.push.title}
+                onPrimaryChange={(v) => onChannelChange('push', { title: v })}
+                bodyValue={trigger.push.body}
+                onBodyChange={(v) => onChannelChange('push', { body: v })}
+                idPrefix={`${idPrefix}-push`}
+            />
+            <Separator />
+            <WhatsappBlock
+                value={trigger.whatsapp}
+                onChange={(patch) => onChannelChange('whatsapp', patch)}
+                templates={waTemplates}
+                loading={waLoading}
+            />
+            <PlaceholderHint />
+        </CardContent>
+    </Card>
 );
 
 interface MentorshipSettingsProps {
@@ -54,6 +360,8 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
     const [initial, setInitial] = useState<MentorshipSettingsType>(DEFAULT_MENTORSHIP_SETTINGS);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [waTemplates, setWaTemplates] = useState<MetaWhatsAppTemplate[]>([]);
+    const [waLoading, setWaLoading] = useState(true);
 
     useEffect(() => {
         let cancelled = false;
@@ -61,11 +369,22 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             try {
                 setLoading(true);
                 const fresh = await getMentorshipSettings();
-                if (cancelled) return;
-                setSettings(fresh);
-                setInitial(fresh);
+                if (!cancelled) {
+                    setSettings(fresh);
+                    setInitial(fresh);
+                }
             } finally {
                 if (!cancelled) setLoading(false);
+            }
+        })();
+        (async () => {
+            try {
+                const list = await whatsappTemplateService.getMetaTemplates();
+                if (!cancelled) setWaTemplates(list.filter((t) => t.status === 'APPROVED'));
+            } catch {
+                if (!cancelled) setWaTemplates([]);
+            } finally {
+                if (!cancelled) setWaLoading(false);
             }
         })();
         return () => {
@@ -75,12 +394,27 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
 
     const dirty = JSON.stringify(settings) !== JSON.stringify(initial);
 
-    const setAssignment = (key: keyof MentorshipSettingsType['assignment'], value: boolean) =>
-        setSettings((prev) => ({ ...prev, assignment: { ...prev.assignment, [key]: value } }));
-    const setBooking = (key: keyof MentorshipSettingsType['booking'], value: boolean) =>
-        setSettings((prev) => ({ ...prev, booking: { ...prev.booking, [key]: value } }));
-    const setCancellation = (key: keyof MentorshipSettingsType['cancellation'], value: boolean) =>
-        setSettings((prev) => ({ ...prev, cancellation: { ...prev.cancellation, [key]: value } }));
+    const updateChannel = (
+        triggerKey: keyof MentorshipSettingsType,
+        channel: keyof MentorshipTriggerSettings,
+        patch: Record<string, unknown>
+    ) =>
+        setSettings(
+            (prev) =>
+                ({
+                    ...prev,
+                    [triggerKey]: {
+                        ...prev[triggerKey],
+                        [channel]: {
+                            ...(prev[triggerKey] as MentorshipTriggerSettings)[channel],
+                            ...patch,
+                        },
+                    },
+                }) as MentorshipSettingsType
+        );
+
+    const setAssignmentFlag = (key: 'notify_student' | 'notify_mentor', v: boolean) =>
+        setSettings((prev) => ({ ...prev, assignment: { ...prev.assignment, [key]: v } }));
 
     const reset = () => setSettings(initial);
 
@@ -120,8 +454,9 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                             Mentorship Settings
                         </h2>
                         <p className="text-sm text-neutral-500">
-                            Choose which mentorship events send notifications and over which
-                            channels. Everything is on by default.
+                            For each mentorship trigger, choose which channels notify the learner and
+                            edit the message templates. Email, in-app alert and push are on by
+                            default; WhatsApp needs an approved template.
                         </p>
                     </div>
                 )}
@@ -140,132 +475,62 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                 </div>
             </div>
 
-            {/* Mentor assigned */}
-            <Card>
-                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
-                    <div className="mt-0.5 rounded-md bg-primary-50 p-2 text-primary-500">
-                        <UsersThree size={20} />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Mentor Assigned</CardTitle>
-                        <CardDescription>
-                            When a mentor is assigned to a student (manually or via round-robin).
-                        </CardDescription>
-                    </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-2 pt-0">
+            <TriggerCard
+                icon={<UsersThree size={20} />}
+                title="Mentor Assigned"
+                description="When a mentor is assigned to a student (manually or via round-robin)."
+                idPrefix="assignment"
+                trigger={settings.assignment}
+                onChannelChange={(channel, patch) => updateChannel('assignment', channel, patch)}
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
                     <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
                         Who to notify
                     </div>
-                    <RowToggle
-                        title="Notify the student"
-                        description='Sends a "You have a new mentor" alert to the student.'
-                        checked={settings.assignment.notify_student}
-                        onChange={(v) => setAssignment('notify_student', v)}
-                    />
-                    <RowToggle
-                        title="Notify the mentor"
-                        description='Sends a "New mentee assigned" alert to the mentor.'
-                        checked={settings.assignment.notify_mentor}
-                        onChange={(v) => setAssignment('notify_mentor', v)}
-                    />
-                    <Separator className="my-1" />
-                    <div className="mt-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                        Channels
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Notify the student</span>
+                        <Switch
+                            checked={settings.assignment.notify_student}
+                            onCheckedChange={(v) => setAssignmentFlag('notify_student', v)}
+                        />
                     </div>
-                    <RowToggle
-                        icon={<EnvelopeSimple size={18} />}
-                        title="Email"
-                        description="Send an email notification."
-                        checked={settings.assignment.email}
-                        onChange={(v) => setAssignment('email', v)}
-                    />
-                    <RowToggle
-                        icon={<BellRinging size={18} />}
-                        title="In-app alert"
-                        description="Show an alert in the notification bell."
-                        checked={settings.assignment.system_alert}
-                        onChange={(v) => setAssignment('system_alert', v)}
-                    />
-                    <RowToggle
-                        icon={<DeviceMobile size={18} />}
-                        title="Push notification"
-                        description="Send a push notification to mobile devices."
-                        checked={settings.assignment.push}
-                        onChange={(v) => setAssignment('push', v)}
-                    />
-                </CardContent>
-            </Card>
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Notify the mentor</span>
+                        <Switch
+                            checked={settings.assignment.notify_mentor}
+                            onCheckedChange={(v) => setAssignmentFlag('notify_mentor', v)}
+                        />
+                    </div>
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
 
-            {/* Session booked */}
-            <Card>
-                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
-                    <div className="mt-0.5 rounded-md bg-primary-50 p-2 text-primary-500">
-                        <CalendarPlus size={20} />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Session Booked</CardTitle>
-                        <CardDescription>
-                            When a learner books a 1:1 session with their mentor. The email
-                            confirmation is controlled by the booking page&apos;s own settings.
-                        </CardDescription>
-                    </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-2 pt-0">
-                    <RowToggle
-                        icon={<BellRinging size={18} />}
-                        title="In-app alert"
-                        description="Show an alert in the notification bell."
-                        checked={settings.booking.system_alert}
-                        onChange={(v) => setBooking('system_alert', v)}
-                    />
-                    <RowToggle
-                        icon={<DeviceMobile size={18} />}
-                        title="Push notification"
-                        description="Send a push notification to mobile devices."
-                        checked={settings.booking.push}
-                        onChange={(v) => setBooking('push', v)}
-                    />
-                </CardContent>
-            </Card>
+            <TriggerCard
+                icon={<CalendarPlus size={20} />}
+                title="Session Booked"
+                description="When a learner books a 1:1 session with their mentor. Email is off by default because the booking page sends its own confirmation."
+                idPrefix="booking"
+                trigger={settings.booking}
+                onChannelChange={(channel, patch) => updateChannel('booking', channel, patch)}
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            />
 
-            {/* Session cancelled */}
-            <Card>
-                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
-                    <div className="mt-0.5 rounded-md bg-primary-50 p-2 text-primary-500">
-                        <CalendarX size={20} />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Session Cancelled</CardTitle>
-                        <CardDescription>
-                            When a mentorship session is cancelled.
-                        </CardDescription>
-                    </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-2 pt-0">
-                    <RowToggle
-                        icon={<EnvelopeSimple size={18} />}
-                        title="Email"
-                        description="Send an email notification."
-                        checked={settings.cancellation.email}
-                        onChange={(v) => setCancellation('email', v)}
-                    />
-                    <RowToggle
-                        icon={<BellRinging size={18} />}
-                        title="In-app alert"
-                        description="Show an alert in the notification bell."
-                        checked={settings.cancellation.system_alert}
-                        onChange={(v) => setCancellation('system_alert', v)}
-                    />
-                    <RowToggle
-                        icon={<DeviceMobile size={18} />}
-                        title="Push notification"
-                        description="Send a push notification to mobile devices."
-                        checked={settings.cancellation.push}
-                        onChange={(v) => setCancellation('push', v)}
-                    />
-                </CardContent>
-            </Card>
+            <TriggerCard
+                icon={<CalendarX size={20} />}
+                title="Session Cancelled"
+                description="When a mentorship session is cancelled."
+                idPrefix="cancellation"
+                trigger={settings.cancellation}
+                onChannelChange={(channel, patch) => updateChannel('cancellation', channel, patch)}
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            />
         </div>
     );
 }

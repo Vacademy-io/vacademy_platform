@@ -161,8 +161,8 @@ public class MeetingBookingService {
         // Mentorship-only extra channels (in-app bell + push). No-op unless the host
         // is a mentor; the confirmation email above already covers the email channel.
         mentorshipNotificationService.notifyBooking(instance.getInstituteId(), instance.getHostUserId(),
-                instance.getInviteeUserId(), instance.getInviteeEmail(), instance.getInviteeName(),
-                title, formatWhen(instance, zone), false);
+                instance.getInviteeUserId(), instance.getInviteeEmail(), instance.getInviteePhone(),
+                instance.getInviteeName(), title, formatWhen(instance, zone), false);
 
         return toDTO(instance, Map.of(), page != null ? page.getTitle() : null);
     }

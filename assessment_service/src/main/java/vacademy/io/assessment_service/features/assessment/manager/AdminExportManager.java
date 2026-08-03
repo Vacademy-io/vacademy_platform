@@ -9,6 +9,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.ParticipantsDetailsDto;
@@ -20,23 +23,36 @@ import vacademy.io.assessment_service.features.assessment.dto.export.Leaderboard
 import vacademy.io.assessment_service.features.assessment.dto.export.MarkRankExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ParticipantsDetailExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportItem;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportJob;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
+import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
+import vacademy.io.assessment_service.features.assessment.enums.ReportExportJobStatus;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportItemRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportJobRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
+import vacademy.io.assessment_service.features.assessment.service.export.ReportExportJobFactory;
+import vacademy.io.assessment_service.features.assessment.service.export.ReportExportProperties;
+import vacademy.io.assessment_service.features.assessment.service.export.ReportZipAssemblyService;
+import vacademy.io.assessment_service.features.assessment.service.export.ReportZipExportService;
 import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
 import vacademy.io.assessment_service.features.learner_assessment.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DataToCsvConverter;
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.media.service.FileService;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -45,6 +61,7 @@ import java.util.*;
 import java.util.TimeZone;
 
 @Component
+@lombok.extern.slf4j.Slf4j
 public class AdminExportManager {
 
     @Autowired
@@ -70,6 +87,27 @@ public class AdminExportManager {
 
     @Autowired
     LearnerReportService learnerReportService;
+
+    @Autowired
+    AssessmentReportExportJobRepository reportExportJobRepository;
+
+    @Autowired
+    AssessmentReportExportItemRepository reportExportItemRepository;
+
+    @Autowired
+    ReportExportJobFactory reportExportJobFactory;
+
+    @Autowired
+    ReportZipExportService reportZipExportService;
+
+    @Autowired
+    ReportZipAssemblyService reportZipAssemblyService;
+
+    @Autowired
+    ReportExportProperties reportExportProperties;
+
+    @Autowired
+    FileService fileService;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -533,5 +571,331 @@ public class AdminExportManager {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+    }
+
+    // ==================================================================
+    // Bulk Assessment Report Export (ZIP) — 6 orchestration methods (PR4)
+    // ==================================================================
+
+    private static final List<String> IN_FLIGHT_STATUSES =
+            List.of(ReportExportJobStatus.PENDING.name(), ReportExportJobStatus.IN_PROGRESS.name());
+
+    public ReportZipInitiateResponse initiateReportZipExport(CustomUserDetails user, ReportZipInitiateRequest req) {
+        if (req == null || req.getAssessmentId() == null || req.getInstituteId() == null) {
+            throw new VacademyException("Invalid Request");
+        }
+
+        // Double-click Initiate dedup: return the existing job rather than starting a second one.
+        Optional<AssessmentReportExportJob> existing = reportExportJobRepository
+                .findFirstByInstituteIdAndAssessmentIdAndCreatedByUserIdAndStatusInOrderByCreatedAtDesc(
+                        req.getInstituteId(), req.getAssessmentId(), user.getUserId(), IN_FLIGHT_STATUSES);
+        if (existing.isPresent()) {
+            AssessmentReportExportJob job = existing.get();
+            return ReportZipInitiateResponse.builder()
+                    .jobId(job.getId())
+                    .totalCount(job.getTotalCount())
+                    .alreadyRunning(true)
+                    .status(job.getStatus())
+                    .build();
+        }
+
+        String requestJson;
+        try {
+            requestJson = new ObjectMapper().writeValueAsString(req);
+        } catch (Exception e) {
+            requestJson = null;
+        }
+
+        AssessmentReportExportJob job = reportExportJobFactory.createJob(user, req, user.getUserId(), requestJson);
+        final String jobId = job.getId();
+
+        // Dispatch deferred to afterCommit (precedent: AiEvaluationService) — the
+        // worker's claimForRun races the INSERT on a different connection
+        // otherwise, and always loses.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    reportZipExportService.run(jobId, false);
+                }
+            });
+        } else {
+            reportZipExportService.run(jobId, false);
+        }
+
+        return ReportZipInitiateResponse.builder()
+                .jobId(jobId)
+                .totalCount(job.getTotalCount())
+                .alreadyRunning(false)
+                .status(job.getStatus())
+                .build();
+    }
+
+    public ReportZipStatusResponse getReportZipExportStatus(CustomUserDetails user, String jobId, String instituteId) {
+        AssessmentReportExportJob job = loadJobForInstitute(jobId, instituteId);
+
+        List<AssessmentReportExportItem> items = reportExportItemRepository.findByJobIdOrderByCreatedAt(jobId);
+        int remainingCount = (int) items.stream()
+                .filter(i -> "PENDING".equals(i.getStatus())
+                        || ("FAILED".equals(i.getStatus()) && (i.getRetryCount() == null || i.getRetryCount() < reportExportProperties.getMaxRetry())))
+                .count();
+
+        // LIVE progress, derived from item rows — NOT the job-row counters.
+        // Each item result commits in its own REQUIRES_NEW transaction as it
+        // happens, but the job counters are only checkpointed per BATCH: a
+        // 3-student export is a single batch, so the counters jump 0 → 3 in
+        // one write and the progress bar never moves. The items are already
+        // loaded here, so deriving costs nothing extra.
+        int liveCompleted = (int) items.stream().filter(i -> "DONE".equals(i.getStatus())).count();
+        int liveFailed = (int) items.stream().filter(i -> "FAILED".equals(i.getStatus())).count();
+        int liveSkipped = (int) items.stream().filter(i -> "SKIPPED".equals(i.getStatus())).count();
+
+        // Stale IN_PROGRESS job (pod crash / dev restart) — write back so it
+        // becomes claimable again; claimForRun does not accept IN_PROGRESS.
+        // Two tiers, because "how long is suspicious" depends on where the
+        // worker died:
+        //  - Items still processable → generous window (worker may be mid-batch).
+        //  - Nothing left to process → the worker was only assembling/finalizing,
+        //    which is bounded by assembly-timeout. A restart between the last
+        //    checkpoint and finalizeJob otherwise leaves the job frozen at
+        //    "IN_PROGRESS, N of N completed" for the full stale window.
+        if (ReportExportJobStatus.IN_PROGRESS.name().equals(job.getStatus()) && job.getUpdatedAt() != null) {
+            long secondsSinceUpdate = (DateUtil.getCurrentUtcTime().getTime() - job.getUpdatedAt().getTime()) / 1000;
+            boolean phaseADone = remainingCount == 0;
+            long staleAfterSeconds = phaseADone
+                    ? reportExportProperties.getAssemblyTimeoutSeconds()
+                    : reportExportProperties.getStaleJobMinutes() * 60L;
+            if (secondsSinceUpdate > staleAfterSeconds) {
+                ReportExportJobStatus recovered;
+                if (phaseADone && job.getOutputFileId() != null && liveFailed == 0) {
+                    // Everything rendered and a ZIP exists — the worker died
+                    // after doing all the work. This IS a completed export.
+                    recovered = ReportExportJobStatus.COMPLETED;
+                } else if (liveCompleted > 0) {
+                    recovered = ReportExportJobStatus.PARTIAL;
+                } else {
+                    recovered = ReportExportJobStatus.FAILED;
+                }
+                job.setStatus(recovered.name());
+                if (recovered != ReportExportJobStatus.COMPLETED) {
+                    job.setErrorMessage("Worker appears to have terminated mid-run (no progress for "
+                            + (secondsSinceUpdate / 60) + " min)");
+                }
+                job.setUpdatedAt(DateUtil.getCurrentUtcTime());
+                job = reportExportJobRepository.save(job);
+            }
+        }
+        boolean assemblable = items.stream().anyMatch(i -> "DONE".equals(i.getStatus()) && i.getFileId() != null);
+        boolean resumable = Set.of(ReportExportJobStatus.PARTIAL.name(), ReportExportJobStatus.FAILED.name(),
+                ReportExportJobStatus.CANCELLED.name()).contains(job.getStatus()) && remainingCount > 0;
+
+        // Batched: this runs on every 2s poll, so a per-item findById would be
+        // N queries per poll — one findAllById keeps it at a single query.
+        List<AssessmentReportExportItem> doneItems = items.stream()
+                .filter(i -> "DONE".equals(i.getStatus()) && i.getProcessedAt() != null)
+                .toList();
+        Map<String, Date> attemptUpdatedAt = new HashMap<>();
+        if (!doneItems.isEmpty()) {
+            studentAttemptRepository.findAllById(doneItems.stream()
+                            .map(AssessmentReportExportItem::getAttemptId).toList())
+                    .forEach(a -> {
+                        if (a.getUpdatedAt() != null) attemptUpdatedAt.put(a.getId(), a.getUpdatedAt());
+                    });
+        }
+        int staleItemCount = (int) doneItems.stream()
+                .filter(i -> {
+                    Date updated = attemptUpdatedAt.get(i.getAttemptId());
+                    return updated != null && updated.after(i.getProcessedAt());
+                })
+                .count();
+
+        List<ReportZipFailureDto> failures = items.stream()
+                .filter(i -> "FAILED".equals(i.getStatus()))
+                .limit(50)
+                .map(i -> ReportZipFailureDto.builder()
+                        .attemptId(i.getAttemptId())
+                        .studentName(i.getStudentName())
+                        .reason(i.getErrorMessage())
+                        .retryCount(i.getRetryCount() != null ? i.getRetryCount() : 0)
+                        .build())
+                .toList();
+
+        String downloadUrl = resolveDownloadUrl(job.getOutputFileId());
+
+        return ReportZipStatusResponse.builder()
+                .jobId(job.getId())
+                .status(job.getStatus())
+                .totalCount(job.getTotalCount())
+                .completedCount(liveCompleted)
+                .failedCount(liveFailed)
+                .skippedCount(liveSkipped)
+                .downloadUrl(downloadUrl)
+                .outputFileName(job.getOutputFileName())
+                .outputSizeBytes(job.getOutputSizeBytes())
+                .errorMessage(job.getErrorMessage())
+                .resumeCount(job.getResumeCount())
+                .resumable(resumable)
+                .remainingCount(remainingCount)
+                .assemblable(assemblable)
+                .staleItemCount(staleItemCount)
+                .contextDrift(Boolean.TRUE.equals(job.getContextDrift()))
+                .startedAt(job.getStartedAt())
+                .completedAt(job.getCompletedAt())
+                .updatedAt(job.getUpdatedAt())
+                .failures(failures)
+                .build();
+    }
+
+    public ReportZipContinueResponse continueReportZipExport(CustomUserDetails user, String jobId, String instituteId) {
+        AssessmentReportExportJob job = loadJobForInstitute(jobId, instituteId);
+        if (ReportExportJobStatus.IN_PROGRESS.name().equals(job.getStatus())
+                || ReportExportJobStatus.COMPLETED.name().equals(job.getStatus())) {
+            throw new VacademyException("Job " + jobId + " is " + job.getStatus() + " and cannot be continued");
+        }
+
+        int claimed = reportExportJobRepository.claimForRun(jobId,
+                List.of(ReportExportJobStatus.PARTIAL.name(), ReportExportJobStatus.FAILED.name(),
+                        ReportExportJobStatus.CANCELLED.name()));
+        if (claimed == 0) {
+            // Another thread/click already claimed it — return current state, not an error.
+            AssessmentReportExportJob current = reportExportJobRepository.findById(jobId)
+                    .orElseThrow(() -> new VacademyException("Export job not found: " + jobId));
+            return ReportZipContinueResponse.builder()
+                    .jobId(jobId)
+                    .status(current.getStatus())
+                    .remainingCount(reportExportItemRepository.findProcessable(jobId, reportExportProperties.getMaxRetry()).size())
+                    .alreadyRunning(true)
+                    .build();
+        }
+
+        // Re-fetch: claimForRun's native UPDATE just changed `status` in the DB
+        // underneath the `job` entity loaded above (by loadJobForInstitute, in
+        // its own earlier transaction). Saving the stale in-memory `job` here
+        // would silently overwrite status back to its pre-claim value.
+        AssessmentReportExportJob claimedJob = reportExportJobRepository.findById(jobId)
+                .orElseThrow(() -> new VacademyException("Export job not found: " + jobId));
+        claimedJob.setResumeCount((claimedJob.getResumeCount() == null ? 0 : claimedJob.getResumeCount()) + 1);
+        reportExportJobRepository.save(claimedJob);
+
+        // The endpoint already claimed the job above — the worker must NOT
+        // re-claim (ARCHITECTURE.md §10 scenario (b): it would always lose that
+        // race against itself).
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    reportZipExportService.run(jobId, true);
+                }
+            });
+        } else {
+            reportZipExportService.run(jobId, true);
+        }
+
+        int remaining = reportExportItemRepository.findProcessable(jobId, reportExportProperties.getMaxRetry()).size();
+        return ReportZipContinueResponse.builder()
+                .jobId(jobId)
+                .status(ReportExportJobStatus.IN_PROGRESS.name())
+                .remainingCount(remaining)
+                .alreadyRunning(false)
+                .build();
+    }
+
+    public ReportZipAssembleResponse assembleReportZipExport(CustomUserDetails user, String jobId, String instituteId) {
+        loadJobForInstitute(jobId, instituteId); // ownership check
+        ReportZipAssembleResponse response = reportZipAssemblyService.assemble(jobId);
+        AssessmentReportExportJob job = reportExportJobRepository.findById(jobId).orElse(null);
+
+        // If this assembly just covered EVERY item of a job stuck IN_PROGRESS
+        // (worker killed between the last checkpoint and finalizeJob — e.g. a
+        // restart), settle the status here instead of leaving the admin's
+        // dialog polling a job that will never finalize itself. A live worker
+        // can't be racing us: it only assembles after its items are done, and
+        // it would then write the same terminal status.
+        if (job != null && ReportExportJobStatus.IN_PROGRESS.name().equals(job.getStatus())) {
+            long processable = reportExportItemRepository.findProcessable(jobId, reportExportProperties.getMaxRetry()).size();
+            if (processable == 0) {
+                boolean allDone = !response.isPartial()
+                        && (job.getFailedCount() == null || job.getFailedCount() == 0);
+                job.setStatus((allDone ? ReportExportJobStatus.COMPLETED : ReportExportJobStatus.PARTIAL).name());
+                job.setCompletedAt(DateUtil.getCurrentUtcTime());
+                job.setUpdatedAt(DateUtil.getCurrentUtcTime());
+                job = reportExportJobRepository.save(job);
+            }
+        }
+
+        String downloadUrl = job != null ? resolveDownloadUrl(job.getOutputFileId()) : null;
+        response.setDownloadUrl(downloadUrl);
+        return response;
+    }
+
+    public ReportZipRecentResponse getRecentReportZipExports(CustomUserDetails user, String assessmentId, String instituteId, int limit) {
+        int pageSize = limit > 0 ? limit : 5;
+        List<AssessmentReportExportJob> jobs = reportExportJobRepository
+                .findByAssessmentIdAndInstituteIdOrderByCreatedAtDesc(assessmentId, instituteId,
+                        org.springframework.data.domain.PageRequest.of(0, pageSize))
+                .getContent();
+
+        List<ReportZipJobSummaryDto> summaries = jobs.stream().map(job -> {
+            int remaining = (int) reportExportItemRepository.findByJobIdOrderByCreatedAt(job.getId()).stream()
+                    .filter(i -> "PENDING".equals(i.getStatus())
+                            || ("FAILED".equals(i.getStatus()) && (i.getRetryCount() == null || i.getRetryCount() < reportExportProperties.getMaxRetry())))
+                    .count();
+            boolean resumable = Set.of(ReportExportJobStatus.PARTIAL.name(), ReportExportJobStatus.FAILED.name(),
+                    ReportExportJobStatus.CANCELLED.name()).contains(job.getStatus()) && remaining > 0;
+            boolean assemblable = job.getCompletedCount() != null && job.getCompletedCount() > 0;
+            return ReportZipJobSummaryDto.builder()
+                    .jobId(job.getId())
+                    .status(job.getStatus())
+                    .totalCount(job.getTotalCount())
+                    .completedCount(job.getCompletedCount())
+                    .failedCount(job.getFailedCount())
+                    .outputFileName(job.getOutputFileName())
+                    .downloadUrl(resolveDownloadUrl(job.getOutputFileId()))
+                    .resumable(resumable)
+                    .assemblable(assemblable)
+                    .createdAt(job.getCreatedAt())
+                    .completedAt(job.getCompletedAt())
+                    .createdByUserId(job.getCreatedByUserId())
+                    .build();
+        }).toList();
+
+        return ReportZipRecentResponse.builder().jobs(summaries).build();
+    }
+
+    public ReportZipCancelResponse cancelReportZipExport(CustomUserDetails user, String jobId, String instituteId) {
+        AssessmentReportExportJob job = loadJobForInstitute(jobId, instituteId);
+        if (Set.of(ReportExportJobStatus.COMPLETED.name(), ReportExportJobStatus.FAILED.name(),
+                ReportExportJobStatus.CANCELLED.name()).contains(job.getStatus())) {
+            throw new VacademyException("Job " + jobId + " is already terminal (" + job.getStatus() + ")");
+        }
+        job.setStatus(ReportExportJobStatus.CANCELLED.name());
+        job.setUpdatedAt(DateUtil.getCurrentUtcTime());
+        reportExportJobRepository.save(job);
+        return ReportZipCancelResponse.builder()
+                .jobId(jobId)
+                .status(ReportExportJobStatus.CANCELLED.name())
+                .cancelled(true)
+                .build();
+    }
+
+    private AssessmentReportExportJob loadJobForInstitute(String jobId, String instituteId) {
+        AssessmentReportExportJob job = reportExportJobRepository.findById(jobId)
+                .orElseThrow(() -> new VacademyException("Export job not found: " + jobId));
+        if (!job.getInstituteId().equals(instituteId)) {
+            throw new VacademyException("Export job does not belong to this institute");
+        }
+        return job;
+    }
+
+    // Resolved fresh on every call — the media service hardcodes a 1-day
+    // presign expiry (plan C10), so a stored URL would silently expire.
+    private String resolveDownloadUrl(String outputFileId) {
+        if (outputFileId == null) return null;
+        try {
+            return fileService.getPublicUrlForFileId(outputFileId);
+        } catch (Exception e) {
+            log.warn("[report-export] Failed to resolve download URL for file {}: {}", outputFileId, e.getMessage());
+            return null;
+        }
     }
 }

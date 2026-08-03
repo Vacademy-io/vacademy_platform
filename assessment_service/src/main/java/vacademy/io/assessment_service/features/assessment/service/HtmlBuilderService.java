@@ -452,7 +452,12 @@ public class HtmlBuilderService {
         // ===== CSS (iText-compatible: tables instead of grid/flex) =====
         html.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">");
         html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        html.append("<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');</style>");
+        // PR3 (C7): the remote Google Fonts @import here was a synchronous
+        // network fetch inside every render — potentially once per PDF, on the
+        // hot path of the bulk export worker. 'Inter' now resolves via the
+        // FontProvider registered on ConverterProperties (ReportRenderResources /
+        // ReportFontProviderHolder) with a standard-font fallback if that
+        // registration is unavailable, instead of a runtime HTTP fetch.
         html.append("<title>Student Assessment Report</title>");
         html.append("<style>");
         html.append("body { font-family: 'Inter', -apple-system, 'Segoe UI', Arial, Helvetica, sans-serif; background: #ffffff; color: #333; line-height: 1.6; margin: 0; padding: 0; }");

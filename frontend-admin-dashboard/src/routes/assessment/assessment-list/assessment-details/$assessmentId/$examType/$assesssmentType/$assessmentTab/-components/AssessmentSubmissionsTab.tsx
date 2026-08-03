@@ -39,6 +39,7 @@ import { ControlledStudentSidebarProvider } from '@/routes/manage-students/stude
 import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
+import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
@@ -134,6 +135,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const [isParticipantsLoading, setIsParticipantsLoading] = useState(false);
 
     const [rowSelections, setRowSelections] = useState<Record<number, Record<string, boolean>>>({});
+    // Bulk-actions entry point for the report ZIP export (dialog opens without
+    // its own trigger, scoped to the checked rows).
+    const [bulkReportZipOpen, setBulkReportZipOpen] = useState(false);
     const currentPageSelection = rowSelections[page] || {};
     const totalSelectedCount = Object.values(rowSelections).reduce(
         (count, pageSelection) => count + Object.keys(pageSelection).length,
@@ -1075,6 +1079,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             <Export size={16} />
                             {isExportingCSV ? 'Exporting…' : 'Export'}
                         </MyButton>
+                        <AssessmentReportZipExportDialog
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
+                            selectedFilter={selectedFilter}
+                        />
                         {isOfflineEntryEnabled && (
                             <MyButton
                                 type="button"
@@ -1324,6 +1333,19 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             selectedStudents={getSelectedStudents()}
                             onReset={handleResetSelections}
                             selectedTab={selectedTab}
+                            onExportReports={() => setBulkReportZipOpen(true)}
+                        />
+                        {/* Controlled instance for the bulk-actions entry — no
+                            trigger of its own, scoped to the checked rows. */}
+                        <AssessmentReportZipExportDialog
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
+                            selectedFilter={selectedFilter}
+                            attemptIds={getSelectedStudents()
+                                .map((student) => student.attempt_id)
+                                .filter((id): id is string => !!id)}
+                            open={bulkReportZipOpen}
+                            onOpenChange={setBulkReportZipOpen}
                         />
                         <MyPagination
                             currentPage={page}

@@ -24,6 +24,12 @@ import {
     GET_REVALUATE_STUDENT_RESULT,
     PRIVATE_ADD_QUESTIONS,
     PROVIDE_REATTEMPT_URL,
+    REPORT_ZIP_EXPORT_ASSEMBLE_URL,
+    REPORT_ZIP_EXPORT_CANCEL_URL,
+    REPORT_ZIP_EXPORT_CONTINUE_URL,
+    REPORT_ZIP_EXPORT_INITIATE_URL,
+    REPORT_ZIP_EXPORT_RECENT_URL,
+    REPORT_ZIP_EXPORT_STATUS_URL,
     STUDENT_REPORT_DETAIL_URL,
     STUDENT_REPORT_URL,
     UPDATE_ATTEMPT,
@@ -336,6 +342,132 @@ export const handleExportResultCSV = async (
             status: ['ACTIVE'],
             sort_columns: {},
         },
+    });
+    return response?.data;
+};
+
+// ==================================================================
+// Bulk Assessment Report Export (ZIP)
+// API JSON fields are snake_case (backend @JsonNaming SnakeCaseStrategy).
+// ==================================================================
+
+export interface ReportZipFailure {
+    attempt_id: string;
+    student_name: string;
+    reason: string;
+    retry_count: number;
+}
+
+export interface ReportZipStatus {
+    job_id: string;
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
+    total_count: number;
+    completed_count: number;
+    failed_count: number;
+    skipped_count: number;
+    download_url: string | null;
+    output_file_name: string | null;
+    output_size_bytes: number | null;
+    error_message: string | null;
+    resume_count: number;
+    resumable: boolean;
+    remaining_count: number;
+    assemblable: boolean;
+    stale_item_count: number;
+    context_drift: boolean;
+    started_at: string | null;
+    completed_at: string | null;
+    updated_at: string | null;
+    failures: ReportZipFailure[];
+}
+
+export interface ReportZipJobSummary {
+    job_id: string;
+    status: string;
+    total_count: number;
+    completed_count: number;
+    failed_count: number;
+    output_file_name: string | null;
+    download_url: string | null;
+    resumable: boolean;
+    assemblable: boolean;
+    created_at: string;
+    completed_at: string | null;
+    created_by_user_id: string;
+}
+
+export const initiateReportZipExport = async ({
+    assessmentId,
+    instituteId,
+    attemptIds,
+    filter,
+    regenerate,
+}: {
+    assessmentId: string;
+    instituteId: string | undefined;
+    attemptIds?: string[];
+    filter?: SelectedSubmissionsFilterInterface;
+    regenerate?: boolean;
+}) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: REPORT_ZIP_EXPORT_INITIATE_URL,
+        data: {
+            assessment_id: assessmentId,
+            institute_id: instituteId,
+            attempt_ids: attemptIds,
+            filter,
+            regenerate: !!regenerate,
+        },
+    });
+    return response?.data as { job_id: string; total_count: number; already_running: boolean; status: string };
+};
+
+export const getReportZipExportStatus = async (jobId: string, instituteId: string | undefined) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: REPORT_ZIP_EXPORT_STATUS_URL,
+        params: { jobId, instituteId },
+    });
+    return response?.data as ReportZipStatus;
+};
+
+export const continueReportZipExport = async (jobId: string, instituteId: string | undefined) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: REPORT_ZIP_EXPORT_CONTINUE_URL,
+        params: { jobId, instituteId },
+    });
+    return response?.data;
+};
+
+export const assembleReportZipExport = async (jobId: string, instituteId: string | undefined) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: REPORT_ZIP_EXPORT_ASSEMBLE_URL,
+        params: { jobId, instituteId },
+    });
+    return response?.data;
+};
+
+export const getRecentReportZipExports = async (
+    assessmentId: string,
+    instituteId: string | undefined,
+    limit = 5
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: REPORT_ZIP_EXPORT_RECENT_URL,
+        params: { assessmentId, instituteId, limit },
+    });
+    return response?.data as { jobs: ReportZipJobSummary[] };
+};
+
+export const cancelReportZipExport = async (jobId: string, instituteId: string | undefined) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: REPORT_ZIP_EXPORT_CANCEL_URL,
+        params: { jobId, instituteId },
     });
     return response?.data;
 };

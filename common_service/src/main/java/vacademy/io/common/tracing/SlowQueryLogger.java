@@ -180,7 +180,16 @@ public class SlowQueryLogger {
         if (arg instanceof String) {
             str = "\"" + arg + "\"";
         } else if (arg.getClass().isArray()) {
-            str = Arrays.toString((Object[]) arg);
+            // Primitive arrays (byte[], int[]...) cannot be cast to Object[] —
+            // doing so threw ClassCastException from inside the aspect's error
+            // path, REPLACING the intercepted method's real exception. Print a
+            // compact descriptor instead of the contents.
+            if (arg.getClass().getComponentType().isPrimitive()) {
+                str = arg.getClass().getComponentType().getSimpleName()
+                        + "[](length=" + java.lang.reflect.Array.getLength(arg) + ")";
+            } else {
+                str = Arrays.toString((Object[]) arg);
+            }
         } else if (arg instanceof java.util.Collection) {
             java.util.Collection<?> col = (java.util.Collection<?>) arg;
             str = "Collection(size=" + col.size() + ")";

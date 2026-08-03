@@ -70,7 +70,8 @@ public class CallDetailService {
      * @param unmask when true (caller holds VIEW_CALL_NUMBERS) the verbatim webhook
      *               body is included; otherwise only the curated diagnostic fields.
      */
-    public CallDetailDTO detail(String callLogId, String instituteId, boolean unmask) {
+    public CallDetailDTO detail(String callLogId, String instituteId, boolean unmask,
+                                boolean canSeeDiagnostics) {
         TelephonyCallLog row = callLogRepository.findById(callLogId)
                 .orElseThrow(() -> new VacademyException("Call not found"));
 
@@ -94,7 +95,7 @@ public class CallDetailService {
                 .providerDetails(parseProviderDetails(row.getRawPayloadJson()))
                 .rawProviderResponse(unmask ? row.getRawPayloadJson() : null);
 
-        applyAiDiagnostics(out, callLogId, instituteId, unmask);
+        applyAiDiagnostics(out, callLogId, instituteId, canSeeDiagnostics);
         return out.build();
     }
 
@@ -108,12 +109,13 @@ public class CallDetailService {
      * result must degrade to "no diagnostics", never fail the detail request.
      *
      * <p>Health/faults/headline are non-sensitive derived codes and go to any viewer.
-     * The full blob is gated behind the same {@code unmask} authority as the raw
+     * The full blob is gated on the institute ADMIN role (NOT the phone-number
      * webhook body, because {@code turnTaking.answersDeletedSamples} contains
      * verbatim caller utterances and {@code infra.crash} contains raw error text.
      */
     private void applyAiDiagnostics(CallDetailDTO.CallDetailDTOBuilder out,
-                                    String callLogId, String instituteId, boolean unmask) {
+                                    String callLogId, String instituteId,
+                                    boolean canSeeDiagnostics) {
         try {
             // Newest result wins — webhook retries/dupes can leave several rows per
             // call, same tie-break the Call History overlay uses.
@@ -134,7 +136,7 @@ public class CallDetailService {
             out.diagHeadline(str(blob.get("headline")))
                .diagHeadlineText(str(blob.get("headlineText")))
                .diagRulesVersion(blob.get("rulesVersion") instanceof Number v ? v.intValue() : null)
-               .diagnostics(unmask ? blob : null);
+               .diagnostics(canSeeDiagnostics ? blob : null);
         } catch (Exception e) {
             log.warn("call detail: could not load AI diagnostics for callLogId={}", callLogId, e);
         }

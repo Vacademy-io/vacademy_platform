@@ -235,19 +235,25 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
             }
         >
             {isLoading ? (
-                <div className="py-8 text-center text-body text-neutral-400">Loading…</div>
+                <div className="py-8 text-center text-body text-neutral-400">Loading your availability…</div>
             ) : (
                 <div className="flex flex-col gap-5">
+                    <p className="text-body text-neutral-600">
+                        Set when and how learners can book 1:1 sessions with you.
+                    </p>
                     {page?.timezone && (
-                        <p className="text-caption text-neutral-500">
-                            Times are in <span className="font-medium">{page.timezone}</span>.
+                        <p className="-mt-3 text-caption text-neutral-500">
+                            Times below are in <span className="font-medium">{page.timezone}</span>.
                         </p>
                     )}
 
                     <div>
-                        <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                        <div className="mb-1 text-caption font-semibold uppercase tracking-wide text-neutral-400">
                             Meeting location
                         </div>
+                        <p className="mb-2 text-caption text-neutral-400">
+                            Where the video call happens when a learner books a session.
+                        </p>
                         <Select
                             value={locationMode}
                             onValueChange={(v) =>
@@ -282,9 +288,13 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                     </div>
 
                     <div>
-                        <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                        <div className="mb-1 text-caption font-semibold uppercase tracking-wide text-neutral-400">
                             Weekly hours
                         </div>
+                        <p className="mb-2 text-caption text-neutral-400">
+                            Turn on the days you&apos;re free, and set the hours learners can book
+                            within.
+                        </p>
                         <div className="flex flex-col gap-2">
                             {DAYS.map((d) => {
                                 const r = rows[d.key]!;
@@ -334,16 +344,17 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                 buttonType="text"
                                 scale="small"
                                 onClick={addOverride}
+                                title="Add a date to block off or give custom hours"
                             >
                                 <Plus size={14} /> Add date
                             </MyButton>
                         </div>
                         <p className="mb-2 text-caption text-neutral-400">
-                            Mark a day off or set different hours for a specific date — no need to
-                            leave the app. Overrides win over the weekly hours.
+                            Block off a day, or give a specific date different hours — these override
+                            your weekly hours above.
                         </p>
                         {overrides.length === 0 ? (
-                            <p className="text-caption text-neutral-400">No date overrides.</p>
+                            <p className="text-caption text-neutral-400">No date overrides yet.</p>
                         ) : (
                             <div className="flex flex-col gap-2">
                                 {overrides.map((o) => (
@@ -402,6 +413,8 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                             buttonType="text"
                                             scale="small"
                                             onClick={() => removeOverride(o._id)}
+                                            aria-label="Remove this date override"
+                                            title="Remove this date override"
                                         >
                                             <Trash size={16} className="text-danger-500" />
                                         </MyButton>
@@ -412,12 +425,16 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                     </div>
 
                     <div>
-                        <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                        <div className="mb-1 text-caption font-semibold uppercase tracking-wide text-neutral-400">
                             Session settings
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <p className="mb-2 text-caption text-neutral-400">
+                            Default session length and the scheduling rules around it — notice,
+                            buffers, and how far ahead learners can book.
+                        </p>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
-                                <Label className="text-caption text-neutral-600">Duration</Label>
+                                <Label className="text-caption text-neutral-600">Default duration</Label>
                                 <Select
                                     value={String(duration)}
                                     onValueChange={(v) => setDuration(Number(v))}
@@ -495,14 +512,15 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                 buttonType="text"
                                 scale="small"
                                 onClick={addSessionType}
+                                title="Offer another bookable session length"
                             >
                                 <Plus size={14} /> Add type
                             </MyButton>
                         </div>
                         <p className="mb-2 text-caption text-neutral-400">
                             Optional. Offer more than one bookable length (e.g. “Quick chat” 15
-                            min, “Deep dive” 60 min). The learner picks one when booking. Leave
-                            empty to use the single duration above.
+                            min, “Deep dive” 60 min) — the learner picks one when booking. Leave
+                            empty to use the default duration above.
                         </p>
                         {sessionTypes.length === 0 ? (
                             <p className="text-caption text-neutral-400">No session types yet.</p>
@@ -542,6 +560,8 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                             buttonType="text"
                                             scale="small"
                                             onClick={() => removeSessionType(st.id!)}
+                                            aria-label="Remove this session type"
+                                            title="Remove this session type"
                                         >
                                             <Trash size={16} className="text-danger-500" />
                                         </MyButton>

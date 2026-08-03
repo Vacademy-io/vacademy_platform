@@ -4,7 +4,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Plus, Trash } from '@phosphor-icons/react';
+import {
+    BellRinging,
+    CalendarBlank,
+    Info,
+    ListChecks,
+    MapPinLine,
+    Plus,
+    Trash,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
@@ -35,6 +43,39 @@ import {
 } from '../-types/meetings-types';
 import { browserTimezone, COMMON_TIMEZONES } from '../-utils/meetings-utils';
 import { PickedUser, UserSearchCombobox } from './user-search-combobox';
+
+/**
+ * Section header used to break the long booking-page form into clearly
+ * labelled, scannable groups (Basics, Availability, Location, …). Purely
+ * presentational — no effect on the fields rendered underneath it.
+ */
+const FormSection = ({
+    icon: Icon,
+    title,
+    description,
+    action,
+    children,
+}: {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    description?: string;
+    action?: React.ReactNode;
+    children: React.ReactNode;
+}) => (
+    <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-2">
+                <Icon className="mt-0.5 size-5 shrink-0 text-primary-500" />
+                <div>
+                    <h3 className="text-subtitle font-semibold text-neutral-800">{title}</h3>
+                    {description && <p className="text-caption text-neutral-500">{description}</p>}
+                </div>
+            </div>
+            {action && <div className="shrink-0">{action}</div>}
+        </div>
+        {children}
+    </div>
+);
 
 const WEEKDAYS: Array<{ day: DayOfWeek; label: string }> = [
     { day: 'MONDAY', label: 'Monday' },
@@ -207,9 +248,7 @@ export const BookingPageForm = ({
         enabled: !!instituteId && remindWhatsapp,
         staleTime: 60_000,
     });
-    const waTemplates = (waTemplatesQuery.data ?? []).filter(
-        (t) => t.status === 'APPROVED'
-    );
+    const waTemplates = (waTemplatesQuery.data ?? []).filter((t) => t.status === 'APPROVED');
     const selectedWaTemplate = waTemplates.find((t) => t.name === waTemplateName) ?? null;
     const waVars = templateVars(selectedWaTemplate);
 
@@ -335,7 +374,9 @@ export const BookingPageForm = ({
             },
             onError: () => {
                 toast.error(
-                    isEdit ? 'Failed to update the booking page' : 'Failed to create the booking page'
+                    isEdit
+                        ? 'Failed to update the booking page'
+                        : 'Failed to create the booking page'
                 );
             },
         };
@@ -349,141 +390,23 @@ export const BookingPageForm = ({
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-                <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormControl>
-                                <MyInput
-                                    label="Title"
-                                    required
-                                    inputType="text"
-                                    inputPlaceholder="e.g. Counselling Call"
-                                    className="w-full sm:w-full"
-                                    input={field.value}
-                                    onChangeFunction={field.onChange}
-                                />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
-                <div className="flex flex-col gap-1">
-                    <Label className="text-subtitle font-regular">Host</Label>
-                    <UserSearchCombobox
-                        instituteId={instituteId}
-                        value={host}
-                        onChange={setHost}
-                        mode="single"
-                    />
-                </div>
-
-                <div className="flex flex-col gap-4 sm:flex-row">
-                    <SelectField
-                        label="Duration"
-                        name="durationMinutes"
-                        options={DURATION_OPTIONS}
-                        control={form.control}
-                        required
-                        className="w-full flex-1 sm:w-full"
-                    />
-                    <SelectField
-                        label="Timezone"
-                        name="timezone"
-                        options={timezoneOptions}
-                        control={form.control}
-                        required
-                        className="w-full flex-1 sm:w-full"
-                    />
-                </div>
-
-                {!fixedAudienceId && audienceOptions && audienceOptions.length > 0 && (
-                    <SelectField
-                        label="Audience List (optional)"
-                        name="audienceId"
-                        options={[
-                            { _id: NO_AUDIENCE_VALUE, value: NO_AUDIENCE_VALUE, label: 'None' },
-                            ...audienceOptions.map((option) => ({
-                                _id: option.id,
-                                value: option.id,
-                                label: option.label,
-                            })),
-                        ]}
-                        control={form.control}
-                        className="w-full sm:w-full"
-                    />
-                )}
-
-                {/* Weekly availability */}
-                <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
-                    <p className="text-body font-semibold text-neutral-600">Weekly availability</p>
-                    <div className="flex flex-col gap-2">
-                        {days.map((row) => {
-                            const meta = WEEKDAYS.find((w) => w.day === row.day)!;
-                            return (
-                                <div
-                                    key={row.day}
-                                    className="flex flex-wrap items-center gap-2 sm:gap-3"
-                                >
-                                    <label className="flex w-32 cursor-pointer items-center gap-2">
-                                        <Checkbox
-                                            checked={row.enabled}
-                                            onCheckedChange={(checked) =>
-                                                setDayField(row.day, { enabled: checked === true })
-                                            }
-                                        />
-                                        <span className="text-body text-neutral-600">
-                                            {meta.label}
-                                        </span>
-                                    </label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            type="time"
-                                            value={row.start}
-                                            disabled={!row.enabled}
-                                            onChange={(e) =>
-                                                setDayField(row.day, { start: e.target.value })
-                                            }
-                                            className="h-9 w-28"
-                                        />
-                                        <span className="text-caption text-neutral-500">to</span>
-                                        <Input
-                                            type="time"
-                                            value={row.end}
-                                            disabled={!row.enabled}
-                                            onChange={(e) =>
-                                                setDayField(row.day, { end: e.target.value })
-                                            }
-                                            className="h-9 w-28"
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div className="flex flex-col gap-4 sm:flex-row">
-                    <SelectField
-                        label="Minimum notice"
-                        name="minNoticeHours"
-                        options={MIN_NOTICE_OPTIONS}
-                        control={form.control}
-                        className="w-full flex-1 sm:w-full"
-                    />
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6">
+                <FormSection
+                    icon={Info}
+                    title="Basics"
+                    description="The essentials people see when they book time with you."
+                >
                     <FormField
                         control={form.control}
-                        name="horizonDays"
+                        name="title"
                         render={({ field }) => (
-                            <FormItem className="flex-1">
+                            <FormItem>
                                 <FormControl>
                                     <MyInput
-                                        label="Booking horizon (days)"
-                                        inputType="number"
-                                        inputPlaceholder="30"
+                                        label="Title"
+                                        required
+                                        inputType="text"
+                                        inputPlaceholder="e.g. Counselling Call"
                                         className="w-full sm:w-full"
                                         input={field.value}
                                         onChangeFunction={field.onChange}
@@ -493,139 +416,330 @@ export const BookingPageForm = ({
                             </FormItem>
                         )}
                     />
-                </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3">
-                    <div>
-                        <p className="text-body font-semibold text-neutral-600">
-                            Allocate Google Meet
-                        </p>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-subtitle font-regular">Host</Label>
                         <p className="text-caption text-neutral-500">
-                            Attach a Google Meet link to every booked meeting
+                            Who runs this meeting and appears as the point of contact.
                         </p>
+                        <UserSearchCombobox
+                            instituteId={instituteId}
+                            value={host}
+                            onChange={setHost}
+                            mode="single"
+                        />
                     </div>
-                    <Switch checked={allocateGoogleMeet} onCheckedChange={setAllocateGoogleMeet} />
-                </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3">
-                    <div>
-                        <p className="text-body font-semibold text-neutral-600">Require approval</p>
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                        <SelectField
+                            label="Duration"
+                            name="durationMinutes"
+                            options={DURATION_OPTIONS}
+                            control={form.control}
+                            required
+                            className="w-full flex-1 sm:w-full"
+                        />
+                        <SelectField
+                            label="Timezone"
+                            name="timezone"
+                            options={timezoneOptions}
+                            control={form.control}
+                            required
+                            className="w-full flex-1 sm:w-full"
+                        />
+                    </div>
+
+                    {!fixedAudienceId && audienceOptions && audienceOptions.length > 0 && (
+                        <SelectField
+                            label="Audience List (optional)"
+                            name="audienceId"
+                            options={[
+                                { _id: NO_AUDIENCE_VALUE, value: NO_AUDIENCE_VALUE, label: 'None' },
+                                ...audienceOptions.map((option) => ({
+                                    _id: option.id,
+                                    value: option.id,
+                                    label: option.label,
+                                })),
+                            ]}
+                            control={form.control}
+                            className="w-full sm:w-full"
+                        />
+                    )}
+                </FormSection>
+
+                <FormSection
+                    icon={CalendarBlank}
+                    title="Availability"
+                    description="Choose which days and hours people can book, and how much lead time you need."
+                >
+                    {/* Weekly availability */}
+                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
+                        <div>
+                            <p className="text-body font-semibold text-neutral-600">
+                                Weekly availability
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                Tick the days you&apos;re free, then set your hours for each day.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {days.map((row) => {
+                                const meta = WEEKDAYS.find((w) => w.day === row.day)!;
+                                return (
+                                    <div
+                                        key={row.day}
+                                        className="flex flex-wrap items-center gap-2 sm:gap-3"
+                                    >
+                                        <label className="flex w-32 cursor-pointer items-center gap-2">
+                                            <Checkbox
+                                                checked={row.enabled}
+                                                onCheckedChange={(checked) =>
+                                                    setDayField(row.day, {
+                                                        enabled: checked === true,
+                                                    })
+                                                }
+                                            />
+                                            <span className="text-body text-neutral-600">
+                                                {meta.label}
+                                            </span>
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="time"
+                                                value={row.start}
+                                                disabled={!row.enabled}
+                                                onChange={(e) =>
+                                                    setDayField(row.day, { start: e.target.value })
+                                                }
+                                                className="h-9 w-28"
+                                            />
+                                            <span className="text-caption text-neutral-500">
+                                                to
+                                            </span>
+                                            <Input
+                                                type="time"
+                                                value={row.end}
+                                                disabled={!row.enabled}
+                                                onChange={(e) =>
+                                                    setDayField(row.day, { end: e.target.value })
+                                                }
+                                                className="h-9 w-28"
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                            <SelectField
+                                label="Minimum notice"
+                                name="minNoticeHours"
+                                options={MIN_NOTICE_OPTIONS}
+                                control={form.control}
+                                className="w-full flex-1 sm:w-full"
+                            />
+                            <FormField
+                                control={form.control}
+                                name="horizonDays"
+                                render={({ field }) => (
+                                    <FormItem className="flex-1">
+                                        <FormControl>
+                                            <MyInput
+                                                label="Booking horizon (days)"
+                                                inputType="number"
+                                                inputPlaceholder="30"
+                                                className="w-full sm:w-full"
+                                                input={field.value}
+                                                onChangeFunction={field.onChange}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
                         <p className="text-caption text-neutral-500">
-                            New bookings stay pending until the host approves them
+                            Minimum notice keeps last-minute bookings out; booking horizon caps how
+                            far ahead people can book.
                         </p>
                     </div>
-                    <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
-                </div>
+                </FormSection>
 
-                {/* Reminders */}
-                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
-                    <p className="text-body font-semibold text-neutral-600">Reminders</p>
-                    <div className="flex flex-wrap items-center gap-4">
-                        <label className="flex cursor-pointer items-center gap-2">
-                            <Checkbox
-                                checked={remindEmail}
-                                onCheckedChange={(checked) => setRemindEmail(checked === true)}
-                            />
-                            <span className="text-body text-neutral-600">Email</span>
-                        </label>
-                        <label className="flex cursor-pointer items-center gap-2">
-                            <Checkbox
-                                checked={remindWhatsapp}
-                                onCheckedChange={(checked) => setRemindWhatsapp(checked === true)}
-                            />
-                            <span className="text-body text-neutral-600">WhatsApp</span>
-                        </label>
+                <FormSection
+                    icon={MapPinLine}
+                    title="Location & Booking Rules"
+                    description="Decide how the meeting happens, and whether you need to approve bookings first."
+                >
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3">
+                        <div>
+                            <p className="text-body font-semibold text-neutral-600">
+                                Allocate Google Meet
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                Attach a Google Meet link to every booked meeting
+                            </p>
+                        </div>
+                        <Switch
+                            checked={allocateGoogleMeet}
+                            onCheckedChange={setAllocateGoogleMeet}
+                        />
                     </div>
 
-                    {remindWhatsapp && (
-                        <div className="flex flex-col gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-                            <div className="flex flex-col gap-1.5">
-                                <Label>WhatsApp template</Label>
-                                <Select value={waTemplateName || 'NONE'} onValueChange={(v) => setWaTemplateName(v === 'NONE' ? '' : v)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Choose an approved template" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="NONE">No template (won\u2019t send WhatsApp)</SelectItem>
-                                        {waTemplates.map((t) => (
-                                            <SelectItem key={t.id} value={t.name}>
-                                                {t.name} ({t.language})
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3">
+                        <div>
+                            <p className="text-body font-semibold text-neutral-600">
+                                Require approval
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                New bookings stay pending until the host approves them
+                            </p>
+                        </div>
+                        <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
+                    </div>
+                </FormSection>
+
+                <FormSection
+                    icon={BellRinging}
+                    title="Reminders"
+                    description="Notify invitees by email or WhatsApp before their meeting."
+                >
+                    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <label className="flex cursor-pointer items-center gap-2">
+                                <Checkbox
+                                    checked={remindEmail}
+                                    onCheckedChange={(checked) => setRemindEmail(checked === true)}
+                                />
+                                <span className="text-body text-neutral-600">Email</span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                                <Checkbox
+                                    checked={remindWhatsapp}
+                                    onCheckedChange={(checked) =>
+                                        setRemindWhatsapp(checked === true)
+                                    }
+                                />
+                                <span className="text-body text-neutral-600">WhatsApp</span>
+                            </label>
+                        </div>
+
+                        {remindWhatsapp && (
+                            <div className="flex flex-col gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label>WhatsApp template</Label>
+                                    <Select
+                                        value={waTemplateName || 'NONE'}
+                                        onValueChange={(v) =>
+                                            setWaTemplateName(v === 'NONE' ? '' : v)
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Choose an approved template" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="NONE">
+                                                No template (won’t send WhatsApp)
                                             </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {waTemplatesQuery.isLoading && (
-                                    <p className="text-caption text-neutral-500">Loading templates\u2026</p>
-                                )}
-                                {!waTemplatesQuery.isLoading && waTemplates.length === 0 && (
-                                    <p className="text-caption text-warning-600">
-                                        No approved WhatsApp templates yet. Create and get one approved in
-                                        Communication \u2192 WhatsApp Templates first.
-                                    </p>
-                                )}
-                            </div>
-
-                            {selectedWaTemplate && (
-                                <div className="flex flex-col gap-2">
-                                    {selectedWaTemplate.bodyText && (
-                                        <p className="rounded bg-white p-2 text-caption text-neutral-600">
-                                            {selectedWaTemplate.bodyText}
+                                            {waTemplates.map((t) => (
+                                                <SelectItem key={t.id} value={t.name}>
+                                                    {t.name} ({t.language})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {waTemplatesQuery.isLoading && (
+                                        <p className="text-caption text-neutral-500">
+                                            Loading templates…
                                         </p>
                                     )}
-                                    {waVars.length > 0 ? (
-                                        <>
-                                            <Label>Fill the template variables</Label>
-                                            {waVars.map((v) => (
-                                                <div key={v} className="flex items-center gap-2">
-                                                    <span className="w-28 shrink-0 truncate text-caption font-medium text-neutral-600">
-                                                        {`{{${v}}}`}
-                                                    </span>
-                                                    <Select
-                                                        value={waVarMapping[v] || 'UNSET'}
-                                                        onValueChange={(val) =>
-                                                            setWaVarMapping((prev) => ({
-                                                                ...prev,
-                                                                [v]: val === 'UNSET' ? '' : val,
-                                                            }))
-                                                        }
-                                                    >
-                                                        <SelectTrigger className="flex-1">
-                                                            <SelectValue placeholder="Map to\u2026" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="UNSET">\u2014 not set \u2014</SelectItem>
-                                                            {BOOKING_FIELD_OPTIONS.map((o) => (
-                                                                <SelectItem key={o.value} value={o.value}>
-                                                                    {o.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            ))}
-                                        </>
-                                    ) : (
-                                        <p className="text-caption text-neutral-500">
-                                            This template has no variables \u2014 it will send as-is.
+                                    {!waTemplatesQuery.isLoading && waTemplates.length === 0 && (
+                                        <p className="text-caption text-warning-600">
+                                            No approved WhatsApp templates yet. Create and get one
+                                            approved in Communication → WhatsApp Templates first.
                                         </p>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    )}
-                    <SelectField
-                        label="Remind before meeting"
-                        name="reminderOffset"
-                        options={REMINDER_OFFSET_OPTIONS}
-                        control={form.control}
-                        className="w-full sm:w-full"
-                    />
-                </div>
 
-                {/* Booking form questions — custom intake fields (no audience needed) */}
-                <div className="rounded-lg border border-neutral-200 p-4">
-                    <div className="mb-1 flex items-center justify-between">
-                        <p className="text-body font-semibold text-neutral-600">Form questions</p>
+                                {selectedWaTemplate && (
+                                    <div className="flex flex-col gap-2">
+                                        {selectedWaTemplate.bodyText && (
+                                            <p className="rounded bg-white p-2 text-caption text-neutral-600">
+                                                {selectedWaTemplate.bodyText}
+                                            </p>
+                                        )}
+                                        {waVars.length > 0 ? (
+                                            <>
+                                                <Label>Fill the template variables</Label>
+                                                {waVars.map((v) => (
+                                                    <div
+                                                        key={v}
+                                                        className="flex items-center gap-2"
+                                                    >
+                                                        <span className="w-28 shrink-0 truncate text-caption font-medium text-neutral-600">
+                                                            {`{{${v}}}`}
+                                                        </span>
+                                                        <Select
+                                                            value={waVarMapping[v] || 'UNSET'}
+                                                            onValueChange={(val) =>
+                                                                setWaVarMapping((prev) => ({
+                                                                    ...prev,
+                                                                    [v]: val === 'UNSET' ? '' : val,
+                                                                }))
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="flex-1">
+                                                                <SelectValue placeholder="Map to…" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="UNSET">
+                                                                    — not set —
+                                                                </SelectItem>
+                                                                {BOOKING_FIELD_OPTIONS.map((o) => (
+                                                                    <SelectItem
+                                                                        key={o.value}
+                                                                        value={o.value}
+                                                                    >
+                                                                        {o.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        ) : (
+                                            <p className="text-caption text-neutral-500">
+                                                This template has no variables — it will send as-is.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        <div className="flex flex-col gap-1">
+                            <SelectField
+                                label="Remind before meeting"
+                                name="reminderOffset"
+                                options={REMINDER_OFFSET_OPTIONS}
+                                control={form.control}
+                                className="w-full sm:w-full"
+                            />
+                            <p className="text-caption text-neutral-500">
+                                Sends an extra reminder this long before the meeting starts, on top
+                                of the booking-confirmation message.
+                            </p>
+                        </div>
+                    </div>
+                </FormSection>
+
+                <FormSection
+                    icon={ListChecks}
+                    title="Form Questions"
+                    description="Extra questions the invitee answers when booking, on top of name, email and phone."
+                    action={
                         <MyButton
                             type="button"
                             buttonType="text"
@@ -634,83 +748,88 @@ export const BookingPageForm = ({
                         >
                             <Plus size={14} /> Add question
                         </MyButton>
-                    </div>
-                    <p className="mb-3 text-caption text-neutral-500">
-                        Extra questions the invitee answers when booking, on top of name, email and
-                        phone.
-                    </p>
-                    {formFields.length === 0 ? (
-                        <p className="text-caption text-neutral-400">No custom questions.</p>
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            {formFields.map((f) => (
-                                <div
-                                    key={f.id}
-                                    className="flex flex-col gap-2 rounded-md border border-neutral-100 p-3"
-                                >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <Input
-                                            value={f.label}
-                                            placeholder="Question (e.g. What do you want help with?)"
-                                            onChange={(e) =>
-                                                updateFormField(f.id, { label: e.target.value })
-                                            }
-                                            className="min-w-0 flex-1"
-                                        />
-                                        <Select
-                                            value={f.field_type}
-                                            onValueChange={(v) =>
-                                                updateFormField(f.id, { field_type: v })
-                                            }
-                                        >
-                                            <SelectTrigger className="w-36">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="text">Short text</SelectItem>
-                                                <SelectItem value="textarea">Long text</SelectItem>
-                                                <SelectItem value="dropdown">Dropdown</SelectItem>
-                                                <SelectItem value="number">Number</SelectItem>
-                                                <SelectItem value="email">Email</SelectItem>
-                                                <SelectItem value="phone">Phone</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <label className="flex items-center gap-1.5 text-caption text-neutral-600">
-                                            <Switch
-                                                checked={!!f.required}
-                                                onCheckedChange={(v) =>
-                                                    updateFormField(f.id, { required: v })
+                    }
+                >
+                    <div className="rounded-lg border border-neutral-200 p-4">
+                        {formFields.length === 0 ? (
+                            <p className="text-caption text-neutral-400">
+                                No custom questions yet.
+                            </p>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                {formFields.map((f) => (
+                                    <div
+                                        key={f.id}
+                                        className="flex flex-col gap-2 rounded-md border border-neutral-100 p-3"
+                                    >
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Input
+                                                value={f.label}
+                                                placeholder="Question (e.g. What do you want help with?)"
+                                                onChange={(e) =>
+                                                    updateFormField(f.id, { label: e.target.value })
+                                                }
+                                                className="min-w-0 flex-1"
+                                            />
+                                            <Select
+                                                value={f.field_type}
+                                                onValueChange={(v) =>
+                                                    updateFormField(f.id, { field_type: v })
+                                                }
+                                            >
+                                                <SelectTrigger className="w-36">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="text">Short text</SelectItem>
+                                                    <SelectItem value="textarea">
+                                                        Long text
+                                                    </SelectItem>
+                                                    <SelectItem value="dropdown">
+                                                        Dropdown
+                                                    </SelectItem>
+                                                    <SelectItem value="number">Number</SelectItem>
+                                                    <SelectItem value="email">Email</SelectItem>
+                                                    <SelectItem value="phone">Phone</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <label className="flex items-center gap-1.5 text-caption text-neutral-600">
+                                                <Switch
+                                                    checked={!!f.required}
+                                                    onCheckedChange={(v) =>
+                                                        updateFormField(f.id, { required: v })
+                                                    }
+                                                />
+                                                Required
+                                            </label>
+                                            <MyButton
+                                                type="button"
+                                                buttonType="text"
+                                                scale="small"
+                                                onClick={() => removeFormField(f.id)}
+                                            >
+                                                <Trash size={16} className="text-danger-500" />
+                                            </MyButton>
+                                        </div>
+                                        {f.field_type === 'dropdown' && (
+                                            <Input
+                                                value={(f.options ?? []).join(', ')}
+                                                placeholder="Options, comma-separated (e.g. Career, Interview, Resume)"
+                                                onChange={(e) =>
+                                                    updateFormField(f.id, {
+                                                        options: e.target.value.split(','),
+                                                    })
                                                 }
                                             />
-                                            Required
-                                        </label>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="text"
-                                            scale="small"
-                                            onClick={() => removeFormField(f.id)}
-                                        >
-                                            <Trash size={16} className="text-danger-500" />
-                                        </MyButton>
+                                        )}
                                     </div>
-                                    {f.field_type === 'dropdown' && (
-                                        <Input
-                                            value={(f.options ?? []).join(', ')}
-                                            placeholder="Options, comma-separated (e.g. Career, Interview, Resume)"
-                                            onChange={(e) =>
-                                                updateFormField(f.id, {
-                                                    options: e.target.value.split(','),
-                                                })
-                                            }
-                                        />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </FormSection>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
+                <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-4">
                     {onCancel && (
                         <MyButton
                             type="button"
@@ -723,11 +842,7 @@ export const BookingPageForm = ({
                         </MyButton>
                     )}
                     <MyButton type="submit" buttonType="primary" scale="medium" disable={isSaving}>
-                        {isSaving
-                            ? 'Saving...'
-                            : isEdit
-                              ? 'Save Changes'
-                              : 'Create Booking Page'}
+                        {isSaving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Booking Page'}
                     </MyButton>
                 </div>
             </form>

@@ -238,6 +238,23 @@ export const CopyMoveDestinationPicker = ({
     const showModuleField = leaf === 'chapter' && !!sel.subjectId && !resolvedModule;
     const showLeafField = leaf === 'chapter' ? !resolvedChapter : !resolvedModule;
 
+    // A level with exactly one option is auto-picked rather than asked for — but
+    // it still gets a read-only row so the destination is never a mystery (a
+    // subject with a single module used to jump straight to Chapter with no sign
+    // of which module was chosen). Only the DEFAULT placeholders that shallow
+    // courses collapse into stay hidden: naming them would confuse, not inform.
+    const fixedSubjectName =
+        !showSubject && resolvedSubject && !isDefaultName(resolvedSubject.subject_name)
+            ? resolvedSubject.subject_name
+            : null;
+    const fixedModuleName =
+        leaf === 'chapter' &&
+        !showModuleField &&
+        resolvedModule &&
+        !isDefaultName(resolvedModule.module.module_name)
+            ? resolvedModule.module.module_name
+            : null;
+
     // Auto-advance through every level the user doesn't need to choose.
     useEffect(() => {
         if (!sel.courseId) return;
@@ -477,6 +494,10 @@ export const CopyMoveDestinationPicker = ({
                     />
                 )}
 
+                {fixedSubjectName && <FixedField label={subjectTerm} value={fixedSubjectName} />}
+
+                {fixedModuleName && <FixedField label={moduleTerm} value={fixedModuleName} />}
+
                 {showModuleField && (
                     <CascadeField
                         label={moduleTerm}
@@ -674,6 +695,18 @@ function CascadeField({
                 // react-remove-scroll would otherwise block scrolling the list.
                 portal={false}
             />
+        </div>
+    );
+}
+
+/** A level that had only one option: shown, not asked for. */
+function FixedField({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex w-full flex-col gap-1.5">
+            <label className="text-body font-medium text-neutral-600">{label}</label>
+            <span className="flex h-10 items-center truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 text-body text-neutral-600">
+                {value}
+            </span>
         </div>
     );
 }

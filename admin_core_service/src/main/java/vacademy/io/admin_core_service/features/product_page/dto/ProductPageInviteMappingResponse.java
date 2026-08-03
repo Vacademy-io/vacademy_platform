@@ -35,9 +35,15 @@ public class ProductPageInviteMappingResponse {
     /** Payment option type (ONE_TIME, SUBSCRIPTION, FREE, DONATION, CPO). */
     private String paymentOptionType;
 
-    /** For CPO: the preview media of the course (file ID). */
+    /** Course preview media (file ID) — resolved from the package for card thumbnails. */
     private String coursePreviewImageMediaId;
 
-    /** For CPO: short description of the course. */
+    /** Short course description (HTML) — resolved from the package for card blurbs. */
     private String aboutTheCourseHtml;
+
+    /**
+     * Course tags, comma separated (package.comma_separated_tags). Drives the tag
+     * filter on the product page / catalogue offer sections.
+     */
+    private String tags;
 }

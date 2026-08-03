@@ -29,7 +29,10 @@ interface MobileActionBarProps {
 }
 
 const SUBLABEL: Record<string, string | undefined> = {
-  login: "If already registered",
+  // Login carries no sublabel on mobile — the button says what it does, and the
+  // caption only crowded the bar. Kept for the capture actions, where "For new
+  // users" is doing real work telling the two buttons apart.
+  login: undefined,
   leadCollection: "For new users",
   form: undefined,
   signup: "For new users",
@@ -64,7 +67,6 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
           <button onClick={onLogin} className="catalogue-btn catalogue-btn-secondary w-full justify-center">
             Login
           </button>
-          <span className="text-center text-xs text-catalogue-text-secondary">If already registered</span>
         </div>
         {legacyGetStartedVisible && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
           <div className="flex flex-col gap-1">

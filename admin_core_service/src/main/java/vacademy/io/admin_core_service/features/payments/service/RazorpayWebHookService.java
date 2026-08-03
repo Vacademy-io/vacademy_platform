@@ -289,6 +289,12 @@ public class RazorpayWebHookService {
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
 
                 generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
+
+                // payment.captured is the authoritative capture event and always arrives,
+                // whereas order.paid can race with it or be deduped — so mark the log PAID
+                // here too. updatePaymentLog only runs the post-payment side effects when
+                // the log actually transitions to PAID, so a following order.paid is a no-op.
+                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
                 break;
 
             case "payment.failed":

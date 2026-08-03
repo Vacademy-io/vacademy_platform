@@ -480,6 +480,17 @@ public class PaymentLogService {
             throw new RuntimeException("Payment log not found with ID/Order: " + orderId);
         }
 
+        // Capture which logs are ALREADY in the target status before we touch them, so
+        // the post-payment side effects (Pass 2) run exactly once. Both payment.captured
+        // and order.paid deliver a PAID update for the same order; without this the second
+        // one would re-run invoicing, enrollment ops and the PAYMENT_SUCCESS workflow.
+        Set<String> alreadyInTargetStatus = new HashSet<>();
+        for (PaymentLog pLog : allLogsToUpdate) {
+            if (paymentStatus.equals(pLog.getPaymentStatus())) {
+                alreadyInTargetStatus.add(pLog.getId());
+            }
+        }
+
         // --- Pass 1: Update status of ALL found logs (Parent + Children) ---
         log.info("Starting status update for {} total logs (Parent + Children) for ID/Order {}", allLogsToUpdate.size(),
                 orderId);
@@ -510,6 +521,11 @@ public class PaymentLogService {
         // and re-throw so the original exception (not Spring's UnexpectedRollbackException)
         // surfaces to the webhook layer, where it can be stored verbatim in web_hook.notes.
         for (PaymentLog paymentLog : allLogsToUpdate) {
+            if (alreadyInTargetStatus.contains(paymentLog.getId())) {
+                log.info("Skipping post-payment logic for log {} — already {} (duplicate confirmation event)",
+                        paymentLog.getId(), paymentStatus);
+                continue;
+            }
             try {
                 handlePostPaymentLogic(paymentLog, paymentStatus, instituteId);
             } catch (Exception e) {
@@ -1511,13 +1527,16 @@ public class PaymentLogService {
     }
 
     /**
-     * The next Monday on/after today ("20th July"), for welcome templates that announce
-     * a trial start day. If today is Monday, today is used.
+     * The next Monday STRICTLY after today ("3rd August"), for welcome templates that
+     * announce a trial start day. Must match the drip's "Wait Until Next Monday" DELAY
+     * node, which uses TemporalAdjusters.next with includeSameDay=false: enrolling ON a
+     * Monday announces the FOLLOWING Monday, because the first class only runs then too.
+     * (Using nextOrSame here made a Monday signup announce today, a full week early.)
      */
     private String nextMondayLabel() {
         java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         java.time.LocalDate monday = today.with(
-                java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+                java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
         int day = monday.getDayOfMonth();
         String suffix;
         if (day >= 11 && day <= 13) {

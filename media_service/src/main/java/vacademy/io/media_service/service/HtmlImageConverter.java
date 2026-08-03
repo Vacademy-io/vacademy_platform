@@ -1,6 +1,7 @@
 package vacademy.io.media_service.service;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.entity.FileMetadata;
@@ -20,13 +21,16 @@ public class HtmlImageConverter {
 
     private final AmazonS3 s3Client;
     private final FileMetadataRepository fileMetadataRepository;
+    private final CdnUrlService cdnUrlService;
 
     @Value("${aws.s3.public-bucket}")
     private String publicBucket;
 
-    public HtmlImageConverter(AmazonS3 s3Client, FileMetadataRepository fileMetadataRepository) {
+    public HtmlImageConverter(AmazonS3 s3Client, FileMetadataRepository fileMetadataRepository,
+            CdnUrlService cdnUrlService) {
         this.s3Client = s3Client;
         this.fileMetadataRepository = fileMetadataRepository;
+        this.cdnUrlService = cdnUrlService;
     }
 
     /**
@@ -82,8 +86,13 @@ public class HtmlImageConverter {
         // Create an InputStream from the byte array
         InputStream inputStream = new ByteArrayInputStream(fileBytes);
 
-        // Upload the file to S3
-        s3Client.putObject(publicBucket, key, inputStream, null);
+        // Upload the file to S3 with real image Content-Type and immutable
+        // Cache-Control (key embeds a fresh UUID, bytes never change under it)
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentType("image/" + imageFormat);
+        objectMetadata.setContentLength(fileBytes.length);
+        objectMetadata.setCacheControl("public, max-age=31536000, immutable");
+        s3Client.putObject(publicBucket, key, inputStream, objectMetadata);
 
         // Create metadata for the file
         FileMetadata metadata = new FileMetadata(
@@ -96,8 +105,9 @@ public class HtmlImageConverter {
         // Save the metadata
         fileMetadataRepository.save(metadata);
 
-        // Return the network URL of the uploaded file
-        return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        // Return the network URL of the uploaded file (CDN when configured).
+        // This URL gets baked into stored HTML, so it must be the permanent host.
+        return cdnUrlService.publicUrl(key);
     }
 
     public String convertBase64ToUrls(String html) throws IOException {

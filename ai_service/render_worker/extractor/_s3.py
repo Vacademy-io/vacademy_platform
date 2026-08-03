@@ -7,11 +7,25 @@ download/upload logic without duplicating it.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 import boto3
 from botocore.exceptions import ClientError
+
+
+def _extract_s3_key(url: str, bucket: str) -> str | None:
+    """Object key from a virtual-hosted or path-style S3 URL for `bucket`
+    (global, regional, or accelerate host), else None. CDN URLs return None
+    and fall through to the plain-HTTP download path."""
+    if not url or not bucket:
+        return None
+    escaped = re.escape(bucket)
+    m = re.match(rf"^https?://{escaped}\.s3[.\-][a-z0-9.\-]*?amazonaws\.com/(.+)$", url)
+    if not m:
+        m = re.match(rf"^https?://s3[.\-]?[a-z0-9.\-]*?amazonaws\.com/{escaped}/(.+)$", url)
+    return m.group(1) if m else None
 
 
 class S3Helper:
@@ -35,9 +49,9 @@ class S3Helper:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if self.bucket and self.bucket in url:
             try:
-                parts = url.split(f"{self.bucket}.s3.amazonaws.com/")
-                if len(parts) == 2:
-                    self._s3.download_file(self.bucket, parts[1], str(local_path))
+                key = _extract_s3_key(url, self.bucket)
+                if key:
+                    self._s3.download_file(self.bucket, key, str(local_path))
                     return
             except (ClientError, Exception):
                 pass
@@ -45,9 +59,9 @@ class S3Helper:
             for bucket_name in ["vacademy-media-storage", self.bucket]:
                 if bucket_name in url:
                     try:
-                        parts = url.split(f"{bucket_name}.s3.amazonaws.com/")
-                        if len(parts) == 2:
-                            self._s3.download_file(bucket_name, parts[1], str(local_path))
+                        key = _extract_s3_key(url, bucket_name)
+                        if key:
+                            self._s3.download_file(bucket_name, key, str(local_path))
                             return
                     except Exception:
                         continue

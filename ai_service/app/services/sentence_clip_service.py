@@ -1886,12 +1886,19 @@ class SentenceClipService:
 
     @staticmethod
     def _extract_s3_key(s3_url: str) -> Optional[str]:
-        """Pull the key out of a `https://{bucket}.s3.amazonaws.com/{key}` URL."""
-        marker = ".s3.amazonaws.com/"
-        idx = s3_url.find(marker)
-        if idx == -1:
-            return None
-        return s3_url[idx + len(marker):]
+        """Pull the key out of a media URL — raw S3 (global/regional/accelerate)
+        or the CloudFront host configured via cdn_public_base_url."""
+        import re
+        m = re.match(r"^https?://[^/]+\.s3[.\-][a-z0-9.\-]*?amazonaws\.com/(.+)$", s3_url)
+        if m:
+            return m.group(1)
+        from ..config import get_settings
+        cdn = get_settings().cdn_public_base_url
+        if cdn:
+            base = cdn.rstrip("/") + "/"
+            if s3_url.startswith(base):
+                return s3_url[len(base):] or None
+        return None
 
 
 # ---------------------------------------------------------------------------

@@ -240,6 +240,9 @@ env:
 
   # CDN in front of media_service / S3 public bucket.
   cloudFrontUrl: REPLACE_WITH_CLOUDFRONT_URL   # e.g. https://dXXXXX.cloudfront.net
+  cdnPublicBaseUrl: ""                         # CDN_PUBLIC_BASE_URL — CloudFront over public media bucket; blank = raw S3 URLs
+  cdnPrivateBaseUrl: ""                        # CDN_PRIVATE_BASE_URL — CloudFront signed URLs over private bucket; blank = S3 presign
+  cdnPrivateKeyPairId: ""                      # CDN_PRIVATE_KEY_PAIR_ID — CloudFront public-key ID (key itself goes in secrets)
 
   # Database wiring as seen by the Java apps. They talk to the in-cluster
   # pgBouncer Service, NOT directly to the DB VMs.

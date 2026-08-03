@@ -55,7 +55,7 @@ public interface FileService {
 
     String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException;
 
-    String getPublicUrl(String id, String bucketName);
+    String getPublicUrl(String id);
 
     FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key) throws FileUploadException, IOException;
 }

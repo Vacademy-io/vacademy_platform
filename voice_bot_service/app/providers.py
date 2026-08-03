@@ -16,8 +16,24 @@ from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 from .config import get_settings
 
 import logging
+import re
 
 logger = logging.getLogger("voice_bot")
+
+# A chunk with no word character is not speech. Sarvam REJECTS such input with
+# "Text must contain at least one character from the allowed languages" — and
+# pipecat 0.0.95 only logs that error and pushes an ErrorFrame: it never closes
+# the socket, so `run_tts`'s `state is State.CLOSED` guard never fires and every
+# LATER reply is sent into a dead-but-open socket, producing ZERO audio until our
+# stall watchdog notices ~3.5s later. That is the 8-10.4s dead air the founder
+# heard on 2026-07-29 (13 stalls / 7 of 220 calls). \w minus '_' , Unicode-aware
+# so Devanagari counts as a word character.
+_WORD_CHAR_RE = re.compile(r"[^\W_]", re.UNICODE)
+
+
+def has_word_char(text: str | None) -> bool:
+    """True if `text` contains at least one letter/digit in ANY script."""
+    return bool(text) and _WORD_CHAR_RE.search(text) is not None
 
 
 class ClauseFlushAggregator(SimpleTextAggregator):
@@ -39,12 +55,24 @@ class ClauseFlushAggregator(SimpleTextAggregator):
     async def aggregate(self, text):
         result = await super().aggregate(text)
         if result is not None:
+            # A flush unit with NO word character (e.g. a lone closing quote left
+            # by an authored script's quoted line) is not speech — and Sarvam
+            # REJECTS it with "Text must contain at least one character from the
+            # allowed languages", which wedges the TTS socket open-but-dead (see
+            # ResilientSarvamTTSService). Push it back so it merges into the next
+            # unit: emitted text stays byte-identical to the old concatenation.
+            if not has_word_char(result):
+                self._text = result + self._text
+                return None
             return result
         buf = self._text
         # Devanagari sentence end.
         danda = buf.find("।")
         if danda >= 0:
-            out, self._text = buf[: danda + 1], buf[danda + 1:]
+            out, rest = buf[: danda + 1], buf[danda + 1:]
+            if not has_word_char(out):
+                return None          # leave it buffered; merges into the next unit
+            self._text = rest
             return out.strip() or None
         # Length fallback for punctuation-less streams: cut at the last soft break.
         if len(buf) >= self._MAX_CHARS:
@@ -52,7 +80,10 @@ class ClauseFlushAggregator(SimpleTextAggregator):
                       buf.rfind(" ", 0, self._MAX_CHARS + 20))
             if cut <= 0:
                 cut = len(buf) - 1
-            out, self._text = buf[: cut + 1], buf[cut + 1:]
+            out, rest = buf[: cut + 1], buf[cut + 1:]
+            if not has_word_char(out):
+                return None
+            self._text = rest
             return out.strip() or None
         return None
 
@@ -360,7 +391,49 @@ class ResilientSarvamTTSService(SarvamTTSService):
     def set_generate_callback(self, cb):
         self._on_generate = cb
 
+    # Set when Sarvam answers with {"type":"error"}. pipecat's _receive_messages
+    # only logs it and pushes an ErrorFrame — it never closes the socket, so the
+    # socket stays OPEN but never synthesizes again and run_tts's
+    # `state is State.CLOSED` guard can't see it. We treat any TTS error as
+    # socket death and force a reconnect before the next synthesis.
+    _wedged = False
+
+    async def push_frame(self, frame, direction=None):
+        # Cheap isinstance on the frame stream — the ONLY place the Sarvam error
+        # surfaces (it is pushed, not raised, and not returned by run_tts).
+        try:
+            from pipecat.frames.frames import ErrorFrame as _ErrF
+            if isinstance(frame, _ErrF) and "TTS Error" in str(getattr(frame, "error", "")):
+                if not self._wedged:
+                    logger.error("tts: Sarvam rejected input — marking socket wedged, "
+                                 "will reconnect before next synthesis: %s",
+                                 str(getattr(frame, "error", ""))[:160])
+                self._wedged = True
+        except Exception:
+            pass
+        if direction is None:
+            await super().push_frame(frame)
+        else:
+            await super().push_frame(frame, direction)
+
     async def run_tts(self, text: str):
+        # 1) Never SEND letterless text: it is not speech, and it is what wedges
+        #    the socket in the first place. Skipped BEFORE _on_generate so a
+        #    chunk we never send can't arm the audio-stall stamp (which would
+        #    make the watchdog "recover" from a stall that cannot happen).
+        if not has_word_char(text):
+            logger.info("tts: skipping letterless chunk %r", (text or "")[:40])
+            return
+        # 2) A previously-wedged socket produces ZERO audio forever. Rebuild it
+        #    before synthesizing rather than waiting ~3.5s for the stall watchdog.
+        if self._wedged:
+            logger.warning("tts: reconnecting wedged socket before synthesis")
+            self._wedged = False
+            try:
+                await self._disconnect()
+                await self._connect()
+            except Exception as e:
+                logger.warning("tts: wedge reconnect failed: %s", e)
         if self._on_generate is not None:
             try:
                 self._on_generate()

@@ -136,6 +136,33 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
                 "callbackTimeText": None}
 
 
+def _caller_turns(outcome: CallOutcome) -> List[str]:
+    """The caller's REAL words (synthetic bracketed cues excluded)."""
+    return [t["text"] for t in outcome.transcript
+            if t.get("role") == "user" and t.get("text")
+            and not t["text"].lstrip().startswith("[")]
+
+
+def _is_conversation(outcome: CallOutcome) -> bool:
+    """Did a two-sided conversation actually happen?
+
+    Guards the disposition path: 23 live calls where the caller contributed no
+    real words still received Not_Interested / Wrong_Person / Wrong_Number.
+
+    Deliberately ONLY a caller-turn test. Requiring a played ASSISTANT turn too
+    would misfire in exactly the case we are fixing elsewhere: when our own
+    audio never played (a wedged TTS socket) the caller may still have spoken —
+    including a terminal "not interested". Forcing that to Incomplete flips a
+    STOP into admin_core's retry path and re-dials someone who refused.
+
+    NOTE this does NOT catch answering machines: voicemail greetings ARE caller
+    text ("Your call has been forwarded to voicemail"), so those still reach the
+    classifier. Machine detection is a separate, explicit fix — see the plan's
+    later item; do not mistake this gate for it.
+    """
+    return len(_caller_turns(outcome)) >= 1
+
+
 def _status(outcome: CallOutcome) -> str:
     # The lead answered (the WS only opens on answer); "completed" iff they
     # actually spoke — a dead-air pickup classifies as no-answer downstream.
@@ -273,7 +300,22 @@ async def report_spool_sweeper() -> None:
 
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
     ctx = outcome.context
-    analysis = await _analyze(outcome)
+    # Never let the classifier judge a call the caller never took part in — see
+    # _is_conversation. Skipping _analyze also saves the LLM round trip on the
+    # 17% of dials that are answering machines.
+    if get_settings().report_require_conversation and not _is_conversation(outcome):
+        logger.info("report: no two-sided conversation corr=%s (%d caller turns) — "
+                    "forcing Incomplete, skipping analysis",
+                    outcome.corr, len(_caller_turns(outcome)))
+        analysis = {
+            "disposition": "Incomplete",
+            "summary": "No two-sided conversation took place (no caller turn captured).",
+            "leadRating": None, "extractedQa": {}, "callbackRequested": False,
+            "callbackTimeText": None, "meetingRequested": False,
+            "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
+        }
+    else:
+        analysis = await _analyze(outcome)
     agent = ctx.get("agent") or {}
 
     payload: Dict[str, Any] = {

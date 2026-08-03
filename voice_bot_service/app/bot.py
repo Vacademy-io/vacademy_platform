@@ -58,7 +58,8 @@ from pipecat.audio.interruptions.min_words_interruption_strategy import (
 
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
-                        apply_decision, NONE, CANCEL_STARVED, REISSUE_STOP,
+                        apply_decision, stall_recovery_still_needed,
+                        NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
 from .config import get_settings
 from .providers import build_llm, build_stt, build_tts
@@ -275,12 +276,25 @@ class SentinelGate(FrameProcessor):
         # dropped from the model's context (verbatim repeats / re-asking, deep-
         # review A2, verified against the wheel). Swallow exactly that one End.
         self._swallow_next_end = False
+        # Injected by run_bot: disarms the audio-stall stamp when a reply dies
+        # before playout (see the InterruptionFrame branch).
+        self._on_interrupted_cb = None
 
     def set_task(self, task: PipelineTask):
         self._task = task
 
     def set_arm_stop(self, arm_stop):
         self._arm_stop = arm_stop
+
+    def set_on_interrupted(self, cb):
+        self._on_interrupted_cb = cb
+
+    def _on_interrupted(self) -> None:
+        if self._on_interrupted_cb is not None:
+            try:
+                self._on_interrupted_cb()
+            except Exception:
+                logger.exception("sentinel: on_interrupted callback failed")
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -294,6 +308,12 @@ class SentinelGate(FrameProcessor):
             # into the next one (deep-review B6).
             self._buffer = ""
             self._response_active = False
+            # Disarm the audio-stall stamp. It is otherwise cleared ONLY on a
+            # bot-speaking transition (set_bot_speaking), so a reply killed
+            # BEFORE playout — no BotStarted, no BotStopped — leaves it armed and
+            # the watchdog "recovers" by re-speaking a reply the caller
+            # deliberately interrupted. 6-13% of generations die pre-playout.
+            self._on_interrupted()
             await self.push_frame(frame, direction)
             return
 
@@ -521,6 +541,27 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
 
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_ ]+?)\s*\}\}")
 
+# Author-written placeholder names -> the lead-field names they should resolve
+# against. EXACT alias match only (never fuzzy): a wrong name in a sentence is
+# worse than a neutral one. Key = the field names to look up, value = the
+# {{placeholders}} that mean it.
+_PLACEHOLDER_SYNONYMS: Dict[tuple, set] = {
+    ("child name", "children name", "student name", "kid name", "child"): {
+        "child_name", "children_name", "student_name", "kid_name", "child",
+        "childs_name", "child name", "student name",
+    },
+    ("parent name", "guardian name", "father name", "mother name"): {
+        "parent_name", "guardian_name", "father_name", "mother_name",
+        "parent name", "guardian name",
+    },
+}
+
+# The lead IS the parent on these campaigns, so these may fall back to leadName.
+# Deliberately NOT every *_name key — see _fill_placeholders step 3.
+_PARENT_ALIASES = {
+    "parent_name", "guardian_name", "parent name", "guardian name", "contact_name",
+}
+
 
 def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
     """First non-blank lead custom field matching any of `names` (case-insensitive)."""
@@ -554,7 +595,39 @@ def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
     }
 
     def repl(m: "re.Match[str]") -> str:
-        return values.get(m.group(1).strip().lower(), "")
+        key = m.group(1).strip().lower()
+        # 1) A known key.
+        if key in values:
+            return values[key]
+        # 2) The author's own field name, matched against the lead's captured
+        #    fields (casefold + '_'<->' '), plus the common name synonyms. This is
+        #    the fix for a 100% silent failure: the whitelist previously returned
+        #    "" for ANY unknown key, so a prompt written with {{child_name}} /
+        #    {{parent_name}} rendered as "with , whose child  studies" on all
+        #    141/141 calls of that agent (2026-07-29 forensics).
+        direct = _lead_field(context, key, key.replace("_", " "))
+        if direct:
+            return direct
+        for canon, aliases in _PLACEHOLDER_SYNONYMS.items():
+            if key in aliases:
+                hit = _lead_field(context, *canon)
+                if hit:
+                    return hit
+                break
+        # 3) The person we are CALLING is the parent/guardian, so an unresolved
+        #    {{parent_name}} is the lead themselves. Scoped to this alias set on
+        #    purpose — a blanket "*name -> lead_name" would also fire for
+        #    {{school_name}} / {{child_name}} and speak the wrong person's name.
+        if key in _PARENT_ALIASES and lead_name:
+            return lead_name
+        # 4) Give up — but LOUDLY, so this can never be silent again.
+        #    NO generic "*name -> lead_name" fallback: `endswith("name")` also
+        #    matches {{school_name}}, {{agent_name}}, {{child_name}}, so an
+        #    unresolved key would make the bot call the SCHOOL (or the child) by
+        #    the parent's name. A hole in the sentence is bad; confidently
+        #    speaking the wrong person's name is worse.
+        logger.warning("prompt placeholder %r unresolved — rendering empty", key)
+        return ""
 
     return _PLACEHOLDER_RE.sub(repl, text)
 
@@ -578,6 +651,14 @@ def _clean_opening(text: str) -> str:
     out = " ".join(lines)
     out = out.replace("**", "").replace("*", "").replace("`", "")
     out = re.sub(r"\s+", " ", out).strip()
+    # Authors wrap the line in quotes ('"Hi, this is Avni…"'). Spoken, a stray
+    # quote is at best silent; worse, a clause that ends up holding ONLY the
+    # closing quote is rejected by Sarvam and wedges the TTS socket open-but-dead
+    # (see providers.has_word_char). Strip a matched wrapping pair, then any
+    # leftover edge quotes.
+    if len(out) >= 2 and out[0] in '"“”‘’\'' and out[-1] in '"“”‘’\'':
+        out = out[1:-1].strip()
+    out = out.strip('"“”‘’\'').strip()
     return out[:600]
 
 
@@ -1196,15 +1277,46 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # 2026-07-27 tts-before-assignment outage).
     sentinel.set_arm_stop(_begin_stop)
 
+    # Same ordering rule: `sentinel` only exists from line ~1146.
+    #
+    # RE-STAMP, do not clear. A reply killed before playout leaves the stamp
+    # armed, and the watchdog would "recover" a reply the caller interrupted —
+    # but CLEARING is worse: pipecat pushes an InterruptionFrame on EVERY VAD
+    # onset while the bot is quiet (base_input: `not self._bot_speaking`), which
+    # is exactly the state a wedged TTS socket leaves us in. Clearing would
+    # therefore disarm wedge detection the moment the caller made any sound —
+    # the founder's own failure mode. Restarting the clock keeps both properties,
+    # and it is safe because an armed stamp PROVES no audio has played yet
+    # (set_bot_speaking clears it on the first audio frame).
+    def _restamp_on_interrupt():
+        if flags["tts_gen_t"] != 0.0:
+            flags["tts_gen_t"] = time.time()
+    sentinel.set_on_interrupted(_restamp_on_interrupt)
+
     async def watchdog():
         """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
         by the timeline harness) + bookkeeping + I/O execution here."""
+        # EVERY WatchdogConfig field is passed explicitly from Settings — a field
+        # left to its dataclass default is a live turn-taking threshold with no
+        # env knob, untunable without a rebuild. Enforced by
+        # test_watchdog_config_call_names_every_field.
         cfg = WatchdogConfig(
             connected_at=outcome.connected_at,
             cap_secs=cap_secs,
             idle_timeout_secs=settings.idle_timeout_secs,
             stall_recovery_enabled=settings.stall_recovery_enabled,
             graceful_stop_deadline_secs=_GRACEFUL_STOP_DEADLINE_SECS,
+            stall_after_secs=settings.stall_after_secs,
+            stall_max_recoveries=settings.stall_max_recoveries,
+            stop_reissue_every_secs=settings.stop_reissue_every_secs,
+            orphan_min_utterance_secs=settings.orphan_min_utterance_secs,
+            orphan_window_secs=(settings.orphan_window_lo_secs,
+                                settings.orphan_window_hi_secs),
+            orphan_bot_quiet_secs=settings.orphan_bot_quiet_secs,
+            orphan_connect_grace_secs=settings.orphan_connect_grace_secs,
+            orphan_transcript_lookback_secs=settings.orphan_transcript_lookback_secs,
+            max_nudges=settings.max_nudges,
+            no_words_timeout_secs=settings.no_words_timeout_secs,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
                        "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
@@ -1231,6 +1343,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await _begin_stop()
                 continue
             if d.kind == STALL_RECOVER:
+                # Grace beat, THEN re-check. On a live call Sarvam's first byte
+                # landed 2ms after the decision and our _disconnect destroyed
+                # audio that had just arrived. Without this yield the re-check is
+                # dead code: nothing between watchdog_decide and here awaits, so
+                # no frame callback can run and the flags cannot change. 50ms
+                # against a >=3.5s stall is free. (The predicate lives in
+                # callstate so the harness covers it — testing tts_gen_t here
+                # would abort EVERY recovery, since apply_decision zeroed it.)
+                await asyncio.sleep(0.05)
+                if not stall_recovery_still_needed(flags, time.time()):
+                    logger.info("tts stall recovery aborted corr=%s — audio arrived", corr)
+                    continue
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
                              "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])
@@ -1239,10 +1363,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     await tts._connect()
                 except Exception as ex:
                     logger.warning("tts stall reconnect failed corr=%s: %s", corr, ex)
+                # "briefly" USED to be in this cue — and it cost us content: the
+                # model summarised away announcements the caller had never heard
+                # (the founder's "it missed telling details"). The caller heard
+                # NOTHING, so the correct instruction is to say it again in full.
                 await task.queue_frames([LLMMessagesAppendFrame(
                     messages=[{"role": "user", "content":
-                        "[Audio glitch: the caller could NOT hear your last reply. "
-                        "Answer their last message again, briefly — do not mention the glitch.]"}],
+                        "[Audio glitch: the caller heard NOTHING of your last reply. "
+                        "Say your last reply again IN FULL, keeping every detail and "
+                        "question it contained — do not shorten it, do not summarise it, "
+                        "and do not mention the glitch.]"}],
                     run_llm=True)])
                 continue
             if d.kind == ORPHAN_ASK:

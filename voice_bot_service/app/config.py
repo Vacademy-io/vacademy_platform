@@ -185,6 +185,40 @@ class Settings:
     stall_recovery_enabled: bool = field(
         default_factory=lambda: _env("STALL_RECOVERY_ENABLED", "true").lower() == "true")
 
+    # ── Watchdog thresholds ──────────────────────────────────────────────────
+    # Every WatchdogConfig field is env-overridable. These ran on dataclass
+    # defaults with NO knob, so tuning turn-taking on a service calling real
+    # parents required a rebuild + redeploy. Defaults below are byte-identical to
+    # the dataclass defaults, so plumbing them changed no behaviour.
+    stall_after_secs: float = field(
+        default_factory=lambda: float(_env("STALL_AFTER_SECS", "3.5")))
+    stall_max_recoveries: int = field(
+        default_factory=lambda: int(_env("STALL_MAX_RECOVERIES", "3")))
+    stop_reissue_every_secs: float = field(
+        default_factory=lambda: float(_env("STOP_REISSUE_EVERY_SECS", "3.0")))
+    orphan_min_utterance_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_MIN_UTTERANCE_SECS", "0.4")))
+    orphan_window_lo_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_WINDOW_LO_SECS", "2.5")))
+    orphan_window_hi_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_WINDOW_HI_SECS", "10.0")))
+    orphan_bot_quiet_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_BOT_QUIET_SECS", "2.0")))
+    orphan_connect_grace_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_CONNECT_GRACE_SECS", "6.0")))
+    # Clock-skew guard: Sarvam's server-side final vs pipecat's local Silero
+    # onset. 0.0 restores the old (broken) strict comparison — kill-switch only.
+    orphan_transcript_lookback_secs: float = field(
+        default_factory=lambda: float(_env("ORPHAN_TRANSCRIPT_LOOKBACK_SECS", "1.5")))
+    max_nudges: int = field(default_factory=lambda: int(_env("MAX_NUDGES", "2")))
+    no_words_timeout_secs: float = field(
+        default_factory=lambda: float(_env("NO_WORDS_TIMEOUT_SECS", "30.0")))
+
+    # Refuse to derive a substantive disposition from a call with no caller turn
+    # (voicemail/IVR pickups were booking demos onto real leads). Kill-switch.
+    report_require_conversation: bool = field(
+        default_factory=lambda: _env("REPORT_REQUIRE_CONVERSATION", "true").lower() == "true")
+
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.
     max_call_minutes_default: float = 10.0

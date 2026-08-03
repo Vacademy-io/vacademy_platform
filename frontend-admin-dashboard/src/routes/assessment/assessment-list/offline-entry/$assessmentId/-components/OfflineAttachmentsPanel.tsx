@@ -1,13 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { FileArrowUp, FilePdf, UploadSimple, X } from '@phosphor-icons/react';
+import { FileArrowUp, FilePdf, UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { MyButton } from '@/components/design-system/button';
 import { Form } from '@/components/ui/form';
-import { FileType } from '@/types/common/file-upload';
 import { AttachmentSlot, OfflineAttachmentFiles } from '../-utils/types';
-
-const ACCEPTED_FILE_TYPES: FileType[] = ['application/pdf'];
 
 interface SlotConfig {
     slot: AttachmentSlot;
@@ -40,7 +37,25 @@ interface OfflineAttachmentsPanelProps {
     files: OfflineAttachmentFiles;
     onChange: (files: OfflineAttachmentFiles) => void;
     disabled?: boolean;
+    /** Failure from the parent's submit (e.g. an upload that didn't go through). */
+    error?: string | null;
 }
+
+// Validated here rather than handed to the dropzone's `accept`: react-dropzone
+// drops a rejected file on the floor without telling anyone, so a dragged-in
+// .docx just silently did nothing. Checking it ourselves means we can say why.
+const isAcceptedPdf = (file: File): boolean =>
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+const describeRejection = (file: File): string | null => {
+    if (!isAcceptedPdf(file)) {
+        return `"${file.name}" is not a PDF. Scans must be uploaded as PDF files.`;
+    }
+    if (file.size === 0) {
+        return `"${file.name}" is empty (0 bytes). Re-export it and try again.`;
+    }
+    return null;
+};
 
 interface AttachmentsForm {
     student: FileList | null;
@@ -57,7 +72,9 @@ export const OfflineAttachmentsPanel = ({
     files,
     onChange,
     disabled = false,
+    error = null,
 }: OfflineAttachmentsPanelProps) => {
+    const [rejections, setRejections] = useState<Partial<Record<AttachmentSlot, string>>>({});
     const form = useForm<AttachmentsForm>({
         defaultValues: { student: null, checked: null, report: null },
     });
@@ -70,7 +87,25 @@ export const OfflineAttachmentsPanel = ({
         report: reportInputRef,
     };
 
+    const setRejection = (slot: AttachmentSlot, message: string | null) =>
+        setRejections((prev) => {
+            const next = { ...prev };
+            if (message) next[slot] = message;
+            else delete next[slot];
+            return next;
+        });
+
     const setFile = (slot: AttachmentSlot, file: File | undefined) => {
+        if (file) {
+            const rejection = describeRejection(file);
+            if (rejection) {
+                // Keep whatever was already attached — replacing a good file with
+                // nothing because the new pick was bad loses the admin's work.
+                setRejection(slot, rejection);
+                return;
+            }
+        }
+        setRejection(slot, null);
         const next = { ...files };
         if (file) next[slot] = file;
         else delete next[slot];
@@ -93,10 +128,21 @@ export const OfflineAttachmentsPanel = ({
                 Uploaded when you submit this entry.
             </p>
 
+            {error && (
+                <div
+                    role="alert"
+                    className="mb-4 flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 p-3"
+                >
+                    <WarningCircle className="mt-0.5 size-4 shrink-0 text-danger-600" />
+                    <p className="text-caption text-danger-700">{error}</p>
+                </div>
+            )}
+
             <Form {...form}>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {SLOTS.map(({ slot, label, hint }) => {
                         const file = files[slot];
+                        const rejection = rejections[slot];
                         return (
                             <div key={slot} className="flex flex-col gap-2">
                                 <div>
@@ -109,8 +155,12 @@ export const OfflineAttachmentsPanel = ({
                                     onFileSubmit={(picked) => setFile(slot, picked)}
                                     control={form.control}
                                     name={slot}
-                                    acceptedFileTypes={ACCEPTED_FILE_TYPES}
+                                    // No `acceptedFileTypes`: it makes the dropzone
+                                    // discard non-PDFs before we ever see them, so a
+                                    // dragged-in .docx failed silently. We validate
+                                    // in setFile and say what was wrong instead.
                                     isUploading={disabled}
+                                    error={rejection}
                                 >
                                     {file ? (
                                         <div className="flex items-center justify-between gap-2 rounded-lg border border-neutral-200 p-3">

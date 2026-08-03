@@ -28,6 +28,12 @@ interface MultiSelectProps {
     placeholder?: string;
     className?: string;
     disabled?: boolean;
+    /**
+     * Render the list in a body portal (default). Pass false inside a Dialog or
+     * Sheet — react-remove-scroll blocks wheel/touch on portalled nodes, so a
+     * portalled list can't be scrolled from within a modal.
+     */
+    portal?: boolean;
 }
 
 export function MultiSelect({
@@ -37,6 +43,7 @@ export function MultiSelect({
     placeholder = 'Select options',
     className,
     disabled = false,
+    portal = true,
 }: MultiSelectProps) {
     const [open, setOpen] = React.useState(false);
 
@@ -98,7 +105,7 @@ export function MultiSelect({
                     <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-full p-0">
+            <PopoverContent className="w-full p-0" portal={portal}>
                 <Command>
                     <CommandInput placeholder="Search options..." />
                     <CommandList>
@@ -107,7 +114,10 @@ export function MultiSelect({
                             {options.map((option) => (
                                 <CommandItem
                                     key={option.value}
-                                    value={option.value}
+                                    // cmdk filters on `value`: include the label so
+                                    // typing matches what the user sees, and the id
+                                    // so same-named options stay distinct.
+                                    value={`${option.label} ${option.value}`}
                                     onSelect={() => handleSelect(option.value)}
                                 >
                                     <Check

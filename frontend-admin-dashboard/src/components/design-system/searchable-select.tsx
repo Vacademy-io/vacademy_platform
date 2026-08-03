@@ -30,6 +30,12 @@ interface SearchableSelectProps {
     className?: string;
     disabled?: boolean;
     triggerClassName?: string;
+    /**
+     * Render the list in a body portal (default). Pass false inside a Dialog or
+     * Sheet — react-remove-scroll blocks wheel/touch on portalled nodes, so a
+     * portalled list can't be scrolled from within a modal.
+     */
+    portal?: boolean;
 }
 
 export function SearchableSelect({
@@ -42,6 +48,7 @@ export function SearchableSelect({
     className,
     disabled = false,
     triggerClassName,
+    portal = true,
 }: SearchableSelectProps) {
     const [open, setOpen] = React.useState(false);
 
@@ -72,7 +79,11 @@ export function SearchableSelect({
                     <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+                portal={portal}
+            >
                 <Command>
                     <CommandInput placeholder={searchPlaceholder} />
                     <CommandList>

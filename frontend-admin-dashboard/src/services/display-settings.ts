@@ -689,6 +689,52 @@ function mergeDisplayWithDefaults(
             ?? defaults.workbench?.salesDashboardVisible,
     };
 
+    // Sub-Organizations (Channel Partners) module access. Explicit pass-through or
+    // the saved flag is dropped on every read and the toggle never reaches the
+    // sidebar / route gate. Defaults to false — opt-in per role.
+    merged.subOrganizations = {
+        moduleEnabled:
+            incoming?.subOrganizations?.moduleEnabled ??
+            defaults.subOrganizations?.moduleEnabled ??
+            false,
+        // Role-level channel-partner grant. Must survive this field-by-field merge or
+        // the picker's selection is dropped on every read AND the backend (which reads
+        // the same persisted blob) would silently stop granting access.
+        assignedSubOrgIds:
+            incoming?.subOrganizations?.assignedSubOrgIds ??
+            defaults.subOrganizations?.assignedSubOrgIds ??
+            [],
+        // Writes default OFF, reads default ON — granting the module alone yields a
+        // read-only view. Explicit pass-through per key or a saved flag is dropped on
+        // read, which would silently REVOKE a capability an admin had granted.
+        permissions: {
+            canCreate:
+                incoming?.subOrganizations?.permissions?.canCreate ??
+                defaults.subOrganizations?.permissions?.canCreate ??
+                false,
+            canEditConfig:
+                incoming?.subOrganizations?.permissions?.canEditConfig ??
+                defaults.subOrganizations?.permissions?.canEditConfig ??
+                false,
+            canManageTeam:
+                incoming?.subOrganizations?.permissions?.canManageTeam ??
+                defaults.subOrganizations?.permissions?.canManageTeam ??
+                false,
+            canViewFinance:
+                incoming?.subOrganizations?.permissions?.canViewFinance ??
+                defaults.subOrganizations?.permissions?.canViewFinance ??
+                true,
+            canManageFinance:
+                incoming?.subOrganizations?.permissions?.canManageFinance ??
+                defaults.subOrganizations?.permissions?.canManageFinance ??
+                false,
+            canExport:
+                incoming?.subOrganizations?.permissions?.canExport ??
+                defaults.subOrganizations?.permissions?.canExport ??
+                true,
+        },
+    };
+
     // Sidebar Categories
     const defSidebarCategories: NonNullable<DisplaySettingsData['sidebarCategories']> = [
         { id: 'CRM', visible: true, default: true, order: 0 },
@@ -975,6 +1021,38 @@ export async function saveDisplaySettings(
 // Synchronous accessor for router usage
 export function getDisplaySettingsFromCache(role: RoleKey): DisplaySettingsData | null {
     return readCache(role);
+}
+
+/**
+ * The RAW `ROLE_DISPLAY_SETTINGS` blob: `{ "<roleUuid>": DisplaySettingsData, … }`.
+ *
+ * getDisplaySettings() deliberately narrows to ONE role (the caller's), which is what
+ * every gating site wants. This returns the whole map instead, for the few surfaces that
+ * need to reason across roles at once — e.g. the Teams list showing which channel
+ * partners a person gets from each role they hold.
+ *
+ * Returns {} when the setting has never been saved. Unmerged on purpose: callers here
+ * read one specific field and must not have defaults filled in for roles that were never
+ * configured, which would misreport a grant that doesn't exist.
+ */
+export async function getAllRoleDisplaySettings(): Promise<Record<string, Partial<DisplaySettingsData>>> {
+    const instituteId = getInstituteId();
+    if (!instituteId) return {};
+    const apiSettingKey = 'ROLE_DISPLAY_SETTINGS';
+    try {
+        const res = await authenticatedAxiosInstance.get<{ data: any | null }>(
+            `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
+            { params: { instituteId, settingKey: apiSettingKey } }
+        );
+        const d = res.data as any;
+        // Same three response shapes getDisplaySettings() unwraps.
+        const blob =
+            d?.[apiSettingKey]?.data ?? d?.data?.[apiSettingKey]?.data ?? d?.data ?? null;
+        return blob && typeof blob === 'object' ? blob : {};
+    } catch {
+        // Never configured (510 / "Setting not found") or unreachable — no grants to report.
+        return {};
+    }
 }
 
 type CategoryId = 'CRM' | 'LMS' | 'AI';

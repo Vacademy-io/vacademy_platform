@@ -13,6 +13,9 @@ import {
     type SubOrgTeamPendingInstallments,
 } from '../-services/custom-team-services';
 import { fetchInstituteDashboardUsers } from '@/routes/dashboard/-services/dashboard-services';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getInstituteId } from '@/constants/helper';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import {
@@ -43,6 +46,12 @@ export interface CustomTeamsListProps {
 }
 
 export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsListProps = {}) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
+    // Only constrains role-granted users; admins and sub-org admins always pass.
+    // Institute-mode listing is unrelated to channel-partner permissions.
+    const canManageTeam = mode !== 'subOrg' || subOrgPermission('canManageTeam');
     const queryClient = useQueryClient();
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [accessModalUserId, setAccessModalUserId] = useState<string | null>(null);
@@ -173,7 +182,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
             toast.success(
                 vars.removeMode === 'SOFT'
                     ? 'Member scheduled for removal — access continues until the chosen date'
-                    : 'Member removed from sub-org'
+                    : `Member removed from ${subOrgTerm.toLowerCase()}`
             );
             setRemoveTarget(null);
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
@@ -230,10 +239,12 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                         </TabsList>
                     </Tabs>
                 ) : <div />}
-                <MyButton onClick={() => setIsAddMemberOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Member
-                </MyButton>
+                {canManageTeam && (
+                    <MyButton onClick={() => setIsAddMemberOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Member
+                    </MyButton>
+                )}
             </div>
 
             <div className="rounded-md border">
@@ -246,7 +257,9 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                             <TableHead>Roles</TableHead>
                             <TableHead>Status</TableHead>
                             {mode === 'subOrg' && <TableHead>Pending Dues</TableHead>}
-                            {mode === 'subOrg' && <TableHead className="text-right">Actions</TableHead>}
+                            {mode === 'subOrg' && canManageTeam && (
+                                <TableHead className="text-right">Actions</TableHead>
+                            )}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -362,8 +375,8 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                                 size="icon"
                                                 disabled={removeMutation.isPending}
                                                 className="h-8 w-8 text-neutral-500 hover:bg-danger-50 hover:text-danger-600"
-                                                aria-label="Remove from sub-org"
-                                                title="Remove from sub-org"
+                                                aria-label={`Remove from ${subOrgTerm.toLowerCase()}`}
+                                                title={`Remove from ${subOrgTerm.toLowerCase()}`}
                                                 onClick={() => {
                                                     const userId = member.id || member.userId;
                                                     if (!userId) return;

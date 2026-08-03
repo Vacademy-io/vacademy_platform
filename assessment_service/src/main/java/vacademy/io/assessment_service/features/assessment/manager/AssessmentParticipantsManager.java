@@ -811,7 +811,8 @@ public class AssessmentParticipantsManager {
                 .allSections(generateStudentReport(mappings, attemptId, buildQuestionOrderMap(mappings)))
                 .questionOverallDetailDto(questionOverallDetailDto)
                 .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
-                .responseFileId(extractResponseFileId(studentAttempt.get().getAttemptData()))
+                .responseFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "fileId"))
+                .reportFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "reportFileId"))
                 .build();
     }
 
@@ -842,7 +843,7 @@ public class AssessmentParticipantsManager {
                 .allSections(generateStudentReportFromContext(ctx, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
                 .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
-                .responseFileId(extractResponseFileId(studentAttempt.get().getAttemptData()))
+                .responseFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "fileId"))
                 .build();
     }
 
@@ -903,13 +904,14 @@ public class AssessmentParticipantsManager {
         return out;
     }
 
-    // The attempt stores the learner's uploaded answer file id inside its
-    // attemptData JSON (key "fileId"). Parse it defensively for "view submitted".
-    private String extractResponseFileId(String attemptData) {
+    // The attempt stores admin-attached file ids inside its attemptData JSON —
+    // "fileId" (the learner's submitted answer sheet, for "view submitted") and
+    // "reportFileId" (an uploaded result report). Parse defensively.
+    private String extractAttemptDataFileId(String attemptData, String key) {
         if (attemptData == null || attemptData.isBlank()) return null;
         try {
             Map<String, Object> jsonMap = new ObjectMapper().readValue(attemptData, Map.class);
-            Object fileId = jsonMap.get("fileId");
+            Object fileId = jsonMap.get(key);
             return fileId != null ? fileId.toString() : null;
         } catch (Exception e) {
             return null;

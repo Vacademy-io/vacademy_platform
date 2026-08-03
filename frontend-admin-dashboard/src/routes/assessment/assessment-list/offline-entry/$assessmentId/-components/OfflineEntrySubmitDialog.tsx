@@ -15,6 +15,8 @@ interface OfflineEntrySubmitDialogProps {
     scoringMode: ScoringMode;
     studentName: string;
     isSubmitting: boolean;
+    // Names of the PDFs that will be uploaded along with the marks.
+    attachmentNames?: string[];
     onConfirm: () => void;
 }
 
@@ -26,6 +28,7 @@ export const OfflineEntrySubmitDialog = ({
     scoringMode,
     studentName,
     isSubmitting,
+    attachmentNames = [],
     onConfirm,
 }: OfflineEntrySubmitDialogProps) => {
     return (
@@ -54,6 +57,20 @@ export const OfflineEntrySubmitDialog = ({
                         <p className="text-xs text-amber-600">
                             Unanswered questions will be scored as 0 marks.
                         </p>
+                    )}
+                    {attachmentNames.length > 0 && (
+                        <div>
+                            <p className="font-medium">
+                                Attachments ({attachmentNames.length})
+                            </p>
+                            <ul className="mt-1 list-inside list-disc text-xs text-neutral-500">
+                                {attachmentNames.map((name) => (
+                                    <li key={name} className="truncate">
+                                        {name}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     )}
                 </div>
                 <DialogFooter>

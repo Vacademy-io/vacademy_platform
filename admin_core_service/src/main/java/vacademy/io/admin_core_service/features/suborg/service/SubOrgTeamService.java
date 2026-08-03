@@ -23,9 +23,11 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Student
 import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAddRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAssignRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamListRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamMemberInstallmentsDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamRemoveRequestDTO;
@@ -98,6 +100,17 @@ public class SubOrgTeamService {
     // "FULL" fallback masked CREATE_COURSE etc. that the admin had explicitly granted.
     @Autowired
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    /** Enforces the per-role "Manage team members" capability. Only constrains callers
+     *  whose channel-partner access comes from a ROLE grant — admins and sub-org admins
+     *  are governed by their existing model and pass through untouched. */
+    @Autowired
+    private SubOrgAccessScopeService subOrgAccessScopeService;
+
+    /** Resolves a sub-org invite's package sessions when an assign request doesn't name them. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.service
+            .PackageSessionEnrollInviteToPaymentOptionService pslipoService;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -228,6 +241,8 @@ public class SubOrgTeamService {
         }
 
         ensureCallerCanAccessSubOrg(caller, request.getInstituteId(), request.getSubOrgId());
+        subOrgAccessScopeService.assertRolePermission(caller, request.getInstituteId(),
+                SubOrgAccessScopeService.PERM_MANAGE_TEAM);
 
         // For non-admin callers, reject system roles.
         boolean callerIsSystemAdmin = hasSystemRole(caller, request.getInstituteId(), "ADMIN", "TEACHER");
@@ -358,6 +373,120 @@ public class SubOrgTeamService {
     }
 
     /**
+     * Grant an EXISTING institute user access to a sub-org.
+     *
+     * <p>Why this exists next to {@link #addTeamMember}: that method creates a person. It
+     * posts to auth-service {@code /user-invitation/invite}, which can fire an invitation
+     * email — correct when adding somebody new, but wrong when an admin is just assigning
+     * a channel partner to a colleague who already has an account. This path writes only
+     * the FSPSSM rows, so assigning is silent and side-effect free.
+     *
+     * <p>Idempotent: package sessions the user already holds an ACTIVE SUB_ORG grant for
+     * are skipped, so re-assigning does not pile up duplicate rows.
+     *
+     * @return counts of what was newly granted (and what was already in place).
+     */
+    @Transactional
+    public Map<String, Object> assignExistingUser(SubOrgTeamAssignRequestDTO request, CustomUserDetails caller) {
+        if (request == null || !StringUtils.hasText(request.getSubOrgId())
+                || !StringUtils.hasText(request.getUserId())) {
+            throw new VacademyException("sub_org_id and user_id are required");
+        }
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+
+        ensureCallerCanAccessSubOrg(caller, request.getInstituteId(), request.getSubOrgId());
+        subOrgAccessScopeService.assertRolePermission(caller, request.getInstituteId(),
+                SubOrgAccessScopeService.PERM_MANAGE_TEAM);
+
+        List<String> psIds = (request.getPackageSessionIds() != null
+                && !request.getPackageSessionIds().isEmpty())
+                ? request.getPackageSessionIds()
+                : resolveSubOrgPackageSessionIds(request.getSubOrgId(), request.getInstituteId());
+        if (psIds.isEmpty()) {
+            throw new VacademyException(
+                    "This sub-org has no courses linked yet, so there is nothing to grant access to");
+        }
+
+        // Everything this user already has ACTIVE under THIS sub-org, so a repeat assign
+        // is a no-op rather than a second set of rows.
+        Set<String> existing = new HashSet<>(facultyMappingRepository
+                .findAccessIdsByUserIdAndSubOrgId(request.getUserId(), request.getSubOrgId(),
+                        List.of("ACTIVE")));
+
+        String accessPermission = subOrgSubscriptionService
+                .resolveAdminPermissionCsv(request.getSubOrgId(), request.getInstituteId());
+
+        int psGranted = 0;
+        int inviteGranted = 0;
+        int skipped = 0;
+        Set<String> grantedInviteIds = new HashSet<>();
+        for (String psId : psIds) {
+            if (!StringUtils.hasText(psId)) continue;
+            if (existing.contains(psId)) {
+                skipped++;
+            } else {
+                facultyMappingRepository.save(
+                        buildSubOrgMapping(request, "PACKAGE_SESSION", psId, psId, accessPermission));
+                psGranted++;
+            }
+            // Mirror the invite-scoped rows addTeamMember creates, so an assigned member
+            // sees the same sub-org learners their admin does.
+            for (String inviteId : enrollInviteRepository
+                    .findInviteIdsForSubOrgAndPackageSession(request.getSubOrgId(), psId)) {
+                if (!grantedInviteIds.add(inviteId)) continue;
+                if (existing.contains(inviteId)) {
+                    skipped++;
+                    continue;
+                }
+                facultyMappingRepository.save(
+                        buildSubOrgMapping(request, "ENROLL_INVITE", inviteId, null, accessPermission));
+                inviteGranted++;
+            }
+        }
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("user_id", request.getUserId());
+        result.put("sub_org_id", request.getSubOrgId());
+        result.put("granted_count", psGranted + inviteGranted);
+        result.put("ps_granted", psGranted);
+        result.put("invite_granted", inviteGranted);
+        result.put("already_had", skipped);
+        return result;
+    }
+
+    private FacultySubjectPackageSessionMapping buildSubOrgMapping(
+            SubOrgTeamAssignRequestDTO request, String accessType, String accessId,
+            String packageSessionId, String accessPermission) {
+        FacultySubjectPackageSessionMapping m = new FacultySubjectPackageSessionMapping();
+        m.setUserId(request.getUserId());
+        m.setPackageSessionId(packageSessionId);
+        m.setStatus("ACTIVE");
+        m.setUserType("ROLE");
+        m.setAccessType(accessType);
+        m.setAccessId(accessId);
+        m.setAccessPermission(accessPermission);
+        m.setLinkageType("SUB_ORG");
+        m.setSuborgId(request.getSubOrgId());
+        return m;
+    }
+
+    /** Package sessions reachable through a sub-org's ACTIVE invites. */
+    private List<String> resolveSubOrgPackageSessionIds(String subOrgId, String instituteId) {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        for (EnrollInvite invite : enrollInviteRepository.findBySubOrgIdAndInstituteId(
+                subOrgId, instituteId, List.of("ACTIVE"))) {
+            for (var link : pslipoService.findByInvite(invite)) {
+                if (link.getPackageSession() != null && link.getPackageSession().getId() != null) {
+                    ids.add(link.getPackageSession().getId());
+                }
+            }
+        }
+        return new ArrayList<>(ids);
+    }
+
+    /**
      * Remove a team member from a sub-org. Marks all SUB_ORG-linked FSPSSM entries for
      * (user_id, sub_org_id) as INACTIVE. Other sub-orgs the user belongs to are untouched.
      */
@@ -371,6 +500,8 @@ public class SubOrgTeamService {
         }
 
         ensureCallerCanAccessSubOrg(caller, request.getInstituteId(), request.getSubOrgId());
+        subOrgAccessScopeService.assertRolePermission(caller, request.getInstituteId(),
+                SubOrgAccessScopeService.PERM_MANAGE_TEAM);
 
         List<FacultySubjectPackageSessionMapping> mappings = facultyMappingRepository
                 .findByUserIdAndSubOrgIdAndLinkage(request.getUserId(), request.getSubOrgId());

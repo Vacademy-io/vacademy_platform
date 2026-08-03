@@ -28,7 +28,10 @@ import {
   type CustomRole,
   type AccessibleSubOrg,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getAllRoleDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -126,12 +129,46 @@ function RouteComponent() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // userId -> the sub-orgs that user is linked to (for the column).
+  // userId -> the sub-orgs that user is linked to individually (FSPSSM rows).
   const linksMap = useMemo(() => {
     const m = new Map<string, AccessibleSubOrg[]>();
     (userSubOrgLinks ?? []).forEach((link) => m.set(link.user_id, link.sub_orgs));
     return m;
   }, [userSubOrgLinks]);
+
+  // Sub-orgs granted by a ROLE (Settings -> Display Settings -> <role> -> Channel
+  // Partners). Without this the column reports "-" for someone who genuinely has
+  // access through their role, which reads as "not assigned" and sends admins
+  // hunting through Team tabs for a link that was never meant to exist.
+  const { data: roleDisplaySettings } = useQuery({
+    queryKey: ['ROLE_DISPLAY_SETTINGS_ALL', instituteId],
+    queryFn: () => getAllRoleDisplaySettings(),
+    enabled: !!instituteId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // roleId -> sub-org ids that role grants.
+  const roleGrantMap = useMemo(() => {
+    const m = new Map<string, string[]>();
+    Object.entries(roleDisplaySettings ?? {}).forEach(([roleId, cfg]) => {
+      const ids = cfg?.subOrganizations?.assignedSubOrgIds;
+      if (Array.isArray(ids) && ids.length > 0) m.set(roleId, ids);
+    });
+    return m;
+  }, [roleDisplaySettings]);
+
+  // sub-org id -> display name, for turning granted ids into chips.
+  // The Assign action is only meaningful where channel partners exist and the viewer
+  // may manage team membership. subOrgPermission passes admins and sub-org admins.
+  const subOrgTermPlural = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg);
+  const canAssignSubOrgs =
+    (accessibleSubOrgs ?? []).length > 0 && subOrgPermission('canManageTeam');
+
+  const subOrgNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    (accessibleSubOrgs ?? []).forEach((so) => m.set(so.id, so.name));
+    return m;
+  }, [accessibleSubOrgs]);
 
   // Filter dropdown options.
   const subOrgFilterList = useMemo(
@@ -248,6 +285,13 @@ function RouteComponent() {
       // institute-wide links map (covers all pages → server-side pagination stays correct)
       // and pass them as user_ids. The backend ANDs user_ids with roles/status and returns an
       // empty page for an empty list, so a zero-match selection needs no special handling here.
+      //
+      // Scope note: this matches on INDIVIDUAL linkage (FSPSSM) only — it does not pick up
+      // people who reach a sub-org through a role grant (Display Settings → <role> →
+      // Channel Partners), which the Sub-Orgs column does show. Covering both would need
+      // "linked to X OR holding a role that grants X", and the endpoint ANDs user_ids with
+      // roles rather than ORing them, so it needs backend support first. Unchanged from
+      // before role grants existed.
       const selectedSubOrgIds = (selectedFilter.subOrgs ?? []).map((s) => s.id);
       let userIds: string[] | undefined;
       if (selectedSubOrgIds.length > 0) {
@@ -514,20 +558,49 @@ function RouteComponent() {
     {
       id: 'subOrgs',
       header: 'Sub-Orgs',
-      size: 200,
+      size: 220,
       cell: ({ row }) => {
-        const subOrgs = linksMap.get(row.original.id) ?? [];
-        if (subOrgs.length === 0) {
+        // Access comes from two places and the column has to reflect both, or an
+        // admin can't tell "no access" from "access via role":
+        //   - individual: a SUB_ORG-linked FSPSSM row (added from a partner's Team tab)
+        //   - role:       Display Settings -> <role> -> Channel Partners
+        // Same union the backend applies. Individual wins the label if both grant it.
+        const direct = linksMap.get(row.original.id) ?? [];
+        const seen = new Set(direct.map((s) => s.id));
+
+        const viaRole: { id: string; name: string }[] = [];
+        row.original.roles
+          .filter((role) => role.institute_id === instituteId)
+          .forEach((role) => {
+            (roleGrantMap.get(role.role_id ?? '') ?? []).forEach((id) => {
+              if (seen.has(id)) return;
+              seen.add(id);
+              viaRole.push({ id, name: subOrgNameById.get(id) ?? id });
+            });
+          });
+
+        if (direct.length === 0 && viaRole.length === 0) {
           return <div className="text-sm text-neutral-400">-</div>;
         }
         return (
           <div className="flex flex-wrap gap-1">
-            {subOrgs.map((subOrg) => (
+            {direct.map((subOrg) => (
               <span
                 key={subOrg.id}
                 className="rounded-full bg-info-50 px-2 py-0.5 text-xs text-info-600"
+                title="Assigned to this person"
               >
                 {subOrg.name}
+              </span>
+            ))}
+            {viaRole.map((subOrg) => (
+              <span
+                key={subOrg.id}
+                className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600"
+                title="Granted by this person's role"
+              >
+                {subOrg.name}
+                <span className="ml-1 text-neutral-400">via role</span>
               </span>
             ))}
           </div>
@@ -547,6 +620,16 @@ function RouteComponent() {
               user={userEntry}
               refetchData={handleRefetchData}
               availableRoles={allRoles}
+              subOrgAssign={
+                canAssignSubOrgs
+                  ? {
+                      label: `Assign ${subOrgTermPlural.toLowerCase()}`,
+                      // Individual links only. Role-derived access isn't editable
+                      // per person — it's changed on the role in Display Settings.
+                      currentSubOrgIds: (linksMap.get(member.id) ?? []).map((s) => s.id),
+                    }
+                  : undefined
+              }
             />
           );
         }

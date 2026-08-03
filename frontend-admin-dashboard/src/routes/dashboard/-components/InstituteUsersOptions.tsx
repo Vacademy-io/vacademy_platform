@@ -22,6 +22,7 @@ import {
 } from '../-services/dashboard-services';
 import { toast } from 'sonner';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
+import AssignSubOrgsDialog from '@/routes/manage-institute/teams/-components/assign-sub-orgs-dialog';
 export const inviteUsersSchema = z.object({
     roleType: z.array(z.string()).min(1, 'At least one role type is required'),
 });
@@ -342,10 +343,17 @@ const InstituteUsersOptions = ({
     user,
     refetchData,
     availableRoles,
+    subOrgAssign,
 }: {
     user: UserRolesDataEntry;
     refetchData: () => void;
     availableRoles?: { id: string; name: string }[];
+    /**
+     * Opt-in channel-partner assignment. Absent on the dashboard and vimotion team
+     * surfaces, which share this menu but have no partner context — passing it only
+     * from the institute Teams list keeps those untouched.
+     */
+    subOrgAssign?: { label: string; currentSubOrgIds: string[] };
 }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -377,6 +385,13 @@ const InstituteUsersOptions = ({
                             Enable user
                         </DropdownMenuItem>
                     )}
+                    {subOrgAssign && (
+                        <DropdownMenuItem
+                            onClick={() => handleDropdownMenuClick('Assign sub-orgs')}
+                        >
+                            {subOrgAssign.label}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => handleDropdownMenuClick('Delete user')}>
                         Delete user
                     </DropdownMenuItem>
@@ -401,6 +416,15 @@ const InstituteUsersOptions = ({
                 {selectedOption === 'Enable user' && (
                     <EnableUserComponent
                         student={user}
+                        onClose={() => setOpenDialog(false)}
+                        refetchData={refetchData}
+                    />
+                )}
+                {selectedOption === 'Assign sub-orgs' && subOrgAssign && (
+                    <AssignSubOrgsDialog
+                        userId={user.id}
+                        userName={user.full_name}
+                        currentSubOrgIds={subOrgAssign.currentSubOrgIds}
                         onClose={() => setOpenDialog(false)}
                         refetchData={refetchData}
                     />

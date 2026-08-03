@@ -70,6 +70,24 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                         @Param("roleNames") List<String> roleNames,
                         @Param("statuses") List<String> statuses);
 
+        /**
+         * ACTIVE role UUIDs a user holds in one institute.
+         *
+         * <p>Needed because role-keyed institute settings (e.g. ROLE_DISPLAY_SETTINGS) are
+         * keyed by role UUID, while the JWT only carries role NAMES — so a request-time
+         * lookup of "which role config applies to this caller" has to resolve ids here.
+         */
+        @Query("""
+                            SELECT ur.role.id FROM UserRole ur
+                            WHERE ur.user.id = :userId
+                              AND ur.instituteId = :instituteId
+                              AND ur.status = 'ACTIVE'
+                              AND ur.role.id IS NOT NULL
+                        """)
+        List<String> findActiveRoleIdsByUserIdAndInstituteId(
+                        @Param("userId") String userId,
+                        @Param("instituteId") String instituteId);
+
         @Query("""
                             SELECT CASE WHEN COUNT(u) > 0 THEN TRUE ELSE FALSE END
                             FROM User u

@@ -39,6 +39,9 @@ import vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRe
 @Slf4j
 public class SlideService {
 
+    /** Copy/move destination placement; anything else means append to the end. */
+    private static final String SLIDE_POSITION_TOP = "TOP";
+
     private final SlideRepository slideRepository;
     private final ChapterRepository chapterRepository;
     private final ChapterToSlidesRepository chapterToSlidesRepository;
@@ -349,19 +352,25 @@ public class SlideService {
             String newModuleId,
             String newSubjectId,
             String newPackageSessionId,
+            String requestedStatus,
+            String position,
             CustomUserDetails user) {
         Slide slide = getSlideById(slideId);
         Chapter chapter = getChapterById(newChapterId);
 
         Slide newSlide = copySlideByType(slide);
 
-        // Status of the copied slide is driven by the institute's
+        // Status of the copied slide: the caller's explicit choice wins (the
+        // Copy-to dialog lets the admin pick Published/Draft per copy). With no
+        // choice sent, fall back to the institute's
         // COURSE_SETTING.copiedSlideStatus (KEEP_DRAFT | INHERIT_SOURCE |
-        // ALWAYS_PUBLISHED). Default/unset = KEEP_DRAFT, i.e. DRAFT — identical to
-        // the previous hardcoded behaviour, so nothing changes unless an institute
-        // opts in from Settings. copySlideByType creates the slide as DRAFT, so we
-        // only override (and re-save) when the resolved status differs.
-        String copiedStatus = copiedSlideStatusResolver.resolveForCopy(newPackageSessionId, slide.getStatus());
+        // ALWAYS_PUBLISHED); default/unset = KEEP_DRAFT, i.e. the original
+        // behaviour. copySlideByType creates the slide as DRAFT, so we only
+        // override (and re-save) when the resolved status differs.
+        String requested = normalizeRequestedSlideStatus(requestedStatus);
+        String copiedStatus = requested != null
+                ? requested
+                : copiedSlideStatusResolver.resolveForCopy(newPackageSessionId, slide.getStatus());
         if (!copiedStatus.equalsIgnoreCase(newSlide.getStatus())) {
             newSlide.setStatus(copiedStatus);
             if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(copiedStatus)) {
@@ -370,7 +379,8 @@ public class SlideService {
             slideRepository.save(newSlide);
         }
 
-        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, copiedStatus));
+        chapterToSlidesRepository
+                .save(new ChapterToSlides(chapter, newSlide, resolveSlideOrder(newChapterId, position), copiedStatus));
 
         // A copied ASSESSMENT slide keeps the same assessmentId but lands in a new
         // batch. Register that assessment to the target batch so it shows up for
@@ -386,6 +396,45 @@ public class SlideService {
                 newChapterId, newModuleId, newSubjectId, newPackageSessionId);
 
         return "Slide copied successfully.";
+    }
+
+    /**
+     * Only PUBLISHED/DRAFT may be forced by a copy/move caller. Anything else
+     * (null, blank, DELETED, a typo) means "no explicit choice" and leaves the
+     * existing institute-setting / preserve-status behaviour in charge.
+     */
+    private String normalizeRequestedSlideStatus(String requestedStatus) {
+        if (!StringUtils.hasText(requestedStatus)) {
+            return null;
+        }
+        String value = requestedStatus.trim();
+        if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(value)
+                || SlideStatus.DRAFT.name().equalsIgnoreCase(value)) {
+            return value.toUpperCase();
+        }
+        return null;
+    }
+
+    /**
+     * Where a copied/moved slide lands inside the destination chapter.
+     *
+     * <p>{@code TOP} pushes every existing slide down one slot (normalising any
+     * NULL orders on the way — those sort first today and would otherwise stay
+     * above the slide the admin explicitly put at the top). Anything else,
+     * including no value at all, appends to the end, which is the sane default:
+     * before this, copies were written with a NULL order and silently jumped to
+     * the top of the chapter.
+     */
+    private Integer resolveSlideOrder(String chapterId, String position) {
+        if (StringUtils.hasText(position) && SLIDE_POSITION_TOP.equalsIgnoreCase(position.trim())) {
+            List<ChapterToSlides> existing = chapterToSlidesRepository.findByChapterId(chapterId);
+            existing.forEach(mapping -> mapping
+                    .setSlideOrder(mapping.getSlideOrder() == null ? 1 : mapping.getSlideOrder() + 1));
+            chapterToSlidesRepository.saveAll(existing);
+            return 0;
+        }
+        Integer maxOrder = chapterToSlidesRepository.findMaxSlideOrderByChapterId(chapterId);
+        return maxOrder == null ? 0 : maxOrder + 1;
     }
 
     /**
@@ -463,12 +512,27 @@ public class SlideService {
             String newModuleId,
             String newSubjectId,
             String newPackageSessionId,
+            String requestedStatus,
+            String position,
             CustomUserDetails user) {
         ChapterToSlides existingMapping = getChapterToSlides(oldChapterId, slideId);
         Chapter newChapter = getChapterById(newChapterId);
 
-        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(), null,
-                existingMapping.getStatus());
+        // A move keeps the slide's own status unless the caller asks for one
+        // (the Move-to dialog offers Published/Draft, same as Copy-to).
+        String requested = normalizeRequestedSlideStatus(requestedStatus);
+        String mappingStatus = requested != null ? requested : existingMapping.getStatus();
+        Slide movedSlide = existingMapping.getSlide();
+        if (requested != null && movedSlide != null && !requested.equalsIgnoreCase(movedSlide.getStatus())) {
+            movedSlide.setStatus(requested);
+            if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(requested)) {
+                movedSlide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+            }
+            slideRepository.save(movedSlide);
+        }
+
+        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(),
+                resolveSlideOrder(newChapterId, position), mappingStatus);
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);

@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { ChatCircle, CheckCircle, GoogleLogo, NotePencil, UsersThree } from '@phosphor-icons/react';
+import {
+    CalendarCheck,
+    ChatCircle,
+    CheckCircle,
+    Copy,
+    GoogleLogo,
+    LinkSimple,
+    NotePencil,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { createDirectConversation } from '@/services/chat/chatApi';
 import { useMyMentees, useMyMentorProfile } from '../-hooks/use-mentorship';
 import { initiateMyGoogle } from '../-services/mentorship-service';
@@ -56,6 +66,20 @@ function MyMentorshipPage() {
         } catch {
             toast.error("Couldn't start Google connect. Please try again.");
             setConnecting(false);
+        }
+    };
+
+    const myBookingUrl = profile?.booking_page_slug
+        ? `${BASE_URL_LEARNER_DASHBOARD}/booking-response?instituteId=${instituteId}&slug=${profile.booking_page_slug}`
+        : null;
+
+    const copyMyBookingLink = async () => {
+        if (!myBookingUrl) return;
+        try {
+            await navigator.clipboard.writeText(myBookingUrl);
+            toast.success('Booking link copied');
+        } catch {
+            toast.error('Could not copy link');
         }
     };
 
@@ -111,6 +135,52 @@ function MyMentorshipPage() {
                         >
                             {connecting ? 'Redirecting…' : 'Connect Google'}
                         </MyButton>
+                    )}
+                </div>
+            )}
+
+            {profile && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <CalendarCheck size={20} weight="bold" className="text-primary-600" />
+                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-body font-medium text-neutral-700">
+                                Your 1:1 booking link
+                            </span>
+                            <span className="text-caption text-neutral-500">
+                                {myBookingUrl
+                                    ? 'Share this link so learners can book a session with you.'
+                                    : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
+                            </span>
+                            {myBookingUrl && (
+                                <span className="mt-1 flex items-center gap-1 text-caption text-neutral-400">
+                                    <LinkSimple size={12} />
+                                    <span className="max-w-sm truncate">{myBookingUrl}</span>
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    {myBookingUrl && (
+                        <div className="flex items-center gap-3">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={copyMyBookingLink}
+                            >
+                                <Copy size={16} /> Copy link
+                            </MyButton>
+                            <a
+                                href={myBookingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                            >
+                                Open
+                            </a>
+                        </div>
                     )}
                 </div>
             )}

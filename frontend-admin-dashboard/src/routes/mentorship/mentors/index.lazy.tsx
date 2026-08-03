@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { CalendarCheck, CalendarPlus, Plus, Trash, UsersThree } from '@phosphor-icons/react';
+import {
+    CalendarCheck,
+    CalendarPlus,
+    Copy,
+    Plus,
+    Trash,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { useDeleteMentor, useMentorDashboard, useProvisionBookingPage } from '../-hooks/use-mentorship';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
@@ -68,6 +76,19 @@ function MentorsPage() {
             toast.error('Failed to set up booking page');
         } finally {
             setBookingId(null);
+        }
+    };
+
+    /** Public 1:1 booking link an admin can share for this mentor. */
+    const bookingUrl = (m: MentorDTO): string =>
+        `${BASE_URL_LEARNER_DASHBOARD}/booking-response?instituteId=${instituteId}&slug=${m.booking_page_slug}`;
+
+    const copyBookingLink = async (m: MentorDTO) => {
+        try {
+            await navigator.clipboard.writeText(bookingUrl(m));
+            toast.success('Booking link copied');
+        } catch {
+            toast.error('Could not copy link');
         }
     };
 
@@ -134,9 +155,27 @@ function MentorsPage() {
                                     {m.assigned_student_count ?? 0} students
                                 </span>
                                 {m.booking_page_slug ? (
-                                    <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
-                                        <CalendarCheck size={14} weight="bold" /> Booking on
-                                    </span>
+                                    <>
+                                        <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                                            <CalendarCheck size={14} weight="bold" /> Booking on
+                                        </span>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="secondary"
+                                            scale="small"
+                                            onClick={() => copyBookingLink(m)}
+                                        >
+                                            <Copy size={16} /> Copy link
+                                        </MyButton>
+                                        <a
+                                            href={bookingUrl(m)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                        >
+                                            Open
+                                        </a>
+                                    </>
                                 ) : (
                                     <MyButton
                                         type="button"

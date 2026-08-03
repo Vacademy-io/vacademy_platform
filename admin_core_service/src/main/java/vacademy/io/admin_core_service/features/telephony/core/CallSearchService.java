@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -54,12 +55,20 @@ public class CallSearchService {
 
     private static final int DEFAULT_RANGE_DAYS = 30;
     private static final int MAX_PAGE_SIZE = 200;
+
+    /** "DEAD_AIR,TTS_WEDGE" -> ["DEAD_AIR","TTS_WEDGE"]; null/blank -> null (NOT []). */
+    private static List<String> splitDiagFaults(String csv) {
+        if (csv == null || csv.isBlank()) return null;
+        return Arrays.stream(csv.split(","))
+                .map(String::trim).filter(t -> !t.isEmpty()).toList();
+    }
     private static final ZoneId FALLBACK_ZONE = ZoneId.of("Asia/Kolkata");
 
     /** Per-row AI metadata (latest result wins on webhook dupes), joined laterally. */
     private static final String AI_LATERAL = """
             LEFT JOIN LATERAL (
-                SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at
+                SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
+                       r.diag_health AS diag_health, r.diag_faults AS diag_faults
                 FROM ai_call_result r
                 WHERE r.call_log_id = tcl.id
                 ORDER BY r.received_at DESC NULLS LAST
@@ -240,6 +249,8 @@ public class CallSearchService {
                    tcl.ivr_selection,
                    ar.parent_name AS lead_name,
                    acr.ai_disposition AS ai_disposition,
+                   acr.diag_health AS diag_health,
+                   acr.diag_faults AS diag_faults,
                    CASE WHEN (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') THEN 'AI' ELSE 'HUMAN' END AS call_type,
                    COALESCE(tcl.callback_at, acr.ai_callback_at AT TIME ZONE 'UTC') AS callback_at_eff
             """;
@@ -271,6 +282,12 @@ public class CallSearchService {
                 .dispositionNotes(rs.getString("disposition_notes"))
                 .dispositionedAt(rs.getTimestamp("dispositioned_at"))
                 .aiDisposition(rs.getString("ai_disposition"))
+                // Health rides the LIST, not just the detail: the row cell reads it
+                // synchronously, so without it a row can never show a verdict and can
+                // never become "detailable" either — the dot only appeared on rows some
+                // OTHER feature had already fetched detail for.
+                .diagHealth(rs.getString("diag_health"))
+                .diagFaults(splitDiagFaults(rs.getString("diag_faults")))
                 .callbackAt(rs.getTimestamp("callback_at_eff"))
                 .createdAt(rs.getTimestamp("created_at"))
                 .build();

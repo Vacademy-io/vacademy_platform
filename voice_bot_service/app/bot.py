@@ -25,7 +25,7 @@ import logging
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -58,9 +58,10 @@ from pipecat.audio.interruptions.min_words_interruption_strategy import (
 
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
-                        apply_decision, stall_recovery_still_needed,
+                        apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
-                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
+                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
+                        HEARING_FAILED, ARM_STOP)
 from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
@@ -304,6 +305,15 @@ class SentinelGate(FrameProcessor):
         # Injected by run_bot: disarms the audio-stall stamp when a reply dies
         # before playout (see the InterruptionFrame branch).
         self._on_interrupted_cb = None
+        # Per-response end latch; promoted to outcome.end_requested only when the
+        # response ENDS, so a marker seen mid-stream cannot make a later,
+        # unrelated response close the call.
+        self._end_this_response = False
+        # True once the line is genuinely closing. After this an end intent can no
+        # longer be revoked.
+        self._stop_armed = False
+        self._defer_stop_cb = None
+        self._clear_end_pending_cb = None
 
     def set_task(self, task: PipelineTask):
         self._task = task
@@ -313,6 +323,30 @@ class SentinelGate(FrameProcessor):
 
     def set_on_interrupted(self, cb):
         self._on_interrupted_cb = cb
+
+    def set_end_hooks(self, defer_stop, clear_end_pending):
+        """Wire the revocable close: defer_stop starts the grace, and
+        clear_end_pending cancels it when the caller re-engages."""
+        self._defer_stop_cb = defer_stop
+        self._clear_end_pending_cb = clear_end_pending
+
+    def _defer_stop(self) -> None:
+        if self._defer_stop_cb is not None:
+            try:
+                self._defer_stop_cb()
+            except Exception:
+                logger.exception("sentinel: defer-stop hook failed")
+        elif self._task is not None:
+            # No hook wired (older caller): fall back to the old immediate close
+            # rather than never closing at all.
+            self._stop_armed = True
+
+    def _clear_end_pending(self) -> None:
+        if self._clear_end_pending_cb is not None:
+            try:
+                self._clear_end_pending_cb()
+            except Exception:
+                pass
 
     def _on_interrupted(self) -> None:
         if self._on_interrupted_cb is not None:
@@ -343,6 +377,16 @@ class SentinelGate(FrameProcessor):
             return
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            # A bot generating a fresh reply is NOT closing. Live call ee8e2168:
+            # the bot said goodbye, the caller re-engaged with "Yes, I can", the
+            # bot asked "May I know a convenient date and time?" — and the stale
+            # call-scoped end latch dropped the line before they could answer,
+            # losing the booking. Revoke while the line is still open.
+            if self._outcome.end_requested and not self._stop_armed:
+                self._outcome.end_requested = False
+                self._clear_end_pending()
+                logger.info("sentinel: end intent superseded by a new response corr=%s",
+                            self._outcome.corr)
             # A NEW response begins — any expected orphan End never arrived (or
             # was consumed upstream); swallowing this response's End instead
             # would corrupt the aggregator bracket the OTHER way.
@@ -358,7 +402,10 @@ class SentinelGate(FrameProcessor):
                 self._outcome.transfer_requested = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
             if END_MARKER in self._buffer:
-                self._outcome.end_requested = True
+                # PER-RESPONSE latch. Promoted to outcome.end_requested only when
+                # this response ENDS — a marker seen mid-stream must not make a
+                # later, unrelated response close the call.
+                self._end_this_response = True
                 self._buffer = self._buffer.replace(END_MARKER, "")
             emit, self._buffer = self._split_safe(self._buffer)
             if emit:
@@ -379,8 +426,11 @@ class SentinelGate(FrameProcessor):
                     # ending instead hung up on exactly the callers who asked for one.
                     self._outcome.transfer_requested = True
                 elif self._buffer.startswith("<<"):
-                    self._outcome.end_requested = True
+                    self._end_this_response = True
                 self._buffer = ""
+            if self._end_this_response:
+                self._outcome.end_requested = True
+                self._end_this_response = False
             self._response_active = False
             self._flush_utterance()
             if self._swallow_next_end:
@@ -440,14 +490,23 @@ class SentinelGate(FrameProcessor):
                     self._flush_utterance()
                     await self.push_frame(TTSSpeakFrame(self._transfer_fail_closing), direction)
                     return
-            if (self._outcome.end_requested or self._outcome.transfer_requested) and self._task:
-                logger.info("sentinel: stopping call corr=%s (transfer=%s end=%s)",
-                            self._outcome.corr, self._outcome.transfer_requested,
-                            self._outcome.end_requested)
+            if self._outcome.transfer_requested and self._task:
+                # Transfer closes immediately — the caller is waiting to be put
+                # through, and a grace period here is dead air.
+                logger.info("sentinel: stopping call corr=%s (transfer=True)",
+                            self._outcome.corr)
+                self._stop_armed = True
                 if self._arm_stop is not None:
                     await self._arm_stop()
                 else:
                     await self._task.stop_when_done()
+            elif self._outcome.end_requested and self._task and not self._stop_armed:
+                # The farewell has finished playing. Hold the line open briefly:
+                # the watchdog closes it after end_grace_secs, and ANY real word
+                # from the caller cancels the close instead (on_transcript).
+                logger.info("sentinel: farewell played — closing after grace corr=%s",
+                            self._outcome.corr)
+                self._defer_stop()
             return
 
         await self.push_frame(frame, direction)
@@ -532,8 +591,24 @@ _STT_LANGS = {
     "telugu": ("te-IN", "Telugu"),
     "kannada": ("kn-IN", "Kannada"),
     "malayalam": ("ml-IN", "Malayalam"),
-    "odia": ("or-IN", "Odia"),
+    # Sarvam spells Odia "od-IN", NOT the ISO "or-IN" — verified against the
+    # SDK's own Literal. The ISO form is rejected, so Odia agents failed.
+    "odia": ("od-IN", "Odia"),
+    "oriya": ("od-IN", "Odia"),
 }
+
+
+def _agent_stt_mode(agent) -> str:
+    """Sarvam saaras `mode` for this agent.
+
+    codemix keeps a Hinglish caller's code-switched words as they were spoken.
+    The alternatives both lose information: transcribe with a hi-IN pin turned
+    ENGLISH callers into Devanagari ("इफ यू रिकॉर्ड योर नेम"), and translate
+    forces everyone into English so the model can no longer tell what language
+    the caller actually used.
+    """
+    raw = (agent.get("language") or "").strip().lower()
+    return "codemix" if raw in ("hinglish", "hindi-english", "hi-en") else "transcribe"
 
 
 def _agent_language(agent) -> tuple[str | None, str]:
@@ -608,6 +683,7 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     if not text or "{{" not in text:
         return text
     lead_name = context.get("leadName")
+    agent_cfg = context.get("agent") or {}
     values = {
         "lead_name": lead_name or "aap",
         "name": lead_name or "aap",
@@ -618,6 +694,28 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
         "lead_source_line": "",
         "booked_slot": _lead_field(context, "slot", "booked slot", "demo slot") or "",
     }
+    # Date/time placeholders. A live agent's prompt used {{day}}, {{date}} and
+    # {{time}} and every one rendered EMPTY (seen in a real call's diagnostics:
+    # promptUnfilled ["day","date","time"]) — so the model was handed blanks
+    # exactly where it needed to know "now", which is what the booking flow
+    # depends on to resolve "tomorrow". Same tz rule as _now_line: the agent's
+    # configured timezone, else Asia/Kolkata.
+    _tz = (agent_cfg.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        _now = datetime.now(ZoneInfo(_tz))
+    except Exception:
+        _now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    values.update({
+        "day": _now.strftime("%A"),
+        "today": _now.strftime("%A, %-d %B %Y"),
+        "date": _now.strftime("%-d %B %Y"),
+        "time": _now.strftime("%-I:%M %p"),
+        "datetime": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "now": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "tomorrow": (_now + timedelta(days=1)).strftime("%A, %-d %B %Y"),
+        "year": _now.strftime("%Y"),
+        "month": _now.strftime("%B"),
+    })
 
     def repl(m: "re.Match[str]") -> str:
         key = m.group(1).strip().lower()
@@ -1092,6 +1190,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["t"] = time.time()
 
     def set_bot_speaking(speaking: bool):
+        if speaking:
+            # Audio arrived after all: the reply was NOT lost. Clear the suspicion.
+            flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             # Gap since either side last spoke = what the CALLER experienced as
             # silence. Measured on speech START only, so it is per-turn not
@@ -1144,6 +1245,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                      "great day!" if eng else
                      "Lagta hai aapki awaaz nahi aa rahi — main baad mein sampark karti hoon. "
                      "Dhanyavaad, aapka din shubh ho!")
+    # Honest, non-blaming, and it hands the caller a real next step instead of a
+    # fourth apology (live call 393859bc).
+    cant_hear_closing = (
+        "I'm really sorry — I can hear you speaking but the line isn't carrying "
+        "your words to me. Rather than keep asking you to repeat yourself, let me "
+        "have someone from our team call you back. Thank you for your patience!"
+        if eng else
+        "Maaf kijiye — aap bol rahe hain lekin aapki awaaz mujh tak theek se nahi "
+        "pahunch rahi. Baar baar poochhne se accha, main hamari team se aapko "
+        "call back karwati hoon. Aapke sabr ke liye dhanyavaad!")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
@@ -1153,7 +1264,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
     # a wrong name — the #1 way the agent "forgets" its name mid-call.
     stt_bias = (agent.get("name") or "").strip() or None
-    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
+                    mode=_agent_stt_mode(agent))
     # Voiced-but-wordless caller turns ("hmm"/"okay" that STT finalizes EMPTY)
     # become a minimal synthetic backchannel so the conversation continues instead
     # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
@@ -1198,6 +1310,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def on_transcript():
         flags["transcript_t"] = time.time()
+        # The caller re-engaged after our goodbye — do NOT hang up on them. Live
+        # ee8e2168: "Yes, I can" arrived after the farewell and the line still
+        # dropped mid-question, losing a demo booking.
+        if flags["end_pending_since"] != 0.0:
+            flags["end_pending_since"] = 0.0
+            outcome.end_requested = False
+            logger.info("sentinel: caller re-engaged after farewell — call continues corr=%s", corr)
+        # We heard them: any run of unheard utterances is over.
+        flags["deaf_streak"] = 0
         # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
         flags["orphan_used"] = False
         flags["nudged"] = False
@@ -1360,9 +1481,24 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # the only evidence that a reply never played. The stamp keeps its pre-diff
     # semantics; the counter feeds the diagnostics panel.
     def _note_killed_before_playout():
+        # Stamp a SUSPICION, do not count it yet. 95% of these replies go on to
+        # play within ~0.2s (pipecat only tears the TTS socket down when the bot
+        # is already speaking), so counting here made the metric — and the panel
+        # verdict built on it — almost entirely false. unplayed_confirmed() turns
+        # a suspicion into a fact only if the silence outlasts the window.
         if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
-            diag.bump("replies_never_played")
+            if flags["unplayed_pending_t"] == 0.0:
+                flags["unplayed_pending_t"] = time.time()
     sentinel.set_on_interrupted(_note_killed_before_playout)
+
+    def _defer_stop():
+        if flags["end_pending_since"] == 0.0:
+            flags["end_pending_since"] = time.time()
+
+    def _clear_end_pending():
+        flags["end_pending_since"] = 0.0
+
+    sentinel.set_end_hooks(_defer_stop, _clear_end_pending)
 
     async def watchdog():
         """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
@@ -1388,16 +1524,32 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             orphan_transcript_lookback_secs=settings.orphan_transcript_lookback_secs,
             max_nudges=settings.max_nudges,
             no_words_timeout_secs=settings.no_words_timeout_secs,
+            unplayed_confirm_secs=settings.unplayed_confirm_secs,
+            end_grace_secs=settings.end_grace_secs,
+            max_deaf_streak=settings.max_deaf_streak,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
                        "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
         while True:
             await asyncio.sleep(1.0)
             now = time.time()
+            # Confirm-or-drop any outstanding "never played" suspicion first.
+            if unplayed_confirmed(flags, now, cfg):
+                flags["unplayed_pending_t"] = 0.0
+                diag.bump("replies_never_played")
+                logger.warning("reply never reached the caller corr=%s "
+                               "(no audio %.1fs after it was cut)",
+                               corr, cfg.unplayed_confirm_secs)
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
             if d.kind == NONE:
+                continue
+            if d.kind == ARM_STOP:
+                logger.info("sentinel: grace elapsed (%.1fs) — closing the line corr=%s",
+                            d.detail, corr)
+                sentinel._stop_armed = True
+                await _begin_stop()
                 continue
             if d.kind == CANCEL_STARVED:
                 logger.warning("graceful stop starved — cancelling corr=%s", corr)
@@ -1429,7 +1581,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     continue
                 diag.bump("tts_stalls")
                 if flags["stall_recoveries"] >= cfg.stall_max_recoveries:
+                    # Cap reached: recovery has failed repeatedly and the caller is
+                    # hearing NOTHING from here on. Seen live (call 47a9e96a):
+                    # stallCapHit with the bot silent while the line stayed open.
+                    # Sitting mute burns the caller's patience and our minutes —
+                    # close out instead. The farewell goes through the same TTS, so
+                    # if even that cannot play the graceful-stop deadline still ends
+                    # the call.
                     diag.tts_stall_cap_hit = True
+                    logger.error("tts stall cap reached corr=%s — closing the call "
+                                 "rather than sitting silent", corr)
+                    outcome.end_requested = True
+                    await task.queue_frames([TTSSpeakFrame(end_closing)])
+                    await _begin_stop()
+                    continue
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
                              "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])
@@ -1452,6 +1617,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 continue
             if d.kind == ORPHAN_ASK:
                 diag.bump("orphan_reasks")
+                # The caller audibly spoke and produced no words. Counted
+                # separately from the re-ask because the re-ask is one-shot per
+                # silent stretch, so it under-reports a persistently deaf line.
+                diag.bump("unheard_utterances")
                 _orphan_at = time.time()
                 flags_orphan_marker.append(_orphan_at)
                 logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
@@ -1459,6 +1628,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
                     TTSSpeakFrame(repeat_line)])
+                continue
+            if d.kind == HEARING_FAILED:
+                # Stop apologising and close out honestly. The caller has already
+                # repeated themselves twice and we still have no words from them.
+                logger.error("hearing failed corr=%s (%d unheard utterances) — "
+                             "closing out instead of asking again", corr, int(d.detail))
+                diag.bump("hearing_failures")
+                outcome.end_requested = True
+                await task.queue_frames([TTSSpeakFrame(cant_hear_closing)])
+                await _begin_stop()
                 continue
             if d.kind == NUDGE:
                 diag.bump("nudges")

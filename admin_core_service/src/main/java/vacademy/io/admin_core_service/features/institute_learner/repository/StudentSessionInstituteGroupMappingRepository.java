@@ -65,6 +65,42 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("psIds") List<String> packageSessionIds,
       @Param("daysAhead") int daysAhead);
 
+  /**
+   * Learners who must PAY MANUALLY to continue: their plan ends within the next
+   * N days (or ended up to graceDays ago) and autopay will NOT charge them —
+   * autopay off (cancelled mandate) or plan CANCELED/PAYMENT_FAILED/EXPIRED.
+   * The audience for "pay to continue your membership" messages carrying the
+   * /subscriptions/<username> link. end_date_label preformatted for messages.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.id)
+          up.id AS user_plan_id,
+          up.user_id AS user_id,
+          s.full_name AS full_name,
+          s.mobile_number AS mobile_number,
+          s.username AS username,
+          up.status AS plan_status,
+          up.end_date AS end_date,
+          to_char(up.end_date, 'DD Mon YYYY') AS end_date_label
+      FROM user_plan up
+      JOIN student_session_institute_group_mapping ssigm ON ssigm.user_plan_id = up.id
+      JOIN student s ON s.user_id = up.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND up.end_date IS NOT NULL
+        AND CAST(up.end_date AS date) BETWEEN CURRENT_DATE - CAST(:graceDays AS int)
+                                          AND CURRENT_DATE + CAST(:daysAhead AS int)
+        AND (
+              up.auto_renewal_enabled = false
+              OR up.status IN ('CANCELED', 'PAYMENT_FAILED', 'EXPIRED')
+            )
+        AND up.status <> 'TERMINATED'
+      ORDER BY up.id
+      """, nativeQuery = true)
+  List<Object[]> findManualRenewalDuePlans(
+      @Param("psIds") List<String> packageSessionIds,
+      @Param("daysAhead") int daysAhead,
+      @Param("graceDays") int graceDays);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,

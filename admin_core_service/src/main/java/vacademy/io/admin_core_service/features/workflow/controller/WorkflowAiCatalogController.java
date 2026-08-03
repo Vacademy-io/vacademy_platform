@@ -217,6 +217,14 @@ public class WorkflowAiCatalogController {
                         + "('we auto-deduct tomorrow'): plans whose next charge is exactly daysAhead days "
                         + "away (default 1), autopay still ON — cancelled learners excluded. Use this, "
                         + "NOT ssigm expiryDate (that is the batch ACCESS window, a different date)."));
+        q.add(query("getManualRenewalDuePlans",
+                List.of("packageSessionIds"), List.of("daysAhead", "graceDays"),
+                List.of("manualRenewalList", "manualRenewalCount"),
+                "manualRenewalList[]: userPlanId, userId, name, mobileNumber, username, planStatus, "
+                        + "endDate, endDateLabel ('11 Aug 2026'). THE audience for 'pay to continue your "
+                        + "membership' messages: plans ending within daysAhead days (default 1) or ended up "
+                        + "to graceDays ago (default 2) that autopay will NOT charge (autopay off / "
+                        + "CANCELED / PAYMENT_FAILED / EXPIRED). Message link: manage-page base + username."));
         q.add(query("getSSIGMByStatusAndPackageSessionIds",
                 List.of("instituteId", "packageSessionIds", "statusList"), List.of(),
                 List.of("ssigmList"),

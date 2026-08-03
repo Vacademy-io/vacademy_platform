@@ -169,7 +169,11 @@ public class AuthService {
                     + "&isNotify=" + sendCred;
 
             if (loginUrl != null && !loginUrl.isBlank()) {
-                url += "&loginUrl=" + java.net.URLEncoder.encode(loginUrl, java.nio.charset.StandardCharsets.UTF_8);
+                // Deliberately NOT pre-encoded: makeHmacRequest hands the URL to RestTemplate as a
+                // string, which encodes it once itself. Encoding here made that a second pass, so a
+                // portal stored with a scheme arrived as "https%3A%2F%2F…" and the emailed button
+                // was a dead link (learners of every institute whose URL carries "://").
+                url += "&loginUrl=" + loginUrl.trim();
             }
 
             userDTO.setRootUser(true);

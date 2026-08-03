@@ -46,11 +46,20 @@ class CallState:
     bot_stopped_t: float = 0.0
     # One-shot guards.
     orphan_used: bool = False
+    # Consecutive caller utterances that produced NO transcript. Reset by any real
+    # transcript. This is the "we cannot hear them" signal — see HEARING_FAILED.
+    deaf_streak: int = 0
     bot_spoke_once: bool = False
     # Audio-stall watchdog: stamped when a TTS generation begins while the bot
     # is QUIET; cleared on ANY bot-speaking transition (B1 corrected semantics).
     tts_gen_t: float = 0.0
     stall_recoveries: int = 0
+    # A reply was interrupted before base_output announced it. That is NOT yet
+    # evidence the caller heard nothing — see unplayed_confirmed().
+    unplayed_pending_t: float = 0.0
+    # The bot has said its goodbye but the line is NOT yet closing. Held open for
+    # end_grace_secs so a caller who re-engages ("Yes, I can") is not hung up on.
+    end_pending_since: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -89,6 +98,13 @@ class WatchdogConfig:
     # duration cap (harness caught this). Independent clock: no REAL words and
     # no bot audio for this long → escalate regardless of VAD activity.
     no_words_timeout_secs: float = 30.0
+    # After this many consecutive unheard utterances, stop apologising and close
+    # out honestly. 2 = the caller has already repeated themselves twice.
+    max_deaf_streak: int = 2
+    # How long to wait before believing an interrupted reply truly never played.
+    unplayed_confirm_secs: float = 3.0
+    # Grace between the farewell finishing and actually closing the line.
+    end_grace_secs: float = 2.0
 
 
 # Decision kinds — one per watchdog side-effect branch.
@@ -100,6 +116,8 @@ STALL_RECOVER = "stall_recover"
 ORPHAN_ASK = "orphan_ask"
 NUDGE = "nudge"
 IDLE_HANGUP = "idle_hangup"
+ARM_STOP = "arm_stop"
+HEARING_FAILED = "hearing_failed"
 
 
 @dataclass(frozen=True)
@@ -119,7 +137,18 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             return Decision(REISSUE_STOP)
         return Decision(NONE)
 
-    # 2) Hard call-duration cap. (Deliberately BEFORE the speaking check — the
+    # 2) Close the line — but only after a grace in which the caller could
+    #    re-engage. Live call ee8e2168: the bot said its goodbye, the caller then
+    #    said "Yes, I can", the bot asked "May I know a convenient date and time?"
+    #    — and the line dropped before they could answer, losing the booking. The
+    #    end intent must be REVOCABLE until the line actually closes; on_transcript
+    #    clears end_pending_since, so any real word from the caller cancels it.
+    if (s.end_pending_since > 0
+            and now - s.end_pending_since >= cfg.end_grace_secs
+            and not s.bot_speaking and not s.user_speaking):
+        return Decision(ARM_STOP, now - s.end_pending_since)
+
+    # 3) Hard call-duration cap. (Deliberately BEFORE the speaking check — the
     #    cap is a spend bound and must fire even mid-conversation.)
     if now - cfg.connected_at >= cfg.cap_secs:
         return Decision(CAP_FAREWELL, now - cfg.connected_at)
@@ -134,7 +163,18 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             and s.stall_recoveries < cfg.stall_max_recoveries):
         return Decision(STALL_RECOVER, now - s.tts_gen_t)
 
-    # 5) VAD-orphan: caller audibly spoke, no transcript since the utterance
+    # 5) HEARING FAILED. We have already asked them to repeat max_deaf_streak
+    #    times and STILL received no words. Live call 393859bc: Sarvam STT went
+    #    deaf (4 socket reconnects, one final with 6.08s processing latency) and
+    #    NEVER transcribed "hybrid model" — which the caller said FOUR times. The
+    #    bot apologised four times, re-asked the same question three times and
+    #    restarted its opening three times, because from the model's side the
+    #    caller had said nothing at all. Repeating "sorry, I missed that" at
+    #    someone who is answering clearly is worse than admitting the problem.
+    if s.deaf_streak >= cfg.max_deaf_streak:
+        return Decision(HEARING_FAILED, float(s.deaf_streak))
+
+    # 6) VAD-orphan: caller audibly spoke, no transcript since the utterance
     #    BEGAN (finals land mid-speech, so comparing against utterance START is
     #    the only correct discriminator — the stopped_t variant steamrolled).
     lo, hi = cfg.orphan_window_secs
@@ -159,6 +199,26 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     if not s.nudged and s.nudge_count < cfg.max_nudges:
         return Decision(NUDGE)
     return Decision(IDLE_HANGUP)
+
+
+def unplayed_confirmed(s: CallState, now: float, cfg: WatchdogConfig) -> bool:
+    """Did an interrupted reply REALLY never reach the caller?
+
+    Do not shortcut this to "an interruption arrived while the bot was quiet".
+    That is only "base_output had not yet emitted BotStartedSpeaking for this
+    clause", which is a very different claim. pipecat's
+    InterruptibleTTSService._handle_interruption tears the TTS socket down only
+    `if self._bot_speaking` — false in exactly this window — so Sarvam keeps
+    streaming audio it had already synthesised and it PLAYS.
+
+    Measured on 220 live calls: of 63 such "kills", 60 (95%) began playing within
+    a median of 0.17s and ran ~1.8s. Counting them as lost made REPLY_UNPLAYED a
+    ~95% false positive and turned two of the founder's own calls RED for a
+    non-problem. Only silence that OUTLASTS this window is real evidence.
+    """
+    return (s.unplayed_pending_t > 0
+            and not s.bot_speaking
+            and now - s.unplayed_pending_t >= cfg.unplayed_confirm_secs)
 
 
 def stall_recovery_still_needed(s: CallState, now: float,
@@ -187,11 +247,18 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
     """State bookkeeping for a decision (I/O stays with the caller)."""
     if d.kind == REISSUE_STOP:
         s.last_stop_reissue = now
+    elif d.kind == ARM_STOP:
+        s.end_pending_since = 0.0
     elif d.kind == STALL_RECOVER:
         s.tts_gen_t = 0.0
         s.stall_recoveries += 1
     elif d.kind == ORPHAN_ASK:
         s.orphan_used = True
+        # Each unheard utterance compounds; a real transcript clears it.
+        s.deaf_streak += 1
+        s.t = now
+    elif d.kind == HEARING_FAILED:
+        s.deaf_streak = 0
         s.t = now
     elif d.kind == NUDGE:
         s.nudged = True

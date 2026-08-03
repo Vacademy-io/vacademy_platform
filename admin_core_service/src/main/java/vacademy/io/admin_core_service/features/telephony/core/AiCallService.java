@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
@@ -17,6 +18,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallResponse
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
@@ -108,10 +110,51 @@ public class AiCallService {
     @Lazy
     private AiCallOutcomeProcessor aiCallOutcomeProcessor;
 
+    /** Kill-switch for the affordability gate (default ON). */
+    @Value("${telephony.ai.credit-gate.enabled:true}")
+    private boolean creditGateEnabled;
+
+    @Autowired
+    private CreditClient creditClient;
+
+    /**
+     * True only when the institute can actually pay for a call. Fails CLOSED on
+     * any error — see the call site.
+     */
+    private boolean hasAffordableCredits(String instituteId) {
+        try {
+            return creditClient.hasActiveCredits(instituteId);
+        } catch (Exception e) {
+            log.warn("AI call credit check failed for institute {} — blocking (fail-closed): {}",
+                    instituteId, e.getMessage());
+            return false;
+        }
+    }
+
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required.");
         }
+        // AFFORDABILITY GATE. Placing an AI call costs real money (telephony +
+        // STT/LLM/TTS) and was billed ONLY after the fact, so an institute whose
+        // balance had run out kept dialling and simply went further negative —
+        // observed live at -5759 credits with calls still going out. The
+        // engagement engine already gates its autonomous sends exactly like this;
+        // AI calling never did.
+        //
+        // Fails CLOSED, deliberately: hasActiveCredits returns false when the
+        // balance cannot be read, so an unreachable credits service stops calls
+        // rather than letting unpriced ones through. A blocked call is
+        // recoverable (top up and re-run); an unbilled one is not.
+        if (creditGateEnabled && !hasAffordableCredits(req.getInstituteId())) {
+            log.warn("AI call BLOCKED — no credits for institute {} (responseId={}, phone=***{})",
+                    req.getInstituteId(), req.getResponseId(),
+                    req.getPhoneNumber() == null ? "" :
+                            req.getPhoneNumber().substring(Math.max(0, req.getPhoneNumber().length() - 4)));
+            throw new ConflictException(
+                    "This institute is out of AI calling credits. Top up to resume calls.");
+        }
+
         // Provider + campaign default to the institute's AI_CALLING_SETTING, so swapping
         // the AI agent is a settings change, not a code change.
         AiCallingSettingsPojo settings = settingsService.get(req.getInstituteId());

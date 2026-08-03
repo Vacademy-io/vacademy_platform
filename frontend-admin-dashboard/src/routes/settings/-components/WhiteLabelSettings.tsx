@@ -122,13 +122,16 @@ interface RoutingConfig {
     /**
      * Optional explicit logo width in pixels. When set, overrides the default
      * responsive logo sizing in the sidebar and login page. Leave unset to
-     * preserve existing behavior.
+     * preserve existing behavior. 250+ (the panel width) COMBINED WITH a blank
+     * logo_height_px makes the sidebar logo full-bleed: the header padding is
+     * dropped and the logo spans all 250px, scaling by width alone.
      */
     logo_width_px?: number;
     /**
-     * Optional explicit logo height in pixels. When set, overrides the default
-     * responsive logo sizing in the sidebar and login page. Leave unset to
-     * preserve existing behavior.
+     * Optional explicit logo height in pixels. When set, the logo is fitted
+     * (object-contain) inside the width × height box — which also opts the
+     * sidebar out of full-bleed, since fitting a fixed height would letterbox
+     * the logo back down. Leave unset to scale proportionally to the width.
      */
     logo_height_px?: number;
     /**
@@ -519,7 +522,8 @@ const ConfigFormSection = ({
                             className="h-8 text-sm"
                         />
                         <p className="text-[10px] text-slate-400">
-                            Leave blank to use default.
+                            Leave blank to use default. Set 250+ AND clear the height to
+                            make the sidebar logo span the full width, edge to edge.
                         </p>
                     </div>
                     <div className="space-y-1">
@@ -549,7 +553,9 @@ const ConfigFormSection = ({
                             className="h-8 text-sm"
                         />
                         <p className="text-[10px] text-slate-400">
-                            Leave blank to use default.
+                            Leave blank to scale proportionally to the width (required for
+                            a full-width sidebar logo). Set a value to fit the logo inside
+                            a fixed box instead.
                         </p>
                     </div>
                 </div>

@@ -810,7 +810,9 @@ def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
     # stamp here (clear OR re-stamp) disarms the founder's own recovery.
     body = rb[rb.index("def _note_killed_before_playout"):]
     body = body[:body.index("sentinel.set_on_interrupted")]
-    assert 'diag.bump("replies_never_played")' in body
+    # Records a SUSPICION only — the counter is incremented later, and only if
+    # the silence outlasts the confirm window (95% of these replies do play).
+    assert 'flags["unplayed_pending_t"] = time.time()' in body
     assert 'flags["tts_gen_t"] =' not in body, "interruption hook must not mutate the stall stamp"
 
 
@@ -955,3 +957,166 @@ def test_machine_markers_cover_devanagari_transliteration():
     class _H:
         transcript = [{"role": "user", "text": "हाँ जी बोलिए, मैं सुन रहा हूँ"}]
     assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"
+
+
+def test_kill_hook_stamps_a_suspicion_not_a_count():
+    """The hook must NOT bump the counter directly — 95% of these replies play."""
+    src = inspect.getsource(b.run_bot)
+    hook = src[src.index("def _note_killed_before_playout"):]
+    hook = hook[:hook.index("sentinel.set_on_interrupted")]
+    assert 'flags["unplayed_pending_t"] = time.time()' in hook
+    assert 'diag.bump("replies_never_played")' not in hook, (
+        "counting at the interruption is what made REPLY_UNPLAYED ~95% false"
+    )
+    # Audio arriving must clear the suspicion.
+    speak = src[src.index("def set_bot_speaking"):]
+    speak = speak[:speak.index("def set_user_speaking")]
+    assert 'flags["unplayed_pending_t"] = 0.0' in speak
+    # …and only the confirmed case increments the counter.
+    wd = src[src.index("unplayed_confirmed(flags, now, cfg)"):]
+    assert 'diag.bump("replies_never_played")' in wd[:400]
+
+
+def test_date_time_placeholders_resolve():
+    """A live agent's prompt used {{day}}/{{date}}/{{time}} and all three rendered
+    EMPTY (diagnostics: promptUnfilled ["day","date","time"]) — handing the model
+    blanks exactly where the booking flow needs "now" to resolve "tomorrow"."""
+    ctx = {"leadName": "Devaki", "leadFields": {}, "agent": {"timezone": "Asia/Kolkata"}}
+    out = b._fill_placeholders("It is {{day}}, {{date}} at {{time}}.", ctx)
+    assert "{{" not in out
+    for token in ("day", "date", "time"):
+        assert f"{{{{{token}}}}}" not in out
+    assert out != "It is , at ."
+    assert len(out) > len("It is , at .") + 8
+    # tomorrow is a distinct, non-empty day
+    tmr = b._fill_placeholders("{{tomorrow}}", ctx)
+    assert tmr and tmr != b._fill_placeholders("{{today}}", ctx)
+
+
+def test_stall_cap_closes_the_call_instead_of_sitting_silent():
+    src = inspect.getsource(b.run_bot)
+    blk = src[src.index("diag.tts_stall_cap_hit = True"):]
+    blk = blk[:blk.index("if d.kind == ORPHAN_ASK")]
+    assert "_begin_stop()" in blk and "end_requested = True" in blk
+
+
+def test_hearing_failed_closes_the_call_honestly():
+    src = inspect.getsource(b.run_bot)
+    blk = src[src.index("if d.kind == HEARING_FAILED"):]
+    blk = blk[:blk.index("if d.kind == NUDGE")]
+    assert "_begin_stop()" in blk and "end_requested = True" in blk
+    assert "cant_hear_closing" in blk
+    # The line must own the problem, not blame the caller or apologise a 5th time.
+    line = src[src.index("cant_hear_closing = ("):]
+    line = line[:line.index("end_closing =")]
+    assert "call you back" in line and "call back" in line
+    # A real transcript must clear the streak.
+    on_tr = src[src.index("def on_transcript"):]
+    assert 'flags["deaf_streak"] = 0' in on_tr[:on_tr.index("transcript = TranscriptCollector")]
+
+
+# ── STT model routing: saaras:v4 with per-agent language + mode ──────────────
+
+def test_agent_language_drives_stt_language_and_mode():
+    assert b._agent_language({"language": "hinglish"})[0] == "hi-IN"
+    assert b._agent_language({"language": "english"})[0] == "en-IN"
+    assert b._agent_stt_mode({"language": "hinglish"}) == "codemix"
+    assert b._agent_stt_mode({"language": "english"}) == "transcribe"
+    assert b._agent_stt_mode({"language": "tamil"}) == "transcribe"
+    # run_bot must actually pass both through.
+    src = inspect.getsource(b.run_bot)
+    assert "mode=_agent_stt_mode(agent)" in src
+
+
+def test_every_language_tag_is_one_sarvam_accepts():
+    """Sarvam spells Odia od-IN, not the ISO or-IN; the ISO form is REJECTED and
+    every Odia agent failed. Pin the whole table against Sarvam's own list."""
+    sarvam = {"bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN",
+              "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN"}
+    ours = {tag for tag, _ in b._STT_LANGS.values()}
+    assert ours <= sarvam, f"Sarvam would reject: {sorted(ours - sarvam)}"
+
+
+def test_saaras_is_routed_to_the_transcribe_socket(monkeypatch):
+    """pipecat sends any saaras* model to the translate socket, which has no
+    language_code and always returns English. The shim redirects it."""
+    monkeypatch.setenv("SARVAM_STT_MODEL", "saaras:v4")
+    pv.get_settings.cache_clear()
+    try:
+        svc = pv.build_stt(8000, language="hi-IN", bias="Aarushi", mode="codemix")
+        assert svc.model_name == "saaras:v4"
+        assert svc._stt_mode == "codemix"
+        assert svc._language_string == "hi-IN", "the language pin must survive"
+        shim = svc._sarvam_client.speech_to_text_translate_streaming
+        assert isinstance(shim, pv._SaarasStreamingShim)
+        # _prompt MUST stay None on this path. pipecat's _connect calls
+        # socket.set_prompt() whenever "saaras" is in the model name, but
+        # set_prompt exists ONLY on the translate socket — and the shim hands it a
+        # TRANSCRIBE socket. Setting it raised inside _connect, so the socket was
+        # never usable and deaf-detection hammered reconnect: a live call logged
+        # 1827 reconnects and zero transcripts.
+        assert svc._prompt is None, "set_prompt does not exist on the transcribe socket"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_saarika_still_uses_its_native_path(monkeypatch):
+    monkeypatch.setenv("SARVAM_STT_MODEL", "saarika:v2.5")
+    pv.get_settings.cache_clear()
+    try:
+        svc = pv.build_stt(8000, language="hi-IN")
+        assert svc.model_name == "saarika:v2.5"
+        assert getattr(svc, "_stt_mode", None) is None
+        assert not isinstance(svc._sarvam_client.speech_to_text_translate_streaming,
+                              pv._SaarasStreamingShim)
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_reconnect_counter_is_gated_by_the_cooldown():
+    """run_stt calls _reconnect_once per audio frame (~50/s). Counting before the
+    cooldown gate turned "reconnect attempts" into "frames seen while down" — a
+    live call reported 1827 when the truth was ~7."""
+    src = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
+    body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert body.index("_RECONNECT_COOLDOWN_SECS") < body.index('bump("stt_reconnects")'), (
+        "the counter must be incremented AFTER the cooldown gate"
+    )
+
+
+# ── item 10: the end intent must be per-response and revocable ───────────────
+
+def test_end_marker_latches_per_response_not_per_call():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    marker = src[src.index("if END_MARKER in self._buffer"):]
+    marker = marker[:marker.index("emit, self._buffer")]
+    assert "self._end_this_response = True" in marker
+    assert "self._outcome.end_requested = True" not in marker, (
+        "a mid-stream marker must not close the call call-wide"
+    )
+
+
+def test_new_response_revokes_an_unarmed_end_intent():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    start = src[src.index("if isinstance(frame, LLMFullResponseStartFrame)"):]
+    start = start[:start.index("if isinstance(frame, LLMTextFrame)")]
+    assert "self._outcome.end_requested = False" in start
+    assert "not self._stop_armed" in start, "an already-closing line must not be revived"
+
+
+def test_farewell_defers_the_close_and_transfer_does_not():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    stop = src[src.index("if self._outcome.transfer_requested and self._task"):]
+    stop = stop[:stop.index("await self.push_frame(frame, direction)")] if \
+        "await self.push_frame(frame, direction)" in stop else stop
+    assert "self._defer_stop()" in stop, "the END path must go through the grace"
+    # Transfer still closes immediately — the caller is waiting to be put through.
+    assert stop.index("transfer_requested") < stop.index("_defer_stop()")
+
+
+def test_caller_words_cancel_a_pending_close():
+    src = inspect.getsource(b.run_bot)
+    on_tr = src[src.index("def on_transcript"):]
+    on_tr = on_tr[:on_tr.index("transcript = TranscriptCollector")]
+    assert 'flags["end_pending_since"] = 0.0' in on_tr
+    assert "outcome.end_requested = False" in on_tr

@@ -57,6 +57,16 @@ public class CallRowDTO {
 
     /** AI-call disposition from ai_call_result; null for non-AI calls. */
     private String aiDisposition;
+
+    /**
+     * Per-call technical health verdict — GREEN / AMBER / RED, or null when the
+     * call reported none (a human call, an older bot, or a report that carried no
+     * diagnostics). NULL MEANS NOT MEASURED and must never render as healthy.
+     */
+    private String diagHealth;
+
+    /** Fault codes behind {@link #diagHealth}; null when not measured. */
+    private java.util.List<String> diagFaults;
     /** Effective promised call-back time (human callback_at or AI callback_at). */
     private Timestamp callbackAt;
 

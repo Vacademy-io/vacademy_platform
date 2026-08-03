@@ -72,6 +72,9 @@ import {
     type SettingsTabEntry,
 } from '@/routes/settings/-utils/utils';
 
+/** Fixed width of the open panel, in px. */
+const PANEL_WIDTH_PX = 250;
+
 interface SidebarPanelProps {
     isOpen: boolean;
     activeCategory: CategoryId;
@@ -132,6 +135,20 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     // On mobile, the panel is always rendered at full width inside the Sheet
     const panelOpen = isMobile ? true : isOpen;
 
+    // Full-bleed logo: width configured at (or beyond) the whole panel AND no explicit
+    // height. Then we drop the header's horizontal padding so the logo reaches both
+    // edges and let it scale by width alone.
+    //
+    // Both conditions matter. Many institutes already run a width above the padded
+    // content box (250 - 2*16 = 218px) together with a fixed height — that pair is a
+    // deliberate "as wide as fits, capped at N px tall" box and must keep rendering
+    // exactly as before, so a width test alone would silently restyle them. Requiring
+    // a blank height keeps full-bleed opt-in: an operator asks for it by clearing the
+    // height, which is also the only way to avoid the logo being letterboxed back down
+    // to a fraction of the panel width.
+    const logoSpansFullWidth =
+        logoWidthPx != null && logoWidthPx >= PANEL_WIDTH_PX && logoHeightPx == null;
+
     // Settings tabs for the SETTINGS category
     const settingsTabs = activeCategory === 'SETTINGS' ? getAvailableSettingsTabs() : [];
     // Reactively read the selectedTab search param from the URL
@@ -147,9 +164,9 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                 'overflow-hidden'
             )}
             style={{
-                width: panelOpen ? 250 : 0,
+                width: panelOpen ? PANEL_WIDTH_PX : 0,
                 opacity: panelOpen ? 1 : 0,
-                minWidth: panelOpen ? 250 : 0,
+                minWidth: panelOpen ? PANEL_WIDTH_PX : 0,
             }}
         >
             {/* Logo + Institute Name Header */}
@@ -157,14 +174,20 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                 <div
                     className={cn(
                         'flex cursor-pointer items-center',
-                        hideInstituteName
-                            ? // Name hidden: logo alone, but keep the same header
-                              // padding as the other branches so it never touches
-                              // the panel edges or the bottom divider.
-                              'justify-center px-4 py-4'
-                            : stackNameBelowLogo
-                              ? 'flex-col gap-2 px-4 py-4 text-center'
-                              : 'gap-2.5 px-4 py-4'
+                        logoSpansFullWidth
+                            ? // Full-bleed logo: no horizontal padding at all so the
+                              // logo reaches both panel edges (vertical padding stays,
+                              // so it isn't flush against the top border). The name
+                              // (when shown) stacks below it with its own padding.
+                              'flex-col gap-2 py-4 text-center'
+                            : hideInstituteName
+                              ? // Name hidden: logo alone, but keep the same header
+                                // padding as the other branches so it never touches
+                                // the panel edges or the bottom divider.
+                                'justify-center px-4 py-4'
+                              : stackNameBelowLogo
+                                ? 'flex-col gap-2 px-4 py-4 text-center'
+                                : 'gap-2.5 px-4 py-4'
                     )}
                     onClick={() => {
                         navigate({ to: '/dashboard' });
@@ -178,14 +201,20 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                                 // maxWidth: 100% caps the logo at the available panel width
                                 // so an admin-configured pixel width larger than the panel
                                 // doesn't overflow — it just fills the available space.
+                                // Full-bleed: width drives, height stays auto so the logo
+                                // keeps its aspect ratio while filling the panel edge to edge.
                                 return (
                                     <img
                                         src={instituteLogo}
                                         alt="logo"
                                         className="object-contain"
                                         style={{
-                                            width: logoWidthPx ?? undefined,
-                                            height: logoHeightPx ?? undefined,
+                                            width: logoSpansFullWidth
+                                                ? '100%'
+                                                : (logoWidthPx ?? undefined),
+                                            height: logoSpansFullWidth
+                                                ? 'auto'
+                                                : (logoHeightPx ?? undefined),
                                             maxWidth: '100%',
                                         }}
                                     />
@@ -206,7 +235,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                                 // Stacked: wrap the full name across as many lines
                                 // as needed (centered), never truncated. Beside the
                                 // logo: single-line ellipsis.
-                                stackNameBelowLogo ? 'w-full break-words' : 'truncate'
+                                stackNameBelowLogo || logoSpansFullWidth
+                                    ? 'w-full break-words'
+                                    : 'truncate',
+                                // Full-bleed logo strips the header padding, so the
+                                // name carries its own.
+                                logoSpansFullWidth && 'px-4'
                             )}
                             title={instituteName}
                         >

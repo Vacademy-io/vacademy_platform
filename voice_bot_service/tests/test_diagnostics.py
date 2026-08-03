@@ -241,3 +241,60 @@ def test_ttfb_routing_discriminates_stt_from_tts():
     tts = "ResilientSarvamTTSService#0".lower()
     assert "tts" in stt and "stt" in stt      # the trap
     assert "stt" not in tts                   # …which ordering resolves cleanly
+
+
+# ── a dial nobody answered is NOT a broken call ─────────────────────────────
+# Live: userTurns=0, bot greeted + nudged + hung up, deadAirMax 8.8s -> verdict
+# RED "Long silence during the call". The status already says no-answer; calling
+# it Broken makes every unanswered dial look like a system failure.
+
+def test_no_caller_turn_means_dead_air_is_not_a_fault():
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=3, replies_generated=3,
+                           idle_hangup=True, nudges=1)
+    d.sample("dead_air", 8.806)
+    v = dg.verdict(d)
+    assert dg.DEAD_AIR not in v["faults"]
+    assert v["health"] == dg.GREEN, "an unanswered dial is not a broken bot"
+
+
+def test_dead_air_still_fires_in_a_real_conversation():
+    d = dg.CallDiagnostics(user_turns=4, bot_turns=4)
+    d.sample("dead_air", 8.8)
+    assert dg.verdict(d)["faults"][dg.DEAD_AIR] == dg.RED
+
+
+def test_cannot_hear_outranks_a_tts_stall_in_the_headline():
+    """Live 393859bc read "Voice synthesis stalled" while the real story was that
+    the caller repeated "hybrid model" four times and we never transcribed it."""
+    d = dg.CallDiagnostics(user_turns=10, bot_turns=14,
+                           hearing_failures=1, stt_reconnects=4, tts_stalls=2)
+    v = dg.verdict(d)
+    assert v["faults"][dg.STT_DEAF] == dg.RED
+    assert v["headline"] == dg.STT_DEAF, "the caller's experience was 'it cannot hear me'"
+    assert "could not hear" in dg.to_payload(d)["headlineText"]
+
+
+def test_giving_up_on_hearing_is_always_red():
+    d = dg.CallDiagnostics(user_turns=3, bot_turns=5, hearing_failures=1)
+    assert dg.verdict(d)["faults"][dg.STT_DEAF] == dg.RED
+
+
+def test_spoke_but_never_transcribed_is_red_not_green():
+    """Live call 2dcad5f2 scored GREEN "No faults detected" while the caller said
+    "Hello" SEVEN times and STT returned nothing: user_turns==0 suppressed
+    DEAD_AIR (right for an unanswered dial) and no reconnect ever happened."""
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=2, unheard_utterances=1,
+                           stt_reconnects=0, hearing_failures=0)
+    d.sample("dead_air", 7.64)
+    v = dg.verdict(d)
+    assert v["health"] == dg.RED
+    assert v["headline"] == dg.STT_DEAF
+    assert dg.to_payload(d)["infra"]["unheardUtterances"] == 1
+
+
+def test_genuinely_unanswered_dial_stays_green():
+    """The case the suppression exists for must still work: no caller speech at
+    all — no VAD utterances, nothing to transcribe."""
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=3, unheard_utterances=0)
+    d.sample("dead_air", 8.8)
+    assert dg.verdict(d)["health"] == dg.GREEN

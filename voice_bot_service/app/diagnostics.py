@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 # Bump when a threshold or a fault definition changes. Stored with every call so
 # health can be re-derived across history without re-collecting anything.
-RULES_VERSION = 1
+RULES_VERSION = 2
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -51,7 +51,15 @@ ALL_FAULTS = (
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
-HEADLINE_PRIORITY = ALL_FAULTS
+# Ordered by what the CALLER experienced, not by internal severity. Being unable
+# to hear them outranks a TTS stall: on live call 393859bc the headline read
+# "Voice synthesis stalled" while the actual story was that the caller repeated
+# "hybrid model" four times and we never once transcribed it.
+HEADLINE_PRIORITY = (
+    CRASH, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
+    FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED,
+    PROMPT_UNFILLED,
+)
 
 GREEN, AMBER, RED = "GREEN", "AMBER", "RED"
 _RANK = {GREEN: 0, AMBER: 1, RED: 2}
@@ -112,6 +120,10 @@ class CallDiagnostics:
 
     # ── infrastructure ──
     stt_reconnects: int = 0
+    hearing_failures: int = 0     # times we gave up and closed out honestly
+    # Caller utterances DETECTED by VAD that produced no transcript at all. This
+    # is the only signal that separates "nobody answered" from "we went deaf".
+    unheard_utterances: int = 0
     greet_path: str = ""                # "scripted" | "callee_spoke_first" | "llm"
     greet_delay_secs: Optional[float] = None
     setup_secs: Optional[float] = None
@@ -234,8 +246,16 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
         elif d.answers_deleted >= 1:
             fire(ANSWER_DELETED, AMBER)
 
+    # DEAD_AIR only means something in a CONVERSATION. If the caller never took a
+    # turn, the "silence" is simply nobody answering — the bot greeting a voicemail
+    # or an empty line — and the call status already says no-answer. Marking that
+    # "Broken" made an unanswered dial look like a system failure and would make
+    # the fleet view mostly red for a non-problem (seen live: userTurns=0,
+    # idleHangup, verdict RED "Long silence during the call").
     worst_gap = max(d.dead_air) if d.dead_air else 0.0
-    if worst_gap >= 6.0:
+    if d.user_turns == 0:
+        pass                                   # nobody to be silent AT
+    elif worst_gap >= 6.0:
         fire(DEAD_AIR, RED)
     elif worst_gap >= 3.5:                     # below STALL_AFTER_SECS nothing was detectable
         fire(DEAD_AIR, AMBER)
@@ -251,9 +271,18 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     elif ms >= 0.5:
         fire(LIKELY_MACHINE, AMBER)
 
-    if d.stt_reconnects >= 3:
+    # "We could not hear the caller" is the most caller-visible failure there is —
+    # they answer, we apologise, they answer again. Giving up and closing out is
+    # always RED regardless of how the sockets behaved.
+    # A call where the caller SPOKE but we transcribed nothing is the worst
+    # outcome there is, and it used to score GREEN: user_turns==0 suppressed
+    # DEAD_AIR (correct for an unanswered dial), and reconnects/hearing_failures
+    # can both be 0 when the socket is healthy but silent. A live call rated
+    # GREEN while the caller said "Hello" seven times into nothing.
+    heard_nothing = d.unheard_utterances >= 1 and d.user_turns == 0
+    if d.hearing_failures >= 1 or d.stt_reconnects >= 3 or heard_nothing:
         fire(STT_DEAF, RED)
-    elif d.stt_reconnects >= 1:
+    elif d.stt_reconnects >= 1 or d.unheard_utterances >= 1:
         fire(STT_DEAF, AMBER)
 
     for code, buf in ((SLOW_TTS, d.tts_ttfb), (SLOW_LLM, d.llm_ttfb)):
@@ -286,7 +315,7 @@ _HEADLINE_TEXT = {
     DEAD_AIR: "Long silence during the call",
     FALSE_REASK: "Agent re-asked for answers it had already heard",
     LIKELY_MACHINE: "Probably an answering machine, not a person",
-    STT_DEAF: "Speech recognition reconnected mid-call",
+    STT_DEAF: "The agent could not hear the caller",
     SLOW_TTS: "Slow voice synthesis",
     SLOW_LLM: "Slow agent responses",
     TRANSFER_FAILED: "Human transfer was requested but failed",
@@ -352,6 +381,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             },
             "infra": {
                 "sttReconnects": d.stt_reconnects,
+                "hearingFailures": d.hearing_failures,
+                "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,
                 "crash": d.crash,
                 "transferRequested": d.transfer_requested,

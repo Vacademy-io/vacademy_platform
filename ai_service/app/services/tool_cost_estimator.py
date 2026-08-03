@@ -162,9 +162,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # AI Page Builder — one wizard run composes a full catalogue page as
     # schema-bound JSON (one large LLM call + validation/repair round-trips).
     # Charged as max(flat, actual token cost).
+    #
+    # PRICED ON VALUE, NOT TOKENS (2026-07-29): the old 10-credit flat was ~₹6
+    # for a themed, CRM-connected, SEO-served page — cheaper than a cup of
+    # chai for something an institute would otherwise pay a freelancer tens of
+    # thousands and three weeks for. That reads as worthless to a first-time
+    # buyer, and made regenerating feel free while costing real tokens. 100
+    # credits (~₹58/page) is still a rounding error against the alternative.
     "page_generate": {
         "request_type": "content",
-        "flat_base_credits": Decimal("10"),
+        "flat_base_credits": Decimal("100"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
         "params": {},
@@ -172,9 +179,11 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # AI Page Builder copilot — one conversational edit returns a small op list
     # (insert/update/remove/move) against the current page. Cheaper than a full
     # generate (reuses the existing page as context, smaller output).
+    # One conversational edit. Raised with generate (2026-07-29) to keep the
+    # ratio sane: an edit is ~1/7th of a full page build, not 1/3rd.
     "page_edit": {
         "request_type": "content",
-        "flat_base_credits": Decimal("3"),
+        "flat_base_credits": Decimal("15"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
         "params": {},

@@ -7,6 +7,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDTO;
+import vacademy.io.admin_core_service.features.booking.dto.BookingSessionTypeDTO;
+
+import java.util.List;
 
 /**
  * A mentor's self-service edit of THEIR OWN booking page. Only the scheduling
@@ -44,4 +47,7 @@ public class MentorAvailabilityRequest {
 
     /** IANA timezone id the weekly windows are interpreted in. */
     private String timezone;
+
+    /** Bookable session options (name + duration). Empty = single duration only. */
+    private List<BookingSessionTypeDTO> sessionTypes;
 }

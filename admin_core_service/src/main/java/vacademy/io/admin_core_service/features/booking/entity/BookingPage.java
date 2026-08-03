@@ -97,6 +97,10 @@ public class BookingPage {
     @Column(name = "reminder_config_json")
     private String reminderConfigJson;
 
+    /** Optional bookable session options, serialized List&lt;BookingSessionTypeDTO&gt;. */
+    @Column(name = "session_types_json")
+    private String sessionTypesJson;
+
     /** ACTIVE | INACTIVE | DELETED */
     @Column(name = "status", nullable = false)
     private String status;

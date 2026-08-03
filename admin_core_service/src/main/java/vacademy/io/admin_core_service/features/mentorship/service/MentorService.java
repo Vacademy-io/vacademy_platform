@@ -228,6 +228,7 @@ public class MentorService {
         dto.setBookingHorizonDays(req.getBookingHorizonDays());
         dto.setSlotGranularityMinutes(req.getSlotGranularityMinutes());
         dto.setTimezone(req.getTimezone());
+        dto.setSessionTypes(req.getSessionTypes());
         return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
     }
 

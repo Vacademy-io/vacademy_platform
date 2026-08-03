@@ -87,6 +87,7 @@ public class PublicBookingService {
                 .minNoticeMinutes(page.getMinNoticeMinutes())
                 .bookingHorizonDays(page.getBookingHorizonDays())
                 .customFields(customFieldsFor(page))
+                .sessionTypes(bookingPageService.readSessionTypes(page))
                 .build();
     }
 
@@ -104,7 +105,8 @@ public class PublicBookingService {
     }
 
     public PublicBookingDTOs.SlotsResponseDTO getSlots(String instituteId, String slug,
-                                                       String fromDate, String toDate, String displayTz) {
+                                                       String fromDate, String toDate, String displayTz,
+                                                       Integer durationMinutes) {
         BookingPage page = activePage(instituteId, slug);
         LocalDate from;
         LocalDate to;
@@ -115,13 +117,17 @@ public class PublicBookingService {
             throw new VacademyException("from/to must be yyyy-MM-dd");
         }
         ZoneId zone = resolveZone(displayTz, page.getTimezone());
-        List<String> slots = bookingSlotService.availableSlots(page, from, to).stream()
+        // When a session type is chosen its length overrides the page default so slots
+        // fit the actual meeting length.
+        Integer effectiveDuration = durationMinutes != null && durationMinutes > 0
+                ? durationMinutes : page.getDurationMinutes();
+        List<String> slots = bookingSlotService.availableSlots(page, from, to, durationMinutes).stream()
                 .map(instant -> instant.atZone(zone).toOffsetDateTime()
                         .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
                 .collect(Collectors.toList());
         return PublicBookingDTOs.SlotsResponseDTO.builder()
                 .slots(slots)
-                .durationMinutes(page.getDurationMinutes())
+                .durationMinutes(effectiveDuration)
                 .timezone(zone.getId())
                 .build();
     }
@@ -150,7 +156,7 @@ public class PublicBookingService {
             throw new VacademyException("email or phone is required");
         }
         Instant slotStart = parseStart(request.getStartTime());
-        if (!bookingSlotService.isSlotAvailable(page, slotStart)) {
+        if (!bookingSlotService.isSlotAvailable(page, slotStart, request.getDurationMinutes())) {
             throw new VacademyException("This slot is no longer available. Please pick another time.");
         }
         enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
@@ -192,6 +198,7 @@ public class PublicBookingService {
                 .inviteeTimezone(request.getInviteeTimezone())
                 .audienceResponseId(audienceResponseId)
                 .customFieldValues(request.getCustomFieldValues())
+                .durationMinutes(request.getDurationMinutes())
                 .build();
         BookingInstanceDTO created = meetingBookingService.createBooking(booking, hostPrincipal(page));
 

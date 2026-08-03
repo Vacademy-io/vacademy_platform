@@ -39,6 +39,8 @@ public final class PublicBookingDTOs {
          * campaign fields (AUDIENCE_FORM scope). Empty for standalone pages.
          */
         private List<InstituteCustomFieldDTO> customFields;
+        /** Bookable session options (name + duration). Empty/null = single duration only. */
+        private List<BookingSessionTypeDTO> sessionTypes;
     }
 
     @Data
@@ -66,6 +68,8 @@ public final class PublicBookingDTOs {
         private String inviteeTimezone;
         /** Answers keyed by custom-field fieldKey. */
         private Map<String, String> customFieldValues;
+        /** Chosen session-type length (minutes). Null = the page's default duration. */
+        private Integer durationMinutes;
     }
 
     /** Confirmation + manage view (token-gated, so still minimal). */

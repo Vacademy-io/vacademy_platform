@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.booking.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDTO;
 import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
 import vacademy.io.admin_core_service.features.booking.dto.BookingReminderConfigDTO;
+import vacademy.io.admin_core_service.features.booking.dto.BookingSessionTypeDTO;
 import vacademy.io.admin_core_service.features.booking.entity.BookingPage;
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -67,6 +69,7 @@ public class BookingPageService {
                 .requireApproval(Boolean.TRUE.equals(dto.getRequireApproval()))
                 .availabilityJson(writeJson(dto.getAvailability()))
                 .reminderConfigJson(writeJson(dto.getReminderConfig()))
+                .sessionTypesJson(writeJson(dto.getSessionTypes()))
                 .status(dto.getStatus() != null ? dto.getStatus() : "ACTIVE")
                 .createdByUserId(user.getUserId())
                 .build();
@@ -101,6 +104,7 @@ public class BookingPageService {
         if (dto.getRequireApproval() != null) page.setRequireApproval(dto.getRequireApproval());
         if (dto.getAvailability() != null) page.setAvailabilityJson(writeJson(dto.getAvailability()));
         if (dto.getReminderConfig() != null) page.setReminderConfigJson(writeJson(dto.getReminderConfig()));
+        if (dto.getSessionTypes() != null) page.setSessionTypesJson(writeJson(dto.getSessionTypes()));
         if (dto.getStatus() != null) page.setStatus(dto.getStatus());
         return toDTO(bookingPageRepository.save(page), null);
     }
@@ -209,6 +213,17 @@ public class BookingPageService {
         return readJson(page.getReminderConfigJson(), BookingReminderConfigDTO.class);
     }
 
+    public List<BookingSessionTypeDTO> readSessionTypes(BookingPage page) {
+        String json = page.getSessionTypesJson();
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<BookingSessionTypeDTO>>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse stored session_types_json: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private <T> T readJson(String json, Class<T> type) {
         if (json == null || json.isBlank()) return null;
         try {
@@ -243,6 +258,7 @@ public class BookingPageService {
                 .requireApproval(page.getRequireApproval())
                 .availability(readAvailability(page))
                 .reminderConfig(readReminderConfig(page))
+                .sessionTypes(readSessionTypes(page))
                 .status(page.getStatus())
                 .createdByUserId(page.getCreatedByUserId())
                 .createdAt(page.getCreatedAt())

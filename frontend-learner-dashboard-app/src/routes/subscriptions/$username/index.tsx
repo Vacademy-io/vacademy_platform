@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -6,10 +6,15 @@ import { Preferences } from "@capacitor/preferences";
 import {
   ArrowsClockwise,
   CheckCircle,
+  CreditCard,
   Info,
   SpinnerGap,
   Warning,
 } from "@phosphor-icons/react";
+import {
+  RazorpayCheckoutForm,
+  type RazorpayCheckoutFormRef,
+} from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
 
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -31,8 +36,15 @@ import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   cancelSubscription,
   fetchSubscriptions,
+  initiateRenewalPayment,
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
+
+const formatPrice = (amount?: number | null, currency?: string | null): string => {
+  if (amount == null) return "";
+  const symbol = (currency ?? "INR").toUpperCase() === "INR" ? "₹" : `${currency} `;
+  return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+};
 
 /**
  * Public per-learner subscription management page, linked from WhatsApp
@@ -185,6 +197,60 @@ function RouteComponent() {
 function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
+  const [renewingPlanId, setRenewingPlanId] = useState<string | null>(null);
+  const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+
+  const refetchSoon = () => {
+    // The gateway webhook reactivates the plan asynchronously — refetch a few
+    // times so the page flips to "active" without a manual reload.
+    [3000, 8000, 15000].forEach((ms) =>
+      setTimeout(
+        () =>
+          queryClient.invalidateQueries({
+            queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, "public-manage", instituteId],
+          }),
+        ms
+      )
+    );
+  };
+
+  const startRenewal = async (sub: Subscription) => {
+    try {
+      setRenewingPlanId(sub.user_plan_id);
+      let email = "";
+      let mobile = "";
+      try {
+        const stored = await Preferences.get({ key: "StudentDetails" });
+        if (stored.value) {
+          const details = JSON.parse(stored.value);
+          email = details?.email ?? "";
+          mobile = details?.mobile_number ?? details?.mobileNumber ?? "";
+        }
+      } catch {
+        // best effort — the backend resolves the customer from the JWT anyway
+      }
+      const response = await initiateRenewalPayment(instituteId, sub, { email, mobile });
+      const orderDetails =
+        response?.payment_response?.response_data || response?.response_data;
+      if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
+        throw new Error("Could not create the payment order");
+      }
+      razorpayRef.current?.openPayment({
+        razorpayKeyId: orderDetails.razorpayKeyId,
+        razorpayOrderId: orderDetails.razorpayOrderId,
+        amount: orderDetails.amount,
+        currency: orderDetails.currency || sub.currency || "INR",
+        contact: mobile,
+        email,
+      });
+    } catch (e) {
+      toast.error("Couldn't start the payment", {
+        description: e instanceof Error ? e.message : "Please try again in a moment.",
+      });
+    } finally {
+      setRenewingPlanId(null);
+    }
+  };
 
   const {
     data: subscriptions,
@@ -324,14 +390,63 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
                 <span>
                   The last auto-deduction for this plan failed.
-                  {accessUntil ? ` Access is valid until ${accessUntil}.` : ""}{" "}
-                  Contact support to restore your subscription.
+                  {accessUntil ? ` Access is valid until ${accessUntil}.` : ""}
                 </span>
+              </div>
+            )}
+
+            {sub.can_renew_manually && sub.plan_price != null && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
+                <div className="text-sm text-gray-700">
+                  {sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED" ? (
+                    <span>
+                      Reactivate this membership — same plan, same courses, no
+                      re-enrollment needed.
+                    </span>
+                  ) : (
+                    <span>
+                      Want to continue after{" "}
+                      {accessUntil ?? "your current period"}? Pay once and your
+                      membership carries on.
+                    </span>
+                  )}
+                </div>
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="primary"
+                  layoutVariant="default"
+                  onClick={() => startRenewal(sub)}
+                  disable={renewingPlanId === sub.user_plan_id}
+                >
+                  <CreditCard className="me-1.5 size-4" />
+                  {renewingPlanId === sub.user_plan_id
+                    ? "Starting payment..."
+                    : `Pay ${formatPrice(sub.plan_price, sub.currency)} to continue`}
+                </MyButton>
               </div>
             )}
           </div>
         );
       })}
+
+      {/* Headless gateway checkout — opened programmatically by startRenewal */}
+      <RazorpayCheckoutForm
+        ref={razorpayRef}
+        error={null}
+        amount={0}
+        currency="INR"
+        onPaymentReady={() => {
+          toast.success("Payment received!", {
+            description:
+              "Your membership is being reactivated — this takes a few seconds.",
+          });
+          refetchSoon();
+        }}
+        onError={(message) =>
+          toast.error("Payment not completed", { description: message })
+        }
+      />
 
       <Dialog
         open={Boolean(toCancel)}

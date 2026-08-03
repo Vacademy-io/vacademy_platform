@@ -44,10 +44,22 @@ public class BookingSlotService {
 
     /** Bookable slot-start instants for [fromDate, toDate] (dates in page tz, inclusive). */
     public List<Instant> availableSlots(BookingPage page, LocalDate fromDate, LocalDate toDate) {
+        return availableSlots(page, fromDate, toDate, null);
+    }
+
+    /**
+     * Same as {@link #availableSlots(BookingPage, LocalDate, LocalDate)} but with an
+     * optional duration override — used when a booking page offers multiple session
+     * types and the learner has picked one whose length differs from the page default.
+     */
+    public List<Instant> availableSlots(BookingPage page, LocalDate fromDate, LocalDate toDate,
+                                        Integer durationOverride) {
         ZoneId pageZone = ZoneId.of(page.getTimezone());
         Instant now = Instant.now();
 
-        int duration = page.getDurationMinutes() != null ? page.getDurationMinutes() : 30;
+        int duration = durationOverride != null && durationOverride > 0
+                ? durationOverride
+                : (page.getDurationMinutes() != null ? page.getDurationMinutes() : 30);
         int granularity = page.getSlotGranularityMinutes() != null && page.getSlotGranularityMinutes() > 0
                 ? page.getSlotGranularityMinutes() : duration;
         int minNotice = page.getMinNoticeMinutes() != null ? page.getMinNoticeMinutes() : 0;
@@ -143,9 +155,13 @@ public class BookingSlotService {
 
     /** Is this exact instant a currently-bookable slot start? (Race-window guard, not a lock.) */
     public boolean isSlotAvailable(BookingPage page, Instant slotStart) {
+        return isSlotAvailable(page, slotStart, null);
+    }
+
+    public boolean isSlotAvailable(BookingPage page, Instant slotStart, Integer durationOverride) {
         ZoneId pageZone = ZoneId.of(page.getTimezone());
         LocalDate day = slotStart.atZone(pageZone).toLocalDate();
-        return availableSlots(page, day, day).contains(slotStart);
+        return availableSlots(page, day, day, durationOverride).contains(slotStart);
     }
 
     // ---------- helpers ----------

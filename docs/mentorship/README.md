@@ -161,6 +161,59 @@ Blob keys are the exact snake_case names the backend reads — keep FE/BE in loc
   booking / cancellation, each channel toggled AND template-editable per trigger under
   `MENTORSHIP_SETTING`. ✅ done (branch `feat/mentorship-notifications-settings`).
 
+## Market-standard 1:1 (branch `feat/mentorship-complete`)
+Consolidation of the split branches into one: `main` + per-mentor Google + notifications
+(V414 mentor-google migration renumbered to **V417** — main took V414–V416).
+- **Booking link visible + copyable** ✅ done. Admin mentor list shows Copy-link + Open
+  next to "Booking on"; My Mentorship has a "Your 1:1 booking link" card. URL =
+  `${LEARNER_DASHBOARD}/booking-response?instituteId=&slug=`.
+- **Mentor self-service availability** ✅ done. `GET/PUT /mentorship/v1/my-booking-page`
+  (`MentorAvailabilityRequest` excludes host/slug so a mentor can only edit their own page;
+  auto-provisions a default Mon–Fri 9–5 page). FE `AvailabilityDialog` — weekly hours grid +
+  duration / min-notice / buffers / horizon — opened from My Mentorship.
+- **Session types & durations** ✅ done (cross-app). `session_types_json` on `booking_page`
+  (**V418**) + `BookingSessionTypeDTO` + `BookingPageService` read/write. Exposed on
+  `PublicPageDTO`; the chosen length threads through `getSlots?duration` (slot engine gained a
+  duration-override overload) + `PublicBookRequestDTO.durationMinutes` → `createBooking`.
+  Mentor editor: "Session types" section in `AvailabilityDialog`. Learner: "Choose a session"
+  picker in `booking-response` before the slot grid (empty list = unchanged single-duration).
+- **Mentor "Upcoming sessions"** ✅ done. `MyScheduleCard` in My Mentorship — the mentor's own
+  sessions across all mentees (today + next 30d) with learner name, Today badge, status, Meet
+  Join; reuses `/meetings/my-calendar` (no backend change).
+- **Mentee learning progress** ✅ done. The mentee dialog leads with the learner's in-progress
+  courses (name + % + level) via the existing `useLearnerPackagesQuery` (search-by-user-id,
+  type=PROGRESS) — no new endpoint.
+- **Time off / date overrides** ✅ done. Availability editor lets a mentor mark a date
+  Unavailable or set Custom hours; round-trips `BookingAvailability.date_overrides` (the slot
+  engine already honored blocked/windows). Everything managed in-app, no Google Calendar.
+- **Meeting location** ✅ done. Editor selector: Google Meet (auto) or Custom link
+  (Zoom / BigBlueButton / own room). `MentorAvailabilityRequest` carries
+  locationType/customMeetingLink/allocateGoogleMeet → `BookingPageService.update`.
+  (Auto-provisioning is Meet-only; Zoom/BBB = paste the link.) Cancellation messaging when a
+  mentor cancels an affected session is the existing `MENTORSHIP_SETTING` cancellation trigger;
+  blocking a future date only hides slots (existing bookings aren't auto-cancelled).
+- Paid 1:1 sessions / public mentor directory / ratings — not started (deprioritised).
+
+## Post-merge enhancements
+The P1–P4 feature merged to `main` (PR #2377). Follow-ups:
+- **Add mentor from Teams + photo** (`feat/mentorship-add-mentor-ux`) — the dialog picks
+  from the institute's team members (`fetchEligibleOrgUsers`) and supports a profile-photo
+  upload, replacing the all-users search.
+- **Dashboard widgets** (`feat/mentorship-add-mentor-ux`) — learner `MyMentorsWidget`
+  (mentors + next upcoming session via `/meetings/by-lead?inviteeUserId=self`) and admin
+  `MentorshipStatsWidget` (mentors/mentees/today/upcoming); backend `today_sessions` +
+  `upcoming_sessions` counts on the dashboard endpoint. Both self-hide when empty.
+- **Per-mentor Google** (`feat/mentorship-per-mentor-google`) ✅ — each mentor connects their
+  OWN Google account via a **Connect Google** card in My Mentorship (mentor-scoped OAuth:
+  `POST /mentorship/v1/my-google/initiate`; the shared callback links the connected account to
+  `mentor.google_account_id`). Their bookings then use that account for Meet + Calendar (event
+  on the mentor's own calendar), falling back to the institute default when a mentor hasn't
+  connected. Reuses the existing multi-account `GoogleAccountStore` + the provider chain's
+  `providerAccountId`. See `GET /mentorship/v1/my-mentor-profile` for connected status.
+
+## Manual test
+See [MANUAL_TEST.md](./MANUAL_TEST.md) for a step-by-step end-to-end test.
+
 ## Locked decisions (2026-07-28)
 Dedicated `MENTOR` role (not reuse TEACHER) · one-shot round-robin (no pool table) ·
 Google Calendar deferred to Phase 3 · start with Phase 0.

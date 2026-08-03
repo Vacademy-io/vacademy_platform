@@ -47,10 +47,10 @@ public class GoogleCalendarService {
     private final WebClient.Builder webClientBuilder;
 
     /** Create a calendar event; returns the Google event id, or empty when no calendar-capable account. */
-    public Optional<String> createEvent(String instituteId, String summary, String description,
+    public Optional<String> createEvent(String instituteId, String accountId, String summary, String description,
                                         Instant startUtc, Instant endUtc, String timezone,
                                         List<String> attendeeEmails, String meetLink) {
-        Optional<GoogleAccount> accountOpt = calendarAccount(instituteId);
+        Optional<GoogleAccount> accountOpt = calendarAccount(instituteId, accountId);
         if (accountOpt.isEmpty()) return Optional.empty();
         GoogleAccount account = accountOpt.get();
         try {
@@ -89,7 +89,7 @@ public class GoogleCalendarService {
     public void updateEventTime(String instituteId, String eventId, Instant startUtc, Instant endUtc,
                                 String timezone) {
         if (eventId == null || eventId.isBlank()) return;
-        calendarAccount(instituteId).ifPresent(account -> {
+        calendarAccount(instituteId, null).ifPresent(account -> {
             try {
                 String token = accessTokenService.getAccessToken(account);
                 Map<String, Object> body = new HashMap<>();
@@ -113,9 +113,9 @@ public class GoogleCalendarService {
     }
 
     /** Delete an event (cancel). Best-effort; swallows 404/410 (already gone). */
-    public void deleteEvent(String instituteId, String eventId) {
+    public void deleteEvent(String instituteId, String accountId, String eventId) {
         if (eventId == null || eventId.isBlank()) return;
-        calendarAccount(instituteId).ifPresent(account -> {
+        calendarAccount(instituteId, accountId).ifPresent(account -> {
             try {
                 String token = accessTokenService.getAccessToken(account);
                 webClientBuilder.build()
@@ -136,9 +136,16 @@ public class GoogleCalendarService {
 
     // ---------------------------------------------------------------------
 
-    /** The institute's default Google account IF it granted the Calendar scope; else empty (skip silently). */
-    private Optional<GoogleAccount> calendarAccount(String instituteId) {
-        return googleAccountStore.findDefault(instituteId)
+    /**
+     * The Google account for this event, IF it granted the Calendar scope. When
+     * {@code accountId} is set (the mentor's own account) it's used; otherwise the
+     * institute default. Empty when unavailable/unconsented (skip silently).
+     */
+    private Optional<GoogleAccount> calendarAccount(String instituteId, String accountId) {
+        Optional<GoogleAccount> account = (accountId != null && !accountId.isBlank())
+                ? googleAccountStore.findByIdAndInstitute(accountId, instituteId)
+                : googleAccountStore.findDefault(instituteId);
+        return account
                 .filter(a -> a.getGrantedScopes() != null && a.getGrantedScopes().contains(CALENDAR_SCOPE));
     }
 

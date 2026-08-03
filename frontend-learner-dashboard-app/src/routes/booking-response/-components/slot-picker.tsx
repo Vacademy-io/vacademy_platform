@@ -26,6 +26,8 @@ interface SlotPickerProps {
   onWeekOffsetChange: (offset: number) => void;
   selectedDayKey: string | null;
   onSelectedDayKeyChange: (dayKey: string) => void;
+  /** Chosen session-type length (minutes) so slots fit the actual meeting length. */
+  duration?: number;
 }
 
 const DAYS_PER_PAGE = 7;
@@ -50,6 +52,7 @@ const SlotPicker = ({
   onWeekOffsetChange,
   selectedDayKey,
   onSelectedDayKeyChange,
+  duration,
 }: SlotPickerProps) => {
   const horizonDays = Math.max(1, bookingHorizonDays || 30);
 
@@ -88,7 +91,7 @@ const SlotPicker = ({
     data: slotsData,
     isLoading: slotsLoading,
     isError: slotsError,
-  } = useQuery(handleGetBookingSlots({ instituteId, slug, from, to, tz }));
+  } = useQuery(handleGetBookingSlots({ instituteId, slug, from, to, tz, duration }));
 
   // Group returned slots by day (in the selected timezone).
   const slotsByDay = useMemo(() => {

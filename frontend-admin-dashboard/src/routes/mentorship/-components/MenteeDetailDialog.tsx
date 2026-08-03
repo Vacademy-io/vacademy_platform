@@ -5,7 +5,9 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
+import { Progress } from '@/components/ui/progress';
 import { createDirectConversation } from '@/services/chat/chatApi';
+import { useLearnerPackagesQuery } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { useCreateNote, useMenteeCalls, useStudentTimeline } from '../-hooks/use-mentorship';
 import type { MenteeDTO } from '../-types/mentorship-types';
 
@@ -33,6 +35,14 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
     const timeline = useStudentTimeline(open ? studentUserId : undefined);
     const calls = useMenteeCalls(open ? instituteId : undefined, open ? studentUserId : undefined);
     const createNote = useCreateNote();
+    // The mentee's in-progress courses — gives the mentor real learning context.
+    const learning = useLearnerPackagesQuery({
+        instituteId: instituteId ?? '',
+        userId: open ? (studentUserId ?? '') : '',
+        type: 'PROGRESS',
+        page: 0,
+        size: 5,
+    });
 
     if (!mentee) return null;
 
@@ -86,6 +96,49 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
             }
         >
             <div className="flex flex-col gap-6">
+                {mentee.email && (
+                    <div className="text-caption text-neutral-500">
+                        {mentee.email}
+                        {mentee.mobile_number ? ` · ${mentee.mobile_number}` : ''}
+                    </div>
+                )}
+
+                <section className="flex flex-col gap-3">
+                    <span className="text-body font-semibold text-neutral-700">Learning</span>
+                    {learning.isLoading ? (
+                        <span className="text-caption text-neutral-400">Loading…</span>
+                    ) : (learning.data?.content?.length ?? 0) === 0 ? (
+                        <span className="text-caption text-neutral-400">No courses in progress.</span>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {(learning.data?.content ?? []).map((c) => {
+                                const pct = Math.min(Math.max(c.percentage_completed ?? 0, 0), 100);
+                                return (
+                                    <div
+                                        key={c.package_session_id ?? c.id}
+                                        className="flex flex-col gap-1"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-body text-neutral-700">
+                                                {c.package_name}
+                                            </span>
+                                            <span className="text-caption text-neutral-500">
+                                                {Math.round(pct)}%
+                                            </span>
+                                        </div>
+                                        <Progress value={pct} className="h-1.5" />
+                                        {c.level_name && (
+                                            <span className="text-caption text-neutral-400">
+                                                {c.level_name}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
                 <section className="flex flex-col gap-3">
                     <span className="text-body font-semibold text-neutral-700">Notes</span>
                     <div className="flex items-end gap-2">

@@ -13,11 +13,19 @@ import { QuestionNavigator } from './QuestionNavigator';
 import { QuestionResponseForm } from './QuestionResponseForm';
 import { TableViewResponseForm } from './TableViewResponseForm';
 import { OfflineEntrySubmitDialog } from './OfflineEntrySubmitDialog';
+import { OfflineAttachmentsPanel } from './OfflineAttachmentsPanel';
+import { OfflineBulkImportDialog } from './OfflineBulkImportDialog';
+import { MyButton } from '@/components/design-system/button';
+import { FileZip } from '@phosphor-icons/react';
 import {
+    attachOfflineFiles,
     createAndSubmitOffline,
     submitDirectMarks,
 } from '../-services/offline-entry-services';
 import {
+    AttachmentSlot,
+    OfflineAttachmentFiles,
+    OfflineAttachmentsRequest,
     OfflineResponseState,
     QuestionResponseState,
     ScoringMode,
@@ -26,6 +34,17 @@ import { Section } from '@/types/assessments/assessment-steps';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { Separator } from '@/components/ui/separator';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { ensureFileHasExtension } from '@/lib/file-download';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+
+// Which request field each attachment slot maps to.
+const ATTACHMENT_FIELD: Record<AttachmentSlot, keyof OfflineAttachmentsRequest> = {
+    student: 'student_file_id',
+    checked: 'checked_file_id',
+    report: 'report_file_id',
+};
 
 type Step = 'SELECT_STUDENT' | 'ENTER_RESPONSES' | 'COMPLETED';
 
@@ -86,8 +105,13 @@ export const OfflineEntryMainComponent = () => {
     const [currentSectionId, setCurrentSectionId] = useState(sections[0]?.id ?? '');
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [responses, setResponses] = useState<OfflineResponseState>({});
+    const [attachments, setAttachments] = useState<OfflineAttachmentFiles>({});
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+    const [showBulkImport, setShowBulkImport] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const { uploadFile } = useFileUpload();
+    const adminUserId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
 
     const currentQuestions = questionsMap[currentSectionId] ?? [];
     const currentQuestion = currentQuestions[currentQuestionIndex];
@@ -102,12 +126,14 @@ export const OfflineEntryMainComponent = () => {
         setCurrentSectionId(sections[0]?.id ?? '');
         setCurrentQuestionIndex(0);
         setResponses({});
+        setAttachments({});
         setStep('ENTER_RESPONSES');
     };
 
     const handleBackToSelection = () => {
         setSelectedStudent(null);
         setResponses({});
+        setAttachments({});
         setCurrentQuestionIndex(0);
         setStep('SELECT_STUDENT');
     };
@@ -137,11 +163,41 @@ export const OfflineEntryMainComponent = () => {
         }
     };
 
+    // Uploads the picked PDFs to S3 and returns the attach-files payload. Runs
+    // BEFORE the attempt is created so a failed upload leaves nothing behind for
+    // the admin to clean up — they just fix the file and submit again.
+    const uploadAttachments = async (instituteId: string): Promise<OfflineAttachmentsRequest> => {
+        const slots = Object.keys(attachments) as AttachmentSlot[];
+        const payload: OfflineAttachmentsRequest = {};
+
+        for (const slot of slots) {
+            const file = attachments[slot];
+            if (!file) continue;
+            const fileId = await uploadFile({
+                // Keep the extension so the PDF later opens as a PDF rather than
+                // an extension-less download.
+                file: ensureFileHasExtension(file),
+                // The whole submit is already showing a spinner; letting the
+                // uploader own the flag would clear it after the first file.
+                setIsUploading: () => {},
+                userId: adminUserId,
+                source: instituteId,
+                sourceId: 'ASSESSMENT_OFFLINE_ENTRY',
+            });
+            if (!fileId) throw new Error(`Could not upload "${file.name}"`);
+            payload[ATTACHMENT_FIELD[slot]] = fileId;
+        }
+
+        return payload;
+    };
+
     const handleSubmit = async () => {
         if (!selectedStudent) return;
         setIsSubmitting(true);
         try {
             const iId = instituteDetails?.id ?? '';
+
+            const attachmentPayload = await uploadAttachments(iId);
 
             // Build sections payload with option selections
             const sectionsPayload = sections.map((section) => ({
@@ -192,10 +248,29 @@ export const OfflineEntryMainComponent = () => {
                 );
             }
 
+            // Attach the scanned sheets last: submitDirectMarks rewrites
+            // evaluated_file_id from its own payload, so attaching the checked
+            // copy before it would be overwritten.
+            if (Object.keys(attachmentPayload).length > 0) {
+                await attachOfflineFiles(
+                    assessmentId,
+                    attemptResponse?.attempt_id ?? '',
+                    iId,
+                    attachmentPayload
+                );
+            }
+
             toast.success('Offline responses submitted successfully');
             setStep('COMPLETED');
-        } catch {
-            toast.error('Failed to submit offline responses');
+        } catch (error) {
+            // Surface the real reason — an upload failure names the file that
+            // failed, which "Failed to submit" alone never told the admin.
+            const backendMessage = (error as { response?: { data?: { ex?: string } } })?.response
+                ?.data?.ex;
+            toast.error(
+                backendMessage ??
+                    (error instanceof Error ? error.message : 'Failed to submit offline responses')
+            );
         } finally {
             setIsSubmitting(false);
             setShowSubmitDialog(false);
@@ -206,11 +281,31 @@ export const OfflineEntryMainComponent = () => {
     if (step === 'SELECT_STUDENT') {
         return (
             <div className="flex flex-col gap-4 p-6">
-                <div>
-                    <h1 className="text-xl font-bold">{assessmentName}</h1>
-                    <p className="text-sm text-gray-500">Offline Data Entry — Select a student to begin</p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h1 className="text-xl font-bold">{assessmentName}</h1>
+                        <p className="text-sm text-gray-500">
+                            Offline Data Entry — Select a student to begin
+                        </p>
+                    </div>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        type="button"
+                        onClick={() => setShowBulkImport(true)}
+                    >
+                        <FileZip className="size-4" /> Bulk Import
+                    </MyButton>
                 </div>
                 <Separator />
+
+                <OfflineBulkImportDialog
+                    open={showBulkImport}
+                    onOpenChange={setShowBulkImport}
+                    assessmentId={assessmentId}
+                    instituteId={instituteDetails?.id ?? ''}
+                    packageSessionIds={packageSessionIds}
+                />
 
                 <Suspense fallback={<DashboardLoader />}>
                     <StudentSelector
@@ -241,6 +336,7 @@ export const OfflineEntryMainComponent = () => {
                         onClick={() => {
                             setStep('SELECT_STUDENT');
                             setResponses({});
+                            setAttachments({});
                             setSelectedStudent(null);
                             setCurrentQuestionIndex(0);
                         }}
@@ -378,6 +474,12 @@ export const OfflineEntryMainComponent = () => {
                 </div>
             )}
 
+            <OfflineAttachmentsPanel
+                files={attachments}
+                onChange={setAttachments}
+                disabled={isSubmitting}
+            />
+
             <OfflineEntrySubmitDialog
                 open={showSubmitDialog}
                 onOpenChange={setShowSubmitDialog}
@@ -386,6 +488,9 @@ export const OfflineEntryMainComponent = () => {
                 scoringMode={scoringMode}
                 studentName={selectedStudent?.name ?? ''}
                 isSubmitting={isSubmitting}
+                attachmentNames={Object.values(attachments)
+                    .filter((file): file is File => Boolean(file))
+                    .map((file) => file.name)}
                 onConfirm={handleSubmit}
             />
         </div>

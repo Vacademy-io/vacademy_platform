@@ -33,8 +33,12 @@ import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
 import { formatPlanPrice } from '@/utils/finance-utils';
-import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -53,7 +57,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Copy, CopySimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { MemberHistoryDrawer } from '@/routes/manage-custom-teams/sub-orgs/-components/member-history-drawer';
 import { RecordSubOrgPaymentDialog } from '@/routes/manage-custom-teams/sub-orgs/-components/record-sub-org-payment-dialog';
@@ -116,6 +120,9 @@ function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
  * to expand the admin's CPO installment table.
  */
 export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = false }: Props) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
     const instituteId = getCurrentInstituteId();
 
     const { data: finance, isLoading: financeLoading } = useQuery<SubOrgFinanceDetail>({
@@ -262,7 +269,9 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     const ledgerTotalPages = ledgerData?.totalPages ?? 1;
 
     const [showLedger, setShowLedger] = useState(false);
-    const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
+    const [activeTab, setActiveTab] = useState<
+        'admin' | 'courses' | 'learners' | 'invoices' | 'team'
+    >('admin');
     const [drawer, setDrawer] = useState<{
         userId: string;
         name?: string;
@@ -397,7 +406,22 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
 
     // The CTAs only make sense for the parent institute admin — sub-org admins can't
     // edit their own CPO ledger or fire reminders against themselves.
-    const canEditLedger = !restrictedView && !isCallerSubOrgAdmin();
+    // Finance capabilities for role-granted users. Admins and sub-org admins are
+    // unaffected: subOrgPermission returns true for them, so the existing conditions
+    // (restrictedView / isCallerSubOrgAdmin) remain the deciding factors.
+    const canViewFinance = subOrgPermission('canViewFinance');
+    const canEditLedger =
+        !restrictedView && !isCallerSubOrgAdmin() && subOrgPermission('canManageFinance');
+
+    // 'admin' is the initial tab, but it is a finance tab. A role without finance
+    // access would otherwise land on a tab whose trigger is hidden and see an empty
+    // panel, so fall back to the first tab that is actually rendered for them.
+    useEffect(() => {
+        if (canViewFinance) return;
+        if (activeTab === 'admin' || activeTab === 'invoices') {
+            setActiveTab(restrictedView ? 'team' : 'courses');
+        }
+    }, [canViewFinance, activeTab, restrictedView]);
     const adminUserPlanId = admin?.user_plan_id || null;
     const nextDueRemaining = admin?.next_due
         ? (admin.next_due.amount_expected ?? 0) - (admin.next_due.amount_paid ?? 0)
@@ -409,7 +433,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     if (financeLoading) {
         return (
             <div className="rounded-lg border bg-white p-6 text-sm text-muted-foreground">
-                Loading sub-org analytics…
+                Loading {subOrgTerm.toLowerCase()} analytics…
             </div>
         );
     }
@@ -597,10 +621,12 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 className="w-full"
             >
                 <TabsList className="w-full justify-start gap-1 overflow-x-auto rounded-md border bg-white p-1">
-                    <TabsTrigger value="admin" className="gap-2">
-                        <Wallet className="h-3.5 w-3.5" />
-                        Admin payment
-                    </TabsTrigger>
+                    {canViewFinance && (
+                        <TabsTrigger value="admin" className="gap-2">
+                            <Wallet className="h-3.5 w-3.5" />
+                            Admin payment
+                        </TabsTrigger>
+                    )}
                     {!restrictedView && (
                         <>
                             <TabsTrigger value="courses" className="gap-2">
@@ -617,13 +643,18 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                     {learners.length}
                                 </Badge>
                             </TabsTrigger>
-                            <TabsTrigger value="invoices" className="gap-2">
-                                <FileText className="h-3.5 w-3.5" />
-                                Invoices
-                                <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px]">
-                                    {invoices.length}
-                                </Badge>
-                            </TabsTrigger>
+                            {canViewFinance && (
+                                <TabsTrigger value="invoices" className="gap-2">
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Invoices
+                                    <Badge
+                                        variant="outline"
+                                        className="ml-1 h-4 px-1.5 text-[10px]"
+                                    >
+                                        {invoices.length}
+                                    </Badge>
+                                </TabsTrigger>
+                            )}
                         </>
                     )}
                     <TabsTrigger value="team" className="gap-2">
@@ -685,7 +716,10 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                             setDrawer({
                                                 userId: admin.user_id!,
                                                 name: admin.full_name || admin.user_id,
-                                                subtitle: 'Sub-org admin',
+                                                subtitle: `${getTerminology(
+                                                    OtherTerms.SubOrg,
+                                                    SystemTerms.SubOrg
+                                                )} admin`,
                                             })
                                         }
                                         className="shrink-0 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1216,7 +1250,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     userPlanId={adminUserPlanId}
                     adminUserId={adminUserId || undefined}
                     contextLabel={
-                        subOrgName ? `${subOrgName} — admin CPO` : 'Sub-org admin CPO'
+                        subOrgName ? `${subOrgName} — admin CPO` : `${subOrgTerm} admin CPO`
                     }
                     suggestedAmount={suggestedAmount}
                 />
@@ -1229,7 +1263,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             {adminUserId && instituteId && (
                 <CreateInvoiceDialog
                     userId={adminUserId}
-                    userName={admin?.full_name || subOrgName || 'Sub-org admin'}
+                    userName={admin?.full_name || subOrgName || `${subOrgTerm} admin`}
                     instituteId={instituteId}
                     open={createInvoiceOpen}
                     onOpenChange={(o) => {

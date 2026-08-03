@@ -275,6 +275,23 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showInviteButton: true,
         customButtons: [],
     },
+    subOrganizations: {
+        // Off by default. When an admin turns this on for a teacher / custom role
+        // the user reaches the module but only ever sees the channel partners
+        // assigned to them (enforced server-side).
+        moduleEnabled: false,
+        // No channel partners granted at role level by default.
+        assignedSubOrgIds: [],
+        // Read-only out of the box; admins opt each write capability in per role.
+        permissions: {
+            canCreate: false,
+            canEditConfig: false,
+            canManageTeam: false,
+            canViewFinance: true,
+            canManageFinance: false,
+            canExport: true,
+        },
+    },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

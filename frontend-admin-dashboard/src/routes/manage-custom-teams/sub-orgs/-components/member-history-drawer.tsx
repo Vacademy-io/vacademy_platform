@@ -25,6 +25,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Bell, Copy, Plus } from '@phosphor-icons/react';
 import { BookOpen, CircleCheck, Download, ExternalLink, FileText, Lock } from 'lucide-react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Resolve a working URL for the invoice. Mirrors manage-students payment-history:
@@ -81,6 +83,9 @@ export function MemberHistoryDrawer({
     courses,
     readOnly = false,
 }: Props) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent
@@ -126,7 +131,7 @@ export function MemberHistoryDrawer({
                                         <p>
                                             Only the parent institute admin can edit
                                             installments, apply CPO discounts, or record
-                                            offline payments on this sub-org admin&apos;s
+                                            offline payments on this {subOrgTerm.toLowerCase()} admin&apos;s
                                             ledger.
                                         </p>
                                     </div>

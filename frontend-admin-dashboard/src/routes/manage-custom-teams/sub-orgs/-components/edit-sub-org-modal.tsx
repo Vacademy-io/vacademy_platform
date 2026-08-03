@@ -34,6 +34,8 @@ import {
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { formatPlanPrice } from '@/utils/finance-utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 // Local sub-org helpers mirroring create-sub-org-modal.tsx — kept inline so this
 // modal's lookups don't accidentally pick up the rest of the dashboard's
@@ -88,6 +90,9 @@ const PERMISSION_CATALOG = ['FULL', 'CREATE_COURSE'] as const;
  * to toast.
  */
 export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: EditSubOrgModalProps) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId();
 
@@ -246,7 +251,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
             onOpenChange(false);
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || 'Failed to update sub-org');
+            toast.error(err?.response?.data?.message || `Failed to update ${subOrgTerm.toLowerCase()}`);
         },
     });
 
@@ -348,7 +353,10 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex max-h-[90vh] w-[95vw] flex-col overflow-hidden sm:max-w-[640px]">
                 <DialogHeader className="shrink-0">
-                    <DialogTitle>Edit Sub-Org: {subOrgName}</DialogTitle>
+                    <DialogTitle>
+                        Edit {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}:{' '}
+                        {subOrgName}
+                    </DialogTitle>
                     <DialogDescription>
                         Update auth roles, allowed team roles, admin permissions, the admin payment
                         option, seat cap, and validity. CPO swaps and removing linked courses
@@ -496,7 +504,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
 
                             <section className="space-y-2">
                                 <Label className="text-sm font-semibold">
-                                    Allowed team roles (sub-org admin&apos;s pick-list)
+                                    Allowed team roles ({subOrgTerm.toLowerCase()} admin&apos;s pick-list)
                                 </Label>
                                 <p className="text-caption text-neutral-500">
                                     Empty = no restriction.
@@ -533,7 +541,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                                     Admin permissions
                                 </Label>
                                 <p className="text-caption text-neutral-500">
-                                    Stamped on the sub-org admin&apos;s FSPSSM rows. Empty falls back to FULL.
+                                    Stamped on the {subOrgTerm.toLowerCase()} admin&apos;s FSPSSM rows. Empty falls back to FULL.
                                     Applies only to admins enrolled after this save.
                                 </p>
                                 <div className="flex flex-wrap gap-2 rounded-md border border-neutral-200 p-2">
@@ -564,13 +572,13 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                                 </Label>
                                 {orgInvite?.payment_type === 'CPO' ? (
                                     <p className="text-caption text-neutral-500">
-                                        This sub-org is backed by a CPO fee structure. Switching
+                                        This {subOrgTerm.toLowerCase()} is backed by a CPO fee structure. Switching
                                         the admin payment option isn&apos;t supported here.
                                     </p>
                                 ) : (
                                     <>
                                         <p className="text-caption text-neutral-500">
-                                            Which institute payment option the sub-org admin pays
+                                            Which institute payment option the {subOrgTerm.toLowerCase()} admin pays
                                             via. Changing it affects future admin enrollments only —
                                             an admin who already paid keeps their plan.
                                         </p>

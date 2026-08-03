@@ -281,6 +281,28 @@ public interface FacultySubjectPackageSessionMappingRepository
       @Param("instituteId") String instituteId,
       @Param("statusList") List<String> statusList);
 
+  /**
+   * access_ids a user already holds under ONE sub-org, for whichever statuses are asked.
+   *
+   * <p>Used to make assignment idempotent: re-assigning somebody to a channel partner they
+   * already cover must not stack a second set of rows. Deliberately unfiltered by
+   * access_type — both the PACKAGE_SESSION and ENROLL_INVITE grants live in the same
+   * column and both need the duplicate check.
+   */
+  @Query(value = """
+      SELECT DISTINCT f.access_id
+      FROM faculty_subject_package_session_mapping f
+      WHERE f.user_id = :userId
+        AND f.suborg_id = :subOrgId
+        AND f.linkage_type = 'SUB_ORG'
+        AND f.access_id IS NOT NULL
+        AND f.status IN (:statusList)
+      """, nativeQuery = true)
+  List<String> findAccessIdsByUserIdAndSubOrgId(
+      @Param("userId") String userId,
+      @Param("subOrgId") String subOrgId,
+      @Param("statusList") List<String> statusList);
+
   @Query(value = """
       SELECT DISTINCT f.access_id
       FROM faculty_subject_package_session_mapping f

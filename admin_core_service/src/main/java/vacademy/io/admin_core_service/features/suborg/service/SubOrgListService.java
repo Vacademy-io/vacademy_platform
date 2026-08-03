@@ -54,7 +54,28 @@ public class SubOrgListService {
 
     @Transactional(readOnly = true)
     public Page<SubOrgListItemDTO> getSubOrgsWithDetails(String parentInstituteId, Pageable pageable) {
-        Page<InstituteSubOrg> subOrgPage = instituteSubOrgRepository.findByInstituteId(parentInstituteId, pageable);
+        return getSubOrgsWithDetails(parentInstituteId, pageable, null);
+    }
+
+    /**
+     * Assignment-scoped listing.
+     *
+     * @param allowedSubOrgIds {@code null} = unrestricted (root / true institute admin:
+     *        every sub-org under the institute). Otherwise only these sub-orgs are
+     *        returned — an EMPTY list yields an empty page, so a caller with no channel
+     *        partners assigned sees nothing. Scoping happens in the DB query, so search,
+     *        filters, pagination and total counts all operate on the assigned set only.
+     */
+    @Transactional(readOnly = true)
+    public Page<SubOrgListItemDTO> getSubOrgsWithDetails(
+            String parentInstituteId, Pageable pageable, List<String> allowedSubOrgIds) {
+        if (allowedSubOrgIds != null && allowedSubOrgIds.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, 0);
+        }
+        Page<InstituteSubOrg> subOrgPage = allowedSubOrgIds == null
+                ? instituteSubOrgRepository.findByInstituteId(parentInstituteId, pageable)
+                : instituteSubOrgRepository.findByInstituteIdAndSuborgIdIn(
+                        parentInstituteId, allowedSubOrgIds, pageable);
         List<InstituteSubOrg> subOrgs = subOrgPage.getContent();
         if (subOrgs.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, subOrgPage.getTotalElements());
@@ -166,6 +187,10 @@ public class SubOrgListService {
                     .planStatus(planStatus)
                     .usedSeats(StringUtils.hasText(soId) ? usedBySubOrg.getOrDefault(soId, 0L) : null)
                     .totalSeats(totalSeats)
+                    // Same population as usedSeats (distinct ACTIVE non-admin members), exposed
+                    // as its own field so the list can show a learner count even when the
+                    // sub-org has no seat cap and "occupied / total" would render blank.
+                    .learnerCount(StringUtils.hasText(soId) ? usedBySubOrg.getOrDefault(soId, 0L) : 0L)
                     .inviteCode(inviteCode)
                     .shortUrl(shortUrl)
                     .createdAt(so.getCreatedAt())

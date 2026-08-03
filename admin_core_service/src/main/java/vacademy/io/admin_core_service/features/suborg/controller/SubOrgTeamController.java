@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAddRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAssignRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamListRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamMemberInstallmentsDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamRemoveRequestDTO;
@@ -26,6 +27,18 @@ import java.util.Map;
 public class SubOrgTeamController {
 
     private final SubOrgTeamService subOrgTeamService;
+
+    /**
+     * Assign an EXISTING institute user to a sub-org. Unlike {@code /add}, this never calls
+     * auth-service, so no invitation email is sent to somebody who already has an account —
+     * which is what makes it safe to drive from the institute Teams list.
+     */
+    @PostMapping("/assign")
+    public ResponseEntity<Map<String, Object>> assignExistingUser(
+            @RequestBody SubOrgTeamAssignRequestDTO request,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        return ResponseEntity.ok(subOrgTeamService.assignExistingUser(request, user));
+    }
 
     @PostMapping("/list")
     public ResponseEntity<PagedUserWithRolesResponse> listTeamMembers(

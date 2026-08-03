@@ -16,6 +16,8 @@ export const useMoveSlide = () => {
             newModuleId,
             newSubjectId,
             newPackageSessionId,
+            slideStatus,
+            position,
         }: {
             slideId: string;
             oldChapterId: string;
@@ -26,11 +28,27 @@ export const useMoveSlide = () => {
             newModuleId: string;
             newSubjectId: string;
             newPackageSessionId: string;
+            /** PUBLISHED | DRAFT. Omitted = the slide keeps the status it already had. */
+            slideStatus?: string;
+            /** TOP | BOTTOM placement in the destination chapter. Omitted = end of chapter. */
+            position?: string;
         }) => {
             try {
-                await authenticatedAxiosInstance.post(
-                    `${MOVE_SLIDE}?slideId=${slideId}&oldChapterId=${oldChapterId}&oldModuleId=${oldModuleId}&oldSubjectId=${oldSubjectId}&oldPackageSessionId=${oldPackageSessionId}&newChapterId=${newChapterId}&newModuleId=${newModuleId}&newSubjectId=${newSubjectId}&newPackageSessionId=${newPackageSessionId}`
-                );
+                await authenticatedAxiosInstance.post(MOVE_SLIDE, null, {
+                    params: {
+                        slideId,
+                        oldChapterId,
+                        oldModuleId,
+                        oldSubjectId,
+                        oldPackageSessionId,
+                        newChapterId,
+                        newModuleId,
+                        newSubjectId,
+                        newPackageSessionId,
+                        ...(slideStatus ? { slideStatus } : {}),
+                        ...(position ? { position } : {}),
+                    },
+                });
             } catch {
                 throw new Error('Failed to move slide');
             }

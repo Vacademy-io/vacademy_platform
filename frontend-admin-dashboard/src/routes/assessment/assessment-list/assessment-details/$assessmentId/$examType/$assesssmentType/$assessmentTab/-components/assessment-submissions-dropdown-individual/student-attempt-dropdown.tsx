@@ -617,19 +617,49 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     };
     const downloadReportMutation = useMutation({
         mutationFn: async () => {
+            // A report uploaded by an admin (offline data entry) is the
+            // authoritative one for that attempt — a generated report can't
+            // reflect how the paper was actually marked on hand-checked exams.
+            // A lookup failure is non-fatal: fall through to generation.
+            try {
+                // Goes through the query cache under the same key the menu
+                // already uses, so this costs no extra request when the report
+                // detail has been fetched — "Download Report" stays as fast as
+                // it was for every attempt that has no uploaded report.
+                const report = await queryClient.fetchQuery({
+                    queryKey: ['GET_STUDENT_REPORT_DETAIL', assessmentId, student.attempt_id],
+                    queryFn: () => viewStudentReport(assessmentId, student.attempt_id, instituteId),
+                    staleTime: 5 * 60 * 1000,
+                });
+                const uploadedReportId = (
+                    report as { report_file_id?: string | null } | undefined
+                )?.report_file_id;
+                if (uploadedReportId) {
+                    const url = await getPublicUrl(uploadedReportId);
+                    if (url) return { type: 'url' as const, value: url };
+                }
+            } catch (error) {
+                console.error('Could not check for an uploaded report:', error);
+            }
+
             const blob = await handleGetStudentReportExportPDF(
                 assessmentId,
                 instituteId,
                 student.attempt_id
             );
             if (!blob) throw new Error('Empty report response');
-            return blob as Blob;
+            return { type: 'blob' as const, value: blob as Blob };
         },
-        onSuccess: (blob) => {
-            const objectUrl = window.URL.createObjectURL(blob);
+        onSuccess: async (result) => {
+            const safeName = (student.full_name || 'student').replace(/[^\w.-]+/g, '_');
+            if (result.type === 'url') {
+                await downloadFileFromUrl(result.value, `Report_${safeName}`);
+                setMenuOpen(false);
+                return;
+            }
+            const objectUrl = window.URL.createObjectURL(result.value);
             const link = document.createElement('a');
             link.href = objectUrl;
-            const safeName = (student.full_name || 'student').replace(/[^\w.-]+/g, '_');
             link.setAttribute('download', `Report_${safeName}.pdf`);
             document.body.appendChild(link);
             link.click();

@@ -745,6 +745,13 @@ export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get
 export const CONVERT_PDF_TO_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-html`;
 export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
 export const SHARE_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/send-passwords`;
+// Rewrites users.username / password_hash and fans the rename out to every
+// denormalized copy (student.username + four assessment-database tables).
+export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/update-password`;
+// Sends the learner their credentials using whatever template the institute has
+// bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
+export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
+export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
 // Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
 // processing returns 425 so the FE retry loop (onError) re-polls.
 export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;

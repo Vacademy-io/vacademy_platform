@@ -247,6 +247,10 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
         showApprovalToggle: true,
+        // ON for admins, OFF for every other role (see teacher/custom defaults).
+        // Changing credentials signs the learner out, so it stays an admin
+        // capability unless an admin explicitly grants it to another role.
+        allowEditCredentials: true,
     },
     studentManagementActions: {
         showEnrollButton: true,

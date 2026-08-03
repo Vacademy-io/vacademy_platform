@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
+import vacademy.io.auth_service.feature.admin_core_service.dto.UsernameChangedRequest;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
@@ -102,6 +103,47 @@ public class InstitutePolicyService {
                 userDTO);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Fan out a committed username change to every service holding a denormalized
+     * copy. admin_core updates its own {@code student.username} rows and forwards
+     * the rename to assessment_service (four more copies) — auth_service does not
+     * call assessment_service directly because it has no
+     * {@code assessment.server.baseurl} configured in any profile.
+     *
+     * <p>{@code @Async} + best-effort: a rename must never fail the credential
+     * change that triggered it. The final failure is logged with everything
+     * needed to replay it by hand, because nothing else in the system detects a
+     * stale copy.
+     *
+     * @param oldUsername the value BEFORE the change — must be captured before
+     *                    {@code users.username} is overwritten, since the
+     *                    downstream tables are keyed by username
+     */
+    @Async
+    public void notifyUsernameChanged(String userId, String oldUsername, String newUsername) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(newUsername)
+                || newUsername.equals(oldUsername)) {
+            return;
+        }
+        try {
+            UsernameChangedRequest body = new UsernameChangedRequest(userId, oldUsername, newUsername);
+            ResponseEntity<String> resp = internalClientUtils.makeHmacRequest(
+                    applicationName,
+                    HttpMethod.POST.name(),
+                    adminCoreServiceBaseUrl,
+                    "/admin-core-service/internal/learner/v1/username-changed",
+                    body);
+            log.info("Username change fan-out dispatched for userId={} '{}' -> '{}': HTTP {}",
+                    userId, oldUsername, newUsername,
+                    resp != null ? resp.getStatusCodeValue() : "no-response");
+        } catch (Exception e) {
+            log.error("Username change fan-out FAILED for userId={} '{}' -> '{}': {}. "
+                            + "student.username and the assessment-service copies still hold the OLD username; "
+                            + "replay with POST /admin-core-service/internal/learner/v1/username-changed",
+                    userId, oldUsername, newUsername, e.getMessage());
         }
     }
 

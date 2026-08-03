@@ -259,6 +259,19 @@ export interface LearnerManagementSettings {
     allowViewPassword: boolean;
     allowSendResetPasswordMail: boolean;
     showApprovalToggle: boolean;
+    // Controls the "Edit" action on the Portal Access → Account Credentials card,
+    // which rewrites the learner's username/password. Unlike the other flags
+    // here it drives a WRITE, and it signs the learner out of their session.
+    //
+    // Role-dependent default when the key is absent (institutes whose saved
+    // settings predate this flag): ON for ADMIN, OFF for teachers and custom
+    // roles. An admin grants it to another role from Display Settings. Consumers
+    // must resolve `?? isAdmin` rather than `?? false`, or admins on an older
+    // settings blob lose the button.
+    //
+    // Only meaningful when allowViewPassword is on — the card it lives in is
+    // hidden otherwise.
+    allowEditCredentials?: boolean;
 }
 
 // What a custom header button links to.

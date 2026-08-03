@@ -4,9 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+import vacademy.io.auth_service.feature.user.service.UserCredentialUpdateService;
 import vacademy.io.common.auth.dto.*;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -27,6 +29,9 @@ public class UserController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private UserCredentialUpdateService userCredentialUpdateService;
 
     // API to create user
     @PostMapping("/internal/create-user")
@@ -72,10 +77,24 @@ public class UserController {
         }
     }
 
+    /**
+     * Internal profile update used by admin_core (learner profile edit, lead
+     * merge). Those callers send a whole UserDTO, so a username can ride along —
+     * and if it differs from the stored one this is a rename. Route it through
+     * {@link UserCredentialUpdateService} first so it fans out to the
+     * denormalized copies instead of silently drifting; unchanged usernames are
+     * a no-op there, which is the common case for these callers.
+     */
     @PutMapping("/internal/update-user")
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {
+            if (StringUtils.hasText(userDTO.getUsername())) {
+                userCredentialUpdateService.updateCredentials(userId, userDTO.getUsername(), null);
+                userDTO.setUsername(null);
+            }
             return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
+        } catch (VacademyException e) {
+            throw e;
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

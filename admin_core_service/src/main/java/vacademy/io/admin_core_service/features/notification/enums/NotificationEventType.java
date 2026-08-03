@@ -21,7 +21,14 @@ public enum NotificationEventType {
     LIVE_CLASS_ON_LIVE("LIVE_CLASS_ON_LIVE"),
     LIVE_CLASS_DELETE("LIVE_CLASS_DELETE"),
     LIVE_CLASS_ON_EDIT("LIVE_CLASS_ON_EDIT"),
-    GUARDIAN_ACCOUNT_CREATED("GUARDIAN_ACCOUNT_CREATED");
+    GUARDIAN_ACCOUNT_CREATED("GUARDIAN_ACCOUNT_CREATED"),
+    /**
+     * A learner's portal credentials are being handed to them — after an admin
+     * edits their username/password, or on an explicit re-share. Bound per
+     * institute AND per channel, so an institute can run a branded EMAIL
+     * template and a WATI-approved WHATSAPP template off the same event.
+     */
+    LEARNER_CREDENTIALS_SHARED("LEARNER_CREDENTIALS_SHARED");
 
     private final String value;
 

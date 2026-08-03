@@ -191,6 +191,7 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowViewPassword: true,
     allowSendResetPasswordMail: true,
     showApprovalToggle: false,
+    allowEditCredentials: false,
 };
 
 const LEARNER_MANAGEMENT_OPTIONS: Array<{
@@ -207,6 +208,11 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
         key: 'allowViewPassword',
         label: 'Allow Viewing Learner Password',
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
+    },
+    {
+        key: 'allowEditCredentials',
+        label: 'Allow Editing Learner Username & Password',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowEditCredentials ?? false,
     },
     {
         key: 'allowSendResetPasswordMail',

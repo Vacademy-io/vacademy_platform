@@ -40,6 +40,7 @@ import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSet
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 import LearnerActivitySettings from '../-components/LearnerActivitySettings';
+import LearnerCredentialSettings from '../-components/LearnerCredentialSettings';
 
 /** Top-level settings navigation categories — order here is display order. */
 export type SettingsDomain =
@@ -234,6 +235,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.LearnerActivity,
             value: 'Learner Activity',
             component: LearnerActivitySettings,
+            domain: 'LMS',
+            group: 'Learner Experience',
+        },
+        {
+            tab: SettingsTabs.LearnerCredentials,
+            value: 'Learner Credentials',
+            component: LearnerCredentialSettings,
             domain: 'LMS',
             group: 'Learner Experience',
         },

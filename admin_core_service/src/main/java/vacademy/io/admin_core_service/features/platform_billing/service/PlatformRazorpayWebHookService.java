@@ -75,7 +75,22 @@ public class PlatformRazorpayWebHookService {
         String webhookId = webHookService.saveWebhook("RAZORPAY_PLATFORM", payload, null);
 
         try {
-            // 2. Signature verify
+            // 2a. Route check BEFORE signature verify. If both this URL and the
+            // institute URL are registered on the same Razorpay account, every
+            // institute-marketplace event is also delivered here — signed with the
+            // institute's secret, so it would fail verification, 400, and be retried
+            // by Razorpay forever. Acking an unverified foreign event is safe: we
+            // read notes.payment_type for routing only and change no state.
+            String earlyPaymentType = extractPaymentType(extractPaymentEntity(objectMapper.readTree(payload)));
+            if (earlyPaymentType != null && !PaymentType.AI_CREDIT_PACK.name().equals(earlyPaymentType)) {
+                log.info("Platform webhook received {} event — not ours, acking without action",
+                        earlyPaymentType);
+                webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED,
+                        "Skipped (pre-verify): payment_type=" + earlyPaymentType);
+                return ResponseEntity.ok("Skipped");
+            }
+
+            // 2b. Signature verify
             if (signature == null || signature.isBlank()) {
                 webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED,
                         "Missing X-Razorpay-Signature header");
@@ -388,6 +403,7 @@ public class PlatformRazorpayWebHookService {
     }
 
     private String extractPaymentType(JsonNode paymentEntity) {
+        if (paymentEntity == null) return null;
         JsonNode notes = paymentEntity.get("notes");
         if (notes == null) return null;
         return textOrNull(notes, "payment_type");

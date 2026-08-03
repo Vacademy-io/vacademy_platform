@@ -96,6 +96,9 @@ public class RazorpayWebHookService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository paymentOptionRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.platform_billing.service.PlatformRazorpayWebHookService platformRazorpayWebHookService;
+
     /**
      * Processes Razorpay webhook events
      */
@@ -104,6 +107,20 @@ public class RazorpayWebHookService {
         String webhookId = null;
 
         try {
+            // Step 0: AI credit-pack purchases are paid on the PLATFORM Razorpay
+            // account, not the institute's — they carry notes.payment_type =
+            // AI_CREDIT_PACK and are signed with the platform webhook secret. They
+            // still carry notes.instituteId (the buyer), so if the platform account
+            // has this URL registered they land here and fail signature verification
+            // against the institute's secret 100% of the time. Hand them to the
+            // platform handler, which verifies against the right secret and grants
+            // the credits. Routed before persistence — the platform handler saves its
+            // own web_hook row with vendor='RAZORPAY_PLATFORM'.
+            if (isPlatformCreditPackEvent(payload)) {
+                log.info("Razorpay webhook is an AI_CREDIT_PACK event — delegating to platform handler.");
+                return platformRazorpayWebHookService.handleWebhook(payload, signature);
+            }
+
             // Step 1: Log the incoming webhook
             webhookId = webHookService.saveWebhook(PaymentGateway.RAZORPAY.name(), payload, null);
 
@@ -558,6 +575,31 @@ public class RazorpayWebHookService {
                     "operation", "extractInstituteId"));
         }
         return null;
+    }
+
+    /**
+     * True when the event belongs to the platform's own Razorpay account
+     * (AI credit-pack purchase) rather than an institute's marketplace account.
+     * Checks both the payment and order entity notes — order.paid carries the
+     * notes on the order, payment.captured on the payment.
+     *
+     * Never throws: a payload we cannot parse is simply "not a platform event"
+     * and falls through to the normal (signature-verified) institute path.
+     */
+    private boolean isPlatformCreditPackEvent(String payload) {
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            JsonNode entity = extractPaymentEntity(root);
+            String paymentType = entity != null ? extractPaymentType(entity) : null;
+            if (paymentType == null && root.has("payload") && root.get("payload").has("order")) {
+                JsonNode orderEntity = root.get("payload").get("order").get("entity");
+                paymentType = orderEntity != null ? extractPaymentType(orderEntity) : null;
+            }
+            return PaymentType.AI_CREDIT_PACK.name().equals(paymentType);
+        } catch (Exception e) {
+            log.warn("Could not determine payment_type for webhook routing: {}", e.getMessage());
+            return false;
+        }
     }
 
     /**

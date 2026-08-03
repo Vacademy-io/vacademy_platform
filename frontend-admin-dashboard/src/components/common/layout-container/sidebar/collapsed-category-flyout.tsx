@@ -26,6 +26,7 @@ import type { DisplaySettingsData } from '@/types/display-settings';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LockKey } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
+import { parseSidebarLink } from './helper';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 
@@ -83,10 +84,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
     return (
         <Popover open={isOpen} onOpenChange={setIsOpen}>
             <PopoverTrigger asChild>
-                <div
-                    onMouseEnter={() => setIsOpen(true)}
-                    onMouseLeave={() => setIsOpen(false)}
-                >
+                <div onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
                     {children}
                 </div>
             </PopoverTrigger>
@@ -115,8 +113,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
                             currentRoute={currentRoute}
                             onClose={() => setIsOpen(false)}
                             showDividerAfter={
-                                idx < items.length - 1 &&
-                                shouldShowDivider(items, idx)
+                                idx < items.length - 1 && shouldShowDivider(items, idx)
                             }
                         />
                     ))}
@@ -236,7 +233,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                             className={cn(
                                 'size-3 flex-shrink-0 transition-transform',
                                 (subOpen || isActive) && 'rotate-180',
-                            isActive ? colors.pillText : 'text-neutral-400'
+                                isActive ? colors.pillText : 'text-neutral-400'
                             )}
                         />
                     </div>
@@ -246,15 +243,21 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                         {item.subItems.map((sub, idx) => {
                             const isSubActive =
                                 sub.subItemLink && currentRoute.includes(sub.subItemLink);
+                            // A query in the link ("/settings?selectedTab=…") has to
+                            // travel in `search` — the router won't parse it out of `to`.
+                            const { to: subTo, search: subSearch } = parseSidebarLink(
+                                sub.subItemLink
+                            );
                             return (
                                 <Link
                                     key={idx}
-                                    to={sub.subItemLink}
+                                    to={subTo}
+                                    search={subSearch}
                                     className={cn(
                                         'flex items-center rounded-md px-2 py-1 text-[13px] transition-colors',
                                         isSubActive
                                             ? cn(colors.pillBg, colors.pillText, 'font-medium')
-                                            : 'text-neutral-500 hover:text-neutral-700 hover:bg-primary-50'
+                                            : 'text-neutral-500 hover:bg-primary-50 hover:text-neutral-700'
                                     )}
                                     onClick={(e) => {
                                         if (sub.locked) {
@@ -280,7 +283,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                                     {sub.locked && (
                                         <LockKey
                                             size={10}
-                                            className="ml-auto flex-shrink-0 text-neutral-400"
+                                            className="ml-auto shrink-0 text-neutral-400"
                                         />
                                     )}
                                 </Link>

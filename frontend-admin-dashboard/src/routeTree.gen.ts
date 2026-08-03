@@ -112,6 +112,7 @@ import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./route
 import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
+import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
@@ -984,6 +985,13 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
+const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
+  id: "/calling/ai-agents/",
+  path: "/calling/ai-agents/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
+)
 const AutomationChatbotFlowsIndexRoute =
   AutomationChatbotFlowsIndexRouteImport.update({
     id: "/automation/chatbot-flows/",
@@ -1824,6 +1832,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -2021,6 +2030,7 @@ export interface FileRoutesByTo {
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
@@ -2220,6 +2230,7 @@ export interface FileRoutesById {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -2420,6 +2431,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/calling/ai-agents/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2617,6 +2629,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
+    | "/calling/ai-agents"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
     | "/communication/notification-hub"
@@ -2815,6 +2828,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/calling/ai-agents/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -3013,6 +3027,7 @@ export interface RootRouteChildren {
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
+  CallingAiAgentsIndexRoute: typeof CallingAiAgentsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
@@ -3861,6 +3876,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/calling/ai-agents/": {
+      id: "/calling/ai-agents/"
+      path: "/calling/ai-agents"
+      fullPath: "/calling/ai-agents/"
+      preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/automation/chatbot-flows/": {
       id: "/automation/chatbot-flows/"
       path: "/automation/chatbot-flows"
@@ -4604,6 +4626,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
+  CallingAiAgentsIndexRoute: CallingAiAgentsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,

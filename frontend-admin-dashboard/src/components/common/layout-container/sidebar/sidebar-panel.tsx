@@ -59,6 +59,7 @@ import { MyInput } from '@/components/design-system/input';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
+import { parseSidebarLink } from './helper';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
@@ -211,10 +212,10 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                                         style={{
                                             width: logoSpansFullWidth
                                                 ? '100%'
-                                                : (logoWidthPx ?? undefined),
+                                                : logoWidthPx ?? undefined,
                                             height: logoSpansFullWidth
                                                 ? 'auto'
-                                                : (logoHeightPx ?? undefined),
+                                                : logoHeightPx ?? undefined,
                                             maxWidth: '100%',
                                         }}
                                     />
@@ -347,10 +348,13 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, 
             {entries.map((entry, idx) => {
                 const colors = getCategoryColors(entry.category);
                 const isActive = currentRoute.includes(entry.route);
+                // Recorded routes can include a query ("/settings?selectedTab=…").
+                const { to: entryTo, search: entrySearch } = parseSidebarLink(entry.route);
                 return (
                     <Link
                         key={`${entry.route}-${idx}`}
-                        to={entry.route}
+                        to={entryTo}
+                        search={entrySearch}
                         onClick={() => onItemClick?.()}
                         className={cn(
                             'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150',

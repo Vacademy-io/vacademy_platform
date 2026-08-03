@@ -13,7 +13,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CreateCatalogueDialog } from './CreateCatalogueDialog';
 import {
     Trash2,
@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
+import { getCatalogueSiteUrl } from '../-utils/learner-site-url';
 
 // Deterministic gradient from tag name
 const GRADIENTS = [
@@ -65,6 +68,19 @@ export const CatalogueList = () => {
     const [deletingTag, setDeletingTag] = useState<string | null>(null);
     const [deleteConfirmTag, setDeleteConfirmTag] = useState<string | null>(null);
     const { canWrite, canDelete } = useCataloguePermissions();
+    const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
+
+    // Needed for the learner portal base URL behind each card's "view live site"
+    // link. This route can be entered cold from the sidebar, so hydrate the store
+    // the same way the editor does rather than falling back to the shared
+    // learner domain and linking every institute at the wrong host.
+    useEffect(() => {
+        if (!instituteDetails) {
+            fetchBothInstituteAPIs()
+                .then(setInstituteDetails)
+                .catch(() => {/* fallback to CATALOGUE_EDITOR_CONFIG.LEARNER_APP_URL */});
+        }
+    }, [instituteDetails, setInstituteDetails]);
 
     const {
         data: tags,
@@ -261,7 +277,10 @@ export const CatalogueList = () => {
                                             title="View live site"
                                         >
                                             <a
-                                                href={`/${tag.tagName}`}
+                                                href={getCatalogueSiteUrl(
+                                                    tag.tagName,
+                                                    instituteDetails?.learner_portal_base_url,
+                                                )}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                             >

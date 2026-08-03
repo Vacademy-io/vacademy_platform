@@ -3,6 +3,7 @@ import {
     AI_PAGE_BUILDER_GENERATE,
     AI_PAGE_BUILDER_ESTIMATE,
     AI_PAGE_BUILDER_EDIT,
+    AI_PAGE_BUILDER_SITE_CHROME,
     AI_PAGE_BUILDER_BRAND_KIT,
     AI_PAGE_BUILDER_IMAGE,
     AI_PAGE_BUILDER_SITE,
@@ -365,4 +366,32 @@ export const applyOps = (config: CatalogueConfig, pageId: string, ops: EditOp[])
         }
     }
     return clone;
+};
+
+
+/** Site chrome (header / footer / theme) — global settings the copilot can edit. */
+export interface SiteChromePayload {
+    instruction: string;
+    global_settings: Record<string, any>;
+    pages: Array<{ route?: string; title?: string }>;
+    institute_name?: string;
+    terminology?: Record<string, string>;
+    history?: Array<{ role: string; content: string }>;
+}
+
+export interface SiteChromeResponse {
+    global_settings: Record<string, any>;
+    reply: string;
+    run_id: string;
+    model: string;
+    warnings: string[];
+}
+
+export const editSiteChrome = async (payload: SiteChromePayload): Promise<SiteChromeResponse> => {
+    const response = await authenticatedAxiosInstance.post<SiteChromeResponse>(
+        AI_PAGE_BUILDER_SITE_CHROME(),
+        payload,
+        { timeout: 180000 }
+    );
+    return response.data;
 };

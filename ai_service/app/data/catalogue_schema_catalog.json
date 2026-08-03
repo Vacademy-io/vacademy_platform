@@ -13,20 +13,21 @@
         "navigation": [
           {
             "label": "Home",
-            "url": "/",
+            "route": "",
             "openInSameTab": true
           },
           {
             "label": "Courses",
-            "url": "#courses",
+            "route": "courses",
             "openInSameTab": true
           }
         ],
-        "ctaButton": {
-          "enabled": true,
-          "text": "Enroll Now",
-          "url": ""
-        }
+        "authLinks": [
+          {
+            "label": "Login",
+            "route": "login"
+          }
+        ]
       }
     },
     {

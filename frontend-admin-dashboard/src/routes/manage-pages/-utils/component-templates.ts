@@ -10,11 +10,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             title: 'My Platform',
             backgroundColor: '#4F46E5', // design-lint-ignore: page-builder template default color
             textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            // Nav items use `route` (the learner header resolves it against the
+            // catalogue), NOT `url`.
             navigation: [
-                { label: 'Home', url: '/', openInSameTab: true },
-                { label: 'Courses', url: '#courses', openInSameTab: true },
+                { label: 'Home', route: '', openInSameTab: true },
+                { label: 'Courses', route: 'courses', openInSameTab: true },
             ],
-            ctaButton: { enabled: true, text: 'Enroll Now', url: '' },
+            // authLinks is what the learner header ACTUALLY renders on the right
+            // (login / signup / Get Started / campaign-form popups). `ctaButton`
+            // was the legacy shape and is dead in the renderer — it stayed in
+            // this template long after, so AI-composed headers taught the wrong
+            // field and produced headers with no working buttons.
+            authLinks: [
+                { label: 'Login', route: 'login' },
+            ],
         },
     },
 

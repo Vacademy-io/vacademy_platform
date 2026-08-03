@@ -339,7 +339,8 @@ public class PaymentLogService {
             requestDTO.setEmail(userDTO.getEmail());
 
             paymentNotificatonService.sendPaymentConfirmationNotification(
-                    instituteId, responseDTO, requestDTO, userDTO, pdfBytes, invoiceNumber);
+                    instituteId, responseDTO, requestDTO, userDTO, pdfBytes, invoiceNumber,
+                    invoiceService.resolveCourseDescription(paymentLog.getId()), paymentLog);
         } catch (Exception e) {
             log.error("Failed to send sync-path payment-confirmation email for payment log {}: {}",
                     paymentLog.getId(), e.getMessage(), e);
@@ -606,12 +607,17 @@ public class PaymentLogService {
                         paymentLog,
                         instituteId,
                         /* sendEmail */ !attachInvoiceToConfirmation);
-                if (attachInvoiceToConfirmation && invoiceResult != null) {
-                    invoicePdfBytes = invoiceResult.getPdfBytes();
+                if (invoiceResult != null) {
+                    // The invoice NUMBER is wanted regardless of placement — the confirmation email
+                    // prints it as the receipt number even when the PDF itself rides on a separate
+                    // invoice email. Only the PDF bytes and the dedup signal are placement-specific.
                     invoiceNumber = invoiceResult.getInvoice() != null
                             ? invoiceResult.getInvoice().getInvoiceNumber()
                             : null;
-                    invoiceAlreadyExisted = invoiceResult.isAlreadyExisted();
+                    if (attachInvoiceToConfirmation) {
+                        invoicePdfBytes = invoiceResult.getPdfBytes();
+                        invoiceAlreadyExisted = invoiceResult.isAlreadyExisted();
+                    }
                 }
                 log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
             }
@@ -788,7 +794,8 @@ public class PaymentLogService {
             } else {
                 UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
                 paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
-                        paymentInitiationRequestDTO, userDTO, invoicePdfBytes, invoiceNumber);
+                        paymentInitiationRequestDTO, userDTO, invoicePdfBytes, invoiceNumber,
+                        invoiceService.resolveCourseDescription(paymentLog.getId()), paymentLog);
             }
         }
     }

@@ -1005,6 +1005,36 @@ public class InvoiceService {
     }
 
     /**
+     * Public entry point for "what course did this payment buy?", reusing the exact
+     * resolution the invoice line item uses (enroll-invite name → batch name → plan name).
+     * Callers outside invoicing — notably the payment-confirmation email, which wants a
+     * {@code {{course_name}}} placeholder — go through here so the course label on the mail
+     * and on the invoice can never disagree.
+     *
+     * <p>Kept as a method on InvoiceService rather than injecting InvoiceService into the
+     * notification service: InvoiceService → PaymentLogService → PaymentNotificatonService
+     * already exists, so the reverse edge would close a bean cycle. PaymentLogService holds
+     * both beans and passes the resolved name down instead.
+     *
+     * @return the course/plan description, or null when the payment log can't be resolved
+     */
+    public String resolveCourseDescription(String paymentLogId) {
+        if (!StringUtils.hasText(paymentLogId)) {
+            return null;
+        }
+        try {
+            PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+            PaymentPlan paymentPlan = paymentLog != null && paymentLog.getUserPlan() != null
+                    ? paymentLog.getUserPlan().getPaymentPlan()
+                    : null;
+            return buildPackageSessionDescription(paymentPlan, paymentLogId);
+        } catch (Exception e) {
+            log.warn("Could not resolve course description for payment log {}: {}", paymentLogId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Build descriptive text for package session in invoice line item
      * For multi-package enrollments, includes level and session information
      */

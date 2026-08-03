@@ -29,6 +29,14 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Find template by institute ID and name
     Optional<Template> findByInstituteIdAndName(String instituteId, String name);
 
+    // Find templates by institute ID, name and type, both matched case-insensitively.
+    // Lets name-keyed lookups (e.g. the payment-confirmation override) filter in SQL instead of
+    // loading every template of a type — each row carries a full HTML body in `content`.
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId "
+            + "AND UPPER(t.name) = UPPER(:name) AND UPPER(t.type) = UPPER(:type)")
+    List<Template> findByInstituteIdAndNameAndTypeIgnoreCase(@Param("instituteId") String instituteId,
+            @Param("name") String name, @Param("type") String type);
+
     // Find templates by vendor ID
     List<Template> findByVendorId(String vendorId);
 

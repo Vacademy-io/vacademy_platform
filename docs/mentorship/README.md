@@ -171,11 +171,18 @@ Consolidation of the split branches into one: `main` + per-mentor Google + notif
   (`MentorAvailabilityRequest` excludes host/slug so a mentor can only edit their own page;
   auto-provisions a default Mon–Fri 9–5 page). FE `AvailabilityDialog` — weekly hours grid +
   duration / min-notice / buffers / horizon — opened from My Mentorship.
-- **Session types & durations** ⏳ planned (cross-app). Needed: `session_types_json` on
-  `booking_page` (new migration) + entity/`BookingPageService`; expose on `PublicPageDTO`;
-  thread a chosen duration through `getSlots` + `PublicBookRequestDTO`/`book`; mentor editor
-  section (extend `AvailabilityDialog`) + learner session-type selector in the
-  `booking-response` flow before slot pick.
+- **Session types & durations** ✅ done (cross-app). `session_types_json` on `booking_page`
+  (**V418**) + `BookingSessionTypeDTO` + `BookingPageService` read/write. Exposed on
+  `PublicPageDTO`; the chosen length threads through `getSlots?duration` (slot engine gained a
+  duration-override overload) + `PublicBookRequestDTO.durationMinutes` → `createBooking`.
+  Mentor editor: "Session types" section in `AvailabilityDialog`. Learner: "Choose a session"
+  picker in `booking-response` before the slot grid (empty list = unchanged single-duration).
+- **Mentor "Upcoming sessions"** ✅ done. `MyScheduleCard` in My Mentorship — the mentor's own
+  sessions across all mentees (today + next 30d) with learner name, Today badge, status, Meet
+  Join; reuses `/meetings/my-calendar` (no backend change).
+- **Mentee learning progress** ✅ done. The mentee dialog leads with the learner's in-progress
+  courses (name + % + level) via the existing `useLearnerPackagesQuery` (search-by-user-id,
+  type=PROGRESS) — no new endpoint.
 - Paid 1:1 sessions / public mentor directory / ratings — not started (deprioritised).
 
 ## Post-merge enhancements

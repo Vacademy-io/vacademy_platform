@@ -93,6 +93,41 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
 - Learner `frontend-learner-dashboard-app/src/routes/my-mentors`: mentor cards with
   **Book** (mentor's booking page) + **Message** (`openDirectConversation`).
 
+### Notifications & Settings (email + in-app + push)  (DONE)
+`MentorshipNotificationService` (`features/mentorship/service`) fans mentorship
+events out across **three channels** — email (`sendEmailViaUnified`), in-app bell
+(`createSystemAlertAnnouncement`), and FCM push (`sendPushViaUnified`) — each gated
+independently. Recipients are hydrated from auth_service by user id. Everything is
+**best-effort**: a notification failure never rolls back the assignment/booking, and
+each channel is fired **after the transaction commits** (via
+`TransactionSynchronizationManager` / booking Phase-2), so an outage can't roll a
+write back (cf. the live-session-notify-rolls-back-slide incident).
+
+Wired events:
+- **Mentor assigned** — `MentorAssignmentService.assignManual` + `bulkRoundRobin`.
+  Notifies the student ("You have a new mentor") and/or the mentor ("New mentee
+  assigned"). All channels + both recipients default ON.
+- **Session booked** — `MeetingBookingService.createBooking` Phase 2 (covers admin
+  and learner/public bookings — public `book()` delegates here). Adds in-app + push;
+  the email confirmation is already sent by the booking page's own settings. No-op
+  unless the host is a mentor.
+- **Session cancelled** — `PublicBookingService.cancel`. Email + in-app + push. No-op
+  unless the host is a mentor.
+
+Config lives in the institute-setting blob under key **`MENTORSHIP_SETTING`**
+(no new table/enum — generic `InstituteSettingService`). Shape:
+```
+{ assignment:   { email, system_alert, push, notify_student, notify_mentor },
+  booking:      { system_alert, push },
+  cancellation: { email, system_alert, push } }
+```
+When the setting is absent the service falls back to **code defaults (all ON)**, so
+mentorship notifications work out-of-the-box with nothing to configure. Admin UI:
+**Settings → Communications → Messaging & Automation → Mentorship Settings**
+(`routes/settings/-components/MentorshipSettings.tsx`, service
+`services/mentorship-settings.ts`). Blob keys are the exact snake_case names the
+backend reads — keep FE/BE in lockstep.
+
 ---
 
 ## Phase roadmap
@@ -105,6 +140,9 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
   connected Google accounts to re-authorize once (adds the `calendar.events` scope).
 - **Phase 4** — hardening (booking questions via master custom-fields, slot conflicts
   vs live classes, double-book lock, Meet-space cleanup on cancel).
+- **Notifications & Settings** — email + in-app + push across assignment / booking /
+  cancellation, configurable per-channel per-event under `MENTORSHIP_SETTING`. ✅ done
+  (branch `feat/mentorship-notifications-settings`).
 
 ## Locked decisions (2026-07-28)
 Dedicated `MENTOR` role (not reuse TEACHER) · one-shot round-robin (no pool table) ·

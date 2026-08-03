@@ -707,8 +707,8 @@ public class UserPlanService {
             // Gated by showSendCredentials so the post-payment path can't ship credentials the
             // admin disabled at the institute level.
             if (showSendCredentials) {
-                String learndashBaseUrl = getLearndashBaseUrlFromPackageSessions(packageSessionIds);
-                asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learndashBaseUrl);
+                String learnerPortalUrl = resolveLearnerPortalUrl(packageSessionIds, instituteId);
+                asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learnerPortalUrl);
             } else {
                 logger.info("Skipping credential email after payment: COURSE_SETTING.showSendCredentials=false " +
                         "for institute {}", instituteId);
@@ -1665,6 +1665,30 @@ public class UserPlanService {
                 .nextPaymentAttemptDate(nextPayment)
                 .finalExpiryDate(finalExpiry)
                 .build();
+    }
+
+    /**
+     * Resolves the learner portal URL for the post-payment credential email's "Access Your Account"
+     * link. Priority: package.course_setting.LMS_SETTING.learndash_base_url →
+     * institute.learnerPortalBaseUrl → null.
+     *
+     * <p>The institute tier is not optional. Without it this path handed auth-service a null
+     * loginUrl, and auth-service — seeing an already-enrolled learner with no <em>newly added</em>
+     * roles — classed them as staff and linked the ADMIN portal instead. Mirrors
+     * LearnerEnrollRequestService.resolveLearnerPortalUrl and
+     * BulkAssignmentService.resolveLearnerPortalUrl; keep all three in sync.
+     */
+    private String resolveLearnerPortalUrl(List<String> packageSessionIds, String instituteId) {
+        String packageUrl = getLearndashBaseUrlFromPackageSessions(packageSessionIds);
+        if (StringUtils.hasText(packageUrl)) {
+            return packageUrl;
+        }
+        if (StringUtils.hasText(instituteId)) {
+            return instituteRepository.findById(instituteId)
+                    .map(Institute::getLearnerPortalBaseUrl)
+                    .orElse(null);
+        }
+        return null;
     }
 
     private String getLearndashBaseUrlFromPackageSessions(List<String> packageSessionIds) {

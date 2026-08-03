@@ -31,7 +31,12 @@ import {
   formatDateTime,
 } from "@/lib/format-date";
 import { toast } from "sonner";
-import { Timer, WarningCircle, HourglassMedium } from "@phosphor-icons/react";
+import {
+  Timer,
+  WarningCircle,
+  HourglassMedium,
+  XCircle,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 // Backend date strings (assessment list API) have no timezone marker but are
@@ -291,6 +296,10 @@ export const AssessmentCard = ({
     usedAttempts > 0 &&
     assessmentInfo.result_type === "MANUAL" &&
     assessmentInfo.report_release_status !== "RELEASED";
+  // Past assessments the learner never actually sat (no LIVE/ENDED attempt) now
+  // reach this list too. There is no report to link, so label the row instead of
+  // leaving it bare.
+  const notAttempted = isPast && usedAttempts === 0;
   const isManualEvaluation =
     (assessmentInfo.evaluation_type || "").toUpperCase() === "MANUAL";
 
@@ -373,6 +382,12 @@ export const AssessmentCard = ({
                 <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warning-200 bg-warning-50 px-2.5 py-1 text-caption font-medium text-warning-700">
                   <HourglassMedium size={14} aria-hidden="true" />
                   Results pending
+                </span>
+              )}
+              {notAttempted && (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-caption font-medium text-muted-foreground">
+                  <XCircle size={14} aria-hidden="true" />
+                  Not attempted
                 </span>
               )}
             </div>

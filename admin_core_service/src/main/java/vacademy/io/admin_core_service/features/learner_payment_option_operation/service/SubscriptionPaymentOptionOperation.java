@@ -387,6 +387,34 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             maxAmount = paymentPlan.getActualPrice();
         }
         request.getRazorpayRequest().setMandateMaxAmount(maxAmount);
+        request.getRazorpayRequest().setMandateFrequency(resolveMandateFrequency(paymentPlan));
+    }
+
+    /**
+     * Razorpay mandate frequency derived from the plan's validity, so the UPI-app /
+     * bank mandate screen shows the real cadence (monthly, quarterly, ...) instead of
+     * the generic "as presented".
+     *
+     * We charge on our own schedule (RenewalChargeService), so any frequency Razorpay
+     * accepts is fine functionally; this only affects what the mandate advertises.
+     * Only values we can map from a known plan length are sent — anything else falls
+     * back to "as_presented", which imposes no fixed cadence and always registers.
+     */
+    private String resolveMandateFrequency(PaymentPlan paymentPlan) {
+        if (paymentPlan == null || paymentPlan.getValidityInDays() == null) {
+            return "as_presented";
+        }
+        int days = paymentPlan.getValidityInDays();
+        if (days <= 31) {
+            return "monthly";
+        } else if (days <= 95) {
+            return "quarterly";
+        } else if (days <= 190) {
+            return "half_yearly";
+        } else if (days <= 370) {
+            return "yearly";
+        }
+        return "as_presented";
     }
 
 }

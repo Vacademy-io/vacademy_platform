@@ -40,6 +40,7 @@ public class BookingPageDTO {
     private BookingAvailabilityDTO availability;
     private BookingReminderConfigDTO reminderConfig;
     private List<BookingSessionTypeDTO> sessionTypes;
+    private List<BookingFormFieldDTO> formFields;
     private String status;
     private String createdByUserId;
     private Timestamp createdAt;

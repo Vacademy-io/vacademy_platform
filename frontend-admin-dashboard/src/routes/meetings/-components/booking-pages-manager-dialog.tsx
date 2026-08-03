@@ -1,7 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Clock, Copy, LinkSimple, PencilSimple, Plus, Trash, UsersThree } from '@phosphor-icons/react';
+import {
+    ArrowSquareOut,
+    Browsers,
+    Clock,
+    Copy,
+    PencilSimple,
+    Plus,
+    Trash,
+    UsersThree,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -53,6 +63,7 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
         data: pages,
         isLoading,
         error,
+        refetch,
     } = useBookingPages({
         instituteId,
         hostUserId: currentUserId || undefined,
@@ -97,7 +108,7 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
             ? 'New Booking Page'
             : view.mode === 'edit'
               ? 'Edit Booking Page'
-              : 'Share Booking Link';
+              : 'Booking Pages';
 
     let body: React.ReactNode;
     if (!instituteId) {
@@ -133,24 +144,46 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
         );
     } else if (isLoading) {
         body = (
-            <div className="flex min-h-32 items-center justify-center">
+            <div className="flex min-h-32 flex-col items-center justify-center gap-2">
                 <DashboardLoader />
+                <p className="text-caption text-neutral-500">Loading your booking pages…</p>
             </div>
         );
     } else if (error) {
         body = (
-            <p className="py-8 text-center text-body text-neutral-500">
-                Couldn&apos;t load your booking pages. Try again.
-            </p>
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-neutral-200 py-12 text-center">
+                <WarningCircle className="size-8 text-danger-600" />
+                <p className="text-body font-semibold text-neutral-700">
+                    Couldn&apos;t load your booking pages
+                </p>
+                <p className="text-caption text-neutral-500">
+                    Something went wrong. Please try again.
+                </p>
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="small"
+                    className="mt-1 sm:min-w-0"
+                    onClick={() => refetch()}
+                >
+                    Retry
+                </MyButton>
+            </div>
         );
     } else {
         const list = pages ?? [];
         body = (
             <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                    <p className="text-body text-neutral-500">
-                        Share a booking link so people can pick a slot on your calendar.
-                    </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <p className="text-body font-semibold text-neutral-700">
+                            Your booking pages
+                        </p>
+                        <p className="text-caption text-neutral-500">
+                            Each page has its own link people use to pick a slot on your calendar.
+                            Edit, copy, or open a page below.
+                        </p>
+                    </div>
                     <MyButton
                         type="button"
                         buttonType="primary"
@@ -165,13 +198,23 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
 
                 {list.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-300 py-10 text-center">
-                        <LinkSimple className="size-8 text-neutral-300" />
+                        <Browsers className="size-8 text-neutral-300" />
                         <p className="text-body font-semibold text-neutral-700">
                             No booking pages yet
                         </p>
                         <p className="text-caption text-neutral-500">
                             Create one to get a shareable booking link.
                         </p>
+                        <MyButton
+                            type="button"
+                            buttonType="primary"
+                            scale="small"
+                            className="mt-1 sm:min-w-0"
+                            onClick={() => setView({ mode: 'create' })}
+                        >
+                            <Plus className="mr-1 size-3.5" />
+                            New Booking Page
+                        </MyButton>
                     </div>
                 ) : (
                     <div className="flex flex-col gap-2">
@@ -214,6 +257,20 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
                                                 buttonType="secondary"
                                                 scale="small"
                                                 layoutVariant="icon"
+                                                title="Open booking page"
+                                                onClick={() =>
+                                                    window.open(link, '_blank', 'noopener,noreferrer')
+                                                }
+                                            >
+                                                <ArrowSquareOut className="size-3.5" />
+                                            </MyButton>
+                                        )}
+                                        {link && (
+                                            <MyButton
+                                                type="button"
+                                                buttonType="secondary"
+                                                scale="small"
+                                                layoutVariant="icon"
                                                 title="Copy booking link"
                                                 onClick={() => copyLink(link)}
                                             >
@@ -230,16 +287,18 @@ export const BookingPagesManagerDialog = ({ open, onOpenChange }: BookingPagesMa
                                         >
                                             <PencilSimple className="size-3.5" />
                                         </MyButton>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="secondary"
-                                            scale="small"
-                                            layoutVariant="icon"
-                                            title="Delete booking page"
-                                            onClick={() => setDeleteTarget(page)}
-                                        >
-                                            <Trash className="size-3.5 text-danger-600" />
-                                        </MyButton>
+                                        <div className="ml-1 flex items-center border-l border-neutral-200 pl-2">
+                                            <MyButton
+                                                type="button"
+                                                buttonType="secondary"
+                                                scale="small"
+                                                layoutVariant="icon"
+                                                title="Delete booking page"
+                                                onClick={() => setDeleteTarget(page)}
+                                            >
+                                                <Trash className="size-3.5 text-danger-600" />
+                                            </MyButton>
+                                        </div>
                                     </div>
                                 </div>
                             );

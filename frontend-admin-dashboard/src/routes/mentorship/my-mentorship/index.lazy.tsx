@@ -10,10 +10,12 @@ import {
     LinkSimple,
     NotePencil,
     UsersThree,
+    WarningCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
@@ -106,9 +108,37 @@ function MyMentorshipPage() {
     return (
         <div className="flex flex-col gap-6 p-6">
             <div className="flex flex-col">
-                <h2 className="text-title font-semibold text-neutral-700">My mentees</h2>
-                <p className="text-body text-neutral-500">Students assigned to you for mentorship.</p>
+                <h2 className="text-title font-semibold text-neutral-700">My mentorship</h2>
+                <p className="text-body text-neutral-500">
+                    Your mentees, availability and booking link.
+                </p>
             </div>
+
+            {profileQuery.isLoading && (
+                <div className="flex flex-col gap-3">
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+            )}
+
+            {!profileQuery.isLoading && profileQuery.isError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                    <div className="flex items-center gap-2">
+                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                        <p className="text-body text-danger-600">
+                            Couldn&apos;t load your mentor profile.
+                        </p>
+                    </div>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => profileQuery.refetch()}
+                    >
+                        Retry
+                    </MyButton>
+                </div>
+            )}
 
             {profile && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
@@ -121,7 +151,7 @@ function MyMentorshipPage() {
                             <span className="text-caption text-neutral-500">
                                 {profile.google_connected
                                     ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
-                                    : 'Connect your Google so your 1:1 bookings land on your own calendar with a Meet link.'}
+                                    : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
                             </span>
                         </div>
                     </div>
@@ -172,6 +202,7 @@ function MyMentorshipPage() {
                             buttonType="secondary"
                             scale="small"
                             onClick={() => setAvailabilityOpen(true)}
+                            title="Set your weekly hours, meeting location and session types"
                         >
                             <Clock size={16} /> Edit availability
                         </MyButton>
@@ -182,6 +213,7 @@ function MyMentorshipPage() {
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={copyMyBookingLink}
+                                    title="Copy your booking link to share with learners"
                                 >
                                     <Copy size={16} /> Copy link
                                 </MyButton>
@@ -190,6 +222,7 @@ function MyMentorshipPage() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                    title="Open your booking page in a new tab"
                                 >
                                     Open
                                 </a>
@@ -201,11 +234,35 @@ function MyMentorshipPage() {
 
             <MyScheduleCard instituteId={instituteId} />
 
+            <div className="flex flex-col">
+                <h3 className="text-title font-semibold text-neutral-700">Mentees</h3>
+                <p className="text-caption text-neutral-500">Students assigned to you for mentorship.</p>
+            </div>
+
             {isLoading ? (
-                <div className="text-body text-neutral-400">Loading mentees…</div>
+                <div className="flex flex-col gap-3">
+                    {[1, 2].map((i) => (
+                        <div
+                            key={i}
+                            className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="size-10 rounded-full" />
+                                <div className="flex flex-col gap-1.5">
+                                    <Skeleton className="h-3.5 w-32" />
+                                    <Skeleton className="h-3 w-24" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-8 w-40" />
+                        </div>
+                    ))}
+                </div>
             ) : isError ? (
-                <div className="flex flex-col items-start gap-2">
-                    <p className="text-body text-danger-600">Couldn&apos;t load your mentees.</p>
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                    <div className="flex items-center gap-2">
+                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                        <p className="text-body text-danger-600">Couldn&apos;t load your mentees.</p>
+                    </div>
                     <MyButton type="button" buttonType="secondary" scale="small" onClick={() => refetch()}>
                         Retry
                     </MyButton>
@@ -213,7 +270,12 @@ function MyMentorshipPage() {
             ) : mentees.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
-                    <p className="text-body text-neutral-500">No students are assigned to you yet.</p>
+                    <div className="flex flex-col gap-1">
+                        <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
+                        <p className="text-caption text-neutral-500">
+                            Your admin will assign students to you here.
+                        </p>
+                    </div>
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
@@ -241,6 +303,7 @@ function MyMentorshipPage() {
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={() => setDetailMentee(mentee)}
+                                    title="View learning progress, notes and scheduled calls"
                                 >
                                     <NotePencil size={16} /> Details
                                 </MyButton>
@@ -250,6 +313,7 @@ function MyMentorshipPage() {
                                     scale="small"
                                     onClick={() => message(mentee)}
                                     disable={messagingId === mentee.student_user_id}
+                                    title="Send this student a direct message"
                                 >
                                     <ChatCircle size={16} /> Message
                                 </MyButton>

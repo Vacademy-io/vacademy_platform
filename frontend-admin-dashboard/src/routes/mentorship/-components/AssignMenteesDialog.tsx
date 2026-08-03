@@ -59,12 +59,22 @@ export function AssignMenteesDialog({ mentor, instituteId, open, onOpenChange }:
                     <MyButton type="button" buttonType="secondary" scale="medium" onClick={() => onOpenChange(false)}>
                         Cancel
                     </MyButton>
-                    <MyButton type="button" buttonType="primary" scale="medium" onClick={submit} disable={submitting}>
-                        Assign
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={submit}
+                        disable={submitting}
+                        title={selected.length === 0 ? 'Select at least one student below' : undefined}
+                    >
+                        {submitting ? 'Assigning…' : 'Assign students'}
                     </MyButton>
                 </div>
             }
         >
+            <p className="mb-3 text-caption text-neutral-500">
+                Search and select the students this mentor should work with.
+            </p>
             <MenteePicker instituteId={instituteId} selected={selected} onChange={setSelected} />
         </MyDialog>
     );

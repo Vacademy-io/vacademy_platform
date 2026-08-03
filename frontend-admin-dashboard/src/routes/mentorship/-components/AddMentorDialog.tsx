@@ -155,20 +155,24 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                         scale="medium"
                         onClick={submit}
                         disable={submitting || !selected}
+                        title={!selected ? 'Choose a team member above first' : undefined}
                     >
-                        Add mentor
+                        {submitting ? 'Adding…' : 'Add mentor'}
                     </MyButton>
                 </div>
             }
         >
             <div className="flex flex-col gap-4">
-                <p className="text-caption text-neutral-500">
-                    Pick a member of your institute&apos;s team to make them a mentor. They get the Mentor
-                    role and appear to their assigned students.
+                <p className="text-body text-neutral-600">
+                    Pick a member of your institute&apos;s team to make them a mentor. They get the
+                    Mentor role and appear to their assigned students.
                 </p>
 
                 {!selected ? (
                     <div className="flex flex-col gap-2">
+                        <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                            Choose a team member
+                        </span>
                         <MyInput
                             input={search}
                             onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
@@ -222,10 +226,23 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                                     <span className="text-caption text-neutral-400">{selected.email}</span>
                                 </div>
                             </div>
-                            <MyButton type="button" buttonType="text" scale="small" onClick={() => setSelected(null)}>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => setSelected(null)}
+                                title="Pick a different team member"
+                            >
                                 Change
                             </MyButton>
                         </div>
+
+                        <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                            Mentor profile
+                        </span>
+                        <p className="-mt-2 text-caption text-neutral-400">
+                            How this mentor appears to their assigned students.
+                        </p>
 
                         <div className="flex items-center gap-4">
                             <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-neutral-100">

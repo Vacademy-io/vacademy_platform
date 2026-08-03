@@ -7,10 +7,12 @@ import {
     Plus,
     Trash,
     UsersThree,
+    WarningCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
@@ -97,7 +99,9 @@ function MentorsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-col">
                     <h2 className="text-title font-semibold text-neutral-700">Mentors</h2>
-                    <p className="text-body text-neutral-500">Promote users to mentors and assign students.</p>
+                    <p className="text-body text-neutral-500">
+                        Add mentors and assign students to them.
+                    </p>
                 </div>
                 <div className="flex gap-2">
                     <MyButton
@@ -106,6 +110,11 @@ function MentorsPage() {
                         scale="medium"
                         onClick={() => setBulkOpen(true)}
                         disable={mentors.length === 0}
+                        title={
+                            mentors.length === 0
+                                ? 'Add a mentor first to bulk-assign students'
+                                : 'Spread many students across mentors at once'
+                        }
                     >
                         <UsersThree size={18} /> Bulk assign
                     </MyButton>
@@ -122,10 +131,29 @@ function MentorsPage() {
             </div>
 
             {isLoading ? (
-                <div className="text-body text-neutral-400">Loading mentors…</div>
+                <div className="flex flex-col gap-3">
+                    {[1, 2, 3].map((i) => (
+                        <div
+                            key={i}
+                            className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="size-10 rounded-full" />
+                                <div className="flex flex-col gap-1.5">
+                                    <Skeleton className="h-3.5 w-32" />
+                                    <Skeleton className="h-3 w-20" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-8 w-24" />
+                        </div>
+                    ))}
+                </div>
             ) : isError ? (
-                <div className="flex flex-col items-start gap-2">
-                    <p className="text-body text-danger-600">Couldn&apos;t load mentors.</p>
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                    <div className="flex items-center gap-2">
+                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                        <p className="text-body text-danger-600">Couldn&apos;t load mentors.</p>
+                    </div>
                     <MyButton type="button" buttonType="secondary" scale="small" onClick={() => refetch()}>
                         Retry
                     </MyButton>
@@ -150,20 +178,27 @@ function MentorsPage() {
                                     <span className="text-caption text-neutral-400">{m.title || m.email || ''}</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span
+                                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
+                                    title="Students currently assigned to this mentor"
+                                >
                                     {m.assigned_student_count ?? 0} students
                                 </span>
                                 {m.booking_page_slug ? (
                                     <>
-                                        <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
-                                            <CalendarCheck size={14} weight="bold" /> Booking on
+                                        <span
+                                            className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600"
+                                            title="Learners can book 1:1 sessions with this mentor"
+                                        >
+                                            <CalendarCheck size={14} weight="bold" /> Booking enabled
                                         </span>
                                         <MyButton
                                             type="button"
                                             buttonType="secondary"
                                             scale="small"
                                             onClick={() => copyBookingLink(m)}
+                                            title="Copy this mentor's public booking link"
                                         >
                                             <Copy size={16} /> Copy link
                                         </MyButton>
@@ -172,6 +207,7 @@ function MentorsPage() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                            title="Open the booking page in a new tab"
                                         >
                                             Open
                                         </a>
@@ -183,6 +219,7 @@ function MentorsPage() {
                                         scale="small"
                                         onClick={() => enableBooking(m)}
                                         disable={bookingId === m.id}
+                                        title="Set up a shareable 1:1 booking page for this mentor"
                                     >
                                         <CalendarCheck size={16} /> Enable booking
                                     </MyButton>
@@ -192,10 +229,18 @@ function MentorsPage() {
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={() => setAssignMentor(m)}
+                                    title="Assign students to this mentor"
                                 >
-                                    <CalendarPlus size={16} /> Assign
+                                    <CalendarPlus size={16} /> Assign students
                                 </MyButton>
-                                <MyButton type="button" buttonType="text" scale="small" onClick={() => remove(m)}>
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    scale="small"
+                                    onClick={() => remove(m)}
+                                    aria-label={`Remove ${m.display_name || m.name || 'mentor'}`}
+                                    title="Remove this mentor"
+                                >
                                     <Trash size={16} className="text-danger-500" />
                                 </MyButton>
                             </div>
@@ -242,9 +287,14 @@ function EmptyMentors({ onAdd }: { onAdd: () => void }) {
     return (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
             <UsersThree size={40} className="text-neutral-300" />
-            <p className="text-body text-neutral-500">No mentors yet. Promote a user to get started.</p>
+            <div className="flex flex-col gap-1">
+                <p className="text-body font-medium text-neutral-700">No mentors yet</p>
+                <p className="text-caption text-neutral-500">
+                    Add a team member as a mentor, then assign students to them.
+                </p>
+            </div>
             <MyButton type="button" buttonType="primary" scale="medium" onClick={onAdd}>
-                <Plus size={18} /> Add mentor
+                <Plus size={18} /> Add your first mentor
             </MyButton>
         </div>
     );

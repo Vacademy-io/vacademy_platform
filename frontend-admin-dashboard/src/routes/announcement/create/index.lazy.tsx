@@ -711,7 +711,7 @@ function CreateAnnouncementPage() {
                 variant: 'destructive',
             });
             // Fallback to cached template if API fails
-            const template = emailTemplates.find(t => t.id === templateId);
+            const template = emailTemplates.find((t) => t.id === templateId);
             if (template) {
                 setSelectedTemplateId(templateId);
                 setSelectedTemplateData(template);
@@ -898,6 +898,454 @@ function CreateAnnouncementPage() {
         });
     };
 
+    const handleCreateAnnouncement = async () => {
+        try {
+            // Validate required fields per selected mode
+            const validationErrors: string[] = [];
+            const fieldErrors: Record<string, string> = {};
+            const trimmedTitle = title.trim();
+            const trimmedContent = htmlContent.trim();
+            if (!trimmedTitle) {
+                validationErrors.push('Title is required');
+                fieldErrors.title = 'Title is required';
+            }
+            if (!trimmedContent) {
+                validationErrors.push('Content is required');
+                fieldErrors.content = 'Content is required';
+            }
+
+            for (const m of selectedModes) {
+                const s = (modeSettings[m] || {}) as Record<string, unknown>;
+                if (m === 'SYSTEM_ALERT') {
+                    const p = (s.priority as string) || '';
+                    if (!p) {
+                        validationErrors.push('SYSTEM_ALERT: priority is required');
+                        fieldErrors['modes.SYSTEM_ALERT.priority'] = 'Priority is required';
+                    }
+                }
+                if (m === 'DASHBOARD_PIN') {
+                    const start = (s.pinStartTime as string) || '';
+                    const end = (s.pinEndTime as string) || '';
+                    const pos = (s.position as string) || '';
+                    if (!pos) {
+                        validationErrors.push('DASHBOARD_PIN: position is required');
+                        fieldErrors['modes.DASHBOARD_PIN.position'] = 'Position is required';
+                    }
+                    if (!start || !end) {
+                        validationErrors.push('DASHBOARD_PIN: start and end time are required');
+                        if (!start)
+                            fieldErrors['modes.DASHBOARD_PIN.pinStartTime'] =
+                                'Start time is required';
+                        if (!end)
+                            fieldErrors['modes.DASHBOARD_PIN.pinEndTime'] = 'End time is required';
+                    }
+                    if (start && end && new Date(start) >= new Date(end)) {
+                        validationErrors.push('DASHBOARD_PIN: end time must be after start time');
+                        fieldErrors['modes.DASHBOARD_PIN.pinEndTime'] =
+                            'End time must be after start';
+                    }
+                }
+                if (m === 'APP_OVERLAY') {
+                    const showUntil = (s.showUntil as string) || '';
+                    if (showUntil) {
+                        const parsed = new Date(showUntil);
+                        if (Number.isNaN(parsed.getTime())) {
+                            validationErrors.push(
+                                'APP_OVERLAY: show until must be a valid date/time'
+                            );
+                            fieldErrors['modes.APP_OVERLAY.showUntil'] =
+                                'Enter a valid date and time';
+                        } else if (parsed.getTime() <= Date.now()) {
+                            validationErrors.push('APP_OVERLAY: show until must be in the future');
+                            fieldErrors['modes.APP_OVERLAY.showUntil'] =
+                                'Show until must be in the future';
+                        }
+                    }
+                    const overlayPriority = Number(s.priority ?? 1);
+                    if (
+                        !Number.isInteger(overlayPriority) ||
+                        overlayPriority < 1 ||
+                        overlayPriority > 10
+                    ) {
+                        validationErrors.push('APP_OVERLAY: priority must be between 1 and 10');
+                        fieldErrors['modes.APP_OVERLAY.priority'] =
+                            'Priority must be between 1 and 10';
+                    }
+                }
+                if (m === 'RESOURCES') {
+                    const folder = (s.folderName as string) || '';
+                    if (!folder) {
+                        validationErrors.push('RESOURCES: folderName is required');
+                        fieldErrors['modes.RESOURCES.folderName'] = 'Folder name is required';
+                    }
+                }
+                if (m === 'COMMUNITY') {
+                    const cType = (s.communityType as string) || '';
+                    if (!cType) {
+                        validationErrors.push('COMMUNITY: communityType is required');
+                        fieldErrors['modes.COMMUNITY.communityType'] = 'Community type is required';
+                    }
+                }
+                if (m === 'TASKS') {
+                    const slides = (s.slideIds as string[] | undefined) || [];
+                    const goLive = (s.goLiveDateTime as string) || '';
+                    const deadline = (s.deadlineDateTime as string) || '';
+                    const tTitle = (s.taskTitle as string) || '';
+                    if (!tTitle) {
+                        validationErrors.push('TASKS: taskTitle is required');
+                        fieldErrors['modes.TASKS.taskTitle'] = 'Task title is required';
+                    }
+                    if (!slides.length) {
+                        validationErrors.push('TASKS: slideIds must include at least one slide');
+                        fieldErrors['modes.TASKS.slideIds'] = 'At least one slide is required';
+                    }
+                    if (!goLive || !deadline) {
+                        validationErrors.push('TASKS: go live and deadline are required');
+                        if (!goLive)
+                            fieldErrors['modes.TASKS.goLiveDateTime'] = 'Go live is required';
+                        if (!deadline)
+                            fieldErrors['modes.TASKS.deadlineDateTime'] = 'Deadline is required';
+                    }
+                    if (goLive && deadline && new Date(goLive) >= new Date(deadline)) {
+                        validationErrors.push('TASKS: deadline must be after go live');
+                        fieldErrors['modes.TASKS.deadlineDateTime'] =
+                            'Deadline must be after go live';
+                    }
+                }
+            }
+
+            // Scheduling validations
+            if (scheduleType === 'ONE_TIME') {
+                if (!oneTimeStart) {
+                    validationErrors.push('Schedule: run time is required');
+                    fieldErrors['schedule.startDate'] = 'Run time is required';
+                }
+            }
+            if (scheduleType === 'RECURRING') {
+                if (!cronExpression) {
+                    validationErrors.push('Schedule: cron expression is required for recurring');
+                    fieldErrors['schedule.cronExpression'] = 'Cron expression is required';
+                }
+            }
+
+            if (validationErrors.length > 0) {
+                setErrors(fieldErrors);
+                toast({
+                    title: 'Missing required fields',
+                    description: validationErrors.slice(0, 4).join('\n'),
+                    variant: 'destructive',
+                });
+                return;
+            }
+            setErrors({});
+
+            // Validate TAG recipients (require institute and at least one tag per TAG row)
+            const anyTagRow = recipients.some((r) => r.recipientType === 'TAG');
+            if (anyTagRow) {
+                const missingTags = recipients.some(
+                    (r, idx) => r.recipientType === 'TAG' && !tagSelections[idx]?.length
+                );
+                if (missingTags) {
+                    toast({
+                        title: 'Select at least one tag',
+                        description: 'You have a TAG recipient without any selected tags.',
+                        variant: 'destructive',
+                    });
+                    return;
+                }
+                const instId = getInstituteId();
+                if (!instId) {
+                    toast({
+                        title: 'Institute required',
+                        description: 'An institute must be selected to target TAG recipients.',
+                        variant: 'destructive',
+                    });
+                    return;
+                }
+            }
+
+            // Validate CUSTOM_FIELD_FILTER recipients
+            const anyCustomFieldRow = recipients.some(
+                (r) => r.recipientType === 'CUSTOM_FIELD_FILTER'
+            );
+            if (anyCustomFieldRow) {
+                const missingFilters = recipients.some((r, idx) => {
+                    if (r.recipientType !== 'CUSTOM_FIELD_FILTER') return false;
+                    const filters = customFieldFilters[idx];
+                    return !filters || !filters.some((f) => f.fieldId && f.filterValue);
+                });
+                if (missingFilters) {
+                    toast({
+                        title: 'Configure custom field filters',
+                        description:
+                            'You have a Custom Field Filter recipient without any configured filters.',
+                        variant: 'destructive',
+                    });
+                    return;
+                }
+            }
+
+            // Expand TAG selections into recipient entries with names
+            const expandedRecipients: CreateAnnouncementRequest['recipients'] = [];
+            recipients.forEach((r, idx) => {
+                // Get per-recipient exclusions
+                const recipientExclusionsList = recipientExclusions[idx] || [];
+                const validRecipientExclusions = recipientExclusionsList
+                    .filter((e) => e.recipientId && e.recipientId.trim() !== '')
+                    .map((e) => ({
+                        exclusionType: e.recipientType as
+                            | 'USER'
+                            | 'ROLE'
+                            | 'PACKAGE_SESSION'
+                            | 'TAG',
+                        exclusionId: e.recipientId,
+                    }));
+
+                // Get per-recipient custom field filters
+                const recipientCustomFieldFilters = customFieldFilters[idx] || [];
+                const validCustomFieldFilters = recipientCustomFieldFilters
+                    .filter((f) => f.fieldId && f.filterValue)
+                    .map((f) => {
+                        const fieldValue = Array.isArray(f.filterValue)
+                            ? f.filterValue
+                            : f.filterValue || '';
+
+                        return {
+                            customFieldId: f.fieldId,
+                            fieldName: f.fieldName, // Fallback for backward compatibility
+                            fieldValue: fieldValue,
+                            operator: f.operator,
+                        };
+                    });
+
+                if (r.recipientType === 'TAG') {
+                    const ids = tagSelections[idx] || [];
+                    ids.forEach((tagId) => {
+                        const tag = tagMapById[tagId];
+                        expandedRecipients.push({
+                            recipientType: 'TAG',
+                            recipientId: tagId,
+                            recipientName: tag?.tagName,
+                            customFieldFilters:
+                                validCustomFieldFilters.length > 0
+                                    ? validCustomFieldFilters
+                                    : undefined,
+                            exclusions:
+                                validRecipientExclusions.length > 0
+                                    ? validRecipientExclusions
+                                    : undefined,
+                        });
+                    });
+                } else if (r.recipientType === 'CUSTOM_FIELD_FILTER') {
+                    if (validCustomFieldFilters.length > 0) {
+                        // Only add if at least one filter is configured
+                        expandedRecipients.push({
+                            recipientType: 'CUSTOM_FIELD_FILTER',
+                            recipientId: r.recipientId || `custom-filter-${idx}`,
+                            recipientName: r.recipientName,
+                            customFieldFilters: validCustomFieldFilters,
+                            exclusions:
+                                validRecipientExclusions.length > 0
+                                    ? validRecipientExclusions
+                                    : undefined,
+                        });
+                    }
+                } else if (r.recipientType === 'PACKAGE_SESSION' && r.recipientId) {
+                    const batchOption = packageSessionOptions.find(
+                        (opt) => opt.id === r.recipientId
+                    );
+                    const selectedRole = batchRoleSelections[idx];
+
+                    // Check if it's a sub-org batch with role selection
+                    if (batchOption?.is_org_associated && selectedRole) {
+                        // Use PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES format: packageSessionId:ROLE1,ROLE2
+                        expandedRecipients.push({
+                            recipientType: 'PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES',
+                            recipientId: `${r.recipientId}:${selectedRole}`,
+                            recipientName: `${batchOption.label} (${selectedRole})`,
+                            customFieldFilters:
+                                validCustomFieldFilters.length > 0
+                                    ? validCustomFieldFilters
+                                    : undefined,
+                            exclusions:
+                                validRecipientExclusions.length > 0
+                                    ? validRecipientExclusions
+                                    : undefined,
+                        });
+                    } else {
+                        // Regular PACKAGE_SESSION
+                        expandedRecipients.push({
+                            recipientType: 'PACKAGE_SESSION',
+                            recipientId: r.recipientId,
+                            recipientName: r.recipientName || batchOption?.label,
+                            customFieldFilters:
+                                validCustomFieldFilters.length > 0
+                                    ? validCustomFieldFilters
+                                    : undefined,
+                            exclusions:
+                                validRecipientExclusions.length > 0
+                                    ? validRecipientExclusions
+                                    : undefined,
+                        });
+                    }
+                } else if (r.recipientType && r.recipientId) {
+                    expandedRecipients.push({
+                        recipientType: r.recipientType,
+                        recipientId: r.recipientId,
+                        recipientName: r.recipientName,
+                        customFieldFilters:
+                            validCustomFieldFilters.length > 0
+                                ? validCustomFieldFilters
+                                : undefined,
+                        exclusions:
+                            validRecipientExclusions.length > 0
+                                ? validRecipientExclusions
+                                : undefined,
+                    });
+                }
+            });
+
+            setIsSubmitting(true);
+            const payload: any = {
+                title,
+                content: { type: 'html', content: htmlContent },
+                createdBy: getUserId(),
+                createdByName: getUserName(),
+                createdByRole: primaryRole,
+                recipients: expandedRecipients,
+                // Global exclusions are currently not processed, but kept for backward compatibility
+                exclusions: undefined,
+                modes: selectedModes.map((m) => {
+                    const settings: Record<string, unknown> = {
+                        ...(modeSettings[m] ?? {}),
+                    };
+                    // Backend rejects malformed LocalDateTime strings —
+                    // drop an empty showUntil instead of sending ''.
+                    if (m === 'APP_OVERLAY' && !settings.showUntil) {
+                        delete settings.showUntil;
+                    }
+                    return { modeType: m, settings };
+                }),
+                mediums: selectedMediums.map((med) => {
+                    if (med === 'EMAIL') {
+                        const selectedConfig = emailConfigurations.find(
+                            (c) => `${c.email}-${c.name}` === selectedFromEmail
+                        );
+                        const emailType = selectedConfig?.type || 'UTILITY_EMAIL';
+
+                        return {
+                            mediumType: med,
+                            config: {
+                                subject: title,
+                                emailType: emailType,
+                                fromEmail: selectedConfig?.email,
+                                fromName: selectedConfig?.name,
+                                template: selectedTemplateData?.name,
+                                previewText: previewText || selectedTemplateData?.previewText,
+                            },
+                        };
+                    }
+                    return {
+                        mediumType: med,
+                        config: mediumConfigs[med] ?? {},
+                    };
+                }),
+                scheduling:
+                    scheduleType === 'IMMEDIATE'
+                        ? { scheduleType, timezone }
+                        : scheduleType === 'ONE_TIME'
+                          ? {
+                                scheduleType,
+                                timezone,
+                                // Send the picked wall-clock literal (YYYY-MM-DDTHH:mm:ss) so the
+                                // backend interprets it in the selected timezone. Converting
+                                // through new Date(...).toISOString() would shift by the browser's
+                                // local offset, which is almost never what the user picked.
+                                startDate: oneTimeStart
+                                    ? oneTimeStart.length === 16
+                                        ? `${oneTimeStart}:00`
+                                        : oneTimeStart
+                                    : undefined,
+                                endDate: oneTimeEnd
+                                    ? oneTimeEnd.length === 16
+                                        ? `${oneTimeEnd}:00`
+                                        : oneTimeEnd
+                                    : undefined,
+                            }
+                          : {
+                                scheduleType,
+                                timezone,
+                                cronExpression: cronExpression || undefined,
+                            },
+            };
+            await AnnouncementService.create(payload);
+            // Fire a success Sonner toast immediately
+            try {
+                const { toast: sonnerToast } = await import('sonner');
+                sonnerToast.success('Announcement created');
+            } catch {
+                // fallback to existing toast
+                toast({ title: 'Announcement created' });
+            }
+            // Reset minimal fields
+            setTitle('');
+            setHtmlContent('');
+            setSelectedModes([]);
+            setModeSettings({} as Record<ModeType, Record<string, unknown>>);
+            setSelectedMediums(['PUSH_NOTIFICATION']);
+        } catch (err: unknown) {
+            // Try to parse API validation errors and show inline + toast
+            const anyErr = err as {
+                response?: {
+                    data?: {
+                        details?: Record<string, string>;
+                        message?: string;
+                    };
+                };
+            };
+            const details = anyErr?.response?.data?.details as Record<string, string> | undefined;
+
+            if (details && typeof details === 'object') {
+                const fieldErrors: Record<string, string> = {};
+
+                Object.entries(details).forEach(([key, message]) => {
+                    // Map backend field paths to our local error keys
+                    if (key.startsWith('scheduling.')) {
+                        // scheduling.startDate -> schedule.startDate
+                        const localKey = `schedule.${key.split('.').slice(1).join('.')}`;
+                        fieldErrors[localKey] = message;
+                    } else if (key.startsWith('content.')) {
+                        fieldErrors['content'] = message;
+                    } else if (key === 'title') {
+                        fieldErrors['title'] = message;
+                    } else {
+                        // Fallback: attach to a general bucket if needed
+                        fieldErrors[key] = message;
+                    }
+                });
+
+                setErrors((prev) => ({ ...prev, ...fieldErrors }));
+
+                const msg = Object.values(details).slice(0, 5).join('\n');
+                toast({
+                    title: 'Please fix the highlighted fields',
+                    description: msg,
+                    variant: 'destructive',
+                });
+            } else {
+                toast({
+                    title: 'Failed to create',
+                    description:
+                        anyErr?.response?.data?.message ||
+                        (err instanceof Error ? err.message : 'Try again'),
+                    variant: 'destructive',
+                });
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <div className="p-4">
             {/* TODO: Build dynamic UI based on institute + notification settings */}
@@ -956,15 +1404,16 @@ function CreateAnnouncementPage() {
                                 Back
                             </Button>
                             <Button
-                                onClick={() => {
+                                onClick={async () => {
                                     setIsReviewOpen(false);
-                                    // Trigger main create button click by simulating same handler
-                                    const el = document.querySelector(
-                                        'button:contains("Create Announcement")'
-                                    ) as HTMLButtonElement | null;
-                                    el?.click();
+                                    await handleCreateAnnouncement();
                                 }}
-                                disabled={isSubmitting}
+                                disabled={
+                                    isSubmitting ||
+                                    !title ||
+                                    !htmlContent ||
+                                    selectedModes.length === 0
+                                }
                             >
                                 Confirm & Create
                             </Button>
@@ -996,7 +1445,12 @@ function CreateAnnouncementPage() {
                     />
                     {errors.title && <p className="text-xs text-red-600">{errors.title}</p>}
 
-                    <Label>Preview Text <span className="text-xs font-normal text-gray-400">(shown in inbox before opening)</span></Label>
+                    <Label>
+                        Preview Text{' '}
+                        <span className="text-xs font-normal text-gray-400">
+                            (shown in inbox before opening)
+                        </span>
+                    </Label>
                     <Input
                         placeholder="Enter preview text..."
                         value={previewText}
@@ -1064,7 +1518,9 @@ function CreateAnnouncementPage() {
                         <DialogContent className="w-[95vw] max-w-none">
                             <DialogHeader>
                                 <DialogTitle>Email Preview</DialogTitle>
-                                <p className="text-xs text-gray-500">This is how the email will appear in the recipient's inbox.</p>
+                                <p className="text-xs text-gray-500">
+                                    This is how the email will appear in the recipient's inbox.
+                                </p>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <Button
                                         variant={previewDevice === 'mobile' ? 'default' : 'outline'}
@@ -1113,7 +1569,9 @@ function CreateAnnouncementPage() {
                                             {title || '(No Subject)'}
                                         </div>
                                         {previewText && (
-                                            <div className="mt-0.5 text-xs text-gray-500">{previewText}</div>
+                                            <div className="mt-0.5 text-xs text-gray-500">
+                                                {previewText}
+                                            </div>
                                         )}
                                     </div>
                                     {/* Email body — rendered exactly as recipient sees it.
@@ -2950,508 +3408,7 @@ function CreateAnnouncementPage() {
                         disabled={
                             isSubmitting || !title || !htmlContent || selectedModes.length === 0
                         }
-                        onClick={async () => {
-                            try {
-                                // Validate required fields per selected mode
-                                const validationErrors: string[] = [];
-                                const fieldErrors: Record<string, string> = {};
-                                const trimmedTitle = title.trim();
-                                const trimmedContent = htmlContent.trim();
-                                if (!trimmedTitle) {
-                                    validationErrors.push('Title is required');
-                                    fieldErrors.title = 'Title is required';
-                                }
-                                if (!trimmedContent) {
-                                    validationErrors.push('Content is required');
-                                    fieldErrors.content = 'Content is required';
-                                }
-
-                                for (const m of selectedModes) {
-                                    const s = (modeSettings[m] || {}) as Record<string, unknown>;
-                                    if (m === 'SYSTEM_ALERT') {
-                                        const p = (s.priority as string) || '';
-                                        if (!p) {
-                                            validationErrors.push(
-                                                'SYSTEM_ALERT: priority is required'
-                                            );
-                                            fieldErrors['modes.SYSTEM_ALERT.priority'] =
-                                                'Priority is required';
-                                        }
-                                    }
-                                    if (m === 'DASHBOARD_PIN') {
-                                        const start = (s.pinStartTime as string) || '';
-                                        const end = (s.pinEndTime as string) || '';
-                                        const pos = (s.position as string) || '';
-                                        if (!pos) {
-                                            validationErrors.push(
-                                                'DASHBOARD_PIN: position is required'
-                                            );
-                                            fieldErrors['modes.DASHBOARD_PIN.position'] =
-                                                'Position is required';
-                                        }
-                                        if (!start || !end) {
-                                            validationErrors.push(
-                                                'DASHBOARD_PIN: start and end time are required'
-                                            );
-                                            if (!start)
-                                                fieldErrors['modes.DASHBOARD_PIN.pinStartTime'] =
-                                                    'Start time is required';
-                                            if (!end)
-                                                fieldErrors['modes.DASHBOARD_PIN.pinEndTime'] =
-                                                    'End time is required';
-                                        }
-                                        if (start && end && new Date(start) >= new Date(end)) {
-                                            validationErrors.push(
-                                                'DASHBOARD_PIN: end time must be after start time'
-                                            );
-                                            fieldErrors['modes.DASHBOARD_PIN.pinEndTime'] =
-                                                'End time must be after start';
-                                        }
-                                    }
-                                    if (m === 'APP_OVERLAY') {
-                                        const showUntil = (s.showUntil as string) || '';
-                                        if (showUntil) {
-                                            const parsed = new Date(showUntil);
-                                            if (Number.isNaN(parsed.getTime())) {
-                                                validationErrors.push(
-                                                    'APP_OVERLAY: show until must be a valid date/time'
-                                                );
-                                                fieldErrors['modes.APP_OVERLAY.showUntil'] =
-                                                    'Enter a valid date and time';
-                                            } else if (parsed.getTime() <= Date.now()) {
-                                                validationErrors.push(
-                                                    'APP_OVERLAY: show until must be in the future'
-                                                );
-                                                fieldErrors['modes.APP_OVERLAY.showUntil'] =
-                                                    'Show until must be in the future';
-                                            }
-                                        }
-                                        const overlayPriority = Number(s.priority ?? 1);
-                                        if (
-                                            !Number.isInteger(overlayPriority) ||
-                                            overlayPriority < 1 ||
-                                            overlayPriority > 10
-                                        ) {
-                                            validationErrors.push(
-                                                'APP_OVERLAY: priority must be between 1 and 10'
-                                            );
-                                            fieldErrors['modes.APP_OVERLAY.priority'] =
-                                                'Priority must be between 1 and 10';
-                                        }
-                                    }
-                                    if (m === 'RESOURCES') {
-                                        const folder = (s.folderName as string) || '';
-                                        if (!folder) {
-                                            validationErrors.push(
-                                                'RESOURCES: folderName is required'
-                                            );
-                                            fieldErrors['modes.RESOURCES.folderName'] =
-                                                'Folder name is required';
-                                        }
-                                    }
-                                    if (m === 'COMMUNITY') {
-                                        const cType = (s.communityType as string) || '';
-                                        if (!cType) {
-                                            validationErrors.push(
-                                                'COMMUNITY: communityType is required'
-                                            );
-                                            fieldErrors['modes.COMMUNITY.communityType'] =
-                                                'Community type is required';
-                                        }
-                                    }
-                                    if (m === 'TASKS') {
-                                        const slides = (s.slideIds as string[] | undefined) || [];
-                                        const goLive = (s.goLiveDateTime as string) || '';
-                                        const deadline = (s.deadlineDateTime as string) || '';
-                                        const tTitle = (s.taskTitle as string) || '';
-                                        if (!tTitle) {
-                                            validationErrors.push('TASKS: taskTitle is required');
-                                            fieldErrors['modes.TASKS.taskTitle'] =
-                                                'Task title is required';
-                                        }
-                                        if (!slides.length) {
-                                            validationErrors.push(
-                                                'TASKS: slideIds must include at least one slide'
-                                            );
-                                            fieldErrors['modes.TASKS.slideIds'] =
-                                                'At least one slide is required';
-                                        }
-                                        if (!goLive || !deadline) {
-                                            validationErrors.push(
-                                                'TASKS: go live and deadline are required'
-                                            );
-                                            if (!goLive)
-                                                fieldErrors['modes.TASKS.goLiveDateTime'] =
-                                                    'Go live is required';
-                                            if (!deadline)
-                                                fieldErrors['modes.TASKS.deadlineDateTime'] =
-                                                    'Deadline is required';
-                                        }
-                                        if (
-                                            goLive &&
-                                            deadline &&
-                                            new Date(goLive) >= new Date(deadline)
-                                        ) {
-                                            validationErrors.push(
-                                                'TASKS: deadline must be after go live'
-                                            );
-                                            fieldErrors['modes.TASKS.deadlineDateTime'] =
-                                                'Deadline must be after go live';
-                                        }
-                                    }
-                                }
-
-                                // Scheduling validations
-                                if (scheduleType === 'ONE_TIME') {
-                                    if (!oneTimeStart) {
-                                        validationErrors.push('Schedule: run time is required');
-                                        fieldErrors['schedule.startDate'] = 'Run time is required';
-                                    }
-                                }
-                                if (scheduleType === 'RECURRING') {
-                                    if (!cronExpression) {
-                                        validationErrors.push(
-                                            'Schedule: cron expression is required for recurring'
-                                        );
-                                        fieldErrors['schedule.cronExpression'] =
-                                            'Cron expression is required';
-                                    }
-                                }
-
-                                if (validationErrors.length > 0) {
-                                    setErrors(fieldErrors);
-                                    toast({
-                                        title: 'Missing required fields',
-                                        description: validationErrors.slice(0, 4).join('\n'),
-                                        variant: 'destructive',
-                                    });
-                                    return;
-                                }
-                                setErrors({});
-
-                                // Validate TAG recipients (require institute and at least one tag per TAG row)
-                                const anyTagRow = recipients.some((r) => r.recipientType === 'TAG');
-                                if (anyTagRow) {
-                                    const missingTags = recipients.some(
-                                        (r, idx) =>
-                                            r.recipientType === 'TAG' && !tagSelections[idx]?.length
-                                    );
-                                    if (missingTags) {
-                                        toast({
-                                            title: 'Select at least one tag',
-                                            description:
-                                                'You have a TAG recipient without any selected tags.',
-                                            variant: 'destructive',
-                                        });
-                                        return;
-                                    }
-                                    const instId = getInstituteId();
-                                    if (!instId) {
-                                        toast({
-                                            title: 'Institute required',
-                                            description:
-                                                'An institute must be selected to target TAG recipients.',
-                                            variant: 'destructive',
-                                        });
-                                        return;
-                                    }
-                                }
-
-                                // Validate CUSTOM_FIELD_FILTER recipients
-                                const anyCustomFieldRow = recipients.some(
-                                    (r) => r.recipientType === 'CUSTOM_FIELD_FILTER'
-                                );
-                                if (anyCustomFieldRow) {
-                                    const missingFilters = recipients.some((r, idx) => {
-                                        if (r.recipientType !== 'CUSTOM_FIELD_FILTER') return false;
-                                        const filters = customFieldFilters[idx];
-                                        return (
-                                            !filters ||
-                                            !filters.some((f) => f.fieldId && f.filterValue)
-                                        );
-                                    });
-                                    if (missingFilters) {
-                                        toast({
-                                            title: 'Configure custom field filters',
-                                            description:
-                                                'You have a Custom Field Filter recipient without any configured filters.',
-                                            variant: 'destructive',
-                                        });
-                                        return;
-                                    }
-                                }
-
-                                // Expand TAG selections into recipient entries with names
-                                const expandedRecipients: CreateAnnouncementRequest['recipients'] =
-                                    [];
-                                recipients.forEach((r, idx) => {
-                                    // Get per-recipient exclusions
-                                    const recipientExclusionsList = recipientExclusions[idx] || [];
-                                    const validRecipientExclusions = recipientExclusionsList
-                                        .filter((e) => e.recipientId && e.recipientId.trim() !== '')
-                                        .map((e) => ({
-                                            exclusionType: e.recipientType as
-                                                | 'USER'
-                                                | 'ROLE'
-                                                | 'PACKAGE_SESSION'
-                                                | 'TAG',
-                                            exclusionId: e.recipientId,
-                                        }));
-
-                                    // Get per-recipient custom field filters
-                                    const recipientCustomFieldFilters =
-                                        customFieldFilters[idx] || [];
-                                    const validCustomFieldFilters = recipientCustomFieldFilters
-                                        .filter((f) => f.fieldId && f.filterValue)
-                                        .map((f) => {
-                                            const fieldValue = Array.isArray(f.filterValue)
-                                                ? f.filterValue
-                                                : f.filterValue || '';
-
-                                            return {
-                                                customFieldId: f.fieldId,
-                                                fieldName: f.fieldName, // Fallback for backward compatibility
-                                                fieldValue: fieldValue,
-                                                operator: f.operator,
-                                            };
-                                        });
-
-                                    if (r.recipientType === 'TAG') {
-                                        const ids = tagSelections[idx] || [];
-                                        ids.forEach((tagId) => {
-                                            const tag = tagMapById[tagId];
-                                            expandedRecipients.push({
-                                                recipientType: 'TAG',
-                                                recipientId: tagId,
-                                                recipientName: tag?.tagName,
-                                                customFieldFilters:
-                                                    validCustomFieldFilters.length > 0
-                                                        ? validCustomFieldFilters
-                                                        : undefined,
-                                                exclusions:
-                                                    validRecipientExclusions.length > 0
-                                                        ? validRecipientExclusions
-                                                        : undefined,
-                                            });
-                                        });
-                                    } else if (r.recipientType === 'CUSTOM_FIELD_FILTER') {
-                                        if (validCustomFieldFilters.length > 0) {
-                                            // Only add if at least one filter is configured
-                                            expandedRecipients.push({
-                                                recipientType: 'CUSTOM_FIELD_FILTER',
-                                                recipientId:
-                                                    r.recipientId || `custom-filter-${idx}`,
-                                                recipientName: r.recipientName,
-                                                customFieldFilters: validCustomFieldFilters,
-                                                exclusions:
-                                                    validRecipientExclusions.length > 0
-                                                        ? validRecipientExclusions
-                                                        : undefined,
-                                            });
-                                        }
-                                    } else if (
-                                        r.recipientType === 'PACKAGE_SESSION' &&
-                                        r.recipientId
-                                    ) {
-                                        const batchOption = packageSessionOptions.find(
-                                            (opt) => opt.id === r.recipientId
-                                        );
-                                        const selectedRole = batchRoleSelections[idx];
-
-                                        // Check if it's a sub-org batch with role selection
-                                        if (batchOption?.is_org_associated && selectedRole) {
-                                            // Use PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES format: packageSessionId:ROLE1,ROLE2
-                                            expandedRecipients.push({
-                                                recipientType:
-                                                    'PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES',
-                                                recipientId: `${r.recipientId}:${selectedRole}`,
-                                                recipientName: `${batchOption.label} (${selectedRole})`,
-                                                customFieldFilters:
-                                                    validCustomFieldFilters.length > 0
-                                                        ? validCustomFieldFilters
-                                                        : undefined,
-                                                exclusions:
-                                                    validRecipientExclusions.length > 0
-                                                        ? validRecipientExclusions
-                                                        : undefined,
-                                            });
-                                        } else {
-                                            // Regular PACKAGE_SESSION
-                                            expandedRecipients.push({
-                                                recipientType: 'PACKAGE_SESSION',
-                                                recipientId: r.recipientId,
-                                                recipientName:
-                                                    r.recipientName || batchOption?.label,
-                                                customFieldFilters:
-                                                    validCustomFieldFilters.length > 0
-                                                        ? validCustomFieldFilters
-                                                        : undefined,
-                                                exclusions:
-                                                    validRecipientExclusions.length > 0
-                                                        ? validRecipientExclusions
-                                                        : undefined,
-                                            });
-                                        }
-                                    } else if (r.recipientType && r.recipientId) {
-                                        expandedRecipients.push({
-                                            recipientType: r.recipientType,
-                                            recipientId: r.recipientId,
-                                            recipientName: r.recipientName,
-                                            customFieldFilters:
-                                                validCustomFieldFilters.length > 0
-                                                    ? validCustomFieldFilters
-                                                    : undefined,
-                                            exclusions:
-                                                validRecipientExclusions.length > 0
-                                                    ? validRecipientExclusions
-                                                    : undefined,
-                                        });
-                                    }
-                                });
-
-                                setIsSubmitting(true);
-                                const payload: any = {
-                                    title,
-                                    content: { type: 'html', content: htmlContent },
-                                    createdBy: getUserId(),
-                                    createdByName: getUserName(),
-                                    createdByRole: primaryRole,
-                                    recipients: expandedRecipients,
-                                    // Global exclusions are currently not processed, but kept for backward compatibility
-                                    exclusions: undefined,
-                                    modes: selectedModes.map((m) => {
-                                        const settings: Record<string, unknown> = {
-                                            ...(modeSettings[m] ?? {}),
-                                        };
-                                        // Backend rejects malformed LocalDateTime strings —
-                                        // drop an empty showUntil instead of sending ''.
-                                        if (m === 'APP_OVERLAY' && !settings.showUntil) {
-                                            delete settings.showUntil;
-                                        }
-                                        return { modeType: m, settings };
-                                    }),
-                                    mediums: selectedMediums.map((med) => {
-                                        if (med === 'EMAIL') {
-                                            const selectedConfig = emailConfigurations.find(
-                                                (c) => `${c.email}-${c.name}` === selectedFromEmail
-                                            );
-                                            const emailType =
-                                                selectedConfig?.type || 'UTILITY_EMAIL';
-
-                                            return {
-                                                mediumType: med,
-                                                config: {
-                                                    subject: title,
-                                                    emailType: emailType,
-                                                    fromEmail: selectedConfig?.email,
-                                                    fromName: selectedConfig?.name,
-                                                    template: selectedTemplateData?.name,
-                                                    previewText: previewText || selectedTemplateData?.previewText,
-                                                },
-                                            };
-                                        }
-                                        return {
-                                            mediumType: med,
-                                            config: mediumConfigs[med] ?? {},
-                                        };
-                                    }),
-                                    scheduling:
-                                        scheduleType === 'IMMEDIATE'
-                                            ? { scheduleType, timezone }
-                                            : scheduleType === 'ONE_TIME'
-                                              ? {
-                                                    scheduleType,
-                                                    timezone,
-                                                    // Send the picked wall-clock literal (YYYY-MM-DDTHH:mm:ss) so the
-                                                    // backend interprets it in the selected timezone. Converting
-                                                    // through new Date(...).toISOString() would shift by the browser's
-                                                    // local offset, which is almost never what the user picked.
-                                                    startDate: oneTimeStart
-                                                        ? oneTimeStart.length === 16
-                                                            ? `${oneTimeStart}:00`
-                                                            : oneTimeStart
-                                                        : undefined,
-                                                    endDate: oneTimeEnd
-                                                        ? oneTimeEnd.length === 16
-                                                            ? `${oneTimeEnd}:00`
-                                                            : oneTimeEnd
-                                                        : undefined,
-                                                }
-                                              : {
-                                                    scheduleType,
-                                                    timezone,
-                                                    cronExpression: cronExpression || undefined,
-                                                },
-                                };
-                                await AnnouncementService.create(payload);
-                                // Fire a success Sonner toast immediately
-                                try {
-                                    const { toast: sonnerToast } = await import('sonner');
-                                    sonnerToast.success('Announcement created');
-                                } catch {
-                                    // fallback to existing toast
-                                    toast({ title: 'Announcement created' });
-                                }
-                                // Reset minimal fields
-                                setTitle('');
-                                setHtmlContent('');
-                                setSelectedModes([]);
-                                setModeSettings({} as Record<ModeType, Record<string, unknown>>);
-                                setSelectedMediums(['PUSH_NOTIFICATION']);
-                            } catch (err: unknown) {
-                                // Try to parse API validation errors and show inline + toast
-                                const anyErr = err as {
-                                    response?: {
-                                        data?: {
-                                            details?: Record<string, string>;
-                                            message?: string;
-                                        };
-                                    };
-                                };
-                                const details = anyErr?.response?.data?.details as
-                                    | Record<string, string>
-                                    | undefined;
-
-                                if (details && typeof details === 'object') {
-                                    const fieldErrors: Record<string, string> = {};
-
-                                    Object.entries(details).forEach(([key, message]) => {
-                                        // Map backend field paths to our local error keys
-                                        if (key.startsWith('scheduling.')) {
-                                            // scheduling.startDate -> schedule.startDate
-                                            const localKey = `schedule.${key.split('.').slice(1).join('.')}`;
-                                            fieldErrors[localKey] = message;
-                                        } else if (key.startsWith('content.')) {
-                                            fieldErrors['content'] = message;
-                                        } else if (key === 'title') {
-                                            fieldErrors['title'] = message;
-                                        } else {
-                                            // Fallback: attach to a general bucket if needed
-                                            fieldErrors[key] = message;
-                                        }
-                                    });
-
-                                    setErrors((prev) => ({ ...prev, ...fieldErrors }));
-
-                                    const msg = Object.values(details).slice(0, 5).join('\n');
-                                    toast({
-                                        title: 'Please fix the highlighted fields',
-                                        description: msg,
-                                        variant: 'destructive',
-                                    });
-                                } else {
-                                    toast({
-                                        title: 'Failed to create',
-                                        description:
-                                            anyErr?.response?.data?.message ||
-                                            (err instanceof Error ? err.message : 'Try again'),
-                                        variant: 'destructive',
-                                    });
-                                }
-                            } finally {
-                                setIsSubmitting(false);
-                            }
-                        }}
+                        onClick={handleCreateAnnouncement}
                     >
                         {isSubmitting ? 'Submitting…' : 'Create Announcement'}
                     </Button>
@@ -3656,8 +3613,8 @@ function renderModeSettingsForm(
                             onChange={(e) => set('showUntil', e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                            The overlay stops appearing after this time even if not dismissed.
-                            Leave empty for no expiry.
+                            The overlay stops appearing after this time even if not dismissed. Leave
+                            empty for no expiry.
                         </p>
                         {errors && errorPrefix && errors[`${errorPrefix}.showUntil`] && (
                             <p className="text-xs text-danger-600">

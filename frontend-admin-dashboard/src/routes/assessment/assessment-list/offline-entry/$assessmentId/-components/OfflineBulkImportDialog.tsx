@@ -391,6 +391,14 @@ export const OfflineBulkImportDialog = ({
 
     const failureCount = allFailures().length;
 
+    // How many PDFs the import will actually upload. Zero here with files sitting
+    // in the zip is the failure mode that shipped: marks imported, scans dropped.
+    const attachedCount = (manifest?.validRows ?? []).reduce(
+        (total, row) =>
+            total + [row.studentPath, row.checkedPath, row.reportPath].filter(Boolean).length,
+        0
+    );
+
     const handleDownloadErrors = () => {
         const failures = allFailures();
         if (failures.length === 0) {
@@ -506,10 +514,13 @@ export const OfflineBulkImportDialog = ({
                             </p>
                             <p className="mb-3 text-caption text-neutral-500">
                                 The zip must contain <span className="font-medium">manifest.csv</span>{' '}
-                                plus your scanned PDFs. Only the{' '}
-                                <span className="font-medium">username</span> column is required —
-                                drop any other column you don&apos;t need, or leave its cells blank.
-                                Nothing is saved until you review the preview.
+                                plus your scanned PDFs. PDFs in{' '}
+                                <span className="font-medium">answers/</span>,{' '}
+                                <span className="font-medium">checked/</span> or{' '}
+                                <span className="font-medium">reports/</span> named after a
+                                username are picked up automatically. No column is required — a
+                                file named after the student identifies them on its own. Nothing is
+                                saved until you review the preview.
                             </p>
                             <Form {...form}>
                                 <FileUploadComponent
@@ -539,6 +550,9 @@ export const OfflineBulkImportDialog = ({
                             <span className="text-caption text-neutral-500">{zipName}</span>
                             <span className="flex items-center gap-1 text-caption text-success-600">
                                 <CheckCircle className="size-4" /> {validCount} ready
+                            </span>
+                            <span className="text-caption text-neutral-500">
+                                {attachedCount} PDF{attachedCount === 1 ? '' : 's'} to upload
                             </span>
                             {failureCount > 0 && (
                                 <>
@@ -633,11 +647,37 @@ export const OfflineBulkImportDialog = ({
                             </div>
                         )}
 
+                        {/* Loud, not grey: a zip full of scans that nothing points
+                            at means the marks import but every PDF is dropped —
+                            exactly the silent failure this warns about. */}
                         {manifest.unreferencedFiles.length > 0 && (
-                            <div className="rounded-lg border border-neutral-200 p-3">
-                                <p className="text-caption font-medium text-neutral-700">
-                                    {manifest.unreferencedFiles.length} file(s) in the zip are not
-                                    referenced by manifest.csv and will be ignored
+                            <div
+                                className={cn(
+                                    'rounded-lg border p-3',
+                                    attachedCount === 0
+                                        ? 'border-warning-200 bg-warning-50'
+                                        : 'border-neutral-200'
+                                )}
+                            >
+                                <p
+                                    className={cn(
+                                        'text-caption font-medium',
+                                        attachedCount === 0
+                                            ? 'text-warning-700'
+                                            : 'text-neutral-700'
+                                    )}
+                                >
+                                    {manifest.unreferencedFiles.length} file(s) in the zip will be
+                                    ignored
+                                    {attachedCount === 0 &&
+                                        ' — no row has a file attached, so only marks would import'}
+                                </p>
+                                <p className="mt-1 text-caption text-neutral-500">
+                                    Name them in manifest.csv, or put them in{' '}
+                                    <span className="font-medium">answers/</span>,{' '}
+                                    <span className="font-medium">checked/</span> or{' '}
+                                    <span className="font-medium">reports/</span> named after the
+                                    student&apos;s username.
                                 </p>
                                 <p className="mt-1 truncate text-caption text-neutral-400">
                                     {manifest.unreferencedFiles.slice(0, 5).join(', ')}
@@ -715,6 +755,18 @@ export const OfflineBulkImportDialog = ({
     );
 };
 
+const SlotCell = ({ path, auto }: { path: string | null; auto: boolean }) => (
+    <td className="p-2 text-neutral-500" title={path ?? undefined}>
+        {path ? (
+            <>
+                ✓{auto && <span className="ms-1 text-neutral-400">auto</span>}
+            </>
+        ) : (
+            '—'
+        )}
+    </td>
+);
+
 const ErrorNotice = ({ title, detail }: { title: string; detail: string }) => (
     <div
         role="alert"
@@ -769,15 +821,11 @@ const PreviewTable = ({ rows }: { rows: ManifestRow[] }) => {
                                     <span className="block text-neutral-400">{row.username}</span>
                                 </td>
                                 <td className="p-2 text-neutral-700">{row.totalMarks ?? '—'}</td>
-                                <td className="p-2 text-neutral-500">
-                                    {row.studentPath ? '✓' : '—'}
-                                </td>
-                                <td className="p-2 text-neutral-500">
-                                    {row.checkedPath ? '✓' : '—'}
-                                </td>
-                                <td className="p-2 text-neutral-500">
-                                    {row.reportPath ? '✓' : '—'}
-                                </td>
+                                {/* "auto" = matched from the zip's folder layout
+                                    rather than named in the CSV. */}
+                                <SlotCell path={row.studentPath} auto={row.autoMatchedSlots.includes('student')} />
+                                <SlotCell path={row.checkedPath} auto={row.autoMatchedSlots.includes('checked')} />
+                                <SlotCell path={row.reportPath} auto={row.autoMatchedSlots.includes('report')} />
                                 <td className="p-2">
                                     {row.errors.length === 0 ? (
                                         <span className="text-success-600">Ready</span>

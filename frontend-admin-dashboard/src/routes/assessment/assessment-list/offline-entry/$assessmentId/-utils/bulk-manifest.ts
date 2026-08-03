@@ -18,11 +18,11 @@ export const MANIFEST_COLUMNS = [
     'report_pdf',
 ] as const;
 
-// Only the match key is required. Every other column is optional — an admin
-// attaching just checked copies should be able to upload a two-column CSV rather
-// than carry empty `total_marks`/`report_pdf` headers around. A column that isn't
-// there simply contributes nothing, exactly like a blank cell.
-const REQUIRED_COLUMNS = ['username'] as const;
+// No single column is required. A row needs SOME way to identify its student:
+// either a username cell, or a named file whose name is the username. So the
+// only unusable manifest is one with neither a username column nor any file
+// column — every other shape resolves per row.
+const IDENTIFYING_COLUMNS = ['username', 'student_pdf', 'checked_pdf', 'report_pdf'] as const;
 
 export const SAMPLE_FOLDERS = ['answers', 'checked', 'reports'] as const;
 
@@ -35,6 +35,8 @@ export interface ManifestRow {
     studentPath: string | null;
     checkedPath: string | null;
     reportPath: string | null;
+    /** Slots filled from the zip's folder layout rather than a CSV cell. */
+    autoMatchedSlots: AttachmentSlotKey[];
     /** Resolved student; null when the username matched nobody. */
     student: StudentRow | null;
     /** Blocking problems — a row with any error is not imported. */
@@ -83,6 +85,143 @@ const resolveZipPath = (cell: string, filesByPath: Map<string, string>, filesByN
     return { path: null, error: `"${raw}" was not found in the zip` };
 };
 
+// Folder names that identify which slot a scan belongs to, so a zip laid out as
+// answers/<username>.pdf works with no file names typed into the CSV at all.
+// Naming a file in the CSV always wins; this is only the fallback.
+const SLOT_FOLDER_ALIASES: Record<AttachmentSlotKey, string[]> = {
+    student: ['answers', 'answer', 'student', 'students', 'submitted', 'submission', 'submissions'],
+    checked: ['checked', 'evaluated', 'marked', 'corrected', 'correction'],
+    report: ['reports', 'report', 'result', 'results'],
+};
+
+export type AttachmentSlotKey = 'student' | 'checked' | 'report';
+
+/** File name minus its extension, lowercased — the key files are matched on. */
+const stem = (path: string): string =>
+    basename(path).replace(/\.[^./]+$/, '').trim().toLowerCase();
+
+const folderSlot = (path: string): AttachmentSlotKey | null => {
+    const folders = path.split('/').slice(0, -1).map((segment) => segment.trim().toLowerCase());
+    for (const [slot, aliases] of Object.entries(SLOT_FOLDER_ALIASES)) {
+        if (folders.some((folder) => aliases.includes(folder))) return slot as AttachmentSlotKey;
+    }
+    return null;
+};
+
+type AutoIndex = Record<AttachmentSlotKey, Map<string, string[]>>;
+
+/**
+ * Indexes the zip by slot folder and file stem, so `answers/STU001.pdf` can be
+ * found from the username alone. Files outside a recognised folder are skipped —
+ * guessing a slot from a bare file name would risk filing a raw answer sheet as
+ * the checked copy, which is worse than asking for the CSV cell.
+ */
+const buildAutoIndex = (zip: ZipHandle): AutoIndex => {
+    const index: AutoIndex = { student: new Map(), checked: new Map(), report: new Map() };
+    for (const entry of zip.entries) {
+        if (entry.isDirectory) continue;
+        if (entry.path.toLowerCase().endsWith('.csv')) continue;
+        const slot = folderSlot(entry.path);
+        if (!slot) continue;
+        const key = stem(entry.path);
+        index[slot].set(key, [...(index[slot].get(key) ?? []), entry.path]);
+    }
+    return index;
+};
+
+/**
+ * Finds this student's file in a slot folder. Matches `<username>.pdf` exactly,
+ * then `<username>_checked.pdf`-style prefixes. Ambiguity is reported rather than
+ * guessed — attaching the wrong student's paper is the one failure that must not
+ * happen silently.
+ */
+const autoMatch = (
+    index: AutoIndex,
+    slot: AttachmentSlotKey,
+    username: string
+): { path: string | null; error: string | null } => {
+    const key = normalizeKey(username);
+    if (!key) return { path: null, error: null };
+
+    const exact = index[slot].get(key) ?? [];
+    if (exact.length === 1) return { path: exact[0] as string, error: null };
+    if (exact.length > 1) {
+        return { path: null, error: `${exact.length} files in the ${slot} folder are named "${username}"` };
+    }
+
+    const prefixed: string[] = [];
+    for (const [candidateStem, paths] of index[slot]) {
+        if (candidateStem.startsWith(key) && /^[^a-z0-9]/.test(candidateStem.slice(key.length))) {
+            prefixed.push(...paths);
+        }
+    }
+    if (prefixed.length === 1) return { path: prefixed[0] as string, error: null };
+    if (prefixed.length > 1) {
+        return {
+            path: null,
+            error: `${prefixed.length} files in the ${slot} folder start with "${username}" — name the exact file in the CSV`,
+        };
+    }
+    return { path: null, error: null };
+};
+
+/**
+ * Works out which student a row is for from the file names it points at, for
+ * rows with no username cell. `checked/STU001.pdf` already says STU001 — making
+ * someone re-type that in a username column is pure busywork.
+ *
+ * Every named file must agree on the student. Disagreement is an error, never a
+ * guess: attaching one student's paper to another is the one failure that must
+ * not happen quietly.
+ */
+const deriveStudentFromPaths = (
+    paths: string[],
+    studentsByUsername: Map<string, StudentRow>
+): { username: string; student: StudentRow | null; error: string | null } => {
+    const empty = { username: '', student: null, error: null as string | null };
+    if (paths.length === 0) {
+        return {
+            ...empty,
+            error: 'no username, and no file to work it out from — add a username or name a file',
+        };
+    }
+
+    const matched = new Map<string, StudentRow>();
+    const unmatchedStems: string[] = [];
+    for (const path of paths) {
+        // Tolerate `STU001_checked.pdf` by also trying the part before the first
+        // separator, so a descriptive suffix doesn't break identification.
+        const full = stem(path);
+        const prefix = full.split(/[^a-z0-9]/)[0] ?? full;
+        const hit = studentsByUsername.get(full) ?? studentsByUsername.get(prefix);
+        if (hit) matched.set(normalizeKey(hit.username), hit);
+        else unmatchedStems.push(basename(path));
+    }
+
+    if (matched.size > 1) {
+        return {
+            ...empty,
+            error: `files in this row belong to different students (${[...matched.values()].map((s) => s.username).join(', ')}) — split them across rows`,
+        };
+    }
+    if (matched.size === 0) {
+        return {
+            ...empty,
+            error: `could not tell which student "${unmatchedStems.join('", "')}" belongs to — name the file after their username, or add a username column`,
+        };
+    }
+
+    const student = [...matched.values()][0] as StudentRow;
+    if (unmatchedStems.length > 0) {
+        return {
+            username: student.username,
+            student,
+            error: `"${unmatchedStems.join('", "')}" does not match ${student.username} — add a username column to be sure`,
+        };
+    }
+    return { username: student.username, student, error: null };
+};
+
 /** Builds the CSV template, pre-filled with the students in this assessment. */
 export const buildManifestCsv = (students: StudentRow[]): string => {
     const rows = students
@@ -115,33 +254,43 @@ export const downloadTextFile = (content: string, fileName: string, mimeType: st
 const SAMPLE_README = `Bulk offline data entry
 =======================
 
-1. Put your scanned PDFs anywhere in this zip. The folders below are only a
-   suggestion — manifest.csv is what decides which file is which.
+1. Put your scanned PDFs in these folders, named after the student's username:
 
-     answers/   the student's own answer sheet
-     checked/   the checked (annotated) copy
-     reports/   a result report you prepared outside the platform
+     answers/<username>.pdf   the student's own answer sheet
+     checked/<username>.pdf   the checked (annotated) copy
+     reports/<username>.pdf   a result report you prepared outside the platform
 
-2. Fill in manifest.csv. ONLY "username" is required — every other column is
-   optional. Delete any column you don't need, or leave individual cells blank;
-   both mean "skip this one". A two-column file like
+   Files in these folders are picked up automatically — you do NOT have to type
+   their names into manifest.csv. (A suffix works too: checked/STU001_checked.pdf.)
 
-     username,checked_pdf
+   If you'd rather keep a different layout, put the files anywhere and name them
+   in manifest.csv instead. A name in the CSV always wins over the folder.
 
-   is perfectly valid.
+   Anything that is neither named in the CSV nor in one of these folders is
+   IGNORED — the preview tells you how many files that is before you import.
 
-     username      REQUIRED. The student's enrolment number / username.
-                   Must match exactly (case does not matter).
-     full_name     Optional, ignored on import — it is there so you can see
-                   who is who while filling the sheet in.
-     total_marks   Optional. The total the student scored.
-     student_pdf   Optional. Path (or just the file name) of their answer
-                   sheet in this zip.
-     checked_pdf   Optional. Path of the checked copy.
-     report_pdf    Optional. Path of the report.
+2. Fill in manifest.csv. NO column is required — delete any you don't need, or
+   leave individual cells blank; both mean "skip this one".
 
-   Each row does need at least one of total_marks / student_pdf / checked_pdf /
-   report_pdf — a row with only a username has nothing to import.
+     username      The student's enrolment number / username (case-insensitive).
+                   You can leave this out entirely IF the files you name are
+                   named after the student — checked_pdf = STU001.pdf is enough
+                   to identify STU001 on its own.
+     full_name     Ignored on import — it is there so you can see who is who
+                   while filling the sheet in.
+     total_marks   The total the student scored.
+     student_pdf   Path (or just the file name) of their answer sheet.
+     checked_pdf   Path of the checked copy.
+     report_pdf    Path of the report.
+
+   All of these are valid manifests:
+
+     username,total_marks              marks only, files picked up from folders
+     checked_pdf                       file name identifies the student
+     username,checked_pdf,report_pdf   fully explicit
+
+   Each row needs a way to identify its student (a username, or a file named
+   after one) and at least one thing to import (marks or a file).
 
 3. Zip it back up and upload it. You will see a row-by-row preview before
    anything is saved.
@@ -192,10 +341,9 @@ export const parseManifest = (
     });
 
     const headers = (parsed.meta.fields ?? []).map(normalizeHeader);
-    const missingRequired = REQUIRED_COLUMNS.filter((column) => !headers.includes(column));
-    if (missingRequired.length > 0) {
+    if (!IDENTIFYING_COLUMNS.some((column) => headers.includes(column))) {
         fatalErrors.push(
-            `manifest.csv needs a "${missingRequired.join('", "')}" column — it is how each row is matched to a student.`
+            `manifest.csv needs either a "username" column or a file column (${IDENTIFYING_COLUMNS.slice(1).join(', ')}) — one of them has to say which student each row is for.`
         );
     }
 
@@ -223,6 +371,7 @@ export const parseManifest = (
         if (key) studentsByUsername.set(key, student);
     }
 
+    const autoIndex = buildAutoIndex(zip);
     const seenUsernames = new Map<string, number>();
     const referenced = new Set<string>();
 
@@ -230,11 +379,34 @@ export const parseManifest = (
         const line = index + 1;
         const errors: string[] = [];
 
-        const username = (raw.username ?? '').trim();
-        const student = username ? (studentsByUsername.get(normalizeKey(username)) ?? null) : null;
-        if (!username) {
-            errors.push('username is blank');
-        } else if (!student) {
+        // Resolve the CSV-named files FIRST: when the username cell is blank the
+        // file name itself identifies the student (checked/STU001.pdf -> STU001),
+        // so requiring a username you already spelled out in the path is busywork.
+        const namedPaths: Partial<Record<AttachmentSlotKey, string>> = {};
+        const namedColumns: Array<[AttachmentSlotKey, 'student_pdf' | 'checked_pdf' | 'report_pdf']> = [
+            ['student', 'student_pdf'],
+            ['checked', 'checked_pdf'],
+            ['report', 'report_pdf'],
+        ];
+        for (const [slot, column] of namedColumns) {
+            const { path, error } = resolveZipPath(raw[column] ?? '', filesByPath, filesByName);
+            if (error) errors.push(`${column}: ${error}`);
+            if (path) {
+                namedPaths[slot] = path;
+                referenced.add(path);
+            }
+        }
+
+        const explicitUsername = (raw.username ?? '').trim();
+        const derived = explicitUsername
+            ? { username: explicitUsername, student: studentsByUsername.get(normalizeKey(explicitUsername)) ?? null, error: null as string | null }
+            : deriveStudentFromPaths(Object.values(namedPaths), studentsByUsername);
+
+        const username = derived.username;
+        const student = derived.student;
+        if (derived.error) {
+            errors.push(derived.error);
+        } else if (username && !student) {
             errors.push(`no student with username "${username}" in this assessment`);
         }
 
@@ -256,16 +428,28 @@ export const parseManifest = (
             }
         }
 
-        const resolveColumn = (column: 'student_pdf' | 'checked_pdf' | 'report_pdf') => {
-            const { path, error } = resolveZipPath(raw[column] ?? '', filesByPath, filesByName);
-            if (error) errors.push(`${column}: ${error}`);
-            if (path) referenced.add(path);
-            return path;
+        const autoMatchedSlots: AttachmentSlotKey[] = [];
+
+        // Slots the CSV didn't name fall back to the zip's own layout
+        // (answers/ checked/ reports/ named after the username). Without this,
+        // PDFs sitting in those folders were silently ignored and only the marks
+        // imported. Needs a resolved username, hence running after derivation.
+        const resolveSlot = (slot: AttachmentSlotKey, column: string) => {
+            const named = namedPaths[slot];
+            if (named) return named;
+            if (!username) return null;
+            const auto = autoMatch(autoIndex, slot, username);
+            if (auto.error) errors.push(`${column}: ${auto.error}`);
+            if (auto.path) {
+                referenced.add(auto.path);
+                autoMatchedSlots.push(slot);
+            }
+            return auto.path;
         };
 
-        const studentPath = resolveColumn('student_pdf');
-        const checkedPath = resolveColumn('checked_pdf');
-        const reportPath = resolveColumn('report_pdf');
+        const studentPath = resolveSlot('student', 'student_pdf');
+        const checkedPath = resolveSlot('checked', 'checked_pdf');
+        const reportPath = resolveSlot('report', 'report_pdf');
 
         if (totalMarks === null && !studentPath && !checkedPath && !reportPath && errors.length === 0) {
             errors.push('nothing to import — set total_marks or at least one file');
@@ -278,6 +462,7 @@ export const parseManifest = (
             studentPath,
             checkedPath,
             reportPath,
+            autoMatchedSlots,
             student,
             errors,
         };

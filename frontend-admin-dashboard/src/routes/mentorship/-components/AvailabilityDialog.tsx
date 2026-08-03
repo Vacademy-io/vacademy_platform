@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { Plus, Trash } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -13,7 +14,16 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useMyBookingPage, useUpdateMyBookingPage } from '../-hooks/use-mentorship';
-import type { MentorAvailabilityRequest, WeeklyWindow } from '../-types/mentorship-types';
+import type {
+    MentorAvailabilityRequest,
+    SessionType,
+    WeeklyWindow,
+} from '../-types/mentorship-types';
+
+const genId = (): string =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `st-${Math.floor(Math.random() * 1e9)}`;
 
 const DAYS: { key: string; label: string }[] = [
     { key: 'MONDAY', label: 'Monday' },
@@ -52,6 +62,7 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
     const [bufferBefore, setBufferBefore] = useState(0);
     const [bufferAfter, setBufferAfter] = useState(0);
     const [horizonDays, setHorizonDays] = useState(30);
+    const [sessionTypes, setSessionTypes] = useState<SessionType[]>([]);
 
     // Hydrate the form once the page loads.
     useEffect(() => {
@@ -71,10 +82,20 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
         setBufferBefore(page.buffer_before_minutes ?? 0);
         setBufferAfter(page.buffer_after_minutes ?? 0);
         setHorizonDays(page.booking_horizon_days ?? 30);
+        setSessionTypes(
+            (page.session_types ?? []).map((s) => ({ ...s, id: s.id || genId() }))
+        );
     }, [page]);
 
     const setDay = (key: string, patch: Partial<DayRow>) =>
         setRows((prev) => ({ ...prev, [key]: { ...prev[key]!, ...patch } }));
+
+    const addSessionType = () =>
+        setSessionTypes((prev) => [...prev, { id: genId(), name: '', duration_minutes: 30 }]);
+    const updateSessionType = (id: string, patch: Partial<SessionType>) =>
+        setSessionTypes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    const removeSessionType = (id: string) =>
+        setSessionTypes((prev) => prev.filter((s) => s.id !== id));
 
     const save = async () => {
         if (!instituteId) return;
@@ -92,6 +113,9 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
             toast.error('Enable at least one day so learners can book.');
             return;
         }
+        const cleanTypes = sessionTypes
+            .filter((s) => s.name.trim() && s.duration_minutes > 0)
+            .map((s) => ({ id: s.id, name: s.name.trim(), duration_minutes: s.duration_minutes }));
         const payload: MentorAvailabilityRequest = {
             availability: { weekly_windows },
             duration_minutes: duration,
@@ -99,6 +123,7 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
             buffer_before_minutes: Math.max(0, bufferBefore),
             buffer_after_minutes: Math.max(0, bufferAfter),
             booking_horizon_days: Math.max(1, horizonDays),
+            session_types: cleanTypes,
         };
         try {
             await update.mutateAsync({ instituteId, data: payload });
@@ -261,6 +286,72 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                 />
                             </div>
                         </div>
+                    </div>
+
+                    <div>
+                        <div className="mb-1 flex items-center justify-between">
+                            <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                                Session types
+                            </span>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                onClick={addSessionType}
+                            >
+                                <Plus size={14} /> Add type
+                            </MyButton>
+                        </div>
+                        <p className="mb-2 text-caption text-neutral-400">
+                            Optional. Offer more than one bookable length (e.g. “Quick chat” 15
+                            min, “Deep dive” 60 min). The learner picks one when booking. Leave
+                            empty to use the single duration above.
+                        </p>
+                        {sessionTypes.length === 0 ? (
+                            <p className="text-caption text-neutral-400">No session types yet.</p>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                {sessionTypes.map((st) => (
+                                    <div key={st.id} className="flex items-center gap-2">
+                                        <Input
+                                            value={st.name}
+                                            placeholder="Name (e.g. Career chat)"
+                                            onChange={(e) =>
+                                                updateSessionType(st.id!, { name: e.target.value })
+                                            }
+                                            className="flex-1"
+                                        />
+                                        <Select
+                                            value={String(st.duration_minutes)}
+                                            onValueChange={(v) =>
+                                                updateSessionType(st.id!, {
+                                                    duration_minutes: Number(v),
+                                                })
+                                            }
+                                        >
+                                            <SelectTrigger className="w-32">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {DURATIONS.map((m) => (
+                                                    <SelectItem key={m} value={String(m)}>
+                                                        {m} min
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="text"
+                                            scale="small"
+                                            onClick={() => removeSessionType(st.id!)}
+                                        >
+                                            <Trash size={16} className="text-danger-500" />
+                                        </MyButton>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

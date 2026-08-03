@@ -129,6 +129,13 @@ export interface BookingAvailability {
     date_overrides?: unknown[] | null;
 }
 
+/** A bookable session option (name + duration) offered on the booking page. */
+export interface SessionType {
+    id?: string;
+    name: string;
+    duration_minutes: number;
+}
+
 /** Subset of the mentor's booking page used by the availability editor. */
 export interface MentorBookingPage {
     id: string;
@@ -140,6 +147,7 @@ export interface MentorBookingPage {
     booking_horizon_days?: number | null;
     timezone?: string | null;
     availability?: BookingAvailability | null;
+    session_types?: SessionType[] | null;
 }
 
 /** Mentor self-service availability update (host/slug are never sent). */
@@ -152,4 +160,5 @@ export interface MentorAvailabilityRequest {
     booking_horizon_days?: number;
     slot_granularity_minutes?: number;
     timezone?: string;
+    session_types?: SessionType[];
 }

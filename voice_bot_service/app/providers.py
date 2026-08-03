@@ -88,7 +88,48 @@ class ClauseFlushAggregator(SimpleTextAggregator):
         return None
 
 
-def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None):
+class _SaarasStreamingShim:
+    """Makes pipecat's translate-socket call land on the TRANSCRIBE socket.
+
+    pipecat 0.0.95 routes every non-"saarika" model to
+    speech_to_text_translate_streaming, which takes no language_code and always
+    returns English. Sarvam's websocket docs list saaras:v4 on the normal
+    transcribe channel WITH `language-code` and a `mode`
+    (transcribe|translate|verbatim|translit|codemix, saaras:v3/v4 only).
+
+    Swapping the endpoint UNDER pipecat — rather than overriding _connect — keeps
+    its receive-task, prompt and handler wiring intact, which the deaf-detection
+    fix depends on. `mode` is absent from the pinned SDK's signature, so it rides
+    RequestOptions' additional_query_parameters.
+    """
+
+    def __init__(self, client, language_code: str, mode: str):
+        self._client = client
+        self._language_code = language_code
+        self._mode = mode
+
+    def connect(self, **kwargs):
+        from sarvamai.core.request_options import RequestOptions
+        kwargs["language_code"] = self._language_code
+        kwargs["request_options"] = RequestOptions(
+            additional_query_parameters={"mode": self._mode})
+        return self._client.speech_to_text_streaming.connect(**kwargs)
+
+
+def _install_saaras_shim(svc, language_code: str, mode: str) -> None:
+    try:
+        svc._sarvam_client.speech_to_text_translate_streaming = _SaarasStreamingShim(
+            svc._sarvam_client, language_code, mode)
+        svc._stt_mode = mode
+        logger.info("stt: %s mode=%s language=%s", svc.model_name, mode, language_code)
+    except Exception:
+        # Fail OPEN: without the shim pipecat still connects (translate mode), so
+        # the bot keeps hearing — it just loses the language pin and the mode.
+        logger.exception("stt: saaras shim not installed — using pipecat default routing")
+
+
+def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
+              mode: str | None = None):
     s = get_settings()
     # Pin STT to the agent's configured language (BCP-47, e.g. "hi-IN"), falling back to
     # the SARVAM_STT_LANGUAGE env default. A pin matters: auto-detect drifts a Hindi/
@@ -97,12 +138,28 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     # fed to saarika's `prompt` so a caller repeating the name isn't transcribed as
     # "Aayushi"/"Aarush" and fed back into the LLM context as a wrong name. Guarded so a
     # bad value can't crash startup — it just falls back to auto / no bias.
+    # saaras* are STT-TRANSLATE models: they AUTO-DETECT the language and pipecat
+    # raises ValueError("Model does not accept language parameter") if one is
+    # passed — which would crash EVERY call the moment the model env was flipped.
+    # The two families take mutually exclusive params: saaras takes `prompt` (the
+    # name bias) and refuses `language`; saarika takes `language` and refuses
+    # `prompt`. Decide once, here.
+    # saaras:v3/v4 are UNIFIED models: per Sarvam's websocket docs they accept
+    # `language-code` AND a `mode` (transcribe | translate | verbatim | translit |
+    # codemix). pipecat 0.0.95 predates that — it routes ANY "saaras*" model to
+    # the translate socket and raises if a language is passed — so we keep the
+    # language here and re-route in _connect below. saarika (legacy) is
+    # transcribe-only and takes language_code natively.
+    mode = (mode or s.sarvam_stt_mode or "transcribe").strip()
+    model_l = (s.sarvam_stt_model or "").lower()
+    is_saaras = "saaras" in model_l
     tag = language or s.sarvam_stt_language
-    # The `prompt` bias is ONLY accepted by Sarvam STT-TRANSLATE models (saaras*);
-    # saarika (transcription, our default) REJECTS it at construction with a ValueError.
-    # So only attach the bias on a translate model — otherwise the name bias is silently
-    # skipped (the language pin, which matters more, still applies).
-    allow_bias = bool(bias) and "saaras" in (s.sarvam_stt_model or "").lower()
+    # The name bias (`prompt`) is saaras-only, and pipecat validates BOTH ways:
+    # saarika raises on `prompt`, saaras raises on `language`. Since the saaras
+    # path constructs a saarika-shaped shim (below) to get the language accepted,
+    # the prompt can never go through InputParams — it is set on the instance
+    # after construction instead.
+    allow_bias = False
     params = None
     if tag or allow_bias or s.sarvam_stt_high_vad:
         # Field-by-field: a single bad value (e.g. an unknown language tag) must
@@ -128,6 +185,21 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         except Exception:
             logger.warning("build_stt: InputParams rejected %r — using defaults", kwargs)
             params = None
+    if is_saaras:
+        # Construct as saarika so pipecat's "saaras must not get a language" guard
+        # does not fire and _language_string is still resolved for us, then restore
+        # the real model name.
+        svc = ResilientSarvamSTTService(
+            api_key=s.sarvam_api_key,
+            model="saarika:v2.5",
+            sample_rate=sample_rate,
+            params=params,
+        )
+        svc.set_model_name(s.sarvam_stt_model)
+        if bias:
+            svc._prompt = bias[:200]
+        _install_saaras_shim(svc, language_code=tag or "unknown", mode=mode)
+        return svc
     return ResilientSarvamSTTService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_stt_model,

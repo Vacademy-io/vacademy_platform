@@ -36,13 +36,31 @@ class Settings:
 
     # Sarvam (STT + LLM + TTS) — see providers.py
     sarvam_api_key: str = field(default_factory=lambda: _env("SARVAM_API_KEY"))
-    # saarika:v2.5 TRANSCRIBES speech in the language actually spoken (Devanagari for
-    # Hindi), so the LLM gets the caller's real words. saaras:v3 is a speech-TRANSLATION
-    # model (Indian speech → English) — on code-switched Hinglish it garbles into
-    # gibberish ("Myapolicil tme we face"), which the LLM then can't understand, so it
-    # deflects/loops. Transcription, not translation, is what a native-language voice bot
-    # needs. Overridable via SARVAM_STT_MODEL to roll back or try another model.
-    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saarika:v2.5"))
+    # STT model. saaras:v4 (chosen 2026-08-03) is a speech-to-text-TRANSLATE model:
+    # it AUTO-DETECTS the spoken language and returns ENGLISH. saarika:v2.5, the
+    # previous default, transcribes in the language actually spoken.
+    #
+    # Why the switch: pinned to hi-IN, saarika transliterated ENGLISH callers into
+    # Devanagari ("इफ यू रिकॉर्ड योर नेम..." for "if you record your name"), and on
+    # 2026-08-03 it went deaf on a live call — the caller said "hybrid model" four
+    # times and saarika returned ZERO finals for it (one final in a 50s window,
+    # first final of the call took 6.08s to process, 4 socket reconnects).
+    #
+    # KNOWN RISK, recorded honestly: an OLDER saaras (v3) was abandoned precisely
+    # because it garbled code-switched Hinglish into gibberish ("Myapolicil tme we
+    # face"), which the LLM then could not act on. v4 is two versions on, but if
+    # Hinglish garbling returns, roll back with SARVAM_STT_MODEL=saarika:v2.5 —
+    # no deploy needed.
+    #
+    # SIDE EFFECTS of a translate model, both real:
+    #  * SARVAM_STT_LANGUAGE and any per-agent language pin become INERT (pipecat
+    #    raises if a language is passed to saaras — build_stt drops it).
+    #  * A Hindi caller now reaches the LLM as ENGLISH text, so the prompt's
+    #    "speak the caller's language" rule can no longer infer their language
+    #    from the transcript. Watch Hindi-first agents.
+    #  * The name bias (`prompt`) only works on saaras, so it now ENGAGES — the
+    #    agent's own name should stop coming back as "Aayushi"/"Aarush".
+    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saaras:v4"))
     # Pin STT to one language instead of auto-detect. Default "hi-IN": auto-detect
     # drifts a Hindi/Hinglish caller into a NEIGHBOURING Indic language — Punjabi or
     # Marathi (Marathi shares Devanagari, Punjabi is phonetically close) — and once one
@@ -51,6 +69,12 @@ class Settings:
     # the call. Pinning hi-IN still transcribes the English words in a Hinglish sentence
     # (saarika is code-mixed aware) but never leaves Hindi. Set "" for auto-detect or
     # another BCP-47 tag (e.g. "en-IN") for an English-first agent. Read in build_stt.
+    # saaras mode: transcribe | translate | verbatim | translit | codemix.
+    # Only meaningful on saaras:v3/v4. "codemix" is the right default for
+    # Hinglish agents — it keeps the caller's code-switched words instead of
+    # forcing them into one script (saarika's hi-IN pin turned English callers
+    # into Devanagari) or into English (translate mode).
+    sarvam_stt_mode: str = field(default_factory=lambda: _env("SARVAM_STT_MODE", "transcribe"))
     sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", "hi-IN"))
     sarvam_llm_model: str = field(default_factory=lambda: _env("SARVAM_LLM_MODEL", "sarvam-105b"))
     sarvam_llm_base_url: str = field(

@@ -1013,3 +1013,55 @@ def test_hearing_failed_closes_the_call_honestly():
     # A real transcript must clear the streak.
     on_tr = src[src.index("def on_transcript"):]
     assert 'flags["deaf_streak"] = 0' in on_tr[:on_tr.index("transcript = TranscriptCollector")]
+
+
+# ── STT model routing: saaras:v4 with per-agent language + mode ──────────────
+
+def test_agent_language_drives_stt_language_and_mode():
+    assert b._agent_language({"language": "hinglish"})[0] == "hi-IN"
+    assert b._agent_language({"language": "english"})[0] == "en-IN"
+    assert b._agent_stt_mode({"language": "hinglish"}) == "codemix"
+    assert b._agent_stt_mode({"language": "english"}) == "transcribe"
+    assert b._agent_stt_mode({"language": "tamil"}) == "transcribe"
+    # run_bot must actually pass both through.
+    src = inspect.getsource(b.run_bot)
+    assert "mode=_agent_stt_mode(agent)" in src
+
+
+def test_every_language_tag_is_one_sarvam_accepts():
+    """Sarvam spells Odia od-IN, not the ISO or-IN; the ISO form is REJECTED and
+    every Odia agent failed. Pin the whole table against Sarvam's own list."""
+    sarvam = {"bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN",
+              "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN"}
+    ours = {tag for tag, _ in b._STT_LANGS.values()}
+    assert ours <= sarvam, f"Sarvam would reject: {sorted(ours - sarvam)}"
+
+
+def test_saaras_is_routed_to_the_transcribe_socket(monkeypatch):
+    """pipecat sends any saaras* model to the translate socket, which has no
+    language_code and always returns English. The shim redirects it."""
+    monkeypatch.setenv("SARVAM_STT_MODEL", "saaras:v4")
+    pv.get_settings.cache_clear()
+    try:
+        svc = pv.build_stt(8000, language="hi-IN", bias="Aarushi", mode="codemix")
+        assert svc.model_name == "saaras:v4"
+        assert svc._stt_mode == "codemix"
+        assert svc._language_string == "hi-IN", "the language pin must survive"
+        shim = svc._sarvam_client.speech_to_text_translate_streaming
+        assert isinstance(shim, pv._SaarasStreamingShim)
+        assert svc._prompt == "Aarushi", "the saaras-only name bias must be set"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_saarika_still_uses_its_native_path(monkeypatch):
+    monkeypatch.setenv("SARVAM_STT_MODEL", "saarika:v2.5")
+    pv.get_settings.cache_clear()
+    try:
+        svc = pv.build_stt(8000, language="hi-IN")
+        assert svc.model_name == "saarika:v2.5"
+        assert getattr(svc, "_stt_mode", None) is None
+        assert not isinstance(svc._sarvam_client.speech_to_text_translate_streaming,
+                              pv._SaarasStreamingShim)
+    finally:
+        pv.get_settings.cache_clear()

@@ -533,8 +533,24 @@ _STT_LANGS = {
     "telugu": ("te-IN", "Telugu"),
     "kannada": ("kn-IN", "Kannada"),
     "malayalam": ("ml-IN", "Malayalam"),
-    "odia": ("or-IN", "Odia"),
+    # Sarvam spells Odia "od-IN", NOT the ISO "or-IN" — verified against the
+    # SDK's own Literal. The ISO form is rejected, so Odia agents failed.
+    "odia": ("od-IN", "Odia"),
+    "oriya": ("od-IN", "Odia"),
 }
+
+
+def _agent_stt_mode(agent) -> str:
+    """Sarvam saaras `mode` for this agent.
+
+    codemix keeps a Hinglish caller's code-switched words as they were spoken.
+    The alternatives both lose information: transcribe with a hi-IN pin turned
+    ENGLISH callers into Devanagari ("इफ यू रिकॉर्ड योर नेम"), and translate
+    forces everyone into English so the model can no longer tell what language
+    the caller actually used.
+    """
+    raw = (agent.get("language") or "").strip().lower()
+    return "codemix" if raw in ("hinglish", "hindi-english", "hi-en") else "transcribe"
 
 
 def _agent_language(agent) -> tuple[str | None, str]:
@@ -1190,7 +1206,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
     # a wrong name — the #1 way the agent "forgets" its name mid-call.
     stt_bias = (agent.get("name") or "").strip() or None
-    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
+                    mode=_agent_stt_mode(agent))
     # Voiced-but-wordless caller turns ("hmm"/"okay" that STT finalizes EMPTY)
     # become a minimal synthetic backchannel so the conversation continues instead
     # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while

@@ -196,8 +196,16 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
             params=params,
         )
         svc.set_model_name(s.sarvam_stt_model)
-        if bias:
-            svc._prompt = bias[:200]
+        # DO NOT set _prompt here. pipecat's _connect calls
+        # `self._socket_client.set_prompt(...)` whenever "saaras" is in the model
+        # name — but set_prompt exists ONLY on the TRANSLATE socket, and the shim
+        # hands it a TRANSCRIBE socket. Setting it raised inside _connect, so the
+        # socket was never usable and run_stt's deaf-detection hammered reconnect:
+        # a live call logged 1827 reconnects with zero transcripts. The name bias
+        # is simply not available on this path; the language pin and mode matter
+        # far more. (Verified: transcribe socket exposes only
+        # flush/on/recv/start_listening/transcribe.)
+        svc._prompt = None
         _install_saaras_shim(svc, language_code=tag or "unknown", mode=mode)
         return svc
     return ResilientSarvamSTTService(
@@ -414,14 +422,18 @@ class ResilientSarvamSTTService(SarvamSTTService):
 
     async def _reconnect_once(self):
         import time as _time
+        now = _time.monotonic()
+        if now - self._last_reconnect_at < self._RECONNECT_COOLDOWN_SECS:
+            return False
+        # Count AFTER the cooldown gate. run_stt calls this per audio frame
+        # (~50/s), so counting before it turned "reconnect attempts" into "frames
+        # seen while the socket was down" — a live call reported 1827 when the
+        # true number was ~7. A metric that inflates 250x is worse than none.
         try:
             if self._diag is not None:
                 self._diag.bump("stt_reconnects")
         except Exception:
             pass
-        now = _time.monotonic()
-        if now - self._last_reconnect_at < self._RECONNECT_COOLDOWN_SECS:
-            return False
         self._last_reconnect_at = now
         try:
             await self._disconnect()

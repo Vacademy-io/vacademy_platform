@@ -1049,7 +1049,13 @@ def test_saaras_is_routed_to_the_transcribe_socket(monkeypatch):
         assert svc._language_string == "hi-IN", "the language pin must survive"
         shim = svc._sarvam_client.speech_to_text_translate_streaming
         assert isinstance(shim, pv._SaarasStreamingShim)
-        assert svc._prompt == "Aarushi", "the saaras-only name bias must be set"
+        # _prompt MUST stay None on this path. pipecat's _connect calls
+        # socket.set_prompt() whenever "saaras" is in the model name, but
+        # set_prompt exists ONLY on the translate socket — and the shim hands it a
+        # TRANSCRIBE socket. Setting it raised inside _connect, so the socket was
+        # never usable and deaf-detection hammered reconnect: a live call logged
+        # 1827 reconnects and zero transcripts.
+        assert svc._prompt is None, "set_prompt does not exist on the transcribe socket"
     finally:
         pv.get_settings.cache_clear()
 
@@ -1065,3 +1071,14 @@ def test_saarika_still_uses_its_native_path(monkeypatch):
                               pv._SaarasStreamingShim)
     finally:
         pv.get_settings.cache_clear()
+
+
+def test_reconnect_counter_is_gated_by_the_cooldown():
+    """run_stt calls _reconnect_once per audio frame (~50/s). Counting before the
+    cooldown gate turned "reconnect attempts" into "frames seen while down" — a
+    live call reported 1827 when the truth was ~7."""
+    src = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
+    body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert body.index("_RECONNECT_COOLDOWN_SECS") < body.index('bump("stt_reconnects")'), (
+        "the counter must be incremented AFTER the cooldown gate"
+    )

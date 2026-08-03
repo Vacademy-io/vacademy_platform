@@ -234,8 +234,16 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
         elif d.answers_deleted >= 1:
             fire(ANSWER_DELETED, AMBER)
 
+    # DEAD_AIR only means something in a CONVERSATION. If the caller never took a
+    # turn, the "silence" is simply nobody answering — the bot greeting a voicemail
+    # or an empty line — and the call status already says no-answer. Marking that
+    # "Broken" made an unanswered dial look like a system failure and would make
+    # the fleet view mostly red for a non-problem (seen live: userTurns=0,
+    # idleHangup, verdict RED "Long silence during the call").
     worst_gap = max(d.dead_air) if d.dead_air else 0.0
-    if worst_gap >= 6.0:
+    if d.user_turns == 0:
+        pass                                   # nobody to be silent AT
+    elif worst_gap >= 6.0:
         fire(DEAD_AIR, RED)
     elif worst_gap >= 3.5:                     # below STALL_AFTER_SECS nothing was detectable
         fire(DEAD_AIR, AMBER)

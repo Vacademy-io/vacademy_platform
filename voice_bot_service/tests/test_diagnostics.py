@@ -241,3 +241,23 @@ def test_ttfb_routing_discriminates_stt_from_tts():
     tts = "ResilientSarvamTTSService#0".lower()
     assert "tts" in stt and "stt" in stt      # the trap
     assert "stt" not in tts                   # …which ordering resolves cleanly
+
+
+# ── a dial nobody answered is NOT a broken call ─────────────────────────────
+# Live: userTurns=0, bot greeted + nudged + hung up, deadAirMax 8.8s -> verdict
+# RED "Long silence during the call". The status already says no-answer; calling
+# it Broken makes every unanswered dial look like a system failure.
+
+def test_no_caller_turn_means_dead_air_is_not_a_fault():
+    d = dg.CallDiagnostics(user_turns=0, bot_turns=3, replies_generated=3,
+                           idle_hangup=True, nudges=1)
+    d.sample("dead_air", 8.806)
+    v = dg.verdict(d)
+    assert dg.DEAD_AIR not in v["faults"]
+    assert v["health"] == dg.GREEN, "an unanswered dial is not a broken bot"
+
+
+def test_dead_air_still_fires_in_a_real_conversation():
+    d = dg.CallDiagnostics(user_turns=4, bot_turns=4)
+    d.sample("dead_air", 8.8)
+    assert dg.verdict(d)["faults"][dg.DEAD_AIR] == dg.RED

@@ -19,6 +19,10 @@ public class StudentReportOverallDetailDto {
     // The learner's own submitted answer file (from the attempt's attemptData),
     // so the report can offer "view submitted" alongside "view evaluated".
     private String responseFileId;
+    // An admin-uploaded result report (offline data entry). Distinct from the
+    // system-generated report cached on student_attempt.report_pdf_file_id, which
+    // is regenerated — and overwritten — on every result release.
+    private String reportFileId;
     private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
     private Map<String, List<StudentReportAnswerReviewDto>> allSections;
 }

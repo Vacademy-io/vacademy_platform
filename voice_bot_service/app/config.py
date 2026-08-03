@@ -250,6 +250,14 @@ class Settings:
     # four times and re-asked the same question three times.
     max_deaf_streak: int = field(default_factory=lambda: int(_env("MAX_DEAF_STREAK", "2")))
 
+    # How long the line stays open after the bot's farewell finishes playing. Any
+    # real word from the caller in this window CANCELS the close. Live ee8e2168:
+    # the caller answered "Yes, I can" after the goodbye, the bot asked for a
+    # date and time, and the stale end-latch dropped the line before they could
+    # reply — a demo booking lost to our own hangup.
+    end_grace_secs: float = field(
+        default_factory=lambda: float(_env("END_GRACE_SECS", "2.0")))
+
     # Refuse to derive a substantive disposition from a call with no caller turn
     # (voicemail/IVR pickups were booking demos onto real leads). Kill-switch.
     report_require_conversation: bool = field(

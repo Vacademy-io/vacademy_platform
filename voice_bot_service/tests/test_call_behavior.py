@@ -1082,3 +1082,41 @@ def test_reconnect_counter_is_gated_by_the_cooldown():
     assert body.index("_RECONNECT_COOLDOWN_SECS") < body.index('bump("stt_reconnects")'), (
         "the counter must be incremented AFTER the cooldown gate"
     )
+
+
+# ── item 10: the end intent must be per-response and revocable ───────────────
+
+def test_end_marker_latches_per_response_not_per_call():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    marker = src[src.index("if END_MARKER in self._buffer"):]
+    marker = marker[:marker.index("emit, self._buffer")]
+    assert "self._end_this_response = True" in marker
+    assert "self._outcome.end_requested = True" not in marker, (
+        "a mid-stream marker must not close the call call-wide"
+    )
+
+
+def test_new_response_revokes_an_unarmed_end_intent():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    start = src[src.index("if isinstance(frame, LLMFullResponseStartFrame)"):]
+    start = start[:start.index("if isinstance(frame, LLMTextFrame)")]
+    assert "self._outcome.end_requested = False" in start
+    assert "not self._stop_armed" in start, "an already-closing line must not be revived"
+
+
+def test_farewell_defers_the_close_and_transfer_does_not():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    stop = src[src.index("if self._outcome.transfer_requested and self._task"):]
+    stop = stop[:stop.index("await self.push_frame(frame, direction)")] if \
+        "await self.push_frame(frame, direction)" in stop else stop
+    assert "self._defer_stop()" in stop, "the END path must go through the grace"
+    # Transfer still closes immediately — the caller is waiting to be put through.
+    assert stop.index("transfer_requested") < stop.index("_defer_stop()")
+
+
+def test_caller_words_cancel_a_pending_close():
+    src = inspect.getsource(b.run_bot)
+    on_tr = src[src.index("def on_transcript"):]
+    on_tr = on_tr[:on_tr.index("transcript = TranscriptCollector")]
+    assert 'flags["end_pending_since"] = 0.0' in on_tr
+    assert "outcome.end_requested = False" in on_tr

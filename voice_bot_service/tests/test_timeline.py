@@ -392,3 +392,48 @@ def test_hearing_failed_never_fires_on_a_healthy_call():
     from app.callstate import HEARING_FAILED
     s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
     assert HEARING_FAILED not in kinds(run_ticks(s, cfg(), T0, T0 + 30.0))
+
+
+# ── INCIDENT 2026-08-03 (call ee8e2168): we hung up on a booking ─────────────
+# Caller said "No, not yet" -> bot began its goodbye -> caller RE-ENGAGED with
+# "Yes, I can" -> bot asked "May I know a convenient date and time?" -> the line
+# dropped before they could answer. The end intent was call-scoped, so every
+# later BotStoppedSpeaking re-armed the stop (two "stopping call" log lines).
+
+def test_farewell_closes_the_line_after_the_grace():
+    from app.callstate import ARM_STOP
+    c = cfg(end_grace_secs=2.0)
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    s.end_pending_since = T0
+    early = kinds(run_ticks(s, c, T0, T0 + 1.9))
+    assert ARM_STOP not in early, "closed before the caller had a chance to speak"
+    out = kinds(run_ticks(s, c, T0, T0 + 6.0))
+    assert out.count(ARM_STOP) == 1, f"must close exactly once: {out}"
+
+
+def test_caller_re_engaging_after_the_farewell_cancels_the_close():
+    """THE booking-losing case. on_transcript clears end_pending_since."""
+    from app.callstate import ARM_STOP
+    c = cfg(end_grace_secs=2.0)
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    s.end_pending_since = T0
+    events = [(T0 + 1.0, lambda st: setattr(st, "end_pending_since", 0.0))]
+    out = kinds(run_ticks(s, c, T0, T0 + 8.0, events=events))
+    assert ARM_STOP not in out, f"hung up on a caller who re-engaged: {out}"
+
+
+def test_close_waits_until_both_sides_are_quiet():
+    from app.callstate import ARM_STOP
+    c = cfg(end_grace_secs=2.0)
+    speaking = CallState(t=T0, bot_speaking=True)
+    speaking.end_pending_since = T0
+    assert ARM_STOP not in kinds(run_ticks(speaking, c, T0, T0 + 6.0))
+    listening = CallState(t=T0, user_speaking=True)
+    listening.end_pending_since = T0
+    assert ARM_STOP not in kinds(run_ticks(listening, c, T0, T0 + 6.0))
+
+
+def test_no_close_when_no_farewell_happened():
+    from app.callstate import ARM_STOP
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    assert ARM_STOP not in kinds(run_ticks(s, cfg(), T0, T0 + 20.0))

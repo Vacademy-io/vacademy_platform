@@ -57,6 +57,9 @@ class CallState:
     # A reply was interrupted before base_output announced it. That is NOT yet
     # evidence the caller heard nothing — see unplayed_confirmed().
     unplayed_pending_t: float = 0.0
+    # The bot has said its goodbye but the line is NOT yet closing. Held open for
+    # end_grace_secs so a caller who re-engages ("Yes, I can") is not hung up on.
+    end_pending_since: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -100,6 +103,8 @@ class WatchdogConfig:
     max_deaf_streak: int = 2
     # How long to wait before believing an interrupted reply truly never played.
     unplayed_confirm_secs: float = 3.0
+    # Grace between the farewell finishing and actually closing the line.
+    end_grace_secs: float = 2.0
 
 
 # Decision kinds — one per watchdog side-effect branch.
@@ -111,6 +116,7 @@ STALL_RECOVER = "stall_recover"
 ORPHAN_ASK = "orphan_ask"
 NUDGE = "nudge"
 IDLE_HANGUP = "idle_hangup"
+ARM_STOP = "arm_stop"
 HEARING_FAILED = "hearing_failed"
 
 
@@ -131,7 +137,18 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             return Decision(REISSUE_STOP)
         return Decision(NONE)
 
-    # 2) Hard call-duration cap. (Deliberately BEFORE the speaking check — the
+    # 2) Close the line — but only after a grace in which the caller could
+    #    re-engage. Live call ee8e2168: the bot said its goodbye, the caller then
+    #    said "Yes, I can", the bot asked "May I know a convenient date and time?"
+    #    — and the line dropped before they could answer, losing the booking. The
+    #    end intent must be REVOCABLE until the line actually closes; on_transcript
+    #    clears end_pending_since, so any real word from the caller cancels it.
+    if (s.end_pending_since > 0
+            and now - s.end_pending_since >= cfg.end_grace_secs
+            and not s.bot_speaking and not s.user_speaking):
+        return Decision(ARM_STOP, now - s.end_pending_since)
+
+    # 3) Hard call-duration cap. (Deliberately BEFORE the speaking check — the
     #    cap is a spend bound and must fire even mid-conversation.)
     if now - cfg.connected_at >= cfg.cap_secs:
         return Decision(CAP_FAREWELL, now - cfg.connected_at)
@@ -230,6 +247,8 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
     """State bookkeeping for a decision (I/O stays with the caller)."""
     if d.kind == REISSUE_STOP:
         s.last_stop_reissue = now
+    elif d.kind == ARM_STOP:
+        s.end_pending_since = 0.0
     elif d.kind == STALL_RECOVER:
         s.tts_gen_t = 0.0
         s.stall_recoveries += 1

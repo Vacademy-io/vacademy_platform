@@ -61,7 +61,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
-                        HEARING_FAILED)
+                        HEARING_FAILED, ARM_STOP)
 from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
@@ -305,6 +305,15 @@ class SentinelGate(FrameProcessor):
         # Injected by run_bot: disarms the audio-stall stamp when a reply dies
         # before playout (see the InterruptionFrame branch).
         self._on_interrupted_cb = None
+        # Per-response end latch; promoted to outcome.end_requested only when the
+        # response ENDS, so a marker seen mid-stream cannot make a later,
+        # unrelated response close the call.
+        self._end_this_response = False
+        # True once the line is genuinely closing. After this an end intent can no
+        # longer be revoked.
+        self._stop_armed = False
+        self._defer_stop_cb = None
+        self._clear_end_pending_cb = None
 
     def set_task(self, task: PipelineTask):
         self._task = task
@@ -314,6 +323,30 @@ class SentinelGate(FrameProcessor):
 
     def set_on_interrupted(self, cb):
         self._on_interrupted_cb = cb
+
+    def set_end_hooks(self, defer_stop, clear_end_pending):
+        """Wire the revocable close: defer_stop starts the grace, and
+        clear_end_pending cancels it when the caller re-engages."""
+        self._defer_stop_cb = defer_stop
+        self._clear_end_pending_cb = clear_end_pending
+
+    def _defer_stop(self) -> None:
+        if self._defer_stop_cb is not None:
+            try:
+                self._defer_stop_cb()
+            except Exception:
+                logger.exception("sentinel: defer-stop hook failed")
+        elif self._task is not None:
+            # No hook wired (older caller): fall back to the old immediate close
+            # rather than never closing at all.
+            self._stop_armed = True
+
+    def _clear_end_pending(self) -> None:
+        if self._clear_end_pending_cb is not None:
+            try:
+                self._clear_end_pending_cb()
+            except Exception:
+                pass
 
     def _on_interrupted(self) -> None:
         if self._on_interrupted_cb is not None:
@@ -344,6 +377,16 @@ class SentinelGate(FrameProcessor):
             return
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            # A bot generating a fresh reply is NOT closing. Live call ee8e2168:
+            # the bot said goodbye, the caller re-engaged with "Yes, I can", the
+            # bot asked "May I know a convenient date and time?" — and the stale
+            # call-scoped end latch dropped the line before they could answer,
+            # losing the booking. Revoke while the line is still open.
+            if self._outcome.end_requested and not self._stop_armed:
+                self._outcome.end_requested = False
+                self._clear_end_pending()
+                logger.info("sentinel: end intent superseded by a new response corr=%s",
+                            self._outcome.corr)
             # A NEW response begins — any expected orphan End never arrived (or
             # was consumed upstream); swallowing this response's End instead
             # would corrupt the aggregator bracket the OTHER way.
@@ -359,7 +402,10 @@ class SentinelGate(FrameProcessor):
                 self._outcome.transfer_requested = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
             if END_MARKER in self._buffer:
-                self._outcome.end_requested = True
+                # PER-RESPONSE latch. Promoted to outcome.end_requested only when
+                # this response ENDS — a marker seen mid-stream must not make a
+                # later, unrelated response close the call.
+                self._end_this_response = True
                 self._buffer = self._buffer.replace(END_MARKER, "")
             emit, self._buffer = self._split_safe(self._buffer)
             if emit:
@@ -380,8 +426,11 @@ class SentinelGate(FrameProcessor):
                     # ending instead hung up on exactly the callers who asked for one.
                     self._outcome.transfer_requested = True
                 elif self._buffer.startswith("<<"):
-                    self._outcome.end_requested = True
+                    self._end_this_response = True
                 self._buffer = ""
+            if self._end_this_response:
+                self._outcome.end_requested = True
+                self._end_this_response = False
             self._response_active = False
             self._flush_utterance()
             if self._swallow_next_end:
@@ -441,14 +490,23 @@ class SentinelGate(FrameProcessor):
                     self._flush_utterance()
                     await self.push_frame(TTSSpeakFrame(self._transfer_fail_closing), direction)
                     return
-            if (self._outcome.end_requested or self._outcome.transfer_requested) and self._task:
-                logger.info("sentinel: stopping call corr=%s (transfer=%s end=%s)",
-                            self._outcome.corr, self._outcome.transfer_requested,
-                            self._outcome.end_requested)
+            if self._outcome.transfer_requested and self._task:
+                # Transfer closes immediately — the caller is waiting to be put
+                # through, and a grace period here is dead air.
+                logger.info("sentinel: stopping call corr=%s (transfer=True)",
+                            self._outcome.corr)
+                self._stop_armed = True
                 if self._arm_stop is not None:
                     await self._arm_stop()
                 else:
                     await self._task.stop_when_done()
+            elif self._outcome.end_requested and self._task and not self._stop_armed:
+                # The farewell has finished playing. Hold the line open briefly:
+                # the watchdog closes it after end_grace_secs, and ANY real word
+                # from the caller cancels the close instead (on_transcript).
+                logger.info("sentinel: farewell played — closing after grace corr=%s",
+                            self._outcome.corr)
+                self._defer_stop()
             return
 
         await self.push_frame(frame, direction)
@@ -1252,6 +1310,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def on_transcript():
         flags["transcript_t"] = time.time()
+        # The caller re-engaged after our goodbye — do NOT hang up on them. Live
+        # ee8e2168: "Yes, I can" arrived after the farewell and the line still
+        # dropped mid-question, losing a demo booking.
+        if flags["end_pending_since"] != 0.0:
+            flags["end_pending_since"] = 0.0
+            outcome.end_requested = False
+            logger.info("sentinel: caller re-engaged after farewell — call continues corr=%s", corr)
         # We heard them: any run of unheard utterances is over.
         flags["deaf_streak"] = 0
         # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
@@ -1426,6 +1491,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 flags["unplayed_pending_t"] = time.time()
     sentinel.set_on_interrupted(_note_killed_before_playout)
 
+    def _defer_stop():
+        if flags["end_pending_since"] == 0.0:
+            flags["end_pending_since"] = time.time()
+
+    def _clear_end_pending():
+        flags["end_pending_since"] = 0.0
+
+    sentinel.set_end_hooks(_defer_stop, _clear_end_pending)
+
     async def watchdog():
         """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
         by the timeline harness) + bookkeeping + I/O execution here."""
@@ -1451,6 +1525,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             max_nudges=settings.max_nudges,
             no_words_timeout_secs=settings.no_words_timeout_secs,
             unplayed_confirm_secs=settings.unplayed_confirm_secs,
+            end_grace_secs=settings.end_grace_secs,
             max_deaf_streak=settings.max_deaf_streak,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
@@ -1469,6 +1544,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             apply_decision(flags, d, now)
 
             if d.kind == NONE:
+                continue
+            if d.kind == ARM_STOP:
+                logger.info("sentinel: grace elapsed (%.1fs) — closing the line corr=%s",
+                            d.detail, corr)
+                sentinel._stop_armed = True
+                await _begin_stop()
                 continue
             if d.kind == CANCEL_STARVED:
                 logger.warning("graceful stop starved — cancelling corr=%s", corr)

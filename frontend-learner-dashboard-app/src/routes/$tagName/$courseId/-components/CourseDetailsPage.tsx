@@ -1669,7 +1669,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               >
                 Login
               </button>
-              <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
             </div>
 
             {/* Get Started / Enroll Button */}

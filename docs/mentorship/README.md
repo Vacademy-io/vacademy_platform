@@ -161,6 +161,23 @@ Blob keys are the exact snake_case names the backend reads — keep FE/BE in loc
   booking / cancellation, each channel toggled AND template-editable per trigger under
   `MENTORSHIP_SETTING`. ✅ done (branch `feat/mentorship-notifications-settings`).
 
+## Market-standard 1:1 (branch `feat/mentorship-complete`)
+Consolidation of the split branches into one: `main` + per-mentor Google + notifications
+(V414 mentor-google migration renumbered to **V417** — main took V414–V416).
+- **Booking link visible + copyable** ✅ done. Admin mentor list shows Copy-link + Open
+  next to "Booking on"; My Mentorship has a "Your 1:1 booking link" card. URL =
+  `${LEARNER_DASHBOARD}/booking-response?instituteId=&slug=`.
+- **Mentor self-service availability** ✅ done. `GET/PUT /mentorship/v1/my-booking-page`
+  (`MentorAvailabilityRequest` excludes host/slug so a mentor can only edit their own page;
+  auto-provisions a default Mon–Fri 9–5 page). FE `AvailabilityDialog` — weekly hours grid +
+  duration / min-notice / buffers / horizon — opened from My Mentorship.
+- **Session types & durations** ⏳ planned (cross-app). Needed: `session_types_json` on
+  `booking_page` (new migration) + entity/`BookingPageService`; expose on `PublicPageDTO`;
+  thread a chosen duration through `getSlots` + `PublicBookRequestDTO`/`book`; mentor editor
+  section (extend `AvailabilityDialog`) + learner session-type selector in the
+  `booking-response` flow before slot pick.
+- Paid 1:1 sessions / public mentor directory / ratings — not started (deprioritised).
+
 ## Post-merge enhancements
 The P1–P4 feature merged to `main` (PR #2377). Follow-ups:
 - **Add mentor from Teams + photo** (`feat/mentorship-add-mentor-ux`) — the dialog picks

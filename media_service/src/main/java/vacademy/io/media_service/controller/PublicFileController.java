@@ -1,7 +1,6 @@
 package vacademy.io.media_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,9 +22,6 @@ public class PublicFileController {
     @Autowired
     private FileService fileService;
 
-    @Value("${aws.bucket.name}")
-    private String bucketName;
-
     @PostMapping("/get-signed-url")
     public ResponseEntity<PreSignedUrlResponse> uploadFile(@RequestBody PreSignedUrlRequest preSignedUrlRequest) {
         PreSignedUrlResponse url = fileService.getPublicPreSignedUrl(preSignedUrlRequest.getFileName(),
@@ -40,7 +36,7 @@ public class PublicFileController {
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
         // Generate permanent public URL without expiry
-        String url = fileService.getPublicUrl(fileId, bucketName);
+        String url = fileService.getPublicUrl(fileId);
 
         return ResponseEntity.ok(url);
     }

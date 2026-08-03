@@ -182,6 +182,9 @@ env:
   app:
     username: admin               # APP_USERNAME (internal service-to-service)
   cloudFrontUrl: ""               # CLOUD_FRONT_URL (media CDN; standalone: media-service URL)
+  cdnPublicBaseUrl: ""            # CDN_PUBLIC_BASE_URL (CloudFront over public media bucket; blank = raw S3 URLs)
+  cdnPrivateBaseUrl: ""           # CDN_PRIVATE_BASE_URL (CloudFront signed URLs over private bucket; blank = S3 presign)
+  cdnPrivateKeyPairId: ""         # CDN_PRIVATE_KEY_PAIR_ID (CloudFront public-key ID)
   teacherPortalClientUrl: ""
   toolExecutorBaseUrl: ""
   schedulingTimeFrame: "30"

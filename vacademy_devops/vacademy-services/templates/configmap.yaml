@@ -49,6 +49,10 @@ data:
   # --- App / misc ---
   APP_USERNAME: {{ .Values.env.app.username | quote }}
   CLOUD_FRONT_URL: {{ .Values.env.cloudFrontUrl | quote }}
+  CDN_PUBLIC_BASE_URL: {{ .Values.env.cdnPublicBaseUrl | default "" | quote }}
+  CDN_PRIVATE_BASE_URL: {{ .Values.env.cdnPrivateBaseUrl | default "" | quote }}
+  CDN_PRIVATE_KEY_PAIR_ID: {{ .Values.env.cdnPrivateKeyPairId | default "" | quote }}
+  # CDN_PRIVATE_KEY_B64 is a secret — set via kubectl set env / secret-env, not the configmap
   SCHEDULING_TIME_FRAME: {{ .Values.env.schedulingTimeFrame | quote }}
   FONT_COLOR: '#FFFFFF'
 

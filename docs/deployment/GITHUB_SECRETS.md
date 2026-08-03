@@ -24,6 +24,10 @@ This document lists all 38 GitHub secrets configured for the Vacademy Platform C
 | `MEDIA_SERVICE_BASE_URL` | Base URL for media service | Assessment |
 | `ASSESSMENT_SERVER_BASE_URL` | Base URL for assessment service | Admin, Media |
 | `CLOUD_FRONT_URL` | CloudFront distribution URL | All services |
+| `CDN_PUBLIC_BASE_URL` | CloudFront distribution fronting the public media bucket (blank = raw S3 URLs) | Media, AI service |
+| `CDN_PRIVATE_BASE_URL` | CloudFront distribution (signed URLs) fronting the private media bucket (blank = S3 presigned URLs) | Media |
+| `CDN_PRIVATE_KEY_PAIR_ID` | CloudFront public-key ID for the trusted key group | Media |
+| `CDN_PRIVATE_KEY_B64` | Base64-encoded RSA private key (PEM) matching the CloudFront public key | Media |
 
 ### Database URLs (Production/Staging)
 

@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1283,12 +1284,14 @@ class RenderWorker:
         """Download a file from S3 URL or any HTTP URL."""
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Try S3 download first (faster, no public URL needed)
+        # Try S3 download first (faster, no public URL needed). Tolerant of
+        # global/regional/accelerate hosts; CDN URLs fall through to HTTP.
         if S3_BUCKET and S3_BUCKET in url:
             try:
-                parts = url.split(f"{S3_BUCKET}.s3.amazonaws.com/")
-                if len(parts) == 2:
-                    s3_key = parts[1]
+                m = re.match(
+                    rf"^https?://{re.escape(S3_BUCKET)}\.s3[.\-][a-z0-9.\-]*?amazonaws\.com/(.+)$", url)
+                if m:
+                    s3_key = m.group(1)
                     self._s3.download_file(S3_BUCKET, s3_key, str(local_path))
                     logger.info(f"Downloaded (S3): {local_path.name}")
                     return

@@ -63,6 +63,12 @@ public class SuperAdminFileService {
     @Autowired
     private AmazonS3 s3Client;
 
+    @Autowired
+    private CdnUrlService cdnUrlService;
+
+    @Autowired
+    private CloudFrontSignerService cloudFrontSignerService;
+
     @Value("${aws.bucket.name}")
     private String bucketName;
 
@@ -217,9 +223,21 @@ public class SuperAdminFileService {
             return null;
         }
         try {
-            String bucket = file.getSource() != null && PUBLIC_BUCKET_SOURCES.contains(file.getSource())
-                    ? publicBucket : bucketName;
-            GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket, file.getKey().trim())
+            // Public-bucket objects get the permanent public/CDN URL (a presign
+            // added nothing but an expiry); private objects get a signed
+            // private-CDN URL when configured, else S3 presigning as always.
+            if (file.getSource() != null && PUBLIC_BUCKET_SOURCES.contains(file.getSource())) {
+                return cdnUrlService.publicUrl(file.getKey());
+            }
+            if (cloudFrontSignerService.isEnabled()) {
+                try {
+                    return cloudFrontSignerService.signedUrl(file.getKey(), addDays(expiryDays));
+                } catch (Exception e) {
+                    log.warn("Private-CDN signing failed for file {} — falling back to presign: {}",
+                            file.getId(), e.getMessage());
+                }
+            }
+            GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, file.getKey().trim())
                     .withMethod(HttpMethod.GET)
                     .withExpiration(addDays(expiryDays));
             return s3Client.generatePresignedUrl(request).toString();

@@ -64,6 +64,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
 
   const header = globalSettings?.layout?.header;
   const footer = globalSettings?.layout?.footer;
+  const headerEnabled = !!header && header.enabled !== false;
   const isDarkMode = globalSettings?.mode === "dark";
 
   const renderBlock = (id: string, component: unknown) => (
@@ -82,13 +83,19 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
       data-catalogue-theme={globalSettings?.theme?.preset || "default"}
       className={`min-h-screen w-full bg-catalogue-bg${isDarkMode ? " dark" : ""}`}
     >
-      {header && header.enabled !== false && (
+      {headerEnabled && (
         <div className={globalSettings?.stickyHeader !== false ? "sticky top-0 z-50" : ""}>
           {renderBlock("header", header)}
         </div>
       )}
 
-      {children}
+      {/* HeaderComponent renders a `fixed` <header> (h-16 md:h-20) and emits no
+          spacer, and JsonRenderer deliberately skips its own pt-16 for a page
+          whose id IS "header" — so the wrapper above collapses to zero height
+          and the child page starts underneath the header, its first heading
+          hidden. CourseCataloguePage's <main> and CourseDetailsPage reserve the
+          same offset; mirror it here. */}
+      <div className={headerEnabled ? "pt-16 md:pt-20" : ""}>{children}</div>
 
       {footer && footer.enabled !== false && renderBlock("footer", footer)}
     </div>

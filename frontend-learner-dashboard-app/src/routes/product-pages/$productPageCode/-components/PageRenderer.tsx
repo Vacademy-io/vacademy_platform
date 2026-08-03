@@ -9,6 +9,11 @@ import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { buildComponentStyle, getAnimationStyle } from "../-utils/component-style";
 import { CourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import type {
   PageJson,
   PageComponent,
@@ -543,7 +548,9 @@ const CourseDetailSheet = ({
             )}
             {mapping.level_name && (
               <div>
-                <p className="text-xs text-gray-400">Level</p>
+                <p className="text-xs text-gray-400">
+                  {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                </p>
                 <p className="font-medium text-gray-700">{mapping.level_name}</p>
               </div>
             )}
@@ -1007,7 +1014,9 @@ export const CourseGridBlock = ({
       {/* Tags — the course's own labels (CBSE, ICSE …), most used first */}
       {showTagFilter && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Tags</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)}
+          </p>
           <div className="space-y-1.5">
             {(showMoreTags ? allTags : allTags.slice(0, 5)).map((t) => (
               <label key={t.key} className="flex cursor-pointer items-center gap-2.5">
@@ -1036,7 +1045,9 @@ export const CourseGridBlock = ({
       {/* Level */}
       {showLevelFilter && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Level</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+          </p>
           <div className="space-y-1.5">
             {(showMoreLevels ? allLevels : allLevels.slice(0, 4)).map((lvl) => (
               <label key={lvl} className="flex cursor-pointer items-center gap-2.5">
@@ -1064,7 +1075,10 @@ export const CourseGridBlock = ({
       {/* Session */}
       {showSessionFilter && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Batch / Session</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} /{" "}
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+          </p>
           <div className="space-y-1.5">
             {allSessions.map((s) => (
               <label key={s} className="flex cursor-pointer items-center gap-2.5">

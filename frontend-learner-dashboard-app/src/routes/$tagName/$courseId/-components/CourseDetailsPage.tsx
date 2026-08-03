@@ -1263,7 +1263,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Level
+                            {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {displayLevelName(courseData.level)}
@@ -1408,7 +1408,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Level
+                            {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {displayLevelName(courseData.level)}

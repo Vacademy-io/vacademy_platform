@@ -65,8 +65,10 @@ public class SlideController {
             @RequestParam String newModuleId,
             @RequestParam String newSubjectId,
             @RequestParam String newPackageSessionId,
+            @RequestParam(required = false) String slideStatus,
+            @RequestParam(required = false) String position,
             @RequestAttribute("user") CustomUserDetails user) {
-        String message = slideService.copySlide(slideId,oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId,newChapterId, newModuleId, newSubjectId, newPackageSessionId, user);
+        String message = slideService.copySlide(slideId,oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId,newChapterId, newModuleId, newSubjectId, newPackageSessionId, slideStatus, position, user);
         return ResponseEntity.ok(message);
     }
 
@@ -81,6 +83,8 @@ public class SlideController {
             @RequestParam String newModuleId,
             @RequestParam String newSubjectId,
             @RequestParam String newPackageSessionId,
+            @RequestParam(required = false) String slideStatus,
+            @RequestParam(required = false) String position,
             @RequestAttribute("user") CustomUserDetails user) {
         String message = slideService.moveSlide(slideId,
                 oldChapterId,
@@ -91,6 +95,8 @@ public class SlideController {
                 newModuleId,
                 newSubjectId,
                 newPackageSessionId,
+                slideStatus,
+                position,
                 user);
         return ResponseEntity.ok(message);
     }

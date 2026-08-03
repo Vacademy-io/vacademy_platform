@@ -247,6 +247,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 FROM assessment a
                 JOIN assessment_institute_mapping aim ON a.id = aim.assessment_id
                 WHERE a.id = :assessmentId
+                AND aim.institute_id = :instituteId
+                LIMIT 1
             )
             SELECT
                 ai.created_at AS createdOn,

@@ -25,6 +25,10 @@ import java.util.List;
 public interface StudentAttemptRepository extends CrudRepository<StudentAttempt, String> {
 
 
+    @Query("SELECT sa FROM StudentAttempt sa JOIN FETCH sa.registration WHERE sa.id = :id")
+    Optional<StudentAttempt> findByIdWithRegistration(@Param("id") String id);
+
+
     @Query(value = """
                 WITH RankedAttemptsRaw AS (
                     SELECT

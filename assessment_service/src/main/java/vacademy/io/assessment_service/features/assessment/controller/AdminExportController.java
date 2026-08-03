@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.manager.AdminExportManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -94,5 +95,57 @@ public class AdminExportController {
                                                    @RequestParam("attemptId") String attemptId,
                                                    @RequestParam("instituteId") String instituteId) {
         return adminExportManager.getStudentReportPdf(user, assessmentId, attemptId, instituteId);
+    }
+
+    // ==================================================================
+    // Bulk Assessment Report Export (ZIP)
+    // ==================================================================
+
+    @PostMapping("/reports/zip/initiate")
+    public ResponseEntity<ReportZipInitiateResponse> initiateReportZipExport(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestBody ReportZipInitiateRequest request) {
+        return ResponseEntity.ok(adminExportManager.initiateReportZipExport(user, request));
+    }
+
+    @GetMapping("/reports/zip/status")
+    public ResponseEntity<ReportZipStatusResponse> getReportZipExportStatus(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("jobId") String jobId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(adminExportManager.getReportZipExportStatus(user, jobId, instituteId));
+    }
+
+    @PostMapping("/reports/zip/continue")
+    public ResponseEntity<ReportZipContinueResponse> continueReportZipExport(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("jobId") String jobId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(adminExportManager.continueReportZipExport(user, jobId, instituteId));
+    }
+
+    @PostMapping("/reports/zip/assemble")
+    public ResponseEntity<ReportZipAssembleResponse> assembleReportZipExport(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("jobId") String jobId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(adminExportManager.assembleReportZipExport(user, jobId, instituteId));
+    }
+
+    @GetMapping("/reports/zip/recent")
+    public ResponseEntity<ReportZipRecentResponse> getRecentReportZipExports(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(name = "limit", defaultValue = "5") int limit) {
+        return ResponseEntity.ok(adminExportManager.getRecentReportZipExports(user, assessmentId, instituteId, limit));
+    }
+
+    @PostMapping("/reports/zip/cancel")
+    public ResponseEntity<ReportZipCancelResponse> cancelReportZipExport(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("jobId") String jobId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(adminExportManager.cancelReportZipExport(user, jobId, instituteId));
     }
 }

@@ -489,6 +489,13 @@ export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
+// Bulk Assessment Report Export (ZIP)
+export const REPORT_ZIP_EXPORT_INITIATE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/initiate`;
+export const REPORT_ZIP_EXPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/status`;
+export const REPORT_ZIP_EXPORT_CONTINUE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/continue`;
+export const REPORT_ZIP_EXPORT_ASSEMBLE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/assemble`;
+export const REPORT_ZIP_EXPORT_RECENT_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/recent`;
+export const REPORT_ZIP_EXPORT_CANCEL_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/cancel`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
 // LOCAL TESTING: submission_status filter only exists on the local build — revert to BASE_URL before merging.
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
@@ -1190,7 +1197,8 @@ export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 export const MENTORSHIP_BASE = `${BASE_URL}/admin-core-service/mentorship/v1`;
 export const MENTORSHIP_MENTORS = `${MENTORSHIP_BASE}/mentors`;
 export const MENTORSHIP_MENTOR_BY_ID = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}`;
-export const MENTORSHIP_MENTOR_BOOKING_PAGE = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/booking-page`;
+export const MENTORSHIP_MENTOR_BOOKING_PAGE = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/booking-page`;
 export const MENTORSHIP_DASHBOARD = `${MENTORSHIP_BASE}/dashboard`;
 export const MENTORSHIP_ASSIGNMENTS = `${MENTORSHIP_BASE}/assignments`;
 export const MENTORSHIP_ASSIGNMENTS_BULK = `${MENTORSHIP_BASE}/assignments/bulk-round-robin`;

@@ -1,0 +1,63 @@
+package vacademy.io.assessment_service.features.assessment.service.export;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import java.util.concurrent.ThreadPoolExecutor;
+
+/**
+ * Declares the named, bounded executor for the bulk report export worker,
+ * plus the explicit process-wide default for unqualified {@code @Async}.
+ *
+ * <p>History of the {@code taskExecutor} bean below: before this feature,
+ * {@code taskScheduler} was the ONLY {@code TaskExecutor}-typed bean, so
+ * Spring silently used it as the default for every unqualified
+ * {@code @Async}. Adding {@code reportExportExecutor} made resolution
+ * ambiguous, and Spring fell back to {@code SimpleAsyncTaskExecutor}
+ * (unbounded thread-per-call) with a startup warning. Rather than leave the
+ * platform default to that fallback, we pin it explicitly: a modest bounded
+ * pool serving the release flow, AI-evaluation pipeline and other
+ * unqualified {@code @Async} methods. Runtime-verified 2026-08-03.
+ *
+ * <p>Core 1 / max 1 on the export executor is deliberate, not a
+ * placeholder: the Hikari pool is sized at 5 connections (plan C1), so
+ * exactly one export worker process-wide is the concurrency budget this
+ * feature gets. A queued job reports status {@code PENDING}, which the UI
+ * must render distinctly from {@code IN_PROGRESS} (plan R4).
+ */
+@Configuration
+public class ReportExportExecutorConfig {
+
+    /** Explicit default for unqualified @Async — see class comment. */
+    @Bean("taskExecutor")
+    public ThreadPoolTaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("default-async-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean("reportExportExecutor")
+    public ThreadPoolTaskExecutor reportExportExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("report-export-");
+        // CallerRunsPolicy over AbortPolicy deliberately: at 50 queued jobs
+        // something is already very wrong, but AbortPolicy would lose the job
+        // silently while its row still says PENDING. Running it on the caller
+        // (Tomcat) thread is a visible, if ugly, degradation — see
+        // ARCHITECTURE.md §11, error taxonomy row "Executor queue full".
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+}

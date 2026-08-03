@@ -11,6 +11,9 @@ interface BulkActionsProps {
     selectedStudents: SubmissionStudentData[]; // Add this prop
     onReset: () => void;
     selectedTab: string;
+    // Opens the report ZIP export dialog scoped to the checked rows
+    // (Attempted tab only — other tabs have no reports to export).
+    onExportReports?: () => void;
 }
 
 export const BulkActions = ({
@@ -19,6 +22,7 @@ export const BulkActions = ({
     selectedStudents, // Add this
     onReset,
     selectedTab,
+    onExportReports,
 }: BulkActionsProps) => {
     if (selectedCount === 0) {
         return null;
@@ -46,6 +50,7 @@ export const BulkActions = ({
                         selectedCount={selectedCount}
                         selectedStudentIds={selectedStudentIds}
                         selectedStudents={selectedStudents} // Pass the selected students
+                        onExportReports={onExportReports}
                         trigger={
                             <MyButton
                                 buttonType="primary"

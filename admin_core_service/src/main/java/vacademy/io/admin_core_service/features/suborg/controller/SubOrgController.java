@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRoleRepository;
@@ -28,6 +29,7 @@ import vacademy.io.admin_core_service.features.suborg.dto.SeatUsageDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgFinanceDetailDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgSubscriptionStatusDTO;
+import vacademy.io.admin_core_service.features.suborg.service.SubOrgAccessScopeService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgFinanceService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgListService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgManagementService;
@@ -54,20 +56,39 @@ public class SubOrgController {
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
     private final UserRoleRepository userRoleRepository;
     private final InstituteRepository instituteRepository;
+    private final InstituteSubOrgRepository instituteSubOrgRepository;
+    private final SubOrgAccessScopeService subOrgAccessScopeService;
 
     private static final String ROLE_NAME_ADMIN = "ADMIN";
 
     @PostMapping("/create")
     public ResponseEntity<String> createSubOrg(
             @RequestBody InstituteInfoDTO instituteInfoDTO,
-            @RequestParam String parentInstituteId) {
+            @RequestParam String parentInstituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_CREATE);
         return ResponseEntity.ok(subOrgService.createSubOrg(instituteInfoDTO, parentInstituteId));
     }
 
+    /** Raw sub-org linkage rows. Scoped to the caller's assigned channel partners when
+     *  their access comes from a SUB_ORG assignment rather than the institute ADMIN role —
+     *  the deep page resolves its sub-org from this list, so an unscoped response would let
+     *  an assignment-scoped user open any sub-org by URL. */
     @GetMapping("/get-all")
     public ResponseEntity<List<InstituteSubOrg>> getSubOrgs(
-            @RequestParam String parentInstituteId) {
-        return ResponseEntity.ok(subOrgService.getSubOrgs(parentInstituteId));
+            @RequestParam String parentInstituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        List<String> visible = subOrgAccessScopeService
+                .resolveVisibleSubOrgIds(user, parentInstituteId);
+        if (visible == null) {
+            return ResponseEntity.ok(subOrgService.getSubOrgs(parentInstituteId));
+        }
+        if (visible.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+        return ResponseEntity.ok(
+                instituteSubOrgRepository.findByInstituteIdAndSuborgIdIn(parentInstituteId, visible));
     }
 
     /** Enriched, paginated list for the Manage VLEs table: admin email/phone, plan status,
@@ -78,23 +99,42 @@ public class SubOrgController {
      *  web bundles and mobile-app builds that predate pagination and expect a bare JSON
      *  array) get the full legacy {@code List}; passing {@code page} and/or {@code size}
      *  opts into the Spring {@code Page} wrapper. Do not collapse this until every shipped
-     *  admin bundle sends paging params. */
+     *  admin bundle sends paging params.
+     *
+     *  <p>Assignment scoping: callers whose sub-org access comes from a SUB_ORG assignment
+     *  (sub-org admins, and custom/teacher roles granted the module via Display Settings)
+     *  only ever get their assigned channel partners — scoped in the DB query, so counts and
+     *  paging match. A caller with nothing assigned gets an empty list, not the full network.
+     *  Only root and true institute ADMINs get the unrestricted list, and only that branch
+     *  needs the institute-admin assertion (the row carries admin PII). */
     @GetMapping("/get-all-with-details")
     public ResponseEntity<?> getSubOrgsWithDetails(
             @RequestParam String parentInstituteId,
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
-        assertInstituteAdmin(user, parentInstituteId);
+        if (user == null) {
+            throw new VacademyException(HttpStatus.UNAUTHORIZED, "User authentication required");
+        }
+        if (parentInstituteId == null || parentInstituteId.isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Institute ID is required");
+        }
+        List<String> visible = subOrgAccessScopeService
+                .resolveVisibleSubOrgIds(user, parentInstituteId);
+        if (visible == null) {
+            assertInstituteAdmin(user, parentInstituteId);
+        }
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
         if (page == null && size == null) {
             // Legacy shape: everything in one bare array (page of MAX size keeps one code path).
             return ResponseEntity.ok(subOrgListService
-                    .getSubOrgsWithDetails(parentInstituteId, PageRequest.of(0, Integer.MAX_VALUE, sort))
+                    .getSubOrgsWithDetails(
+                            parentInstituteId, PageRequest.of(0, Integer.MAX_VALUE, sort), visible)
                     .getContent());
         }
         Pageable pageable = PageRequest.of(page != null ? page : 0, size != null ? size : 10, sort);
-        return ResponseEntity.ok(subOrgListService.getSubOrgsWithDetails(parentInstituteId, pageable));
+        return ResponseEntity.ok(
+                subOrgListService.getSubOrgsWithDetails(parentInstituteId, pageable, visible));
     }
 
     /**
@@ -129,7 +169,10 @@ public class SubOrgController {
     @PostMapping("/create-with-subscription")
     public ResponseEntity<CreateSubOrgSubscriptionResponseDTO> createSubOrgWithSubscription(
             @RequestBody CreateSubOrgSubscriptionDTO request,
-            @RequestParam String parentInstituteId) {
+            @RequestParam String parentInstituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_CREATE);
         return ResponseEntity.ok(
                 subOrgSubscriptionService.createSubOrgWithSubscription(request, parentInstituteId));
     }
@@ -143,7 +186,11 @@ public class SubOrgController {
     public ResponseEntity<java.util.Map<String, Object>> updateAllowedTeamRoles(
             @org.springframework.web.bind.annotation.PathVariable String subOrgId,
             @RequestParam String parentInstituteId,
-            @RequestBody java.util.Map<String, Object> body) {
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_EDIT_CONFIG);
         Object raw = body != null ? body.get("allowed_team_roles") : null;
         List<String> roles = new ArrayList<>();
         if (raw instanceof List<?> list) {
@@ -170,7 +217,11 @@ public class SubOrgController {
     public ResponseEntity<java.util.Map<String, Object>> updateAdminPermissions(
             @org.springframework.web.bind.annotation.PathVariable String subOrgId,
             @RequestParam String parentInstituteId,
-            @RequestBody java.util.Map<String, Object> body) {
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_EDIT_CONFIG);
         Object raw = body != null ? body.get("admin_permissions") : null;
         List<String> perms = new ArrayList<>();
         if (raw instanceof List<?> list) {
@@ -195,7 +246,11 @@ public class SubOrgController {
     @org.springframework.web.bind.annotation.PostMapping("/{subOrgId}/resync-invites")
     public ResponseEntity<java.util.Map<String, Object>> resyncSuborgLearnerInvites(
             @org.springframework.web.bind.annotation.PathVariable String subOrgId,
-            @RequestParam String parentInstituteId) {
+            @RequestParam String parentInstituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_EDIT_CONFIG);
         return ResponseEntity.ok(
                 subOrgSubscriptionService.resyncSuborgLearnerInvites(subOrgId, parentInstituteId));
     }
@@ -216,7 +271,11 @@ public class SubOrgController {
     public ResponseEntity<java.util.Map<String, Object>> updateSubOrgConfiguration(
             @org.springframework.web.bind.annotation.PathVariable String subOrgId,
             @RequestParam String parentInstituteId,
-            @RequestBody java.util.Map<String, Object> body) {
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
+        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
+                SubOrgAccessScopeService.PERM_EDIT_CONFIG);
         java.util.Map<String, Object> applied = subOrgSubscriptionService
                 .updateSubOrgConfiguration(subOrgId, parentInstituteId,
                         body != null ? body : new HashMap<>());
@@ -236,7 +295,9 @@ public class SubOrgController {
     @GetMapping("/scoped-invites")
     public ResponseEntity<List<Map<String, Object>>> getScopedInvites(
             @RequestParam String subOrgId,
-            @RequestParam String instituteId) {
+            @RequestParam String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, instituteId);
         List<EnrollInvite> invites = enrollInviteRepository
                 .findBySubOrgIdAndInstituteId(subOrgId, instituteId,
                         List.of(StatusEnum.ACTIVE.name()));
@@ -315,7 +376,9 @@ public class SubOrgController {
     @GetMapping("/seat-usage")
     public ResponseEntity<SeatUsageDTO> getSeatUsage(
             @RequestParam String subOrgId,
-            @RequestParam String packageSessionId) {
+            @RequestParam String packageSessionId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, null);
         return ResponseEntity.ok(
                 subOrgSubscriptionService.getSeatUsage(subOrgId, packageSessionId));
     }
@@ -327,14 +390,18 @@ public class SubOrgController {
     @GetMapping("/finance-detail")
     public ResponseEntity<SubOrgFinanceDetailDTO> getFinanceDetail(
             @RequestParam String subOrgId,
-            @RequestParam(required = false) String parentInstituteId) {
+            @RequestParam(required = false) String parentInstituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
         return ResponseEntity.ok(subOrgFinanceService.getFinanceDetail(subOrgId, parentInstituteId));
     }
 
     @GetMapping("/subscription-status")
     public ResponseEntity<SubOrgSubscriptionStatusDTO> getSubscriptionStatus(
             @RequestParam String subOrgId,
-            @RequestParam String instituteId) {
+            @RequestParam String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, instituteId);
         // Get org-level invite for this sub-org
         List<EnrollInvite> orgInvites = enrollInviteRepository
                 .findBySubOrgIdAndInstituteId(subOrgId, instituteId,

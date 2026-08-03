@@ -253,6 +253,22 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showInviteButton: true,
         customButtons: [],
     },
+    subOrganizations: {
+        // Off by default for every role — institutes opt in from Display Settings.
+        // Keeps parity with the sidebar sub-item, which also ships hidden.
+        moduleEnabled: false,
+        // No channel partners granted at role level by default.
+        assignedSubOrgIds: [],
+        // Read-only out of the box; admins opt each write capability in per role.
+        permissions: {
+            canCreate: false,
+            canEditConfig: false,
+            canManageTeam: false,
+            canViewFinance: true,
+            canManageFinance: false,
+            canExport: true,
+        },
+    },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

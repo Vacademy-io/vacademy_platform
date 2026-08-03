@@ -410,7 +410,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         } else if (days <= 95) {
             return "quarterly";
         } else if (days <= 190) {
-            return "half_yearly";
+            return "halfyearly";
         } else if (days <= 370) {
             return "yearly";
         }

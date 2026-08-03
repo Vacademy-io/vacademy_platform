@@ -50,4 +50,13 @@ public class MentorAvailabilityRequest {
 
     /** Bookable session options (name + duration). Empty = single duration only. */
     private List<BookingSessionTypeDTO> sessionTypes;
+
+    /** Where the meeting happens: {@code GOOGLE_MEET} (auto link) or {@code CUSTOM_LINK}. */
+    private String locationType;
+
+    /** For CUSTOM_LINK: the mentor's own Zoom / BigBlueButton / other meeting URL. */
+    private String customMeetingLink;
+
+    /** True = auto-generate a Google Meet link per booking (GOOGLE_MEET). */
+    private Boolean allocateGoogleMeet;
 }

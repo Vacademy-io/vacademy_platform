@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { useMyBookingPage, useUpdateMyBookingPage } from '../-hooks/use-mentorship';
 import type {
+    DateOverride,
     MentorAvailabilityRequest,
     SessionType,
     WeeklyWindow,
@@ -24,6 +25,16 @@ const genId = (): string =>
     typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `st-${Math.floor(Math.random() * 1e9)}`;
+
+/** A date override with a transient client key (stripped before saving). */
+type OverrideRow = DateOverride & { _id: string };
+
+const todayYmd = (): string => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+    ).padStart(2, '0')}`;
+};
 
 const DAYS: { key: string; label: string }[] = [
     { key: 'MONDAY', label: 'Monday' },
@@ -63,6 +74,9 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
     const [bufferAfter, setBufferAfter] = useState(0);
     const [horizonDays, setHorizonDays] = useState(30);
     const [sessionTypes, setSessionTypes] = useState<SessionType[]>([]);
+    const [overrides, setOverrides] = useState<OverrideRow[]>([]);
+    const [locationMode, setLocationMode] = useState<'GOOGLE_MEET' | 'CUSTOM_LINK'>('GOOGLE_MEET');
+    const [customLink, setCustomLink] = useState('');
 
     // Hydrate the form once the page loads.
     useEffect(() => {
@@ -85,7 +99,52 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
         setSessionTypes(
             (page.session_types ?? []).map((s) => ({ ...s, id: s.id || genId() }))
         );
+        setOverrides(
+            (page.availability?.date_overrides ?? []).map((o) => ({ ...o, _id: genId() }))
+        );
+        const isCustom =
+            (page.location_type ?? '').toUpperCase() === 'CUSTOM_LINK' ||
+            page.allocate_google_meet === false;
+        setLocationMode(isCustom ? 'CUSTOM_LINK' : 'GOOGLE_MEET');
+        setCustomLink(page.custom_meeting_link ?? '');
     }, [page]);
+
+    const addOverride = () =>
+        setOverrides((prev) => [...prev, { _id: genId(), date: todayYmd(), blocked: true }]);
+    const removeOverride = (id: string) =>
+        setOverrides((prev) => prev.filter((o) => o._id !== id));
+    const patchOverride = (id: string, patch: Partial<OverrideRow>) =>
+        setOverrides((prev) => prev.map((o) => (o._id === id ? { ...o, ...patch } : o)));
+    const setOverrideMode = (id: string, mode: 'off' | 'custom') =>
+        patchOverride(
+            id,
+            mode === 'off'
+                ? { blocked: true, windows: undefined }
+                : {
+                      blocked: false,
+                      windows: [{ day_of_week: '', start_time: '09:00', end_time: '17:00' }],
+                  }
+        );
+    const setOverrideTime = (id: string, patch: Partial<WeeklyWindow>) =>
+        setOverrides((prev) =>
+            prev.map((o) =>
+                o._id === id
+                    ? {
+                          ...o,
+                          windows: [
+                              {
+                                  ...(o.windows?.[0] ?? {
+                                      day_of_week: '',
+                                      start_time: '09:00',
+                                      end_time: '17:00',
+                                  }),
+                                  ...patch,
+                              },
+                          ],
+                      }
+                    : o
+            )
+        );
 
     const setDay = (key: string, patch: Partial<DayRow>) =>
         setRows((prev) => ({ ...prev, [key]: { ...prev[key]!, ...patch } }));
@@ -113,17 +172,31 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
             toast.error('Enable at least one day so learners can book.');
             return;
         }
+        if (locationMode === 'CUSTOM_LINK' && !customLink.trim()) {
+            toast.error('Add your meeting link (Zoom, BigBlueButton, or other).');
+            return;
+        }
         const cleanTypes = sessionTypes
             .filter((s) => s.name.trim() && s.duration_minutes > 0)
             .map((s) => ({ id: s.id, name: s.name.trim(), duration_minutes: s.duration_minutes }));
+        const cleanOverrides: DateOverride[] = overrides
+            .filter((o) => o.date)
+            .map((o) =>
+                o.blocked
+                    ? { date: o.date, blocked: true }
+                    : { date: o.date, blocked: false, windows: o.windows }
+            );
         const payload: MentorAvailabilityRequest = {
-            availability: { weekly_windows },
+            availability: { weekly_windows, date_overrides: cleanOverrides },
             duration_minutes: duration,
             min_notice_minutes: Math.max(0, minNoticeHours) * 60,
             buffer_before_minutes: Math.max(0, bufferBefore),
             buffer_after_minutes: Math.max(0, bufferAfter),
             booking_horizon_days: Math.max(1, horizonDays),
             session_types: cleanTypes,
+            location_type: locationMode,
+            allocate_google_meet: locationMode === 'GOOGLE_MEET',
+            custom_meeting_link: locationMode === 'CUSTOM_LINK' ? customLink.trim() : '',
         };
         try {
             await update.mutateAsync({ instituteId, data: payload });
@@ -173,6 +246,43 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
 
                     <div>
                         <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                            Meeting location
+                        </div>
+                        <Select
+                            value={locationMode}
+                            onValueChange={(v) =>
+                                setLocationMode(v as 'GOOGLE_MEET' | 'CUSTOM_LINK')
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="GOOGLE_MEET">
+                                    Google Meet (auto-generated per booking)
+                                </SelectItem>
+                                <SelectItem value="CUSTOM_LINK">
+                                    Zoom / BigBlueButton / custom link
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {locationMode === 'CUSTOM_LINK' && (
+                            <div className="mt-2">
+                                <Label className="text-caption text-neutral-600">
+                                    Meeting link
+                                </Label>
+                                <Input
+                                    value={customLink}
+                                    placeholder="https://zoom.us/j/… or your BigBlueButton room URL"
+                                    onChange={(e) => setCustomLink(e.target.value)}
+                                    className="mt-1"
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-400">
                             Weekly hours
                         </div>
                         <div className="flex flex-col gap-2">
@@ -212,6 +322,93 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
                                 );
                             })}
                         </div>
+                    </div>
+
+                    <div>
+                        <div className="mb-1 flex items-center justify-between">
+                            <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                                Time off &amp; specific dates
+                            </span>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                onClick={addOverride}
+                            >
+                                <Plus size={14} /> Add date
+                            </MyButton>
+                        </div>
+                        <p className="mb-2 text-caption text-neutral-400">
+                            Mark a day off or set different hours for a specific date — no need to
+                            leave the app. Overrides win over the weekly hours.
+                        </p>
+                        {overrides.length === 0 ? (
+                            <p className="text-caption text-neutral-400">No date overrides.</p>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                {overrides.map((o) => (
+                                    <div key={o._id} className="flex flex-wrap items-center gap-2">
+                                        <Input
+                                            type="date"
+                                            value={o.date}
+                                            onChange={(e) =>
+                                                patchOverride(o._id, { date: e.target.value })
+                                            }
+                                            className="w-40"
+                                        />
+                                        <Select
+                                            value={o.blocked ? 'off' : 'custom'}
+                                            onValueChange={(v) =>
+                                                setOverrideMode(o._id, v as 'off' | 'custom')
+                                            }
+                                        >
+                                            <SelectTrigger className="w-40">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="off">Unavailable</SelectItem>
+                                                <SelectItem value="custom">Custom hours</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        {!o.blocked && (
+                                            <div className="flex items-center gap-1">
+                                                <Input
+                                                    type="time"
+                                                    value={o.windows?.[0]?.start_time ?? '09:00'}
+                                                    onChange={(e) =>
+                                                        setOverrideTime(o._id, {
+                                                            start_time: e.target.value,
+                                                        })
+                                                    }
+                                                    className="w-28"
+                                                />
+                                                <span className="text-caption text-neutral-400">
+                                                    to
+                                                </span>
+                                                <Input
+                                                    type="time"
+                                                    value={o.windows?.[0]?.end_time ?? '17:00'}
+                                                    onChange={(e) =>
+                                                        setOverrideTime(o._id, {
+                                                            end_time: e.target.value,
+                                                        })
+                                                    }
+                                                    className="w-28"
+                                                />
+                                            </div>
+                                        )}
+                                        <MyButton
+                                            type="button"
+                                            buttonType="text"
+                                            scale="small"
+                                            onClick={() => removeOverride(o._id)}
+                                        >
+                                            <Trash size={16} className="text-danger-500" />
+                                        </MyButton>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div>

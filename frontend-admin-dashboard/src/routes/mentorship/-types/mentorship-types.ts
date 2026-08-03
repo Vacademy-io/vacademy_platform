@@ -124,9 +124,19 @@ export interface WeeklyWindow {
     end_time: string;
 }
 
+/**
+ * A specific-date exception. `blocked: true` = the whole day is unavailable;
+ * otherwise `windows` replaces that day's weekly hours. Date is "yyyy-MM-dd".
+ */
+export interface DateOverride {
+    date: string;
+    blocked?: boolean;
+    windows?: WeeklyWindow[];
+}
+
 export interface BookingAvailability {
     weekly_windows: WeeklyWindow[];
-    date_overrides?: unknown[] | null;
+    date_overrides?: DateOverride[] | null;
 }
 
 /** A bookable session option (name + duration) offered on the booking page. */
@@ -148,6 +158,9 @@ export interface MentorBookingPage {
     timezone?: string | null;
     availability?: BookingAvailability | null;
     session_types?: SessionType[] | null;
+    location_type?: string | null;
+    custom_meeting_link?: string | null;
+    allocate_google_meet?: boolean | null;
 }
 
 /** Mentor self-service availability update (host/slug are never sent). */
@@ -161,4 +174,7 @@ export interface MentorAvailabilityRequest {
     slot_granularity_minutes?: number;
     timezone?: string;
     session_types?: SessionType[];
+    location_type?: string;
+    custom_meeting_link?: string;
+    allocate_google_meet?: boolean;
 }

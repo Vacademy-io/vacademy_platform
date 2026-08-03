@@ -229,6 +229,9 @@ public class MentorService {
         dto.setSlotGranularityMinutes(req.getSlotGranularityMinutes());
         dto.setTimezone(req.getTimezone());
         dto.setSessionTypes(req.getSessionTypes());
+        dto.setLocationType(req.getLocationType());
+        dto.setCustomMeetingLink(req.getCustomMeetingLink());
+        dto.setAllocateGoogleMeet(req.getAllocateGoogleMeet());
         return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
     }
 

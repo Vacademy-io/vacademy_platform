@@ -183,6 +183,15 @@ Consolidation of the split branches into one: `main` + per-mentor Google + notif
 - **Mentee learning progress** ✅ done. The mentee dialog leads with the learner's in-progress
   courses (name + % + level) via the existing `useLearnerPackagesQuery` (search-by-user-id,
   type=PROGRESS) — no new endpoint.
+- **Time off / date overrides** ✅ done. Availability editor lets a mentor mark a date
+  Unavailable or set Custom hours; round-trips `BookingAvailability.date_overrides` (the slot
+  engine already honored blocked/windows). Everything managed in-app, no Google Calendar.
+- **Meeting location** ✅ done. Editor selector: Google Meet (auto) or Custom link
+  (Zoom / BigBlueButton / own room). `MentorAvailabilityRequest` carries
+  locationType/customMeetingLink/allocateGoogleMeet → `BookingPageService.update`.
+  (Auto-provisioning is Meet-only; Zoom/BBB = paste the link.) Cancellation messaging when a
+  mentor cancels an affected session is the existing `MENTORSHIP_SETTING` cancellation trigger;
+  blocking a future date only hides slots (existing bookings aren't auto-cancelled).
 - Paid 1:1 sessions / public mentor directory / ratings — not started (deprioritised).
 
 ## Post-merge enhancements

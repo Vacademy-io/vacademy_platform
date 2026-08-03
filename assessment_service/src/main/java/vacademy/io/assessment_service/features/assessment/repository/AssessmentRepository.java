@@ -211,6 +211,16 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                                   @Param("assessmentTypes") List<String> assessmentType,
                                                   Pageable pageable);
 
+    /**
+     * "Past" is purely time-based: bound_end_time has elapsed. Do NOT additionally
+     * require recent_attempt.report_release_status = 'RELEASED' for MANUAL result
+     * types — recent_attempt is a LEFT JOIN, so an assessment the learner never
+     * attempted has a NULL report_release_status and the comparison evaluates to
+     * NULL, silently dropping every MISSED assessment from the learner's Past tab.
+     * It also hid attempted-but-unreleased ones, making the client's "Results
+     * pending" badge unreachable. Report visibility is gated client-side off
+     * result_type + report_release_status, both of which this query returns.
+     */
     @Query(value = "(SELECT DISTINCT a.id, a.name, a.play_mode, a.evaluation_type, a.submission_type, a.duration, " +
             "a.assessment_visibility, a.status, a.registration_close_date, a.registration_open_date, " +
             "a.expected_participants, a.cover_file_id, a.bound_start_time, a.bound_end_time, a.about_id, a.instructions_id, " +
@@ -229,7 +239,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time AND (a.result_type IS NULL OR a.result_type != 'MANUAL' OR recent_attempt.report_release_status = 'RELEASED'))) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)) " +
@@ -251,7 +261,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time AND (a.result_type IS NULL OR a.result_type != 'MANUAL' OR recent_attempt.report_release_status = 'RELEASED'))) " +
+            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time) " +
             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
             "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes))",
@@ -271,7 +281,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
                             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time AND (a.result_type IS NULL OR a.result_type != 'MANUAL' OR recent_attempt.report_release_status = 'RELEASED'))) " +
+                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time) " +
                             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                             "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
@@ -289,7 +299,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "AND (:instituteIds IS NULL OR aim.institute_id IN :instituteIds) " +
                             "AND (:assessmentStatuses IS NULL OR a.status IN :assessmentStatuses) " +
                             "AND (:liveAssessments IS NULL OR :liveAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' BETWEEN a.bound_start_time AND a.bound_end_time)) " +
-                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time AND (a.result_type IS NULL OR a.result_type != 'MANUAL' OR recent_attempt.report_release_status = 'RELEASED'))) " +
+                            "AND (:passedAssessments IS NULL OR :passedAssessments = 'false' OR CURRENT_TIMESTAMP AT TIME ZONE 'UTC' > a.bound_end_time) " +
                             "AND (:upcomingAssessments IS NULL OR :upcomingAssessments = 'false' OR (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' < a.bound_start_time)) " +
                             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
                             "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +

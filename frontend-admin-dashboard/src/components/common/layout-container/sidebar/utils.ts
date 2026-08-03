@@ -22,6 +22,7 @@ import {
     UserList,
     Notebook,
     PhoneCall,
+    ChatCircleDots,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -774,6 +775,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         title: 'Doubt Management',
         id: 'doubt-management',
         to: '/study-library/doubt-management',
+        category: 'LMS',
+    },
+    {
+        icon: ChatCircleDots,
+        title: 'Student AI',
+        id: 'student-ai',
+        to: '/study-library/student-ai',
         category: 'LMS',
     },
     {

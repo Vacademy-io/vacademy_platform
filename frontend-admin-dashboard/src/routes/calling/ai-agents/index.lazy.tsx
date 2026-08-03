@@ -72,6 +72,33 @@ export const Route = createLazyFileRoute('/calling/ai-agents/')({
 type StatusFilter = 'ALL' | 'ENABLED' | 'DISABLED';
 type DirectionFilter = 'ALL' | 'OUTBOUND' | 'INBOUND' | 'BOTH';
 
+const DIRECTION_LABEL: Record<string, string> = {
+    OUTBOUND: 'Outbound',
+    INBOUND: 'Inbound',
+    BOTH: 'Inbound + outbound',
+};
+
+/**
+ * First readable sentence of a prompt. Real prompts are markdown — headings,
+ * rules, bold, code fences — which renders as literal "#" and "____" noise in a
+ * one-line preview, so strip the syntax and take the first prose we find.
+ */
+function promptPreview(text?: string): string {
+    if (!text) return '';
+    for (const rawLine of text.split('\n')) {
+        const line = rawLine
+            .replace(/^\s*#{1,6}\s*/, '') // headings
+            .replace(/^\s*[-*+]\s+/, '') // bullets
+            .replace(/^\s*\d+[.)]\s+/, '') // numbered list
+            .replace(/^\s*>\s?/, '') // quotes
+            .replace(/[*_`]+/g, '') // emphasis / code
+            .replace(/^[-=_—\s]+$/, '') // rules and dividers
+            .trim();
+        if (line.length > 2) return line;
+    }
+    return '';
+}
+
 function AgentCard({
     agent,
     onEdit,
@@ -90,19 +117,17 @@ function AgentCard({
     onTogglePreview: () => void;
 }) {
     const enabled = agent.enabled !== false;
+    const direction = agent.direction ?? 'OUTBOUND';
+    const preview =
+        agent.openingLine?.trim() ||
+        promptPreview(agent.systemPrompt) ||
+        'No opening line yet — this agent will fall back to the platform default.';
     return (
         <Card className="flex flex-col gap-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="truncate text-subtitle font-semibold text-neutral-700">
-                        {agent.name || 'Untitled agent'}
-                    </p>
-                    <p className="mt-1 truncate text-caption text-neutral-500">
-                        {agent.direction ?? 'OUTBOUND'} · {agent.language ?? 'hinglish'} · voice{' '}
-                        {agent.voice ?? 'priya'}
-                        {agent.maxCallMinutes ? ` · max ${agent.maxCallMinutes} min` : ''}
-                    </p>
-                </div>
+            <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate text-subtitle font-semibold text-neutral-700">
+                    {agent.name || 'Untitled agent'}
+                </p>
                 <StatusChip
                     text={enabled ? 'Active' : 'Disabled'}
                     textSize="text-caption"
@@ -111,11 +136,15 @@ function AgentCard({
                 />
             </div>
 
-            <p className="line-clamp-2 min-h-8 text-body text-neutral-500">
-                {agent.openingLine?.trim() ||
-                    agent.systemPrompt?.trim() ||
-                    'No opening line or prompt yet — this agent will fall back to the platform default.'}
+            {/* Meta wraps instead of truncating — "voice shubh · max 6 min" was
+                the half that always got cut off, and it is the useful half. */}
+            <p className="text-caption text-neutral-500">
+                {DIRECTION_LABEL[direction] ?? direction} · {agent.language ?? 'hinglish'} · voice{' '}
+                {agent.voice ?? 'priya'}
+                {agent.maxCallMinutes ? ` · max ${agent.maxCallMinutes} min` : ''}
             </p>
+
+            <p className="line-clamp-2 min-h-8 text-body text-neutral-500">{preview}</p>
 
             <div className="flex flex-wrap items-center gap-1.5">
                 {(agent.extractionQuestions ?? []).length > 0 && (
@@ -136,43 +165,55 @@ function AgentCard({
                 )}
             </div>
 
+            {/* MyButton's medium scale carries sm:min-w-36, so four of them
+                overflow a grid card. The two text actions flex down to fit and
+                the two destructive-ish ones become fixed 36px icon buttons. */}
             <div className="mt-auto flex items-center gap-2 border-t border-neutral-100 pt-3">
                 <MyButton
                     buttonType="secondary"
                     scale="medium"
+                    className="min-w-0 flex-1 gap-1 px-2 sm:!min-w-0"
                     disable={previewLoading}
                     onClick={onTogglePreview}
                 >
                     {previewLoading ? (
-                        <SpinnerGap className="size-4 animate-spin" />
+                        <SpinnerGap className="size-4 shrink-0 animate-spin" />
                     ) : isPreviewing ? (
-                        <Stop className="size-4" />
+                        <Stop className="size-4 shrink-0" />
                     ) : (
-                        <Play className="size-4" />
+                        <Play className="size-4 shrink-0" />
                     )}
-                    {isPreviewing ? 'Stop' : 'Hear voice'}
+                    <span className="truncate">{isPreviewing ? 'Stop' : 'Hear voice'}</span>
                 </MyButton>
-                <MyButton buttonType="secondary" scale="medium" onClick={onEdit}>
-                    <PencilSimple className="size-4" /> Edit
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    className="min-w-0 flex-1 gap-1 px-2 sm:!min-w-0"
+                    onClick={onEdit}
+                >
+                    <PencilSimple className="size-4 shrink-0" />
+                    <span className="truncate">Edit</span>
                 </MyButton>
-                <div className="ml-auto flex items-center gap-2">
-                    <MyButton
-                        buttonType="secondary"
-                        scale="medium"
-                        onClick={onDuplicate}
-                        aria-label={`Duplicate ${agent.name}`}
-                    >
-                        <Copy className="size-4" />
-                    </MyButton>
-                    <MyButton
-                        buttonType="secondary"
-                        scale="medium"
-                        onClick={onDelete}
-                        aria-label={`Delete ${agent.name}`}
-                    >
-                        <Trash className="size-4 text-danger-600" />
-                    </MyButton>
-                </div>
+                <MyButton
+                    buttonType="secondary"
+                    layoutVariant="icon"
+                    scale="medium"
+                    className="shrink-0"
+                    onClick={onDuplicate}
+                    aria-label={`Duplicate ${agent.name}`}
+                >
+                    <Copy className="size-4" />
+                </MyButton>
+                <MyButton
+                    buttonType="secondary"
+                    layoutVariant="icon"
+                    scale="medium"
+                    className="shrink-0"
+                    onClick={onDelete}
+                    aria-label={`Delete ${agent.name}`}
+                >
+                    <Trash className="size-4 text-danger-600" />
+                </MyButton>
             </div>
         </Card>
     );

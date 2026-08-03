@@ -68,6 +68,7 @@ import { Route as UserTagsLinkIndexRouteImport } from "./routes/user-tags/link/i
 import { Route as UserTagsInstituteIndexRouteImport } from "./routes/user-tags/institute/index"
 import { Route as TemplatesCreateIndexRouteImport } from "./routes/templates/create/index"
 import { Route as StudyLibraryVoltIndexRouteImport } from "./routes/study-library/volt/index"
+import { Route as StudyLibraryStudentAiIndexRouteImport } from "./routes/study-library/student-ai/index"
 import { Route as StudyLibraryReportsIndexRouteImport } from "./routes/study-library/reports/index"
 import { Route as StudyLibraryLiveSessionIndexRouteImport } from "./routes/study-library/live-session/index"
 import { Route as StudyLibraryDoubtManagementIndexRouteImport } from "./routes/study-library/doubt-management/index"
@@ -606,6 +607,14 @@ const StudyLibraryVoltIndexRoute = StudyLibraryVoltIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/study-library/volt/index.lazy").then((d) => d.Route),
 )
+const StudyLibraryStudentAiIndexRoute =
+  StudyLibraryStudentAiIndexRouteImport.update({
+    id: "/study-library/student-ai/",
+    path: "/study-library/student-ai/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/study-library/student-ai/index.lazy").then((d) => d.Route),
+  )
 const StudyLibraryReportsIndexRoute =
   StudyLibraryReportsIndexRouteImport.update({
     id: "/study-library/reports/",
@@ -1877,6 +1886,7 @@ export interface FileRoutesByFullPath {
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports/": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai/": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt/": typeof StudyLibraryVoltIndexRoute
   "/templates/create/": typeof TemplatesCreateIndexRoute
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
@@ -2075,6 +2085,7 @@ export interface FileRoutesByTo {
   "/study-library/doubt-management": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt": typeof StudyLibraryVoltIndexRoute
   "/templates/create": typeof TemplatesCreateIndexRoute
   "/user-tags/institute": typeof UserTagsInstituteIndexRoute
@@ -2275,6 +2286,7 @@ export interface FileRoutesById {
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports/": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai/": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt/": typeof StudyLibraryVoltIndexRoute
   "/templates/create/": typeof TemplatesCreateIndexRoute
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
@@ -2476,6 +2488,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
     | "/study-library/reports/"
+    | "/study-library/student-ai/"
     | "/study-library/volt/"
     | "/templates/create/"
     | "/user-tags/institute/"
@@ -2674,6 +2687,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management"
     | "/study-library/live-session"
     | "/study-library/reports"
+    | "/study-library/student-ai"
     | "/study-library/volt"
     | "/templates/create"
     | "/user-tags/institute"
@@ -2873,6 +2887,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
     | "/study-library/reports/"
+    | "/study-library/student-ai/"
     | "/study-library/volt/"
     | "/templates/create/"
     | "/user-tags/institute/"
@@ -3072,6 +3087,7 @@ export interface RootRouteChildren {
   StudyLibraryDoubtManagementIndexRoute: typeof StudyLibraryDoubtManagementIndexRoute
   StudyLibraryLiveSessionIndexRoute: typeof StudyLibraryLiveSessionIndexRoute
   StudyLibraryReportsIndexRoute: typeof StudyLibraryReportsIndexRoute
+  StudyLibraryStudentAiIndexRoute: typeof StudyLibraryStudentAiIndexRoute
   StudyLibraryVoltIndexRoute: typeof StudyLibraryVoltIndexRoute
   TemplatesCreateIndexRoute: typeof TemplatesCreateIndexRoute
   UserTagsInstituteIndexRoute: typeof UserTagsInstituteIndexRoute
@@ -3566,6 +3582,13 @@ declare module "@tanstack/react-router" {
       path: "/study-library/volt"
       fullPath: "/study-library/volt/"
       preLoaderRoute: typeof StudyLibraryVoltIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/study-library/student-ai/": {
+      id: "/study-library/student-ai/"
+      path: "/study-library/student-ai"
+      fullPath: "/study-library/student-ai/"
+      preLoaderRoute: typeof StudyLibraryStudentAiIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/study-library/reports/": {
@@ -4682,6 +4705,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryDoubtManagementIndexRoute: StudyLibraryDoubtManagementIndexRoute,
   StudyLibraryLiveSessionIndexRoute: StudyLibraryLiveSessionIndexRoute,
   StudyLibraryReportsIndexRoute: StudyLibraryReportsIndexRoute,
+  StudyLibraryStudentAiIndexRoute: StudyLibraryStudentAiIndexRoute,
   StudyLibraryVoltIndexRoute: StudyLibraryVoltIndexRoute,
   TemplatesCreateIndexRoute: TemplatesCreateIndexRoute,
   UserTagsInstituteIndexRoute: UserTagsInstituteIndexRoute,

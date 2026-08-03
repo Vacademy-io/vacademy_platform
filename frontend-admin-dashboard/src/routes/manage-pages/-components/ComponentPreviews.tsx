@@ -375,11 +375,33 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+// Mirrors isPlaceholderImage() in the learner HeroSectionComponent: template
+// seed paths and raw media-id tokens never resolve to a real image. Returns the
+// usable url, or '' when the value can't render.
+const usableBgImage = (url?: unknown): string => {
+    const trimmed = typeof url === 'string' ? url.trim() : '';
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return '';
+    if (trimmed.includes('/api/placeholder/')) return '';
+    if (trimmed.startsWith('/assets/')) return '';
+    if (['course_banner_media_id', 'course_preview_image_media_id', 'thumbnail_file_id'].includes(trimmed)) return '';
+    if (trimmed.includes('_') && !trimmed.includes('http') && !trimmed.includes('/')) return '';
+    return trimmed;
+};
+
 const HeroSectionPreview: React.FC<P> = ({ props }) => {
     const isSplit = props.layout !== 'centered';
     const collage: string[] = (props.right?.imageCollage ?? []).filter(Boolean);
     const hasCollage = collage.length > 0;
     const tags: string[] = (props.left?.tags ?? []).filter(Boolean);
+
+    // The learner renderer gives a usable background image priority over the
+    // background color. Previewing the color unconditionally is what made an
+    // authored color look applied here while the live page ignored it, so keep
+    // the same precedence on the canvas.
+    const bgImage = usableBgImage(props.backgroundImage);
+    const surfaceStyle: React.CSSProperties = bgImage
+        ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } // design-lint-ignore: page-builder background image
+        : { backgroundColor: props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */ };
 
     const visibleButtons = (props.left?.buttons ?? []).filter((b: any) => b?.text?.trim());
     const visibleChips = (props.statChips ?? []).filter(
@@ -468,7 +490,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
         return (
             <section
                 className="w-full overflow-hidden"
-                style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}
+                style={surfaceStyle}
             >
                 <div className="mx-auto flex max-w-6xl items-stretch gap-6 px-8 py-10">
                     <div className="flex flex-1 flex-col justify-center">{textBlock}</div>
@@ -507,7 +529,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
     return (
         <section
             className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'}`}
-            style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}
+            style={surfaceStyle}
         >
             <div className={`mx-auto max-w-6xl ${isSplit ? 'grid grid-cols-2 gap-8 items-center' : 'flex flex-col items-center gap-4'}`}>
                 {textBlock}

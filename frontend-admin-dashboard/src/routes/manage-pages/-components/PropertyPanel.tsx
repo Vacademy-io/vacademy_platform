@@ -2394,6 +2394,9 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 value={props.backgroundImage || ''}
                 onChange={(url) => updateProp('backgroundImage', url)}
             />
+            <p className="-mt-2 text-caption text-neutral-500">
+                A background image covers the background color. Clear it to use the color below.
+            </p>
 
             <ColorPickerField
                 label="Background Color"

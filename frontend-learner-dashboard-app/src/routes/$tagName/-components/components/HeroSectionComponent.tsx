@@ -309,6 +309,11 @@ const isPlaceholderImage = (imageUrl?: string | null): boolean => {
   const trimmed = imageUrl.trim();
   if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return true;
   if (trimmed.includes('/api/placeholder/')) return true;
+  // Starter-template defaults ("/assets/hero-bg.jpg", "/assets/logo.png", …).
+  // Every catalogue seeded from the default template ships these, but nothing is
+  // served under /assets/ in this app — they 404. Treating them as unset stops an
+  // image that can never load from suppressing the authored background color.
+  if (trimmed.startsWith('/assets/')) return true;
   if (['course_banner_media_id', 'course_preview_image_media_id', 'thumbnail_file_id'].includes(trimmed)) return true;
   // Raw media ID check (contains underscores, no http/https, no slashes)
   if (trimmed.includes('_') && !trimmed.includes('http') && !trimmed.includes('/')) return true;
@@ -760,6 +765,7 @@ const HeroSectionWithState: React.FC<{
   const navigate = useNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
   const [resolvedBgUrl, setResolvedBgUrl] = useState<string | null>(heroBackgroundImage || null);
+  const [bgLoadFailed, setBgLoadFailed] = useState(false);
 
   // Resolve image URLs
   useEffect(() => {
@@ -794,6 +800,26 @@ const HeroSectionWithState: React.FC<{
     return () => { isMounted = false; };
   }, [heroImage, heroBackgroundImage, isHeroImagePlaceholder, isBackgroundImagePlaceholder]);
 
+  // A background image that fails to load must not swallow the authored color:
+  // url() paints nothing when the request 404s, so the section drops back to the
+  // token surface while the color has already been discarded — the author sees
+  // neither. Probe the resolved url and treat a failure as "no background image"
+  // so the color takes over.
+  useEffect(() => {
+    if (!resolvedBgUrl || isBackgroundImagePlaceholder) {
+      setBgLoadFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setBgLoadFailed(false);
+    const probe = new Image();
+    probe.onerror = () => {
+      if (!cancelled) setBgLoadFailed(true);
+    };
+    probe.src = resolvedBgUrl;
+    return () => { cancelled = true; };
+  }, [resolvedBgUrl, isBackgroundImagePlaceholder]);
+
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
       navigate({ to: button.target });
@@ -807,7 +833,7 @@ const HeroSectionWithState: React.FC<{
     }
   };
 
-  const hasBgImage = !!(resolvedBgUrl && !isBackgroundImagePlaceholder);
+  const hasBgImage = !!(resolvedBgUrl && !isBackgroundImagePlaceholder && !bgLoadFailed);
 
   // Build the hero media list: explicit carousel images (2+ → carousel) or
   // fall back to the single resolved image. 0 → no media slot.

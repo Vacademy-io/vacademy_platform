@@ -93,6 +93,58 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
 - Learner `frontend-learner-dashboard-app/src/routes/my-mentors`: mentor cards with
   **Book** (mentor's booking page) + **Message** (`openDirectConversation`).
 
+### Notifications & Settings (email + in-app + push)  (DONE)
+`MentorshipNotificationService` (`features/mentorship/service`) fans mentorship
+events out across **three channels** — email (`sendEmailViaUnified`), in-app bell
+(`createSystemAlertAnnouncement`), and FCM push (`sendPushViaUnified`) — each gated
+independently. Recipients are hydrated from auth_service by user id. Everything is
+**best-effort**: a notification failure never rolls back the assignment/booking, and
+each channel is fired **after the transaction commits** (via
+`TransactionSynchronizationManager` / booking Phase-2), so an outage can't roll a
+write back (cf. the live-session-notify-rolls-back-slide incident).
+
+Wired events:
+- **Mentor assigned** — `MentorAssignmentService.assignManual` + `bulkRoundRobin`.
+  Notifies the student ("You have a new mentor") and/or the mentor ("New mentee
+  assigned"). All channels + both recipients default ON.
+- **Session booked** — `MeetingBookingService.createBooking` Phase 2 (covers admin
+  and learner/public bookings — public `book()` delegates here). Adds in-app + push;
+  the email confirmation is already sent by the booking page's own settings. No-op
+  unless the host is a mentor.
+- **Session cancelled** — `PublicBookingService.cancel`. Email + in-app + push. No-op
+  unless the host is a mentor.
+
+**Four channels, template-driven.** Each learner-facing channel — EMAIL, in-app
+SYSTEM_ALERT, FCM PUSH, and **WHATSAPP** — is toggled and edited per trigger. Email /
+alert / push carry inline editable templates (subject/title + body with
+`{{placeholder}}` tokens, rendered in-code via `applyPlaceholders`). WhatsApp uses an
+**approved Meta template** (by name, from notification_service) + an optional variable
+mapping; when the mapping is empty, the full variable map is passed keyed by name so
+notification-service auto-matches named template variables. WhatsApp send mirrors
+`MeetingBookingService.sendConfirmationWhatsapp` via
+`notificationService.sendUnified(channel="WHATSAPP", …)`. Placeholders:
+`{{name}} {{mentor_name}} {{student_name}} {{session_title}} {{session_datetime}}`.
+
+Config lives in the institute-setting blob under key **`MENTORSHIP_SETTING`**
+(no new table/enum — generic `InstituteSettingService`). Shape:
+```
+{ assignment: {
+    notify_student, notify_mentor,
+    email:        { enabled, subject, body },
+    system_alert: { enabled, title, body },
+    push:         { enabled, title, body },
+    whatsapp:     { enabled, template_name, language_code, variable_mapping } },
+  booking:      { ...same channels; email defaults OFF (booking page emails) },
+  cancellation: { ...same channels } }
+```
+When the setting (or any field) is absent the service falls back to **code-default
+text with EMAIL/ALERT/PUSH ON and WHATSAPP OFF** (WhatsApp needs an approved template),
+so notifications work out-of-the-box. The reader also accepts the legacy boolean channel
+form (`"email": true`) for forward-compat. Admin UI: **Settings → Communications →
+Messaging & Automation → Mentorship Settings** (`routes/settings/-components/MentorshipSettings.tsx`,
+service `services/mentorship-settings.ts`; WhatsApp picker reuses `whatsappTemplateService`).
+Blob keys are the exact snake_case names the backend reads — keep FE/BE in lockstep.
+
 ---
 
 ## Phase roadmap
@@ -105,6 +157,9 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
   connected Google accounts to re-authorize once (adds the `calendar.events` scope).
 - **Phase 4** — hardening (booking questions via master custom-fields, slot conflicts
   vs live classes, double-book lock, Meet-space cleanup on cancel).
+- **Notifications & Settings** — email + in-app + push + **WhatsApp** across assignment /
+  booking / cancellation, each channel toggled AND template-editable per trigger under
+  `MENTORSHIP_SETTING`. ✅ done (branch `feat/mentorship-notifications-settings`).
 
 ## Locked decisions (2026-07-28)
 Dedicated `MENTOR` role (not reuse TEACHER) · one-shot round-robin (no pool table) ·

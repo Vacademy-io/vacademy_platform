@@ -13,6 +13,9 @@ const productPageSearchSchema = z.object({
     instituteId: z.string().optional(),
     courseIds: z.string().optional(),
     defaultTab: z.enum(['CATALOG', 'CART', 'PAYMENT']).optional(),
+    // Catalogue slug the visitor arrived from. Lets the page wear that
+    // catalogue's header, footer and theme instead of rendering bare.
+    tagName: z.string().optional(),
     utm_source: z.string().optional(),
     utm_medium: z.string().optional(),
     utm_campaign: z.string().optional(),
@@ -65,6 +68,9 @@ function RouteComponent() {
     const search = Route.useSearch();
     const { code: productPageCode, embeddedParams } = parseProductPageCode(rawCode);
     const courseIds = search.courseIds ?? embeddedParams.get('courseIds') ?? undefined;
+    // Same recovery as courseIds: a link whose query got glued onto the code
+    // segment ("/product-pages/abc&tagName=x") still resolves its catalogue.
+    const tagName = search.tagName ?? embeddedParams.get('tagName') ?? undefined;
 
     // Resolve institute ID from domain routing (no navigation side effects — raw API call only)
     const { data: domainInstituteId, isLoading: domainLoading } = useQuery({
@@ -95,7 +101,7 @@ function RouteComponent() {
         <ProductPageLoader
             productPageCode={productPageCode}
             instituteId={resolvedInstituteId}
-            search={{ ...search, courseIds }}
+            search={{ ...search, courseIds, tagName }}
         />
     );
 }
@@ -120,6 +126,7 @@ function ProductPageLoader({
                 pageData={data}
                 courseIds={search.courseIds}
                 defaultTab={search.defaultTab}
+                tagName={search.tagName}
                 utmParams={{
                     utm_source: search.utm_source,
                     utm_medium: search.utm_medium,

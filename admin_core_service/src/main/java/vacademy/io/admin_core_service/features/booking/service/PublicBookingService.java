@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -20,6 +22,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.CancelBookingReq
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.service.BookingManagementService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleCalendarService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorshipNotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -66,6 +69,7 @@ public class PublicBookingService {
     private final AudienceService audienceService;
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
+    private final MentorshipNotificationService mentorshipNotificationService;
 
     public PublicBookingDTOs.PublicPageDTO getPage(String instituteId, String slug) {
         BookingPage page = activePage(instituteId, slug);
@@ -205,7 +209,52 @@ public class PublicBookingService {
         BookingInstance instance = instanceByToken(manageToken);
         assertMutable(instance);
         cancelUnderlying(instance, request != null ? request.getReason() : null);
+        notifyMentorshipCancellation(instance);
         return toView(instance, pageOf(instance));
+    }
+
+    /**
+     * Fire the mentorship cancellation notification (email + in-app + push) once this
+     * cancel transaction commits — a no-op unless the host is a mentor. Kept out of the
+     * transaction so notification HTTP calls can never roll the cancellation back.
+     */
+    private void notifyMentorshipCancellation(BookingInstance instance) {
+        BookingPage page = pageOf(instance);
+        String title = page != null && page.getTitle() != null ? page.getTitle() : "Mentor session";
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(firstNonBlankZone(instance.getInviteeTimezone(),
+                    page != null ? page.getTimezone() : null));
+        } catch (Exception e) {
+            zone = ZoneId.of("Asia/Kolkata");
+        }
+        String when = instance.getScheduledStartUtc() != null
+                ? instance.getScheduledStartUtc().toInstant().atZone(zone)
+                        .format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm")) + " (" + zone.getId() + ")"
+                : null;
+        final String fTitle = title;
+        final String fWhen = when;
+        final BookingInstance fInstance = instance;
+        Runnable task = () -> mentorshipNotificationService.notifyBooking(
+                fInstance.getInstituteId(), fInstance.getHostUserId(), fInstance.getInviteeUserId(),
+                fInstance.getInviteeEmail(), fInstance.getInviteePhone(), fInstance.getInviteeName(),
+                fTitle, fWhen, true);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
+        }
+    }
+
+    private static String firstNonBlankZone(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return "Asia/Kolkata";
     }
 
     public PublicBookingDTOs.PublicBookingViewDTO reschedule(String manageToken,

@@ -46,6 +46,9 @@ class CallState:
     bot_stopped_t: float = 0.0
     # One-shot guards.
     orphan_used: bool = False
+    # Consecutive caller utterances that produced NO transcript. Reset by any real
+    # transcript. This is the "we cannot hear them" signal — see HEARING_FAILED.
+    deaf_streak: int = 0
     bot_spoke_once: bool = False
     # Audio-stall watchdog: stamped when a TTS generation begins while the bot
     # is QUIET; cleared on ANY bot-speaking transition (B1 corrected semantics).
@@ -92,6 +95,9 @@ class WatchdogConfig:
     # duration cap (harness caught this). Independent clock: no REAL words and
     # no bot audio for this long → escalate regardless of VAD activity.
     no_words_timeout_secs: float = 30.0
+    # After this many consecutive unheard utterances, stop apologising and close
+    # out honestly. 2 = the caller has already repeated themselves twice.
+    max_deaf_streak: int = 2
     # How long to wait before believing an interrupted reply truly never played.
     unplayed_confirm_secs: float = 3.0
 
@@ -105,6 +111,7 @@ STALL_RECOVER = "stall_recover"
 ORPHAN_ASK = "orphan_ask"
 NUDGE = "nudge"
 IDLE_HANGUP = "idle_hangup"
+HEARING_FAILED = "hearing_failed"
 
 
 @dataclass(frozen=True)
@@ -139,7 +146,18 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             and s.stall_recoveries < cfg.stall_max_recoveries):
         return Decision(STALL_RECOVER, now - s.tts_gen_t)
 
-    # 5) VAD-orphan: caller audibly spoke, no transcript since the utterance
+    # 5) HEARING FAILED. We have already asked them to repeat max_deaf_streak
+    #    times and STILL received no words. Live call 393859bc: Sarvam STT went
+    #    deaf (4 socket reconnects, one final with 6.08s processing latency) and
+    #    NEVER transcribed "hybrid model" — which the caller said FOUR times. The
+    #    bot apologised four times, re-asked the same question three times and
+    #    restarted its opening three times, because from the model's side the
+    #    caller had said nothing at all. Repeating "sorry, I missed that" at
+    #    someone who is answering clearly is worse than admitting the problem.
+    if s.deaf_streak >= cfg.max_deaf_streak:
+        return Decision(HEARING_FAILED, float(s.deaf_streak))
+
+    # 6) VAD-orphan: caller audibly spoke, no transcript since the utterance
     #    BEGAN (finals land mid-speech, so comparing against utterance START is
     #    the only correct discriminator — the stopped_t variant steamrolled).
     lo, hi = cfg.orphan_window_secs
@@ -217,6 +235,11 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
         s.stall_recoveries += 1
     elif d.kind == ORPHAN_ASK:
         s.orphan_used = True
+        # Each unheard utterance compounds; a real transcript clears it.
+        s.deaf_streak += 1
+        s.t = now
+    elif d.kind == HEARING_FAILED:
+        s.deaf_streak = 0
         s.t = now
     elif d.kind == NUDGE:
         s.nudged = True

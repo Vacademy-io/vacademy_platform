@@ -998,3 +998,18 @@ def test_stall_cap_closes_the_call_instead_of_sitting_silent():
     blk = src[src.index("diag.tts_stall_cap_hit = True"):]
     blk = blk[:blk.index("if d.kind == ORPHAN_ASK")]
     assert "_begin_stop()" in blk and "end_requested = True" in blk
+
+
+def test_hearing_failed_closes_the_call_honestly():
+    src = inspect.getsource(b.run_bot)
+    blk = src[src.index("if d.kind == HEARING_FAILED"):]
+    blk = blk[:blk.index("if d.kind == NUDGE")]
+    assert "_begin_stop()" in blk and "end_requested = True" in blk
+    assert "cant_hear_closing" in blk
+    # The line must own the problem, not blame the caller or apologise a 5th time.
+    line = src[src.index("cant_hear_closing = ("):]
+    line = line[:line.index("end_closing =")]
+    assert "call you back" in line and "call back" in line
+    # A real transcript must clear the streak.
+    on_tr = src[src.index("def on_transcript"):]
+    assert 'flags["deaf_streak"] = 0' in on_tr[:on_tr.index("transcript = TranscriptCollector")]

@@ -261,3 +261,19 @@ def test_dead_air_still_fires_in_a_real_conversation():
     d = dg.CallDiagnostics(user_turns=4, bot_turns=4)
     d.sample("dead_air", 8.8)
     assert dg.verdict(d)["faults"][dg.DEAD_AIR] == dg.RED
+
+
+def test_cannot_hear_outranks_a_tts_stall_in_the_headline():
+    """Live 393859bc read "Voice synthesis stalled" while the real story was that
+    the caller repeated "hybrid model" four times and we never transcribed it."""
+    d = dg.CallDiagnostics(user_turns=10, bot_turns=14,
+                           hearing_failures=1, stt_reconnects=4, tts_stalls=2)
+    v = dg.verdict(d)
+    assert v["faults"][dg.STT_DEAF] == dg.RED
+    assert v["headline"] == dg.STT_DEAF, "the caller's experience was 'it cannot hear me'"
+    assert "could not hear" in dg.to_payload(d)["headlineText"]
+
+
+def test_giving_up_on_hearing_is_always_red():
+    d = dg.CallDiagnostics(user_turns=3, bot_turns=5, hearing_failures=1)
+    assert dg.verdict(d)["faults"][dg.STT_DEAF] == dg.RED

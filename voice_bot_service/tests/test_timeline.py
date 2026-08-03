@@ -352,3 +352,43 @@ def test_unplayed_never_confirmed_while_bot_is_speaking():
 def test_unplayed_never_confirmed_when_unarmed():
     from app.callstate import unplayed_confirmed
     assert unplayed_confirmed(CallState(t=T0), T0 + 10.0, cfg()) is False
+
+
+# ── INCIDENT 2026-08-03 (call 393859bc): Sarvam STT went deaf ────────────────
+# The caller said "hybrid model" FOUR times. Sarvam transcribed it ZERO times
+# (one final in a 50s window; first final of the call had 6.08s latency; 4 socket
+# reconnects). The bot apologised 4x, re-asked the same question 3x and restarted
+# its opening 3x, because from the model's side the caller had said nothing.
+
+def test_repeated_unheard_utterances_stop_the_apology_loop():
+    from app.callstate import HEARING_FAILED
+    c = cfg(max_deaf_streak=2, orphan_connect_grace_secs=0.0)
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    out = []
+    t = T0 + 5.0
+    for _ in range(4):                      # four unheard utterances in a row
+        s.user_started_t = t
+        s.user_stopped_t = t + 0.8
+        s.orphan_used = False
+        out += kinds(run_ticks(s, c, t + 3.5, t + 6.0))
+        t += 8.0
+    assert HEARING_FAILED in out, f"never gave up apologising: {out}"
+    # …and it stops asking once it has: no orphan re-ask after the give-up.
+    assert out.index(HEARING_FAILED) <= 2, f"apologised too many times first: {out}"
+
+
+def test_a_heard_answer_resets_the_deaf_streak():
+    """One good transcript proves the line works — the counter must not creep
+    toward a false give-up across a long healthy call."""
+    from app.callstate import HEARING_FAILED
+    c = cfg(max_deaf_streak=2)
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    s.deaf_streak = 1
+    s.deaf_streak = 0                        # on_transcript() does exactly this
+    assert HEARING_FAILED not in kinds(run_ticks(s, c, T0, T0 + 10.0))
+
+
+def test_hearing_failed_never_fires_on_a_healthy_call():
+    from app.callstate import HEARING_FAILED
+    s = CallState(t=T0, bot_stopped_t=T0, transcript_t=T0)
+    assert HEARING_FAILED not in kinds(run_ticks(s, cfg(), T0, T0 + 30.0))

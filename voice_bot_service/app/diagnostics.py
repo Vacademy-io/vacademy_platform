@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 # Bump when a threshold or a fault definition changes. Stored with every call so
 # health can be re-derived across history without re-collecting anything.
-RULES_VERSION = 1
+RULES_VERSION = 2
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -51,7 +51,15 @@ ALL_FAULTS = (
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
-HEADLINE_PRIORITY = ALL_FAULTS
+# Ordered by what the CALLER experienced, not by internal severity. Being unable
+# to hear them outranks a TTS stall: on live call 393859bc the headline read
+# "Voice synthesis stalled" while the actual story was that the caller repeated
+# "hybrid model" four times and we never once transcribed it.
+HEADLINE_PRIORITY = (
+    CRASH, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
+    FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED,
+    PROMPT_UNFILLED,
+)
 
 GREEN, AMBER, RED = "GREEN", "AMBER", "RED"
 _RANK = {GREEN: 0, AMBER: 1, RED: 2}
@@ -112,6 +120,7 @@ class CallDiagnostics:
 
     # ── infrastructure ──
     stt_reconnects: int = 0
+    hearing_failures: int = 0     # times we gave up and closed out honestly
     greet_path: str = ""                # "scripted" | "callee_spoke_first" | "llm"
     greet_delay_secs: Optional[float] = None
     setup_secs: Optional[float] = None
@@ -259,7 +268,10 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     elif ms >= 0.5:
         fire(LIKELY_MACHINE, AMBER)
 
-    if d.stt_reconnects >= 3:
+    # "We could not hear the caller" is the most caller-visible failure there is —
+    # they answer, we apologise, they answer again. Giving up and closing out is
+    # always RED regardless of how the sockets behaved.
+    if d.hearing_failures >= 1 or d.stt_reconnects >= 3:
         fire(STT_DEAF, RED)
     elif d.stt_reconnects >= 1:
         fire(STT_DEAF, AMBER)
@@ -294,7 +306,7 @@ _HEADLINE_TEXT = {
     DEAD_AIR: "Long silence during the call",
     FALSE_REASK: "Agent re-asked for answers it had already heard",
     LIKELY_MACHINE: "Probably an answering machine, not a person",
-    STT_DEAF: "Speech recognition reconnected mid-call",
+    STT_DEAF: "The agent could not hear the caller",
     SLOW_TTS: "Slow voice synthesis",
     SLOW_LLM: "Slow agent responses",
     TRANSFER_FAILED: "Human transfer was requested but failed",
@@ -360,6 +372,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             },
             "infra": {
                 "sttReconnects": d.stt_reconnects,
+                "hearingFailures": d.hearing_failures,
                 "promptUnfilled": d.prompt_unfilled or None,
                 "crash": d.crash,
                 "transferRequested": d.transfer_requested,

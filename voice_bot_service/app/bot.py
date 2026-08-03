@@ -60,7 +60,8 @@ from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
-                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
+                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
+                        HEARING_FAILED)
 from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
@@ -1170,6 +1171,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                      "great day!" if eng else
                      "Lagta hai aapki awaaz nahi aa rahi — main baad mein sampark karti hoon. "
                      "Dhanyavaad, aapka din shubh ho!")
+    # Honest, non-blaming, and it hands the caller a real next step instead of a
+    # fourth apology (live call 393859bc).
+    cant_hear_closing = (
+        "I'm really sorry — I can hear you speaking but the line isn't carrying "
+        "your words to me. Rather than keep asking you to repeat yourself, let me "
+        "have someone from our team call you back. Thank you for your patience!"
+        if eng else
+        "Maaf kijiye — aap bol rahe hain lekin aapki awaaz mujh tak theek se nahi "
+        "pahunch rahi. Baar baar poochhne se accha, main hamari team se aapko "
+        "call back karwati hoon. Aapke sabr ke liye dhanyavaad!")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
@@ -1224,6 +1235,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def on_transcript():
         flags["transcript_t"] = time.time()
+        # We heard them: any run of unheard utterances is over.
+        flags["deaf_streak"] = 0
         # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
         flags["orphan_used"] = False
         flags["nudged"] = False
@@ -1421,6 +1434,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             max_nudges=settings.max_nudges,
             no_words_timeout_secs=settings.no_words_timeout_secs,
             unplayed_confirm_secs=settings.unplayed_confirm_secs,
+            max_deaf_streak=settings.max_deaf_streak,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
                        "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
@@ -1512,6 +1526,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
                     TTSSpeakFrame(repeat_line)])
+                continue
+            if d.kind == HEARING_FAILED:
+                # Stop apologising and close out honestly. The caller has already
+                # repeated themselves twice and we still have no words from them.
+                logger.error("hearing failed corr=%s (%d unheard utterances) — "
+                             "closing out instead of asking again", corr, int(d.detail))
+                diag.bump("hearing_failures")
+                outcome.end_requested = True
+                await task.queue_frames([TTSSpeakFrame(cant_hear_closing)])
+                await _begin_stop()
                 continue
             if d.kind == NUDGE:
                 diag.bump("nudges")

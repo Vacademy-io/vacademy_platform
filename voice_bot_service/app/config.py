@@ -220,6 +220,12 @@ class Settings:
     unplayed_confirm_secs: float = field(
         default_factory=lambda: float(_env("UNPLAYED_CONFIRM_SECS", "3.0")))
 
+    # After this many consecutive unheard caller utterances, stop apologising and
+    # close the call honestly. Live 393859bc: Sarvam STT never transcribed
+    # "hybrid model" though the caller said it four times; the bot apologised
+    # four times and re-asked the same question three times.
+    max_deaf_streak: int = field(default_factory=lambda: int(_env("MAX_DEAF_STREAK", "2")))
+
     # Refuse to derive a substantive disposition from a call with no caller turn
     # (voicemail/IVR pickups were booking demos onto real leads). Kill-switch.
     report_require_conversation: bool = field(

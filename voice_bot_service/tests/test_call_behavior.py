@@ -810,7 +810,9 @@ def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
     # stamp here (clear OR re-stamp) disarms the founder's own recovery.
     body = rb[rb.index("def _note_killed_before_playout"):]
     body = body[:body.index("sentinel.set_on_interrupted")]
-    assert 'diag.bump("replies_never_played")' in body
+    # Records a SUSPICION only — the counter is incremented later, and only if
+    # the silence outlasts the confirm window (95% of these replies do play).
+    assert 'flags["unplayed_pending_t"] = time.time()' in body
     assert 'flags["tts_gen_t"] =' not in body, "interruption hook must not mutate the stall stamp"
 
 
@@ -955,3 +957,21 @@ def test_machine_markers_cover_devanagari_transliteration():
     class _H:
         transcript = [{"role": "user", "text": "हाँ जी बोलिए, मैं सुन रहा हूँ"}]
     assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"
+
+
+def test_kill_hook_stamps_a_suspicion_not_a_count():
+    """The hook must NOT bump the counter directly — 95% of these replies play."""
+    src = inspect.getsource(b.run_bot)
+    hook = src[src.index("def _note_killed_before_playout"):]
+    hook = hook[:hook.index("sentinel.set_on_interrupted")]
+    assert 'flags["unplayed_pending_t"] = time.time()' in hook
+    assert 'diag.bump("replies_never_played")' not in hook, (
+        "counting at the interruption is what made REPLY_UNPLAYED ~95% false"
+    )
+    # Audio arriving must clear the suspicion.
+    speak = src[src.index("def set_bot_speaking"):]
+    speak = speak[:speak.index("def set_user_speaking")]
+    assert 'flags["unplayed_pending_t"] = 0.0' in speak
+    # …and only the confirmed case increments the counter.
+    wd = src[src.index("unplayed_confirmed(flags, now, cfg)"):]
+    assert 'diag.bump("replies_never_played")' in wd[:400]

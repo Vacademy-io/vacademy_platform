@@ -51,6 +51,9 @@ class CallState:
     # is QUIET; cleared on ANY bot-speaking transition (B1 corrected semantics).
     tts_gen_t: float = 0.0
     stall_recoveries: int = 0
+    # A reply was interrupted before base_output announced it. That is NOT yet
+    # evidence the caller heard nothing — see unplayed_confirmed().
+    unplayed_pending_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -89,6 +92,8 @@ class WatchdogConfig:
     # duration cap (harness caught this). Independent clock: no REAL words and
     # no bot audio for this long → escalate regardless of VAD activity.
     no_words_timeout_secs: float = 30.0
+    # How long to wait before believing an interrupted reply truly never played.
+    unplayed_confirm_secs: float = 3.0
 
 
 # Decision kinds — one per watchdog side-effect branch.
@@ -159,6 +164,26 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     if not s.nudged and s.nudge_count < cfg.max_nudges:
         return Decision(NUDGE)
     return Decision(IDLE_HANGUP)
+
+
+def unplayed_confirmed(s: CallState, now: float, cfg: WatchdogConfig) -> bool:
+    """Did an interrupted reply REALLY never reach the caller?
+
+    Do not shortcut this to "an interruption arrived while the bot was quiet".
+    That is only "base_output had not yet emitted BotStartedSpeaking for this
+    clause", which is a very different claim. pipecat's
+    InterruptibleTTSService._handle_interruption tears the TTS socket down only
+    `if self._bot_speaking` — false in exactly this window — so Sarvam keeps
+    streaming audio it had already synthesised and it PLAYS.
+
+    Measured on 220 live calls: of 63 such "kills", 60 (95%) began playing within
+    a median of 0.17s and ran ~1.8s. Counting them as lost made REPLY_UNPLAYED a
+    ~95% false positive and turned two of the founder's own calls RED for a
+    non-problem. Only silence that OUTLASTS this window is real evidence.
+    """
+    return (s.unplayed_pending_t > 0
+            and not s.bot_speaking
+            and now - s.unplayed_pending_t >= cfg.unplayed_confirm_secs)
 
 
 def stall_recovery_still_needed(s: CallState, now: float,

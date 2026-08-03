@@ -214,6 +214,12 @@ class Settings:
     no_words_timeout_secs: float = field(
         default_factory=lambda: float(_env("NO_WORDS_TIMEOUT_SECS", "30.0")))
 
+    # How long silence must outlast an interrupted reply before we believe the
+    # caller truly heard none of it. 95% of interrupted-while-quiet replies play
+    # within ~0.2s anyway (pipecat keeps the TTS socket alive in that window).
+    unplayed_confirm_secs: float = field(
+        default_factory=lambda: float(_env("UNPLAYED_CONFIRM_SECS", "3.0")))
+
     # Refuse to derive a substantive disposition from a call with no caller turn
     # (voicemail/IVR pickups were booking demos onto real leads). Kill-switch.
     report_require_conversation: bool = field(

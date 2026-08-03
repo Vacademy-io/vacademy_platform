@@ -316,3 +316,39 @@ def test_stall_recheck_aborts_when_audio_arrived():
     # An OLD bot_stopped_t must not suppress a real stall.
     s3 = CallState(t=T0, bot_speaking=False, bot_stopped_t=T0 + 1.0)
     assert stall_recovery_still_needed(s3, T0 + 5.0) is True
+
+
+# ── REPLY_UNPLAYED was ~95% FALSE. This pins the corrected semantics ─────────
+# An interruption while the bot is quiet only means base_output had not yet
+# announced the clause. pipecat tears the TTS socket down only `if
+# self._bot_speaking`, so in that window Sarvam keeps streaming and the audio
+# PLAYS: 60 of 63 live "kills" began playing within a median 0.17s. Counting
+# them as lost turned two of the founder's calls RED for a non-problem.
+
+def test_interrupted_reply_that_then_plays_is_not_counted_as_lost():
+    from app.callstate import unplayed_confirmed
+    c = cfg()
+    s = CallState(t=T0, unplayed_pending_t=T0)
+    # Audio arrives 0.17s later (the measured median) -> suspicion cleared.
+    s.unplayed_pending_t = 0.0
+    s.bot_speaking = True
+    assert unplayed_confirmed(s, T0 + 5.0, c) is False
+
+
+def test_reply_that_never_plays_is_confirmed_lost():
+    from app.callstate import unplayed_confirmed
+    c = cfg(unplayed_confirm_secs=3.0)
+    s = CallState(t=T0, unplayed_pending_t=T0)
+    assert unplayed_confirmed(s, T0 + 2.9, c) is False, "too early to call it lost"
+    assert unplayed_confirmed(s, T0 + 3.1, c) is True
+
+
+def test_unplayed_never_confirmed_while_bot_is_speaking():
+    from app.callstate import unplayed_confirmed
+    s = CallState(t=T0, unplayed_pending_t=T0, bot_speaking=True)
+    assert unplayed_confirmed(s, T0 + 10.0, cfg()) is False
+
+
+def test_unplayed_never_confirmed_when_unarmed():
+    from app.callstate import unplayed_confirmed
+    assert unplayed_confirmed(CallState(t=T0), T0 + 10.0, cfg()) is False

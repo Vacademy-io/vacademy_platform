@@ -58,7 +58,7 @@ from pipecat.audio.interruptions.min_words_interruption_strategy import (
 
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
-                        apply_decision, stall_recovery_still_needed,
+                        apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
 from .config import get_settings
@@ -1092,6 +1092,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["t"] = time.time()
 
     def set_bot_speaking(speaking: bool):
+        if speaking:
+            # Audio arrived after all: the reply was NOT lost. Clear the suspicion.
+            flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             # Gap since either side last spoke = what the CALLER experienced as
             # silence. Measured on speech START only, so it is per-turn not
@@ -1360,8 +1363,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # the only evidence that a reply never played. The stamp keeps its pre-diff
     # semantics; the counter feeds the diagnostics panel.
     def _note_killed_before_playout():
+        # Stamp a SUSPICION, do not count it yet. 95% of these replies go on to
+        # play within ~0.2s (pipecat only tears the TTS socket down when the bot
+        # is already speaking), so counting here made the metric — and the panel
+        # verdict built on it — almost entirely false. unplayed_confirmed() turns
+        # a suspicion into a fact only if the silence outlasts the window.
         if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
-            diag.bump("replies_never_played")
+            if flags["unplayed_pending_t"] == 0.0:
+                flags["unplayed_pending_t"] = time.time()
     sentinel.set_on_interrupted(_note_killed_before_playout)
 
     async def watchdog():
@@ -1388,12 +1397,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             orphan_transcript_lookback_secs=settings.orphan_transcript_lookback_secs,
             max_nudges=settings.max_nudges,
             no_words_timeout_secs=settings.no_words_timeout_secs,
+            unplayed_confirm_secs=settings.unplayed_confirm_secs,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
                        "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
         while True:
             await asyncio.sleep(1.0)
             now = time.time()
+            # Confirm-or-drop any outstanding "never played" suspicion first.
+            if unplayed_confirmed(flags, now, cfg):
+                flags["unplayed_pending_t"] = 0.0
+                diag.bump("replies_never_played")
+                logger.warning("reply never reached the caller corr=%s "
+                               "(no audio %.1fs after it was cut)",
+                               corr, cfg.unplayed_confirm_secs)
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 

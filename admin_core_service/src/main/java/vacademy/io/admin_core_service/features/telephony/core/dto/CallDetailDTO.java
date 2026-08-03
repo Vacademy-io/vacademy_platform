@@ -9,6 +9,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Deep per-call detail for the Call Log "more details" popover — richer than the
@@ -45,6 +46,36 @@ public class CallDetailDTO {
 
     /** Verbatim provider webhook body — null unless the caller may unmask numbers. */
     private String rawProviderResponse;
+
+    // ── AI-voice technical diagnostics (V416) ────────────────────────────────
+    // All null for human calls, for AI providers that emit no diagnostics, and for
+    // every call that predates the blob. NULL MEANS "NOT MEASURED" — the UI must
+    // never render a missing verdict as healthy, or a fleet chart will claim
+    // "fixed" about something that is not.
+
+    /** GREEN / AMBER / RED. The one field the triage hover leads with. */
+    private String diagHealth;
+
+    /** Fired fault codes, e.g. ["DEAD_AIR","TTS_WEDGE"]. Closed, append-only vocabulary of 12. */
+    private List<String> diagFaults;
+
+    /** Highest-priority fired code — what to headline when several fired. */
+    private String diagHeadline;
+
+    /** Human sentence for {@link #diagHeadline}, e.g. "Voice synthesis stalled — caller heard silence". */
+    private String diagHeadlineText;
+
+    /** Bot's threshold-set version, so an old verdict is never read against today's rules. */
+    private Integer diagRulesVersion;
+
+    /**
+     * The full diagnostics blob (tts, playout, turnTaking, latency, setup, machine,
+     * infra). Gated behind the same {@code VIEW_CALL_NUMBERS} authority as
+     * {@link #rawProviderResponse}: it carries verbatim caller utterances
+     * (turnTaking.answersDeletedSamples) and raw crash strings. The summary fields
+     * above stay visible to every dashboard viewer.
+     */
+    private Map<String, Object> diagnostics;
 
     @Data
     @AllArgsConstructor

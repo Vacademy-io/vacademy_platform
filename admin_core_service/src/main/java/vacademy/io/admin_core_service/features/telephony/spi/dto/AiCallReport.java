@@ -37,6 +37,15 @@ public class AiCallReport {
     Map<String, Object> extractedQa;
     Map<String, Object> metadata;
 
+    /**
+     * Per-call technical diagnostics the voice bot emits as a top-level
+     * {@code diagnostics} object (health verdict, fault codes, TTS/LLM/STT
+     * latency, playout truth, turn-taking). Provider-optional: adapters that
+     * have no such signal simply leave this null, and a null must never be read
+     * as "healthy" — it means NOT MEASURED.
+     */
+    Map<String, Object> diagnostics;
+
     String recordingUrl;
     String transcript;
 

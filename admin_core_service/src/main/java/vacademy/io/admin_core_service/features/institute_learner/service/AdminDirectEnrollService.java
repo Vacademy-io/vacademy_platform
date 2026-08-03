@@ -65,6 +65,9 @@ public class AdminDirectEnrollService {
     private AuthService authService;
 
     @Autowired
+    private EnrollmentCredentialPolicyService enrollmentCredentialPolicyService;
+
+    @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
     @Autowired
@@ -256,6 +259,9 @@ public class AdminDirectEnrollService {
     }
 
     private UserDTO createUserOrGetExistingUser(UserDTO user,String instituteId) {
-        return authService.createUserFromAuthService(user,instituteId,true);
+        // Same gate as the other enrollment paths: an institute that sends its own
+        // enrollment email suppresses auth-service's built-in credential mail.
+        return authService.createUserFromAuthService(user, instituteId,
+                enrollmentCredentialPolicyService.shouldSendCredentialEmail(instituteId));
     }
 }

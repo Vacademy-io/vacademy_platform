@@ -91,17 +91,57 @@ public class PublicBookingService {
                 .build();
     }
 
-    /** Booking-form fields = the linked audience list's campaign custom fields. */
+    /**
+     * Booking-form fields = the linked audience list's campaign custom fields (if any)
+     * PLUS the page's own intake questions (form_fields_json), which have no audience/CRM
+     * coupling. Both render identically on the learner form and their answers save to
+     * booking_instance.custom_field_values_json.
+     */
     private java.util.List<vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO>
             customFieldsFor(BookingPage page) {
-        if (page.getAudienceId() == null || page.getAudienceId().isBlank()) return List.of();
-        try {
-            return instituteCustomFiledService.findCustomFieldsAsJson(
-                    page.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), page.getAudienceId());
-        } catch (Exception e) {
-            log.warn("customFieldsFor page {} failed: {}", page.getId(), e.getMessage());
-            return List.of();
+        java.util.List<vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO> out =
+                new java.util.ArrayList<>();
+        if (page.getAudienceId() != null && !page.getAudienceId().isBlank()) {
+            try {
+                out.addAll(instituteCustomFiledService.findCustomFieldsAsJson(
+                        page.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), page.getAudienceId()));
+            } catch (Exception e) {
+                log.warn("customFieldsFor page {} failed: {}", page.getId(), e.getMessage());
+            }
         }
+        java.util.List<vacademy.io.admin_core_service.features.booking.dto.BookingFormFieldDTO> formFields =
+                bookingPageService.readFormFields(page);
+        if (formFields != null) {
+            int order = out.size();
+            for (var f : formFields) {
+                var cf = toInstituteCustomField(f, order++);
+                if (cf != null) out.add(cf);
+            }
+        }
+        return out;
+    }
+
+    /** Convert a page intake question into the InstituteCustomFieldDTO shape the learner form consumes. */
+    private static vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO toInstituteCustomField(
+            vacademy.io.admin_core_service.features.booking.dto.BookingFormFieldDTO f, int order) {
+        if (f == null || f.getId() == null || f.getId().isBlank()) return null;
+        boolean required = Boolean.TRUE.equals(f.getRequired());
+        String config = (f.getOptions() != null && !f.getOptions().isEmpty())
+                ? String.join(",", f.getOptions()) : null;
+        var cf = vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO.builder()
+                .fieldKey(f.getId())
+                .fieldName(f.getLabel() != null && !f.getLabel().isBlank() ? f.getLabel() : f.getId())
+                .fieldType(f.getFieldType() != null && !f.getFieldType().isBlank() ? f.getFieldType() : "text")
+                .config(config)
+                .isMandatory(required)
+                .formOrder(order)
+                .build();
+        return vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO.builder()
+                .customField(cf)
+                .isMandatory(required)
+                .individualOrder(order)
+                .status("ACTIVE")
+                .build();
     }
 
     public PublicBookingDTOs.SlotsResponseDTO getSlots(String instituteId, String slug,

@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { Plus, Trash } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
@@ -26,6 +27,7 @@ import {
 } from '@/routes/communication/whatsapp-templates/-services/template-api';
 import { useCreateBookingPage, useUpdateBookingPage } from '../-hooks/use-meetings';
 import {
+    BookingFormField,
     BookingPageDTO,
     DayOfWeek,
     ReminderChannel,
@@ -183,6 +185,9 @@ export const BookingPageForm = ({
         initialPage?.allocate_google_meet ?? true
     );
     const [requireApproval, setRequireApproval] = useState(initialPage?.require_approval ?? false);
+    const [formFields, setFormFields] = useState<BookingFormField[]>(
+        initialPage?.form_fields ?? []
+    );
     const initialChannels = initialPage?.reminder_config?.channels;
     const [remindEmail, setRemindEmail] = useState(
         initialChannels ? initialChannels.includes('EMAIL') : true
@@ -237,6 +242,20 @@ export const BookingPageForm = ({
     const setDayField = (day: DayOfWeek, patch: Partial<DayRow>) => {
         setDays((prev) => prev.map((row) => (row.day === day ? { ...row, ...patch } : row)));
     };
+
+    const genFieldId = (): string =>
+        typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `q-${Math.floor(Math.random() * 1e9)}`;
+    const addFormField = () =>
+        setFormFields((prev) => [
+            ...prev,
+            { id: genFieldId(), label: '', field_type: 'text', required: false },
+        ]);
+    const updateFormField = (id: string, patch: Partial<BookingFormField>) =>
+        setFormFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+    const removeFormField = (id: string) =>
+        setFormFields((prev) => prev.filter((f) => f.id !== id));
 
     const onSubmit = (values: BookingPageFormValues) => {
         const enabledDays = days.filter((d) => d.enabled);
@@ -296,6 +315,17 @@ export const BookingPageForm = ({
                       }
                     : {}),
             },
+            form_fields: formFields
+                .filter((f) => f.label.trim())
+                .map((f) => ({
+                    id: f.id,
+                    label: f.label.trim(),
+                    field_type: f.field_type,
+                    required: !!f.required,
+                    ...(f.field_type === 'dropdown'
+                        ? { options: (f.options ?? []).map((o) => o.trim()).filter(Boolean) }
+                        : {}),
+                })),
         };
 
         const callbacks = {
@@ -590,6 +620,94 @@ export const BookingPageForm = ({
                         control={form.control}
                         className="w-full sm:w-full"
                     />
+                </div>
+
+                {/* Booking form questions — custom intake fields (no audience needed) */}
+                <div className="rounded-lg border border-neutral-200 p-4">
+                    <div className="mb-1 flex items-center justify-between">
+                        <p className="text-body font-semibold text-neutral-600">Form questions</p>
+                        <MyButton
+                            type="button"
+                            buttonType="text"
+                            scale="small"
+                            onClick={addFormField}
+                        >
+                            <Plus size={14} /> Add question
+                        </MyButton>
+                    </div>
+                    <p className="mb-3 text-caption text-neutral-500">
+                        Extra questions the invitee answers when booking, on top of name, email and
+                        phone.
+                    </p>
+                    {formFields.length === 0 ? (
+                        <p className="text-caption text-neutral-400">No custom questions.</p>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {formFields.map((f) => (
+                                <div
+                                    key={f.id}
+                                    className="flex flex-col gap-2 rounded-md border border-neutral-100 p-3"
+                                >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Input
+                                            value={f.label}
+                                            placeholder="Question (e.g. What do you want help with?)"
+                                            onChange={(e) =>
+                                                updateFormField(f.id, { label: e.target.value })
+                                            }
+                                            className="min-w-0 flex-1"
+                                        />
+                                        <Select
+                                            value={f.field_type}
+                                            onValueChange={(v) =>
+                                                updateFormField(f.id, { field_type: v })
+                                            }
+                                        >
+                                            <SelectTrigger className="w-36">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="text">Short text</SelectItem>
+                                                <SelectItem value="textarea">Long text</SelectItem>
+                                                <SelectItem value="dropdown">Dropdown</SelectItem>
+                                                <SelectItem value="number">Number</SelectItem>
+                                                <SelectItem value="email">Email</SelectItem>
+                                                <SelectItem value="phone">Phone</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <label className="flex items-center gap-1.5 text-caption text-neutral-600">
+                                            <Switch
+                                                checked={!!f.required}
+                                                onCheckedChange={(v) =>
+                                                    updateFormField(f.id, { required: v })
+                                                }
+                                            />
+                                            Required
+                                        </label>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="text"
+                                            scale="small"
+                                            onClick={() => removeFormField(f.id)}
+                                        >
+                                            <Trash size={16} className="text-danger-500" />
+                                        </MyButton>
+                                    </div>
+                                    {f.field_type === 'dropdown' && (
+                                        <Input
+                                            value={(f.options ?? []).join(', ')}
+                                            placeholder="Options, comma-separated (e.g. Career, Interview, Resume)"
+                                            onChange={(e) =>
+                                                updateFormField(f.id, {
+                                                    options: e.target.value.split(','),
+                                                })
+                                            }
+                                        />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-2">

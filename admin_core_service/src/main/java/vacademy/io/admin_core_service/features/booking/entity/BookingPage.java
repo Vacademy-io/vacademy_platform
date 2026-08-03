@@ -101,6 +101,10 @@ public class BookingPage {
     @Column(name = "session_types_json")
     private String sessionTypesJson;
 
+    /** Optional custom form questions, serialized List&lt;BookingFormFieldDTO&gt;. */
+    @Column(name = "form_fields_json")
+    private String formFieldsJson;
+
     /** ACTIVE | INACTIVE | DELETED */
     @Column(name = "status", nullable = false)
     private String status;

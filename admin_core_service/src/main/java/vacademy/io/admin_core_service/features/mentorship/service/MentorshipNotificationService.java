@@ -5,31 +5,48 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
+import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
 import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
+import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * Sends mentorship notifications across EMAIL + in-app system alert + FCM push,
- * each channel gated by the institute's {@code MENTORSHIP_SETTING} blob (defaults
- * ALL ON when the setting is absent). Everything is best-effort — a failed
- * notification never breaks the assignment/booking that triggered it.
+ * Sends mentorship notifications across FOUR channels — EMAIL, in-app SYSTEM_ALERT,
+ * FCM PUSH, and WHATSAPP — each gated independently by the institute's
+ * {@code MENTORSHIP_SETTING} blob. The learner-facing text of each channel is
+ * template-driven: admins edit inline templates (subject/title/body with
+ * {@code {{placeholder}}} tokens) per trigger, and WhatsApp uses an approved Meta
+ * template (by name) + an optional variable mapping. When a template field or the
+ * whole setting is absent, code-default text is used, so notifications work
+ * out-of-the-box.
  *
- * Setting shape (institute setting key MENTORSHIP_SETTING):
+ * <p>Everything is best-effort — a failed notification never breaks the
+ * assignment/booking that triggered it.
+ *
+ * <p>Blob shape (institute setting key MENTORSHIP_SETTING):
  * <pre>
- * { "assignment":   { "email":true, "system_alert":true, "push":true,
- *                     "notify_student":true, "notify_mentor":true },
- *   "booking":      { "system_alert":true, "push":true },
- *   "cancellation": { "email":true, "system_alert":true, "push":true } }
+ * { "assignment": {
+ *     "notify_student": true, "notify_mentor": true,
+ *     "email":        { "enabled": true,  "subject": "...", "body": "..." },
+ *     "system_alert": { "enabled": true,  "title": "...",   "body": "..." },
+ *     "push":         { "enabled": true,  "title": "...",   "body": "..." },
+ *     "whatsapp":     { "enabled": false, "template_name": "", "language_code": "en",
+ *                       "variable_mapping": { "mentor_name": "mentor_name" } } },
+ *   "booking":      { ...same channels; email defaults OFF (booking page already emails) },
+ *   "cancellation": { ...same channels } }
  * </pre>
+ * Available placeholders: {@code name}, {@code student_name}, {@code mentor_name},
+ * {@code session_title}, {@code session_datetime}.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,35 +60,70 @@ public class MentorshipNotificationService {
     private final MentorRepository mentorRepository;
     private final AuthService authService;
 
+    /** Immutable code-default text for a trigger (used when the admin hasn't customised a field). */
+    private record Defaults(String type, boolean emailDefault, String emailSubject, String emailBody,
+                            String alertTitle, String alertBody, String pushTitle, String pushBody) {}
+
+    private static final Defaults ASSIGNMENT_STUDENT = new Defaults(
+            "MENTOR_ASSIGNED", true,
+            "You have a new mentor",
+            "<p>Hi {{name}},</p><p>You've been assigned a mentor: <b>{{mentor_name}}</b>. "
+                    + "Open <b>My Mentors</b> to book a session or send a message.</p>",
+            "You have a new mentor",
+            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book a session or message them.",
+            "You have a new mentor",
+            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.");
+
+    private static final Defaults BOOKING = new Defaults(
+            "MENTOR_BOOKING", false, // booking-page confirmation email already covers email
+            "Mentor session booked",
+            "<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> is confirmed for "
+                    + "<b>{{session_datetime}}</b>.</p>",
+            "Mentor session booked",
+            "Your session \"{{session_title}}\" is confirmed for {{session_datetime}}.",
+            "Mentor session booked",
+            "Your session \"{{session_title}}\" is confirmed for {{session_datetime}}.");
+
+    private static final Defaults CANCELLATION = new Defaults(
+            "MENTOR_BOOKING", true,
+            "Mentor session cancelled",
+            "<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> for {{session_datetime}} "
+                    + "was cancelled.</p>",
+            "Mentor session cancelled",
+            "Your session \"{{session_title}}\" was cancelled.",
+            "Mentor session cancelled",
+            "Your session \"{{session_title}}\" was cancelled.");
+
+    // ---------------------------------------------------------------- triggers
+
     /** New mentor↔student assignment. */
     public void notifyAssignment(String instituteId, String studentUserId, String mentorUserId,
                                  String mentorDisplayName) {
         try {
-            Map<String, Object> cfg = section(instituteId, "assignment");
-            boolean email = flag(cfg, "email", true);
-            boolean systemAlert = flag(cfg, "system_alert", true);
-            boolean push = flag(cfg, "push", true);
-            boolean notifyStudent = flag(cfg, "notify_student", true);
-            boolean notifyMentor = flag(cfg, "notify_mentor", true);
-            if ((!email && !systemAlert && !push) || (!notifyStudent && !notifyMentor)) return;
+            Map<String, Object> trigger = section(instituteId, "assignment");
+            boolean notifyStudent = flag(trigger, "notify_student", true);
+            boolean notifyMentor = flag(trigger, "notify_mentor", true);
+            if (!notifyStudent && !notifyMentor) return;
 
-            List<String> ids = new ArrayList<>();
-            if (notifyStudent && studentUserId != null) ids.add(studentUserId);
-            if (notifyMentor && mentorUserId != null) ids.add(mentorUserId);
-            Map<String, UserDTO> users = hydrate(ids);
+            Map<String, UserDTO> users = hydrate(List.of(
+                    studentUserId == null ? "" : studentUserId,
+                    mentorUserId == null ? "" : mentorUserId));
+            UserDTO student = users.get(studentUserId);
+            UserDTO mentor = users.get(mentorUserId);
             String mentorName = (mentorDisplayName != null && !mentorDisplayName.isBlank())
-                    ? mentorDisplayName : nameOf(users.get(mentorUserId), "your mentor");
+                    ? mentorDisplayName : nameOf(mentor, "your mentor");
 
             if (notifyStudent && studentUserId != null) {
-                send(instituteId, studentUserId, users.get(studentUserId), "You have a new mentor",
-                        "You've been assigned a mentor: " + mentorName
-                                + ". Open My Mentors to book a session or message them.",
-                        email, systemAlert, push, "MENTOR_ASSIGNED");
+                Map<String, String> vars = baseVars(nameOf(student, "there"),
+                        nameOf(student, "the student"), mentorName, "", "");
+                deliverToLearner(instituteId, studentUserId, student,
+                        student != null ? student.getMobileNumber() : null,
+                        trigger, vars, ASSIGNMENT_STUDENT);
             }
             if (notifyMentor && mentorUserId != null) {
-                send(instituteId, mentorUserId, users.get(mentorUserId), "New mentee assigned",
-                        "A new student has been assigned to you for mentorship. Open My Mentorship to view them.",
-                        email, systemAlert, push, "MENTEE_ASSIGNED");
+                Map<String, String> vars = baseVars(nameOf(mentor, "there"),
+                        nameOf(student, "a student"), mentorName, "", "");
+                deliverToMentor(instituteId, mentorUserId, mentor, trigger, vars);
             }
         } catch (Exception e) {
             log.warn("mentorship assignment notification failed (institute {}): {}", instituteId, e.getMessage());
@@ -80,89 +132,109 @@ public class MentorshipNotificationService {
 
     /**
      * A mentorship booking was created or cancelled. No-op when the host isn't a mentor
-     * (so non-mentorship bookings are unaffected). For CREATED bookings the email is
-     * already sent by the booking flow, so only in-app + push are added here; for
-     * CANCELLED, email is included too.
+     * (so non-mentorship bookings are unaffected). For CREATED bookings the email channel
+     * defaults OFF (the booking page already sends a confirmation email); for CANCELLED it
+     * defaults ON.
      */
     public void notifyBooking(String instituteId, String hostUserId, String inviteeUserId, String inviteeEmail,
-                              String inviteeName, String title, String whenText, boolean cancelled) {
+                              String inviteePhone, String inviteeName, String title, String whenText,
+                              boolean cancelled) {
         try {
-            if (hostUserId == null || mentorRepository
-                    .findByInstituteIdAndUserIdAndStatusNot(instituteId, hostUserId, MentorStatus.DELETED.name())
-                    .isEmpty()) {
-                return; // not a mentor booking
-            }
-            Map<String, Object> cfg = section(instituteId, cancelled ? "cancellation" : "booking");
-            boolean email = cancelled && flag(cfg, "email", true); // created email already sent elsewhere
-            boolean systemAlert = flag(cfg, "system_alert", true);
-            boolean push = flag(cfg, "push", true);
-            if (!email && !systemAlert && !push) return;
-            if (inviteeUserId == null || inviteeUserId.isBlank()) {
-                // Guest booking with no platform user — only email is possible.
-                if (email && inviteeEmail != null && !inviteeEmail.isBlank()) {
-                    sendEmailRaw(instituteId, inviteeEmail, inviteeUserId,
-                            firstNonBlank(inviteeName, "there"),
-                            cancelTitle(cancelled), bookingBody(cancelled, title, whenText), "MENTOR_BOOKING");
-                }
-                return;
-            }
-            UserDTO invitee = hydrate(List.of(inviteeUserId)).get(inviteeUserId);
-            send(instituteId, inviteeUserId, invitee, cancelTitle(cancelled),
-                    bookingBody(cancelled, title, whenText), email, systemAlert, push, "MENTOR_BOOKING");
+            Optional<Mentor> host = hostUserId == null ? Optional.empty()
+                    : mentorRepository.findByInstituteIdAndUserIdAndStatusNot(
+                            instituteId, hostUserId, MentorStatus.DELETED.name());
+            if (host.isEmpty()) return; // not a mentor booking
+
+            Map<String, Object> trigger = section(instituteId, cancelled ? "cancellation" : "booking");
+            UserDTO invitee = (inviteeUserId != null && !inviteeUserId.isBlank())
+                    ? hydrate(List.of(inviteeUserId)).get(inviteeUserId) : null;
+            String name = firstNonBlank(inviteeName, invitee != null ? invitee.getFullName() : null, "there");
+            String email = firstNonBlank(inviteeEmail, invitee != null ? invitee.getEmail() : null, null);
+            String phone = firstNonBlank(inviteePhone, invitee != null ? invitee.getMobileNumber() : null, null);
+
+            Map<String, String> vars = baseVars(name, name, host.get().getDisplayName(),
+                    firstNonBlank(title, "Mentor session", "Mentor session"),
+                    whenText == null ? "" : whenText);
+            deliverToLearner(instituteId, inviteeUserId, invitee, email, phone,
+                    trigger, vars, cancelled ? CANCELLATION : BOOKING);
         } catch (Exception e) {
             log.warn("mentorship booking notification failed (institute {}): {}", instituteId, e.getMessage());
         }
     }
 
-    // ---------- helpers ----------
+    // ------------------------------------------------------------ delivery core
 
-    private static String cancelTitle(boolean cancelled) {
-        return cancelled ? "Mentor session cancelled" : "Mentor session booked";
+    /** Deliver a learner-facing message across all four channels per the trigger config. */
+    private void deliverToLearner(String instituteId, String userId, UserDTO user,
+                                  String phone, Map<String, Object> trigger,
+                                  Map<String, String> vars, Defaults d) {
+        deliverToLearner(instituteId, userId, user, user != null ? user.getEmail() : null, phone, trigger, vars, d);
     }
 
-    private static String bookingBody(boolean cancelled, String title, String whenText) {
-        String verb = cancelled ? "was cancelled" : "is confirmed";
-        return "Your session \"" + firstNonBlank(title, "Mentor session") + "\" " + verb
-                + (whenText != null && !whenText.isBlank() ? " for " + whenText : "") + ".";
-    }
-
-    private void send(String instituteId, String userId, UserDTO user, String title, String body,
-                      boolean email, boolean systemAlert, boolean push, String type) {
-        if (email && user != null && user.getEmail() != null && !user.getEmail().isBlank()) {
-            sendEmailRaw(instituteId, user.getEmail(), userId, nameOf(user, "there"), title, body, type);
+    private void deliverToLearner(String instituteId, String userId, UserDTO user, String email,
+                                  String phone, Map<String, Object> trigger,
+                                  Map<String, String> vars, Defaults d) {
+        Map<String, Object> em = channel(trigger, "email");
+        if (channelEnabled(em, d.emailDefault()) && email != null && !email.isBlank()) {
+            sendEmail(instituteId, email, userId,
+                    applyPlaceholders(orDefault(str(em, "subject"), d.emailSubject()), vars),
+                    applyPlaceholders(orDefault(str(em, "body"), d.emailBody()), vars), d.type());
         }
-        if (systemAlert) {
-            try {
-                notificationService.createSystemAlertAnnouncement(instituteId, List.of(userId), title, body,
-                        "SYSTEM", "Mentorship", "ADMIN", null);
-            } catch (Exception e) {
-                log.warn("mentorship system alert failed: {}", e.getMessage());
+        Map<String, Object> al = channel(trigger, "system_alert");
+        if (channelEnabled(al, true) && userId != null) {
+            systemAlert(instituteId, userId,
+                    applyPlaceholders(orDefault(str(al, "title"), d.alertTitle()), vars),
+                    applyPlaceholders(orDefault(str(al, "body"), d.alertBody()), vars));
+        }
+        Map<String, Object> pu = channel(trigger, "push");
+        if (channelEnabled(pu, true) && userId != null) {
+            push(instituteId, userId,
+                    applyPlaceholders(orDefault(str(pu, "title"), d.pushTitle()), vars),
+                    applyPlaceholders(orDefault(str(pu, "body"), d.pushBody()), vars));
+        }
+        Map<String, Object> wa = channel(trigger, "whatsapp");
+        if (channelEnabled(wa, false) && phone != null && !phone.isBlank()) {
+            String template = str(wa, "template_name");
+            if (template != null && !template.isBlank()) {
+                sendWhatsapp(instituteId, phone, userId, vars.get("name"), template,
+                        str(wa, "language_code"), asMap(wa.get("variable_mapping")), vars);
             }
         }
-        if (push) {
-            try {
-                notificationService.sendPushViaUnified(instituteId, List.of(userId), title, body, null);
-            } catch (Exception e) {
-                log.warn("mentorship push failed: {}", e.getMessage());
-            }
-        }
     }
 
-    private void sendEmailRaw(String instituteId, String email, String userId, String name,
-                              String title, String body, String type) {
+    /**
+     * Mentor-side "new mentee" notification. Reuses the trigger's channel enable flags but
+     * fixed text (the editable templates target the learner). No WhatsApp to mentors in v1.
+     */
+    private void deliverToMentor(String instituteId, String userId, UserDTO user,
+                                 Map<String, Object> trigger, Map<String, String> vars) {
+        String title = "New mentee assigned";
+        String body = applyPlaceholders(
+                "A new student ({{student_name}}) has been assigned to you for mentorship. "
+                        + "Open My Mentorship to view them.", vars);
+        if (channelEnabled(channel(trigger, "email"), true)
+                && user != null && user.getEmail() != null && !user.getEmail().isBlank()) {
+            sendEmail(instituteId, user.getEmail(), userId, title,
+                    "<p>Hi " + applyPlaceholders("{{name}}", vars) + ",</p><p>" + body + "</p>", "MENTEE_ASSIGNED");
+        }
+        if (channelEnabled(channel(trigger, "system_alert"), true)) systemAlert(instituteId, userId, title, body);
+        if (channelEnabled(channel(trigger, "push"), true)) push(instituteId, userId, title, body);
+    }
+
+    // --------------------------------------------------------------- channels
+
+    private void sendEmail(String instituteId, String email, String userId, String subject, String body, String type) {
         try {
             NotificationDTO dto = new NotificationDTO();
-            dto.setSubject(title);
-            dto.setBody("<p>Hi {{name}},</p><p>" + body + "</p>");
+            dto.setSubject(subject);
+            dto.setBody(body); // already rendered — no unresolved placeholders
             dto.setNotificationType(type);
             dto.setSource("MENTORSHIP");
             dto.setSourceId(userId);
             NotificationToUserDTO r = new NotificationToUserDTO();
             r.setChannelId(email);
             r.setUserId(userId);
-            Map<String, String> ph = new HashMap<>();
-            ph.put("name", name);
-            r.setPlaceholders(ph);
+            r.setPlaceholders(new HashMap<>());
             dto.setUsers(List.of(r));
             notificationService.sendEmailViaUnified(dto, instituteId);
         } catch (Exception e) {
@@ -170,6 +242,86 @@ public class MentorshipNotificationService {
         }
     }
 
+    private void systemAlert(String instituteId, String userId, String title, String body) {
+        try {
+            notificationService.createSystemAlertAnnouncement(instituteId, List.of(userId), title, body,
+                    "SYSTEM", "Mentorship", "ADMIN", null);
+        } catch (Exception e) {
+            log.warn("mentorship system alert failed: {}", e.getMessage());
+        }
+    }
+
+    private void push(String instituteId, String userId, String title, String body) {
+        try {
+            notificationService.sendPushViaUnified(instituteId, List.of(userId), title, body, null);
+        } catch (Exception e) {
+            log.warn("mentorship push failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Sends a WhatsApp message through the unified path using an approved template. When
+     * {@code mapping} is empty, the full variable map is passed keyed by name — notification
+     * service matches the approved template's named variables automatically, so well-named
+     * templates need no mapping. An explicit mapping resolves each template variable to a
+     * source key (or {@code static:<literal>}).
+     */
+    private void sendWhatsapp(String instituteId, String phone, String userId, String name, String templateName,
+                              String languageCode, Map<String, Object> mapping, Map<String, String> vars) {
+        try {
+            String normalized = PhoneCountryUtil.normalizePhone(phone, true);
+            Map<String, String> variables = new HashMap<>();
+            if (mapping == null || mapping.isEmpty()) {
+                variables.putAll(vars); // name-match against the template's variables
+            } else {
+                for (Map.Entry<String, Object> e : mapping.entrySet()) {
+                    String src = e.getValue() == null ? "" : String.valueOf(e.getValue());
+                    String val = src.startsWith("static:") ? src.substring("static:".length())
+                            : vars.getOrDefault(src, "");
+                    variables.put(e.getKey(), val == null ? "" : val);
+                }
+            }
+            UnifiedSendRequest req = UnifiedSendRequest.builder()
+                    .instituteId(instituteId)
+                    .channel("WHATSAPP")
+                    .templateName(templateName)
+                    .languageCode(firstNonBlank(languageCode, "en", "en"))
+                    .recipients(List.of(UnifiedSendRequest.Recipient.builder()
+                            .phone(normalized)
+                            .userId(userId)
+                            .name(name)
+                            .variables(variables)
+                            .build()))
+                    .build();
+            notificationService.sendUnified(req);
+        } catch (Exception e) {
+            log.warn("mentorship whatsapp failed: {}", e.getMessage());
+        }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private static Map<String, String> baseVars(String name, String studentName, String mentorName,
+                                                String sessionTitle, String sessionDatetime) {
+        Map<String, String> v = new HashMap<>();
+        v.put("name", name == null ? "" : name);
+        v.put("student_name", studentName == null ? "" : studentName);
+        v.put("mentor_name", mentorName == null ? "" : mentorName);
+        v.put("session_title", sessionTitle == null ? "" : sessionTitle);
+        v.put("session_datetime", sessionDatetime == null ? "" : sessionDatetime);
+        return v;
+    }
+
+    private static String applyPlaceholders(String template, Map<String, String> vars) {
+        if (template == null) return "";
+        String out = template;
+        for (Map.Entry<String, String> e : vars.entrySet()) {
+            out = out.replace("{{" + e.getKey() + "}}", e.getValue() == null ? "" : e.getValue());
+        }
+        return out;
+    }
+
+    /** The trigger's config map (e.g. "assignment"); null when the setting is absent → code defaults. */
     @SuppressWarnings("unchecked")
     private Map<String, Object> section(String instituteId, String key) {
         try {
@@ -179,9 +331,31 @@ public class MentorshipNotificationService {
                 if (sec instanceof Map<?, ?> sm) return (Map<String, Object>) sm;
             }
         } catch (Exception ignore) {
-            // absent/unreadable → code defaults (all on)
+            // absent/unreadable → code defaults
         }
         return null;
+    }
+
+    /** A channel's config map. Handles the legacy boolean form ({@code "email": true}). */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> channel(Map<String, Object> trigger, String channel) {
+        if (trigger == null) return null;
+        Object v = trigger.get(channel);
+        if (v instanceof Map<?, ?> m) return (Map<String, Object>) m;
+        if (v instanceof Boolean b) {
+            Map<String, Object> legacy = new HashMap<>();
+            legacy.put("enabled", b);
+            return legacy;
+        }
+        return null;
+    }
+
+    private static boolean channelEnabled(Map<String, Object> channel, boolean def) {
+        if (channel == null) return def;
+        Object v = channel.get("enabled");
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s);
+        return def;
     }
 
     private static boolean flag(Map<String, Object> cfg, String key, boolean def) {
@@ -190,6 +364,17 @@ public class MentorshipNotificationService {
         if (v instanceof Boolean b) return b;
         if (v instanceof String s) return Boolean.parseBoolean(s);
         return def;
+    }
+
+    private static String str(Map<String, Object> map, String key) {
+        if (map == null) return null;
+        Object v = map.get(key);
+        return v == null ? null : String.valueOf(v);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object v) {
+        return v instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
     }
 
     private Map<String, UserDTO> hydrate(List<String> ids) {
@@ -211,7 +396,13 @@ public class MentorshipNotificationService {
         return fallback;
     }
 
-    private static String firstNonBlank(String a, String b) {
-        return (a != null && !a.isBlank()) ? a : b;
+    private static String orDefault(String v, String def) {
+        return (v != null && !v.isBlank()) ? v : def;
+    }
+
+    private static String firstNonBlank(String a, String b, String c) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return c;
     }
 }

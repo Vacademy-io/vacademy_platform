@@ -114,19 +114,36 @@ Wired events:
 - **Session cancelled** — `PublicBookingService.cancel`. Email + in-app + push. No-op
   unless the host is a mentor.
 
+**Four channels, template-driven.** Each learner-facing channel — EMAIL, in-app
+SYSTEM_ALERT, FCM PUSH, and **WHATSAPP** — is toggled and edited per trigger. Email /
+alert / push carry inline editable templates (subject/title + body with
+`{{placeholder}}` tokens, rendered in-code via `applyPlaceholders`). WhatsApp uses an
+**approved Meta template** (by name, from notification_service) + an optional variable
+mapping; when the mapping is empty, the full variable map is passed keyed by name so
+notification-service auto-matches named template variables. WhatsApp send mirrors
+`MeetingBookingService.sendConfirmationWhatsapp` via
+`notificationService.sendUnified(channel="WHATSAPP", …)`. Placeholders:
+`{{name}} {{mentor_name}} {{student_name}} {{session_title}} {{session_datetime}}`.
+
 Config lives in the institute-setting blob under key **`MENTORSHIP_SETTING`**
 (no new table/enum — generic `InstituteSettingService`). Shape:
 ```
-{ assignment:   { email, system_alert, push, notify_student, notify_mentor },
-  booking:      { system_alert, push },
-  cancellation: { email, system_alert, push } }
+{ assignment: {
+    notify_student, notify_mentor,
+    email:        { enabled, subject, body },
+    system_alert: { enabled, title, body },
+    push:         { enabled, title, body },
+    whatsapp:     { enabled, template_name, language_code, variable_mapping } },
+  booking:      { ...same channels; email defaults OFF (booking page emails) },
+  cancellation: { ...same channels } }
 ```
-When the setting is absent the service falls back to **code defaults (all ON)**, so
-mentorship notifications work out-of-the-box with nothing to configure. Admin UI:
-**Settings → Communications → Messaging & Automation → Mentorship Settings**
-(`routes/settings/-components/MentorshipSettings.tsx`, service
-`services/mentorship-settings.ts`). Blob keys are the exact snake_case names the
-backend reads — keep FE/BE in lockstep.
+When the setting (or any field) is absent the service falls back to **code-default
+text with EMAIL/ALERT/PUSH ON and WHATSAPP OFF** (WhatsApp needs an approved template),
+so notifications work out-of-the-box. The reader also accepts the legacy boolean channel
+form (`"email": true`) for forward-compat. Admin UI: **Settings → Communications →
+Messaging & Automation → Mentorship Settings** (`routes/settings/-components/MentorshipSettings.tsx`,
+service `services/mentorship-settings.ts`; WhatsApp picker reuses `whatsappTemplateService`).
+Blob keys are the exact snake_case names the backend reads — keep FE/BE in lockstep.
 
 ---
 
@@ -140,9 +157,9 @@ backend reads — keep FE/BE in lockstep.
   connected Google accounts to re-authorize once (adds the `calendar.events` scope).
 - **Phase 4** — hardening (booking questions via master custom-fields, slot conflicts
   vs live classes, double-book lock, Meet-space cleanup on cancel).
-- **Notifications & Settings** — email + in-app + push across assignment / booking /
-  cancellation, configurable per-channel per-event under `MENTORSHIP_SETTING`. ✅ done
-  (branch `feat/mentorship-notifications-settings`).
+- **Notifications & Settings** — email + in-app + push + **WhatsApp** across assignment /
+  booking / cancellation, each channel toggled AND template-editable per trigger under
+  `MENTORSHIP_SETTING`. ✅ done (branch `feat/mentorship-notifications-settings`).
 
 ## Post-merge enhancements
 The P1–P4 feature merged to `main` (PR #2377). Follow-ups:

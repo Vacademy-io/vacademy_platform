@@ -239,7 +239,8 @@ public class PublicBookingService {
         final BookingInstance fInstance = instance;
         Runnable task = () -> mentorshipNotificationService.notifyBooking(
                 fInstance.getInstituteId(), fInstance.getHostUserId(), fInstance.getInviteeUserId(),
-                fInstance.getInviteeEmail(), fInstance.getInviteeName(), fTitle, fWhen, true);
+                fInstance.getInviteeEmail(), fInstance.getInviteePhone(), fInstance.getInviteeName(),
+                fTitle, fWhen, true);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override

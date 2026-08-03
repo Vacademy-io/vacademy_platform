@@ -1477,6 +1477,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         await runner.run(task)
     finally:
         outcome.ended_at = time.time()
+        # RECONCILE: which caller answers never reached the model? TranscriptCollector
+        # sits BEFORE aggregators.user(), so anything it recorded but the context
+        # lacks was DELETED by pipecat's aggregator (min_words / emulated-VAD paths).
+        # This is the ground truth behind "answers need to be repeated".
+        # If the context cannot be read we leave answers_deleted as None — "we did
+        # not check" must never render as "we checked and it was clean".
+        try:
+            _delivered = [m.get("content") or "" for m in llm_context.get_messages()
+                          if isinstance(m, dict) and m.get("role") == "user"]
+            _heard = [t.get("text") or "" for t in outcome.transcript
+                      if t.get("role") == "user" and not (t.get("text") or "").lstrip().startswith("[")]
+            _n, _samples = diag_mod.reconcile_answers(_heard, _delivered)
+            diag.answers_deleted = _n
+            diag.answers_deleted_samples = _samples
+            if _n:
+                logger.warning("diagnostics: %d caller answer(s) never reached the model "
+                               "corr=%s %s", _n, corr, _samples[:5])
+        except Exception:
+            logger.exception("diagnostics: answer reconciliation failed corr=%s", corr)
         # AWAITED cancellation (not fire-and-forget): retrieves the task result so
         # a watchdog crash is logged instead of vanishing as a pending-task warning.
         for _t in [watchdog_task, *_bg_tasks]:

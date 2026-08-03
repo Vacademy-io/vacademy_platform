@@ -153,6 +153,45 @@ class CallDiagnostics:
             pass
 
 
+def _norm_answer(text: str) -> str:
+    """Loose key for matching a caller final against what the model received.
+    Case/punctuation/whitespace-insensitive so 'SSC.' == 'ssc'."""
+    return "".join(ch for ch in (text or "").casefold() if ch.isalnum())
+
+
+def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
+    """PURE. Which caller answers never reached the model?
+
+    ``heard``    = finals TranscriptCollector recorded (it sits BEFORE
+                   aggregators.user() in the pipeline, so it sees words the
+                   aggregator later deletes).
+    ``delivered`` = user messages actually present in the LLM context.
+
+    Returns (count, samples). This is the ground truth for the biggest finding
+    of the 2026-07 forensics: pipecat's aggregator DELETES caller utterances
+    (min_words + the emulated-VAD path) — 179 of them across 40% of calls,
+    including the literal answers IGCSE, Symbiosis, Monday. They never reach the
+    model, the transcript, or the report, and nothing re-asks for them.
+
+    Multiset difference, so a genuine repeat ("SSC." twice) is not miscounted.
+    """
+    pool: Dict[str, int] = {}
+    for m in delivered:
+        k = _norm_answer(m)
+        if k:
+            pool[k] = pool.get(k, 0) + 1
+    missing: List[str] = []
+    for h in heard:
+        k = _norm_answer(h)
+        if not k:
+            continue
+        if pool.get(k, 0) > 0:
+            pool[k] -= 1
+        else:
+            missing.append(h)
+    return len(missing), missing[:_MAX_DELETED_ANSWERS]
+
+
 def machine_score(d: CallDiagnostics) -> float:
     """Bounded 0..1 heuristic that a machine, not a person, answered. INFERRED —
     v1 is EVIDENCE ONLY and never changes status or disposition."""

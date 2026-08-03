@@ -176,3 +176,46 @@ def test_payload_is_json_serialisable_and_small():
         d.sample("dead_air", 1.0)
     blob = json.dumps(dg.to_payload(d))
     assert len(blob) < 4096, f"diagnostics blob too fat: {len(blob)}B"
+
+
+# ── slice 2: reconciliation — the ground truth for "answers need repeating" ──
+
+def test_reconcile_names_the_deleted_answer():
+    """The live shape: caller said IGCSE, the aggregator deleted it, the model
+    never saw it, and the bot carried on as if nothing was said."""
+    heard = ["Yes", "IGCSE", "Symbiosis."]
+    delivered = ["Yes", "Symbiosis."]          # IGCSE never reached the model
+    n, samples = dg.reconcile_answers(heard, delivered)
+    assert n == 1 and samples == ["IGCSE"]
+
+
+def test_reconcile_is_punctuation_and_case_insensitive():
+    n, _ = dg.reconcile_answers(["SSC."], ["ssc"])
+    assert n == 0, "a formatting difference must not read as a deleted answer"
+
+
+def test_reconcile_multiset_handles_genuine_repeats():
+    # Caller said it twice, model got it once -> exactly one was lost.
+    n, samples = dg.reconcile_answers(["SSC.", "SSC."], ["SSC."])
+    assert n == 1 and samples == ["SSC."]
+    # Both delivered -> nothing lost.
+    assert dg.reconcile_answers(["SSC.", "SSC."], ["SSC.", "ssc"])[0] == 0
+
+
+def test_reconcile_clean_call_reports_zero_not_none():
+    n, samples = dg.reconcile_answers(["CBSE", "DPS"], ["CBSE", "DPS"])
+    assert n == 0 and samples == []
+
+
+def test_reconcile_ignores_empty_and_whitespace():
+    n, _ = dg.reconcile_answers(["", "   ", "CBSE"], ["CBSE"])
+    assert n == 0
+
+
+def test_reconciled_count_drives_the_fault():
+    d = dg.CallDiagnostics(user_turns=5, bot_turns=5)
+    n, samples = dg.reconcile_answers(["IGCSE", "Symbiosis.", "Monday."], [])
+    d.answers_deleted, d.answers_deleted_samples = n, samples
+    v = dg.verdict(d)
+    assert v["health"] == dg.RED and v["headline"] == dg.ANSWER_DELETED
+    assert dg.to_payload(d)["turnTaking"]["answersDeletedSrc"] == "measured"

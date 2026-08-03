@@ -25,7 +25,7 @@ import logging
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -608,6 +608,7 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     if not text or "{{" not in text:
         return text
     lead_name = context.get("leadName")
+    agent_cfg = context.get("agent") or {}
     values = {
         "lead_name": lead_name or "aap",
         "name": lead_name or "aap",
@@ -618,6 +619,28 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
         "lead_source_line": "",
         "booked_slot": _lead_field(context, "slot", "booked slot", "demo slot") or "",
     }
+    # Date/time placeholders. A live agent's prompt used {{day}}, {{date}} and
+    # {{time}} and every one rendered EMPTY (seen in a real call's diagnostics:
+    # promptUnfilled ["day","date","time"]) — so the model was handed blanks
+    # exactly where it needed to know "now", which is what the booking flow
+    # depends on to resolve "tomorrow". Same tz rule as _now_line: the agent's
+    # configured timezone, else Asia/Kolkata.
+    _tz = (agent_cfg.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        _now = datetime.now(ZoneInfo(_tz))
+    except Exception:
+        _now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    values.update({
+        "day": _now.strftime("%A"),
+        "today": _now.strftime("%A, %-d %B %Y"),
+        "date": _now.strftime("%-d %B %Y"),
+        "time": _now.strftime("%-I:%M %p"),
+        "datetime": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "now": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "tomorrow": (_now + timedelta(days=1)).strftime("%A, %-d %B %Y"),
+        "year": _now.strftime("%Y"),
+        "month": _now.strftime("%B"),
+    })
 
     def repl(m: "re.Match[str]") -> str:
         key = m.group(1).strip().lower()
@@ -1446,7 +1469,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     continue
                 diag.bump("tts_stalls")
                 if flags["stall_recoveries"] >= cfg.stall_max_recoveries:
+                    # Cap reached: recovery has failed repeatedly and the caller is
+                    # hearing NOTHING from here on. Seen live (call 47a9e96a):
+                    # stallCapHit with the bot silent while the line stayed open.
+                    # Sitting mute burns the caller's patience and our minutes —
+                    # close out instead. The farewell goes through the same TTS, so
+                    # if even that cannot play the graceful-stop deadline still ends
+                    # the call.
                     diag.tts_stall_cap_hit = True
+                    logger.error("tts stall cap reached corr=%s — closing the call "
+                                 "rather than sitting silent", corr)
+                    outcome.end_requested = True
+                    await task.queue_frames([TTSSpeakFrame(end_closing)])
+                    await _begin_stop()
+                    continue
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
                              "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])

@@ -975,3 +975,26 @@ def test_kill_hook_stamps_a_suspicion_not_a_count():
     # …and only the confirmed case increments the counter.
     wd = src[src.index("unplayed_confirmed(flags, now, cfg)"):]
     assert 'diag.bump("replies_never_played")' in wd[:400]
+
+
+def test_date_time_placeholders_resolve():
+    """A live agent's prompt used {{day}}/{{date}}/{{time}} and all three rendered
+    EMPTY (diagnostics: promptUnfilled ["day","date","time"]) — handing the model
+    blanks exactly where the booking flow needs "now" to resolve "tomorrow"."""
+    ctx = {"leadName": "Devaki", "leadFields": {}, "agent": {"timezone": "Asia/Kolkata"}}
+    out = b._fill_placeholders("It is {{day}}, {{date}} at {{time}}.", ctx)
+    assert "{{" not in out
+    for token in ("day", "date", "time"):
+        assert f"{{{{{token}}}}}" not in out
+    assert out != "It is , at ."
+    assert len(out) > len("It is , at .") + 8
+    # tomorrow is a distinct, non-empty day
+    tmr = b._fill_placeholders("{{tomorrow}}", ctx)
+    assert tmr and tmr != b._fill_placeholders("{{today}}", ctx)
+
+
+def test_stall_cap_closes_the_call_instead_of_sitting_silent():
+    src = inspect.getsource(b.run_bot)
+    blk = src[src.index("diag.tts_stall_cap_hit = True"):]
+    blk = blk[:blk.index("if d.kind == ORPHAN_ASK")]
+    assert "_begin_stop()" in blk and "end_requested = True" in blk

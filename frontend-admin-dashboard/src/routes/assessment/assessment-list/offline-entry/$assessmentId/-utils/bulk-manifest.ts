@@ -156,7 +156,9 @@ export const buildSampleZip = async (students: StudentRow[]): Promise<Blob> => {
     await zipWriter.add('manifest.csv', new TextReader(buildManifestCsv(students)));
     await zipWriter.add('README.txt', new TextReader(SAMPLE_README));
     for (const folder of SAMPLE_FOLDERS) {
-        await zipWriter.add(`${folder}/`, null, { directory: true });
+        // Directory entries carry no data — zip.js wants the reader omitted
+        // (`undefined`), not `null`, which its overloads don't accept.
+        await zipWriter.add(`${folder}/`, undefined, { directory: true });
     }
 
     return zipWriter.close();

@@ -39,4 +39,12 @@ public class SubscriptionDTO {
 
     /** Package sessions (courses) this subscription grants — for per-course UI. */
     private List<String> packageSessionIds;
+
+    // Manual renewal ("pay to continue" on the subscriptions page): the plan
+    // price + gateway coordinates the learner app needs to build the
+    // user-plan-payment request with PaymentType RENEWAL. Rendered when
+    // canRenewManually is true (autopay off / cancelled / failed / expired).
+    private Double planPrice;
+    private String vendorId;
+    private boolean canRenewManually;
 }

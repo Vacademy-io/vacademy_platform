@@ -78,17 +78,27 @@ public class RenewalPaymentService {
             // Extend UserPlan endDate based on subscription period
             Date newEndDate = calculateNewEndDate(userPlan);
             userPlan.setEndDate(newEndDate);
-            // Successful renewal clears the trial flag and dunning counters, and
-            // moves the next charge to the new end date so the cycle repeats.
+            // Successful renewal clears the trial flag and dunning counters. A
+            // manual renewal payment (learner paid via the subscriptions page after
+            // cancelling autopay or after dunning expired the plan) REACTIVATES the
+            // existing membership: same plan row, back to ACTIVE.
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
             userPlan.setIsTrial(false);
             userPlan.setRenewalAttemptCount(0);
             userPlan.setLastRenewalAttemptAt(null);
-            userPlan.setNextChargeAt(newEndDate);
+            // Re-arm the auto-charge only when autopay is still on. A learner who
+            // revoked their mandate stays in manual mode (next_charge_at null) —
+            // the pre-expiry workflow sends them the payment link each cycle
+            // instead of the sweep attempting a charge against a dead mandate.
+            boolean autopayOn = Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled());
+            userPlan.setNextChargeAt(autopayOn ? newEndDate : null);
             userPlanRepository.save(userPlan);
 
-            log.info("Extended UserPlan {} endDate to: {}", userPlan.getId(), newEndDate);
+            log.info("Extended UserPlan {} endDate to: {} (autopay={}, status=ACTIVE)",
+                    userPlan.getId(), newEndDate, autopayOn);
 
-            // Extend all ACTIVE mappings for this UserPlan
+            // Extend ACTIVE mappings and REACTIVATE INACTIVE ones (deactivated by
+            // dunning exhaustion or post-expiry cleanup) — same rows, no new records.
             List<StudentSessionInstituteGroupMapping> activeMappings =
                 mappingRepository.findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.ACTIVE.name());
 
@@ -96,6 +106,15 @@ public class RenewalPaymentService {
                 mapping.setExpiryDate(newEndDate);
                 mappingRepository.save(mapping);
                 log.info("Extended mapping {} expiryDate to: {}", mapping.getId(), newEndDate);
+            }
+
+            List<StudentSessionInstituteGroupMapping> inactiveMappings =
+                mappingRepository.findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.INACTIVE.name());
+            for (StudentSessionInstituteGroupMapping mapping : inactiveMappings) {
+                mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
+                mapping.setExpiryDate(newEndDate);
+                mappingRepository.save(mapping);
+                log.info("REACTIVATED mapping {} (expiry {})", mapping.getId(), newEndDate);
             }
 
             // Send success notification

@@ -95,6 +95,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return getSSIGMByStatusAndSessions(params);
             case "getUpcomingAutopayCharges":
                 return getUpcomingAutopayCharges(params);
+            case "getManualRenewalDuePlans":
+                return getManualRenewalDuePlans(params);
             case "updateSSIGMRemaingDaysByOne":
                 return updateSSIGMRemainingDaysByOne(params);
             case "createSessionSchedule":
@@ -260,6 +262,56 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.error("Error executing getUpcomingAutopayCharges", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * "Pay to continue" audience: plans ending within daysAhead days (or ended up
+     * to graceDays ago) that autopay will NOT charge — autopay off, cancelled,
+     * failed or dunning-expired. Pairs with the manual-renewal payment flow on
+     * the learner subscriptions page.
+     */
+    private Map<String, Object> getManualRenewalDuePlans(Map<String, Object> params) {
+        try {
+            List<String> packageSessionIds = (List<String>) params.get("packageSessionIds");
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return Map.of("error", "Missing required parameter packageSessionIds");
+            }
+            int daysAhead = readIntParam(params.get("daysAhead"), 1);
+            int graceDays = readIntParam(params.get("graceDays"), 2);
+
+            List<Object[]> rows = ssigmRepo.findManualRenewalDuePlans(packageSessionIds, daysAhead, graceDays);
+            List<Map<String, Object>> manualRenewalList = new ArrayList<>();
+            for (Object[] row : rows) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("userPlanId", String.valueOf(row[0]));
+                item.put("userId", String.valueOf(row[1]));
+                item.put("name", row[2] != null ? String.valueOf(row[2]) : "");
+                item.put("mobileNumber", row[3] != null ? String.valueOf(row[3]) : "");
+                item.put("username", row[4] != null ? String.valueOf(row[4]) : "");
+                item.put("planStatus", row[5] != null ? String.valueOf(row[5]) : "");
+                item.put("endDate", row[6]);
+                item.put("endDateLabel", row[7] != null ? String.valueOf(row[7]) : "");
+                manualRenewalList.add(item);
+            }
+            return Map.of("manualRenewalList", manualRenewalList,
+                    "manualRenewalCount", manualRenewalList.size());
+        } catch (Exception e) {
+            log.error("Error executing getManualRenewalDuePlans", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    private static int readIntParam(Object raw, int defaultValue) {
+        if (raw instanceof Number n) {
+            return n.intValue();
+        }
+        if (raw instanceof String s && !s.isBlank()) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return defaultValue;
     }
 
     private Map<String, Object> getSSIGMByStatusAndSessions(Map<String, Object> params) {

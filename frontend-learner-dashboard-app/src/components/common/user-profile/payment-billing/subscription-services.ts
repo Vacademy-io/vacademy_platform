@@ -2,6 +2,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   LEARNER_SUBSCRIPTION_LIST,
   LEARNER_SUBSCRIPTION_CANCEL,
+  USER_PLAN_PAYMENT_URL,
 } from "@/constants/urls";
 
 /**
@@ -22,6 +23,11 @@ export interface Subscription {
   currency?: string | null;
   has_active_mandate: boolean;
   package_session_ids?: string[] | null;
+  // Manual renewal ("pay to continue"): plan price + gateway coordinates for
+  // building the RENEWAL payment; flag decides whether to offer the button.
+  plan_price?: number | null;
+  vendor_id?: string | null;
+  can_renew_manually?: boolean;
 }
 
 export const SUBSCRIPTION_LIST_QUERY_KEY = "LEARNER_SUBSCRIPTION_LIST";
@@ -45,6 +51,44 @@ export const cancelSubscription = async (
     LEARNER_SUBSCRIPTION_CANCEL(userPlanId),
     null,
     { params: { instituteId } }
+  );
+  return response.data;
+};
+
+/**
+ * Start a MANUAL RENEWAL payment for an existing plan ("pay to continue").
+ * Creates a plan-linked payment order with payment_type RENEWAL — on gateway
+ * confirmation the backend reactivates the SAME membership (no new records).
+ * Returns the gateway checkout payload (response_data.razorpayKeyId etc.).
+ */
+export const initiateRenewalPayment = async (
+  instituteId: string,
+  sub: Subscription,
+  contact: { email?: string; mobile?: string }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> => {
+  const payload = {
+    amount: sub.plan_price,
+    currency: sub.currency || "INR",
+    description: `Membership renewal — ${sub.plan_name ?? "subscription"}`,
+    order_id: "",
+    institute_id: instituteId,
+    email: contact.email ?? "",
+    vendor: sub.vendor || "RAZORPAY",
+    vendor_id: sub.vendor_id || sub.vendor || "RAZORPAY",
+    payment_type: "RENEWAL",
+    razorpay_request: {
+      customer_id: "",
+      contact: contact.mobile ?? "",
+      email: contact.email ?? "",
+    },
+    stripe_request: {},
+    pay_pal_request: {},
+  };
+  const response = await authenticatedAxiosInstance.post(
+    USER_PLAN_PAYMENT_URL,
+    payload,
+    { params: { instituteId, userPlanId: sub.user_plan_id } }
   );
   return response.data;
 };

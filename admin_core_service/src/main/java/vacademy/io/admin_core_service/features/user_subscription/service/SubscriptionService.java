@@ -43,7 +43,10 @@ public class SubscriptionService {
     private static final List<String> VISIBLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
             UserPlanStatusEnum.CANCELED.name(),
-            UserPlanStatusEnum.PAYMENT_FAILED.name());
+            UserPlanStatusEnum.PAYMENT_FAILED.name(),
+            // Dunning-expired plans stay visible so the learner can pay manually
+            // and reactivate the same membership (renewal payment flow).
+            UserPlanStatusEnum.EXPIRED.name());
 
     public List<SubscriptionDTO> listSubscriptions(String userId, String instituteId) {
         List<UserPlan> plans = userPlanRepository.findAllByUserIdAndInstituteIdAndStatusIn(
@@ -113,6 +116,16 @@ public class SubscriptionService {
                 .distinct()
                 .toList();
 
+        // Manual renewal is offered whenever autopay will NOT charge this plan:
+        // cancelled/failed/expired plans, or an active plan whose mandate is gone.
+        boolean canRenewManually = !liveMandate
+                || UserPlanStatusEnum.CANCELED.name().equals(plan.getStatus())
+                || UserPlanStatusEnum.PAYMENT_FAILED.name().equals(plan.getStatus())
+                || UserPlanStatusEnum.EXPIRED.name().equals(plan.getStatus());
+        String currency = mandate != null && mandate.getCurrency() != null
+                ? mandate.getCurrency()
+                : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
+
         return SubscriptionDTO.builder()
                 .userPlanId(plan.getId())
                 .planName(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getName() : null)
@@ -124,9 +137,12 @@ public class SubscriptionService {
                 .vendor(vendor)
                 .mandateStatus(mandate != null ? mandate.getStatus() : null)
                 .mandateMaxAmount(mandate != null ? mandate.getMaxAmount() : null)
-                .currency(mandate != null ? mandate.getCurrency() : null)
+                .currency(currency)
                 .hasActiveMandate(liveMandate)
                 .packageSessionIds(packageSessionIds)
+                .planPrice(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getActualPrice() : null)
+                .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
+                .canRenewManually(canRenewManually)
                 .build();
     }
 

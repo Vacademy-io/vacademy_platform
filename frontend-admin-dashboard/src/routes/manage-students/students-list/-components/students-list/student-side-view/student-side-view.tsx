@@ -176,9 +176,27 @@ export const StudentSidebar = ({
     // NOTE: the /user-plan/all endpoint ignores the requested status filter and
     // returns plans of every status, so we must match CANCELED client-side rather
     // than trust the response to be pre-filtered.
-    const isCancelledMember = (learnerPlans?.content ?? []).some(
-        (p) => (p.status || '').toUpperCase() === 'CANCELED'
-    );
+    //
+    // A CANCELED plan only means "cancelled membership" when the learner has no
+    // live plan for the SAME product (enroll invite). Failed/retried checkouts and
+    // superseded duplicates are also parked as CANCELED (e.g. by
+    // supersedeAbandonedSubOrgSiblings and the payment-data repair) while the
+    // learner's real plan stays ACTIVE — those must not brand a paying learner as
+    // a Cancelled Member.
+    const isCancelledMember = (() => {
+        const plans = learnerPlans?.content ?? [];
+        const LIVE_STATUSES = new Set(['ACTIVE', 'PENDING', 'PENDING_FOR_PAYMENT']);
+        return plans.some((p) => {
+            if ((p.status || '').toUpperCase() !== 'CANCELED') return false;
+            const supersededByLiveSibling = plans.some(
+                (s) =>
+                    s.id !== p.id &&
+                    s.enroll_invite_id === p.enroll_invite_id &&
+                    LIVE_STATUSES.has((s.status || '').toUpperCase())
+            );
+            return !supersededByLiveSibling;
+        });
+    })();
 
     // Membership courses this learner is enrolled in — resolved from the institute
     // details store (no extra network call) by matching each of their package

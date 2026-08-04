@@ -682,12 +682,28 @@ public class StudentRegistrationManager {
     public String shiftStudentBatch(
             StudentSessionInstituteGroupMapping invitedPackageSession,
             String newStatus) {
+        return shiftStudentBatch(invitedPackageSession, newStatus, null);
+    }
+
+    /**
+     * Variant that stamps {@code activeUserPlanId} on the resulting ACTIVE mapping.
+     * The plain overload copies user_plan_id from the INVITED row being shifted —
+     * but when a learner retried a failed checkout, that INVITED row still points
+     * at the FIRST (failed) plan, so the ACTIVE mapping ended up referencing a
+     * PAYMENT_FAILED plan instead of the plan that was actually paid. That broke
+     * finance/roster joins and defeated the plan-stacking dedupe
+     * (hasRealEnrollmentEntries never saw the paid plan's entries).
+     */
+    public String shiftStudentBatch(
+            StudentSessionInstituteGroupMapping invitedPackageSession,
+            String newStatus,
+            String activeUserPlanId) {
         try {
             String userId = invitedPackageSession.getUserId();
             String instituteId = invitedPackageSession.getInstitute().getId();
 
             StudentSessionInstituteGroupMapping mappingToUse = findOrCreateMapping(
-                    instituteId, userId, newStatus, invitedPackageSession);
+                    instituteId, userId, newStatus, invitedPackageSession, activeUserPlanId);
 
             markOldMappingDeleted(invitedPackageSession);
 
@@ -702,7 +718,13 @@ public class StudentRegistrationManager {
             String instituteId,
             String userId,
             String newStatus,
-            StudentSessionInstituteGroupMapping invitedPackageSession) {
+            StudentSessionInstituteGroupMapping invitedPackageSession,
+            String activeUserPlanId) {
+        // The plan the ACTIVE mapping must reference: the explicitly supplied (paid)
+        // plan when given, else whatever the shifted row carried.
+        String effectiveUserPlanId = StringUtils.hasText(activeUserPlanId)
+                ? activeUserPlanId
+                : invitedPackageSession.getUserPlanId();
         Optional<StudentSessionInstituteGroupMapping> existingMappingOpt = studentSessionRepository
                 .findTopByPackageSessionIdAndUserIdAndStatusIn(
                         invitedPackageSession.getDestinationPackageSession().getId(), instituteId, userId,
@@ -710,6 +732,9 @@ public class StudentRegistrationManager {
         StudentSessionInstituteGroupMapping activePackageSession;
         if (existingMappingOpt.isPresent()) {
             activePackageSession = existingMappingOpt.get();
+            if (StringUtils.hasText(activeUserPlanId)) {
+                activePackageSession.setUserPlanId(activeUserPlanId);
+            }
         } else {
             activePackageSession = new StudentSessionInstituteGroupMapping();
             activePackageSession.setInstitute(invitedPackageSession.getInstitute());
@@ -718,7 +743,7 @@ public class StudentRegistrationManager {
             activePackageSession.setEnrolledDate(new Date());
             activePackageSession.setStatus(newStatus);
             activePackageSession.setPackageSession(invitedPackageSession.getDestinationPackageSession());
-            activePackageSession.setUserPlanId(invitedPackageSession.getUserPlanId());
+            activePackageSession.setUserPlanId(effectiveUserPlanId);
             // Set type to PACKAGE_SESSION for final enrollment (not ABANDONED_CART or PAYMENT_FAILED)
             activePackageSession.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
             // destinationPackageSession should be null for final enrollment (not set)
@@ -732,7 +757,7 @@ public class StudentRegistrationManager {
         Date baseDate = activePackageSession.getExpiryDate() != null ? activePackageSession.getExpiryDate()
                 : new Date();
         activePackageSession
-                .setExpiryDate(calculateNewExpiryDate(baseDate, invitedPackageSession.getUserPlanId(), null));
+                .setExpiryDate(calculateNewExpiryDate(baseDate, effectiveUserPlanId, null));
         return activePackageSession;
     }
 

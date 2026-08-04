@@ -181,16 +181,30 @@ public class LearnerBatchEnrollService {
 
     public void shiftLearnerFromInvitedToActivePackageSessions(List<String> packageSessionIds, String userId,
             String enrollInviteId) {
-        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.INVITED);
+        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.INVITED, null);
+    }
+
+    /**
+     * Payment-confirmation variant: {@code paidUserPlanId} is the plan the payment
+     * actually landed on, and it is stamped onto the resulting ACTIVE mapping.
+     * Without it the mapping inherits the plan id of whatever INVITED row happens
+     * to be shifted — for a learner who retried a failed checkout that is the
+     * first (PAYMENT_FAILED) plan, not the paid one.
+     */
+    public void shiftLearnerFromInvitedToActivePackageSessions(List<String> packageSessionIds, String userId,
+            String enrollInviteId, String paidUserPlanId) {
+        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.INVITED,
+                paidUserPlanId);
     }
 
     public void shiftLearnerFromPendingForApprovalToActivePackageSessions(List<String> packageSessionIds, String userId,
             String enrollInviteId) {
-        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.PENDING_FOR_APPROVAL);
+        shiftLearnerToActiveStatus(packageSessionIds, userId, enrollInviteId, LearnerStatusEnum.PENDING_FOR_APPROVAL,
+                null);
     }
 
     private void shiftLearnerToActiveStatus(List<String> packageSessionIds, String userId, String enrollInviteId,
-            LearnerStatusEnum fromStatus) {
+            LearnerStatusEnum fromStatus, String activeUserPlanId) {
         // First, find entries with the specified status (INVITED or PENDING_FOR_APPROVAL)
         List<StudentSessionInstituteGroupMapping> invitedMappings = studentSessionRepository
                 .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
@@ -223,7 +237,8 @@ public class LearnerBatchEnrollService {
             if (mapping.getDestinationPackageSession() != null) {
                 String newSessionId = studentRegistrationManager.shiftStudentBatch(
                         mapping,
-                        LearnerStatusEnum.ACTIVE.name());
+                        LearnerStatusEnum.ACTIVE.name(),
+                        activeUserPlanId);
                 studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(), userDTO,
                         mapping.getDestinationPackageSession().getId(), mapping.getSubOrg());
                 customFieldValueService.shiftCustomField(

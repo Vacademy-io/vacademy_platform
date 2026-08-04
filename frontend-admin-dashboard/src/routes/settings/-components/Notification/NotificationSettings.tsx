@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Bell, Settings } from 'lucide-react';
-import { Info, Trash } from '@phosphor-icons/react';
+import { Bell, Gear, Info, Question, Trash, Warning } from '@phosphor-icons/react';
 import {
     Select,
     SelectContent,
@@ -68,6 +67,7 @@ import type {
     ChatSettings,
     ChatDirectRole,
     ChatModerationAction,
+    EmailCcSettings,
 } from '@/services/notification-settings';
 import {
     createUpsertRequest,
@@ -76,6 +76,8 @@ import {
     upsertNotificationSettings,
     mergeChatSettings,
     mergeAppOverlaySettings,
+    mergeEmailCcSettings,
+    EMAIL_CC_TRIGGERS,
 } from '@/services/notification-settings';
 import {
     getTerminology,
@@ -111,7 +113,6 @@ import {
     validateFirebaseServiceAccountJson,
 } from '@/services/notification-settings';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { HelpCircle } from 'lucide-react';
 
 type Props = { isTab?: boolean };
 
@@ -260,7 +261,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
 
             {error && (
                 <Alert variant="destructive">
-                    <AlertTriangle className="size-4" />
+                    <Warning className="size-4" />
                     <AlertDescription>{error}</AlertDescription>
                 </Alert>
             )}
@@ -299,7 +300,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
                     <CardTitle className="flex items-center gap-2 text-base">
-                        <Settings className="size-5" /> General
+                        <Gear className="size-5" /> General
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -678,7 +679,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <button type="button" className="text-muted-foreground">
-                                            <HelpCircle className="size-4" />
+                                            <Question className="size-4" />
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent>
@@ -695,7 +696,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             {FIREBASE_CREDENTIALS_HELPER_TEXT}
                         </div>
                         <Textarea
-                            className="min-h-[160px] font-mono"
+                            className="min-h-40 font-mono"
                             placeholder={FIREBASE_CREDENTIALS_PLACEHOLDER}
                             value={settings.firebase?.serviceAccountJson || ''}
                             onChange={(e) =>
@@ -872,6 +873,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                 </CardContent>
             </Card>
+
+            <EmailCcSection
+                value={mergeEmailCcSettings(settings.emailCc)}
+                onChange={(next) => update('emailCc', () => next)}
+            />
             </>
             )}
 
@@ -1384,6 +1390,139 @@ function ChatSection({
                         />
                     </div>
                 </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+/**
+ * Copy-recipient (CC/BCC) configuration for transactional email.
+ *
+ * Triggers come from EMAIL_CC_TRIGGERS, a curated list of events whose sender actually stamps
+ * a matching `source` — deliberately NOT every value of the backend NotificationEventType enum,
+ * several of which have no send-site and would render controls that do nothing.
+ */
+function EmailCcSection({
+    value,
+    onChange,
+}: {
+    value: EmailCcSettings;
+    onChange: (next: EmailCcSettings) => void;
+}) {
+    const setTrigger = (key: string, patch: Partial<{ enabled: boolean; cc: string[] }>) => {
+        const current = value.triggers[key] ?? { enabled: false, cc: [] };
+        onChange({
+            ...value,
+            triggers: { ...value.triggers, [key]: { ...current, ...patch } },
+        });
+    };
+
+    return (
+        <Card className="rounded-lg border-gray-200">
+            <CardHeader className="py-3">
+                <CardTitle className="text-base">Email Copies (CC / BCC)</CardTitle>
+                <div className="mt-1 text-xs text-muted-foreground">
+                    Send a copy of transactional emails to your own team — for example, every
+                    invoice to your accounts inbox. Copies are off unless you turn on both this
+                    setting and the individual emails below.
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <ToggleRow
+                    label="Send copies of transactional emails"
+                    checked={value.enabled}
+                    onChange={(enabled) => onChange({ ...value, enabled })}
+                />
+
+                {value.enabled && (
+                    <>
+                        <div className="rounded-md border p-3">
+                            <Label>Copy type</Label>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                                BCC keeps your team&apos;s addresses hidden. CC shows them to the
+                                learner on the email — only use CC if the learner should see who
+                                else received it.
+                            </div>
+                            <div className="mt-3 flex items-center gap-2">
+                                {(['BCC', 'CC'] as const).map((mode) => (
+                                    <Button
+                                        key={mode}
+                                        type="button"
+                                        variant={value.mode === mode ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => onChange({ ...value, mode })}
+                                    >
+                                        {mode}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="rounded-md border p-3">
+                            <Label>Always copy these addresses</Label>
+                            <div className="mb-3 mt-1 text-xs text-muted-foreground">
+                                Added to every email you switch on below. Leave empty to set
+                                addresses per email instead.
+                            </div>
+                            <StringListEditor
+                                value={value.global_cc}
+                                onChange={(global_cc) => onChange({ ...value, global_cc })}
+                                placeholder="name@example.com"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label>Which emails to copy</Label>
+                            {EMAIL_CC_TRIGGERS.map((trigger) => {
+                                const config = value.triggers[trigger.key] ?? {
+                                    enabled: false,
+                                    cc: [],
+                                };
+                                return (
+                                    <div key={trigger.key} className="rounded-md border p-3">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div>
+                                                <Label>{trigger.label}</Label>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {trigger.description}
+                                                </div>
+                                            </div>
+                                            <Switch
+                                                checked={config.enabled}
+                                                onCheckedChange={(enabled) =>
+                                                    setTrigger(trigger.key, { enabled })
+                                                }
+                                            />
+                                        </div>
+                                        {config.enabled && (
+                                            <div className="mt-3">
+                                                <div className="mb-2 text-xs text-muted-foreground">
+                                                    Also copy to — in addition to the addresses
+                                                    above
+                                                </div>
+                                                <StringListEditor
+                                                    value={config.cc}
+                                                    onChange={(cc) =>
+                                                        setTrigger(trigger.key, { cc })
+                                                    }
+                                                    placeholder="name@example.com"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <Alert>
+                            <Info className="size-4" />
+                            <AlertDescription className="text-xs">
+                                Copies are not recorded against the recipient in email reports, and
+                                replies from a copied address are not tracked.
+                            </AlertDescription>
+                        </Alert>
+                    </>
+                )}
             </CardContent>
         </Card>
     );

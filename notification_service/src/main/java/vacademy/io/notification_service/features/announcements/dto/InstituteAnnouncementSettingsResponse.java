@@ -33,6 +33,7 @@ public class InstituteAnnouncementSettingsResponse {
         private GeneralSettings general;
         private FirebaseSettings firebase;
         private vacademy.io.notification_service.features.chat.dto.ChatSettings chat;
+        private vacademy.io.notification_service.features.send.dto.EmailCcSettings emailCc;
     }
     
     @Data

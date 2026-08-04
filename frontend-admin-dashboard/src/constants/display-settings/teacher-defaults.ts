@@ -271,6 +271,8 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
         showApprovalToggle: false,
+        // Opt-in: changing credentials signs the learner out of their session.
+        allowEditCredentials: false,
     },
     studentManagementActions: {
         showEnrollButton: true,

@@ -18,6 +18,20 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
         List<UserRole> findByUser(User user);
 
+        /**
+         * Institute ids a user holds any role in. Used to evict exactly the
+         * {@code authUserDetails} entries for that user after a username change —
+         * the cache key is {@code username + '_' + instituteId}, so without this
+         * the only option is an allEntries clear, which on the Redis cache
+         * manager means a keyspace scan over every cached user.
+         *
+         * <p>Deliberately a projection, not {@code user.getRoles()}: the caller
+         * runs outside a transaction (it must not hold a DB connection across the
+         * fan-out HTTP call), where touching that lazy collection is unsafe.
+         */
+        @Query("SELECT DISTINCT ur.instituteId FROM UserRole ur WHERE ur.user.id = :userId AND ur.instituteId IS NOT NULL")
+        List<String> findDistinctInstituteIdsByUserId(@Param("userId") String userId);
+
         @Query("""
                             SELECT ur FROM UserRole ur
                             JOIN ur.role r

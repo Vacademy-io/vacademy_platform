@@ -37,6 +37,9 @@ public class UserOperationService {
     @Autowired
     private vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService institutePolicyService;
 
+    @Autowired
+    private UserCredentialUpdateService userCredentialUpdateService;
+
     public String sendUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
         if (userIds == null || userIds.isEmpty()) {
             return "Invalid input: userIds or userDetails is missing";
@@ -110,12 +113,22 @@ public class UserOperationService {
         return "Notification sent successfully";
     }
 
+    /**
+     * Admin-initiated credential change (Learner list → Portal Access → Edit).
+     *
+     * <p>Delegates the write to {@link UserCredentialUpdateService} so it takes
+     * exactly the same path as the learner's own change: uniqueness is checked
+     * up front, the old username's auth-cache entries are evicted, and the
+     * rename fans out to {@code student.username} plus the four
+     * assessment-database copies. This method used to set username and password
+     * directly on the entity and tell nobody, which left every one of those
+     * copies stale.
+     */
     public String updateUserPassword(UserCredentials userCredentials, CustomUserDetails userDetails) {
-        User user = userRepository.findById(userCredentials.getUserId())
-                .orElseThrow(() -> new VacademyException("User not found"));
-        user.setPassword(userCredentials.getPassword());
-        user.setUsername(userCredentials.getUsername());
-        userRepository.save(user);
+        User user = userCredentialUpdateService.updateCredentials(
+                userCredentials.getUserId(),
+                userCredentials.getUsername(),
+                userCredentials.getPassword());
         sendPasswordToUser(user);
         // Mirror the new password to any WordPress LMS the learner's courses are
         // connected to (async, best-effort — never blocks/fails the password change).

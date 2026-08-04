@@ -45,7 +45,15 @@ public enum NotificationEventType {
      * listed here only to keep the event-name catalogue in one place. The value must stay in sync
      * with {@code NotificationConstant.EVENT_TEAM_INVITE} in auth-service.
      */
-    TEAM_INVITE("TEAM_INVITE");
+    TEAM_INVITE("TEAM_INVITE"),
+
+    /**
+     * A learner's portal credentials are being handed to them — after an admin
+     * edits their username/password, or on an explicit re-share. Bound per
+     * institute AND per channel, so an institute can run a branded EMAIL
+     * template and a WATI-approved WHATSAPP template off the same event.
+     */
+    LEARNER_CREDENTIALS_SHARED("LEARNER_CREDENTIALS_SHARED");
 
     private final String value;
 

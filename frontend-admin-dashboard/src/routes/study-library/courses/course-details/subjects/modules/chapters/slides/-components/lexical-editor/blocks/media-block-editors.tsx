@@ -15,6 +15,7 @@ import type {
     CalloutPayload,
 } from '../nodes/media-nodes';
 import { CALLOUT_THEMES, toEmbedUrl } from '../nodes/media-nodes';
+import { RichTextField } from '../../yoopta-editor-customizations/RichTextField';
 
 interface BlockEditorProps<T> {
     payload: T;
@@ -249,15 +250,15 @@ export function CalloutBlockEditor({
             }}
         >
             {readOnly ? (
-                <div className="whitespace-pre-wrap">{payload.text}</div>
+                // Rich payload (tables/images/formatting can live in a callout), so
+                // render it as HTML. Source is this institute's own saved slide
+                // content, the same string the learner app renders.
+                <div dangerouslySetInnerHTML={{ __html: payload.html }} />
             ) : (
-                <textarea
-                    className="w-full resize-none border-none bg-transparent outline-none"
-                    style={{ color: theme.color }}
-                    rows={Math.max(1, payload.text.split('\n').length)}
+                <RichTextField
+                    value={payload.html}
+                    onChange={(html) => setPayload({ ...payload, html })}
                     placeholder="Write a callout…"
-                    value={payload.text}
-                    onChange={(e) => setPayload({ ...payload, text: e.target.value })}
                 />
             )}
             {!readOnly && (

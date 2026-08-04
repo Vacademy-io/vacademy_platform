@@ -10,6 +10,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "assignment_slide")
@@ -55,7 +56,8 @@ public class AssignmentSlide {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Column(name = "updated_at")
     private Timestamp updatedAt;
 
     public AssignmentSlide(AssignmentSlideDTO dto) {

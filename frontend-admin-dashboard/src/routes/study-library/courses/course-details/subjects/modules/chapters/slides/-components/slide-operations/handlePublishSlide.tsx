@@ -148,7 +148,9 @@ export const handlePublishSlide = async (
                 if (!confirmed) return;
                 try {
                     await publishDocumentSlide(true);
-                    toast.success('Slide published (forced override).');
+                    // Same wording as a normal publish — the author already confirmed,
+                    // and "forced override" only alarms non-technical users.
+                    toast.success('Slide published successfully!');
                     setIsOpen(false);
                     onPublishSuccess?.();
                 } catch {

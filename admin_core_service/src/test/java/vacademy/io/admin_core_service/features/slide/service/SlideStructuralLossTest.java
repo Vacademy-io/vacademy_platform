@@ -62,4 +62,31 @@ class SlideStructuralLossTest {
         // First-ever publish (no prior content) must never report loss.
         assertEquals("", SlideService.describeStructuralLoss(null, "<table></table>"));
     }
+
+    /**
+     * A src-less <img> is an abandoned upload placeholder, not content: the editor's
+     * importer drops it and formatHTMLString strips it on every save. Counting it
+     * produced "This will remove 1 image" on saves where the author changed nothing.
+     */
+    @Test
+    void ignoresPlaceholderImagesWithNoUsableSrc() {
+        assertEquals("", SlideService.describeStructuralLoss("<img src=\"\" alt=\"pending\">", "<p>x</p>"));
+        assertEquals("", SlideService.describeStructuralLoss("<img src=\"null\">", "<p>x</p>"));
+        assertEquals("", SlideService.describeStructuralLoss("<img src=\"undefined\">", "<p>x</p>"));
+        assertEquals("", SlideService.describeStructuralLoss("<img alt=\"no src at all\">", "<p>x</p>"));
+    }
+
+    @Test
+    void stillDetectsRealImageLossAlongsidePlaceholders() {
+        String oldH = "<img src=\"https://s3/a.png\"><img src=\"\">";
+        assertTrue(SlideService.describeStructuralLoss(oldH, "<img src=\"\">").contains("1 image"));
+    }
+
+    @Test
+    void countsImagesRegardlessOfQuoteStyleAndSpacing() {
+        String oldH = "<img src = 'https://s3/a.png' ><IMG SRC=\"https://s3/b.png\">";
+        assertEquals("", SlideService.describeStructuralLoss(oldH, oldH));
+        assertTrue(SlideService.describeStructuralLoss(oldH, "<img src='https://s3/a.png'>")
+                .contains("1 image"));
+    }
 }

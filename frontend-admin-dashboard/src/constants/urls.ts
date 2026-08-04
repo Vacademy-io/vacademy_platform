@@ -1149,6 +1149,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 // Institute scope comes from the auth token — no params
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+// Header / footer / theme — the settings shared by every page.
+export const AI_PAGE_BUILDER_SITE_CHROME = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
@@ -1205,6 +1207,9 @@ export const MENTORSHIP_ASSIGNMENTS_BULK = `${MENTORSHIP_BASE}/assignments/bulk-
 export const MENTORSHIP_ASSIGNMENT_BY_ID = (id: string) => `${MENTORSHIP_BASE}/assignments/${id}`;
 export const MENTORSHIP_MY_MENTEES = `${MENTORSHIP_BASE}/my-mentees`;
 export const MENTORSHIP_MY_MENTORS = `${MENTORSHIP_BASE}/my-mentors`;
+export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profile`;
+export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
+export const MENTORSHIP_MY_BOOKING_PAGE = `${MENTORSHIP_BASE}/my-booking-page`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1292,6 +1297,8 @@ export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;
 export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessment/offline-entry/submit-responses`;
 export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-and-submit`;
+export const OFFLINE_ATTACH_FILES = `${BASE_URL}/assessment-service/assessment/offline-entry/attach-files`;
+export const OFFLINE_BULK_IMPORT = `${BASE_URL}/assessment-service/assessment/offline-entry/bulk-import`;
 
 export const SYNC_MAX_SESSIONS = `${BASE_URL}/auth-service/v1/institute-settings/update-max-sessions`;
 

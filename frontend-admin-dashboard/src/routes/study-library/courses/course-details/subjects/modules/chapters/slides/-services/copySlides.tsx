@@ -16,6 +16,8 @@ export const useCopySlide = () => {
             newModuleId,
             newSubjectId,
             newPackageSessionId,
+            slideStatus,
+            position,
         }: {
             slideId: string;
             oldChapterId: string;
@@ -26,11 +28,27 @@ export const useCopySlide = () => {
             newModuleId: string;
             newSubjectId: string;
             newPackageSessionId: string;
+            /** PUBLISHED | DRAFT. Omitted = the institute's copiedSlideStatus setting decides. */
+            slideStatus?: string;
+            /** TOP | BOTTOM placement in the destination chapter. Omitted = end of chapter. */
+            position?: string;
         }) => {
             try {
-                await authenticatedAxiosInstance.post(
-                    `${COPY_SLIDE}?slideId=${slideId}&oldChapterId=${oldChapterId}&oldModuleId=${oldModuleId}&oldSubjectId=${oldSubjectId}&oldPackageSessionId=${oldPackageSessionId}&newChapterId=${newChapterId}&newModuleId=${newModuleId}&newSubjectId=${newSubjectId}&newPackageSessionId=${newPackageSessionId}`
-                );
+                await authenticatedAxiosInstance.post(COPY_SLIDE, null, {
+                    params: {
+                        slideId,
+                        oldChapterId,
+                        oldModuleId,
+                        oldSubjectId,
+                        oldPackageSessionId,
+                        newChapterId,
+                        newModuleId,
+                        newSubjectId,
+                        newPackageSessionId,
+                        ...(slideStatus ? { slideStatus } : {}),
+                        ...(position ? { position } : {}),
+                    },
+                });
             } catch {
                 throw new Error('Failed to copy slide');
             }

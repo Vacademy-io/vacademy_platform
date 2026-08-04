@@ -21,7 +21,14 @@ public enum NotificationEventType {
     LIVE_CLASS_ON_LIVE("LIVE_CLASS_ON_LIVE"),
     LIVE_CLASS_DELETE("LIVE_CLASS_DELETE"),
     LIVE_CLASS_ON_EDIT("LIVE_CLASS_ON_EDIT"),
-    GUARDIAN_ACCOUNT_CREATED("GUARDIAN_ACCOUNT_CREATED");
+    GUARDIAN_ACCOUNT_CREATED("GUARDIAN_ACCOUNT_CREATED"),
+
+    /**
+     * A payment was captured and the learner is being told so. Bound per institute AND per
+     * channel, so an institute can run its own branded EMAIL body (and later a WhatsApp one)
+     * while the seeded DEFAULT config keeps every other institute rendering unchanged.
+     */
+    PAYMENT_CONFIRMATION("PAYMENT_CONFIRMATION");
 
     private final String value;
 

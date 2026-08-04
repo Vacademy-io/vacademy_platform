@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     aws_region: str = "ap-south-1"
     aws_s3_public_bucket: Optional[str] = None
 
+    # CloudFront distribution fronting the bucket ai_service uploads to
+    # (CDN_PUBLIC_BASE_URL). When set, newly emitted media URLs use this host
+    # instead of https://{bucket}.s3.amazonaws.com. Leave unset until a
+    # distribution actually fronts aws_bucket_name — the Java-side distribution
+    # currently fronts only the *-public bucket.
+    cdn_public_base_url: Optional[str] = None
+
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 

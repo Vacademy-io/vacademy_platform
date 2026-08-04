@@ -431,4 +431,20 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("paidStatus") String paidStatus,
       @Param("successStatus") String successStatus);
 
+  /**
+   * Sets a non-paid payment status (PAYMENT_PENDING / FAILED) only while the log has not
+   * already been paid. Razorpay delivers {@code payment.authorized} alongside
+   * {@code payment.captured}/{@code order.paid}, and with multiple replicas the authorized
+   * event can be applied AFTER the capture — without this guard it silently downgraded a
+   * PAID log back to PAYMENT_PENDING. Payment status is monotonic: once PAID, no webhook
+   * event may regress it. Returns 0 when the row was already PAID (caller must then skip
+   * failure/pending side effects too).
+   */
+  @Modifying
+  @Query("UPDATE PaymentLog p SET p.paymentStatus = :newStatus "
+      + "WHERE p.id = :id AND (p.paymentStatus IS NULL OR p.paymentStatus <> :paidStatus)")
+  int updatePaymentStatusIfNotPaid(@Param("id") String id,
+      @Param("newStatus") String newStatus,
+      @Param("paidStatus") String paidStatus);
+
 }

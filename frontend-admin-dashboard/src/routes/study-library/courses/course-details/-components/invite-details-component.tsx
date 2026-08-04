@@ -205,7 +205,7 @@ const InviteDetailsComponent = ({
                         type="button"
                         scale="small"
                         buttonType="secondary"
-                        className="mt-4 flex items-center gap-1"
+                        className="flex items-center gap-1"
                     >
                         <Plus size={16} />
                         Invite Links

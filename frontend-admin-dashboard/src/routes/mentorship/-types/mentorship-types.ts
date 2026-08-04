@@ -10,6 +10,9 @@ export interface MentorDTO {
     bio?: string | null;
     booking_page_id?: string | null;
     booking_page_slug?: string | null;
+    google_account_id?: string | null;
+    google_connected?: boolean | null;
+    google_email?: string | null;
     status: string;
     assigned_student_count?: number | null;
     // auth-hydrated identity
@@ -112,4 +115,66 @@ export interface CreateNoteRequest {
     studentUserId: string;
     title: string;
     description?: string;
+}
+
+/** One weekly availability window (times are "HH:mm" in the page timezone). */
+export interface WeeklyWindow {
+    day_of_week: string; // MONDAY..SUNDAY
+    start_time: string;
+    end_time: string;
+}
+
+/**
+ * A specific-date exception. `blocked: true` = the whole day is unavailable;
+ * otherwise `windows` replaces that day's weekly hours. Date is "yyyy-MM-dd".
+ */
+export interface DateOverride {
+    date: string;
+    blocked?: boolean;
+    windows?: WeeklyWindow[];
+}
+
+export interface BookingAvailability {
+    weekly_windows: WeeklyWindow[];
+    date_overrides?: DateOverride[] | null;
+}
+
+/** A bookable session option (name + duration) offered on the booking page. */
+export interface SessionType {
+    id?: string;
+    name: string;
+    duration_minutes: number;
+}
+
+/** Subset of the mentor's booking page used by the availability editor. */
+export interface MentorBookingPage {
+    id: string;
+    duration_minutes?: number | null;
+    slot_granularity_minutes?: number | null;
+    buffer_before_minutes?: number | null;
+    buffer_after_minutes?: number | null;
+    min_notice_minutes?: number | null;
+    booking_horizon_days?: number | null;
+    timezone?: string | null;
+    availability?: BookingAvailability | null;
+    session_types?: SessionType[] | null;
+    location_type?: string | null;
+    custom_meeting_link?: string | null;
+    allocate_google_meet?: boolean | null;
+}
+
+/** Mentor self-service availability update (host/slug are never sent). */
+export interface MentorAvailabilityRequest {
+    availability?: BookingAvailability;
+    duration_minutes?: number;
+    min_notice_minutes?: number;
+    buffer_before_minutes?: number;
+    buffer_after_minutes?: number;
+    booking_horizon_days?: number;
+    slot_granularity_minutes?: number;
+    timezone?: string;
+    session_types?: SessionType[];
+    location_type?: string;
+    custom_meeting_link?: string;
+    allocate_google_meet?: boolean;
 }

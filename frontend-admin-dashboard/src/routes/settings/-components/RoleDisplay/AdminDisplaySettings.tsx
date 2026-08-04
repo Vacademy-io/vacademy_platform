@@ -46,6 +46,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import SubOrgModuleCard from './SubOrgModuleCard';
 import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
@@ -2452,6 +2453,13 @@ export default function AdminDisplaySettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            <SubOrgModuleCard
+                settings={settings}
+                onChange={(next) => updateSettings(() => next)}
+                roleLabel="Admin"
+                isAdminRole
+            />
 
             <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
             </section>

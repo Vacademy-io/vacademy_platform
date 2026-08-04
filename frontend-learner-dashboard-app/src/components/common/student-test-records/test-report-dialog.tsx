@@ -17,6 +17,7 @@ import {
   formatDuration,
   getSubjectNameById,
 } from "@/constants/helper";
+import { AttemptPapersCard } from "./attempt-papers-card";
 import { ResponseBreakdownComponent } from "./response-breakdown-component";
 import { MarksBreakdownComponent } from "./marks-breakdown-component";
 import { Crown } from "@/svgs";
@@ -348,6 +349,29 @@ export const TestReportDialog = ({
     setIsLoading(true);
 
     try {
+      // A report uploaded by the institute (offline data entry) is the
+      // authoritative one for this attempt — the generated report can't reflect
+      // how a hand-checked paper was actually marked. A lookup failure is
+      // non-fatal: fall through to the generated report below.
+      const uploadedReportId = testReport?.report_file_id;
+      if (uploadedReportId) {
+        try {
+          const uploadedUrl = await getPublicUrl(uploadedReportId);
+          if (uploadedUrl) {
+            const uploadedLink = document.createElement("a");
+            uploadedLink.href = uploadedUrl;
+            uploadedLink.download = "assessment_report.pdf";
+            uploadedLink.target = "_blank";
+            document.body.appendChild(uploadedLink);
+            uploadedLink.click();
+            document.body.removeChild(uploadedLink);
+            return;
+          }
+        } catch (error) {
+          console.error("Error fetching the uploaded report:", error);
+        }
+      }
+
       const response = await authenticatedAxiosInstance({
         method: "GET",
         url: EXPORT_ASSESSMENT_REPORT,
@@ -580,6 +604,33 @@ export const TestReportDialog = ({
 
         {/* Main Content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 space-y-6 md:space-y-8 pb-24 md:pb-8">
+          {/* Papers attached to this attempt. Driven purely by which files
+              exist — NOT by evaluation_type, because an offline/hand-checked
+              paper can carry a checked copy on an otherwise objective
+              assessment, and gating on the type hid it from the learner. */}
+          <AttemptPapersCard
+            papers={[
+              {
+                key: "submitted",
+                label: "Your answer sheet",
+                description: "The paper you submitted, as scanned by your institute.",
+                fileId: testReport?.response_file_id,
+              },
+              {
+                key: "checked",
+                label: "Checked copy",
+                description: "Your answer sheet with the evaluator's marks and remarks.",
+                fileId: testReport?.evaluated_file_id,
+              },
+              {
+                key: "report",
+                label: "Result report",
+                description: "The result report prepared by your institute.",
+                fileId: testReport?.report_file_id,
+              },
+            ]}
+          />
+
           {/* Performance Summary Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {/* Score Card */}

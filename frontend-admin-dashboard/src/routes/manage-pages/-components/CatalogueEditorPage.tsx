@@ -15,6 +15,7 @@ import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
 import { AiCopilotPanel } from './AiCopilotPanel';
+import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
 import { runPublishChecks, type PublishIssue } from '../-utils/publish-checks';
@@ -52,6 +53,8 @@ export const CatalogueEditorPage = () => {
         selectedPageId,
         selectPage,
         selectComponent,
+        selectedGlobalSettings,
+        selectedGlobalLayout,
         addComponent,
         addToSlot,
     } = useEditorStore();
@@ -552,6 +555,10 @@ export const CatalogueEditorPage = () => {
                                 <div className="flex-1 overflow-auto">
                                     <PropertyPanel />
                                 </div>
+                            ) : selectedGlobalSettings || selectedGlobalLayout ? (
+                                // Global Settings selected → AI edits the shared site
+                                // chrome (header/footer/theme) instead of a page.
+                                <AiChromePanel />
                             ) : (
                                 <AiCopilotPanel />
                             )}

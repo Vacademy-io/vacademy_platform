@@ -14,6 +14,17 @@ name: Deploy Voice Bot Service
 #      the AWS/kubeconfig secrets already exist.
 #   4. On admin_core: set VOICE_BOT_BASE_URL=https://backend-stage.vacademy.io/voice-bot-service
 
+# Two pushes in quick succession used to race: on 2026-08-03 the older run died on
+# a docker name conflict while the NEWER run reported SUCCESS after recreating the
+# container with the OLDER run's image — a green tick on a deploy that shipped the
+# wrong commit, which is the worst possible failure mode for a deploy signal.
+# Serialise instead, and let the newer commit win: cancel-in-progress is safe here
+# because every run is a full build-and-roll of a single mutable target, so an
+# abandoned earlier run has nothing we need.
+concurrency:
+  group: deploy-voice-bot-service
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -115,6 +126,7 @@ jobs:
               VOICE_BOT_CLIENT_NAME=${{ vars.VOICE_BOT_CLIENT_NAME || 'voice_bot_service' }} \
               VOICE_BOT_CLIENT_SECRET=${{ secrets.VOICE_BOT_CLIENT_SECRET }} \
               SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
+              RUMIK_API_KEY=${{ secrets.RUMIK_API_KEY }} \
               LLM_PROVIDER=${{ vars.VOICE_BOT_LLM_PROVIDER || 'sarvam' }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
@@ -139,6 +151,7 @@ jobs:
         if: vars.VOICE_BOT_MUMBAI_HOST != ''
         env:
           SSH_KEY: ${{ secrets.VOICE_BOT_MUMBAI_SSH_KEY }}
+          RUMIK_API_KEY: ${{ secrets.RUMIK_API_KEY }}
           HOST: ${{ vars.VOICE_BOT_MUMBAI_HOST }}
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           REPOSITORY: voice-bot-service/voice-bot-service-repo
@@ -154,5 +167,7 @@ jobs:
             "set -e; cd /opt/voice-bot; \
              sed -i '/^VOICE_BOT_IMAGE=/d' .env; \
              echo 'VOICE_BOT_IMAGE=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA' >> .env; \
+             sed -i '/^RUMIK_API_KEY=/d' .env; \
+             if [ -n '$RUMIK_API_KEY' ]; then echo 'RUMIK_API_KEY=$RUMIK_API_KEY' >> .env; fi; \
              docker compose pull -q voice-bot; docker compose up -d; \
              sleep 5; docker compose ps"

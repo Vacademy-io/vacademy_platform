@@ -84,14 +84,23 @@ export function BulkAssignDialog({ mentors, instituteId, open, onOpenChange }: B
             }
         >
             <div className="flex flex-col gap-4">
+                <p className="text-caption text-neutral-500">
+                    Students are split evenly across the selected mentors (round-robin), skipping
+                    any student already assigned to that mentor.
+                </p>
                 <div className="flex flex-col gap-2">
-                    <span className="text-caption text-neutral-500">
+                    <span className="text-caption font-medium text-neutral-600">
                         Mentors ({selectedMentorIds.length} selected)
                     </span>
-                    <div className="flex flex-wrap gap-2">
-                        {mentors.map((m) => {
-                            const sel = selectedMentorIds.includes(m.id);
-                            return (
+                    {mentors.length === 0 ? (
+                        <span className="text-caption text-neutral-400">
+                            No mentors yet — add a mentor first.
+                        </span>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {mentors.map((m) => {
+                                const sel = selectedMentorIds.includes(m.id);
+                                return (
                                 <button
                                     type="button"
                                     key={m.id}
@@ -103,12 +112,13 @@ export function BulkAssignDialog({ mentors, instituteId, open, onOpenChange }: B
                                             : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    {sel && <Check size={14} weight="bold" />}
-                                    <span>{m.display_name || m.name || 'Mentor'}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                                        {sel && <Check size={14} weight="bold" />}
+                                        <span>{m.display_name || m.name || 'Mentor'}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
                 <MenteePicker instituteId={instituteId} selected={selectedStudents} onChange={setSelectedStudents} />
             </div>

@@ -45,6 +45,10 @@ public class OAuthConnectState {
     @Column(name = "audience_id")
     private String audienceId;
 
+    /** When set, the connected Google account is linked to this mentor (per-mentor Google). */
+    @Column(name = "mentor_id")
+    private String mentorId;
+
     /** User ID of the admin who initiated OAuth */
     @Column(name = "initiated_by")
     private String initiatedBy;

@@ -3,6 +3,11 @@ import { SubModuleType } from '@/schemas/student/student-list/institute-schema';
 import { SUB_MODULE_SIDEBAR_MAPPING, controlledTabs, modules } from './constant';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import {
+    SUB_ORG_MODULE_SUB_ITEM_ID,
+    SUB_ORG_MODULE_TAB_ID,
+    canAccessSubOrgModule,
+} from '@/lib/display-settings/sub-org-module';
 
 export function getModuleFlags(
     sub_modules:
@@ -58,17 +63,33 @@ export function filterSidebarByRole(menuList: SidebarItemsType[]): SidebarItemsT
         return menuList;
     }
 
+    // "Manage Institute" is admin-only as a whole, but a non-admin role can be
+    // granted the Sub-Organizations (Channel Partners) module from Display
+    // Settings. In that case keep the parent alive carrying ONLY the sub-orgs
+    // entry — the rest of Manage Institute (teams, sessions, …) stays admin-only,
+    // and the sub-org rows themselves are scoped to the user's assignments
+    // server-side.
+    const subOrgModuleGranted = canAccessSubOrgModule();
+
     // For non-admin users, filter out admin-only items and sub-items
     const adminOnlyIds = [
         'learner-insights', // Learner Live Activities
-        'manage-institute', // Institute settings
         'settings', // Settings
         'admin-activity-logs', // Admin audit trail
+        ...(subOrgModuleGranted ? [] : [SUB_ORG_MODULE_TAB_ID]), // Institute settings
     ];
 
     return menuList
         .filter((item) => !adminOnlyIds.includes(item.id))
         .map((item) => {
+            if (item.id === SUB_ORG_MODULE_TAB_ID && subOrgModuleGranted) {
+                return {
+                    ...item,
+                    subItems: (item.subItems || []).filter(
+                        (sub) => sub.subItemId === SUB_ORG_MODULE_SUB_ITEM_ID
+                    ),
+                };
+            }
             if (item.subItems && item.subItems.length > 0) {
                 const filteredSubItems = item.subItems.filter((sub) => !sub.adminOnly);
                 return { ...item, subItems: filteredSubItems };
@@ -225,4 +246,26 @@ export function getModules(subModules: SubModuleType[] | undefined) {
 
     const result = Array.from(optionalModules);
     return result;
+}
+
+/**
+ * Split a sidebar link into the pieces TanStack Router actually understands.
+ *
+ * Sidebar entries are plain strings and some carry a query
+ * ("/settings?selectedTab=telephony"). The router does NOT parse a query out of
+ * `to` — it would end up inside the pathname and match nothing — so anything
+ * after the "?" has to travel in `search`.
+ */
+export function parseSidebarLink(link?: string): {
+    to: string;
+    search?: Record<string, string>;
+} {
+    if (!link) return { to: '' };
+    const q = link.indexOf('?');
+    if (q === -1) return { to: link };
+    const search: Record<string, string> = {};
+    new URLSearchParams(link.slice(q + 1)).forEach((value, key) => {
+        search[key] = value;
+    });
+    return { to: link.slice(0, q), search };
 }

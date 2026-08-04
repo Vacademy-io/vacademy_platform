@@ -3,8 +3,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { Helmet } from 'react-helmet';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { ArrowsClockwise, PencilSimple } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowsClockwise, PencilSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyButton } from '@/components/design-system/button';
@@ -17,6 +16,13 @@ import {
 } from '@/routes/manage-suborg-teams/-utils/sub-org-slug';
 import { InviteLinkSection } from './-components/invite-link-section';
 import { EditSubOrgModal } from './-components/edit-sub-org-modal';
+import { SubOrgModuleGate } from '../-components/sub-org-module-gate';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
 
 export const Route = createLazyFileRoute('/manage-custom-teams/sub-orgs/$subOrgSlug')({
     component: InstituteAdminSubOrgPage,
@@ -27,24 +33,31 @@ interface SubOrgItem {
     name: string;
 }
 
-function normaliseSubOrg(org: any): SubOrgItem | null {
+function normaliseSubOrg(org: any, fallbackLabel: string): SubOrgItem | null {
     const id =
         org?.sub_org_id || org?.suborgId || org?.subOrgId || org?.suborg_id || org?.id;
     const name =
         org?.name || org?.institute_name || org?.instituteName || org?.subOrgName;
     if (!id) return null;
-    return { id, name: name || 'Untitled Sub-Org' };
+    return { id, name: name || fallbackLabel };
 }
 
 /**
- * Institute-admin drilldown page for a single sub-org. Reached by clicking a sub-org
- * row in /manage-custom-teams. Reuses the same SubOrgAnalyticsPanel the sub-org-admin
- * sees, but in a writable context (caller has no SUB_ORG-linked FSPSSM, so the panel's
- * drawer treats the ledger as editable — same gate as everywhere else).
+ * Drilldown page for a single sub-org. Reached by clicking a sub-org row in
+ * /manage-custom-teams. Reuses the same SubOrgAnalyticsPanel the sub-org-admin sees;
+ * for an institute admin it renders writable (caller has no SUB_ORG-linked FSPSSM, so
+ * the panel's drawer treats the ledger as editable — same gate as everywhere else).
  *
- * Compare to /manage-suborg-teams: that route is sub-org-admin-only, auto-resolves
- * the caller's single accessible sub-org, and is read-only. This route lists *every*
- * sub-org under the institute and lets the parent admin pick any.
+ * Two kinds of caller land here:
+ *   - Institute admins, who can open any sub-org under the institute and edit it.
+ *   - Assignment-scoped users (a teacher / custom role granted the Sub-Organizations
+ *     module from Display Settings), who reach only the sub-orgs assigned to them —
+ *     getSubOrgs below already comes back scoped, so an unassigned slug simply doesn't
+ *     resolve, and the backend rejects the per-sub-org calls regardless. They get the
+ *     read-only view: no Edit / Re-sync, and the panel's ledger is not editable.
+ *
+ * Compare to /manage-suborg-teams: that route is sub-org-admin-only and auto-resolves
+ * the caller's single accessible sub-org.
  */
 function InstituteAdminSubOrgPage() {
     const { subOrgSlug } = useParams({
@@ -54,6 +67,16 @@ function InstituteAdminSubOrgPage() {
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId();
     const [editOpen, setEditOpen] = useState(false);
+    // A user who reaches this page through the Display Settings grant (rather than
+    // the ADMIN role) is here to VIEW an assigned channel partner. The analytics
+    // panel already renders read-only for them (canEditLedger is false once the
+    // caller has SUB_ORG-linked access), so drop the two mutating header actions
+    // rather than showing buttons whose effects they can't complete.
+    const canEditConfig = subOrgPermission('canEditConfig');
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …). Every label below reads from those settings.
+    const term = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
+    const termPlural = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg);
 
     // Institute admin sees the canonical institute-wide sub-org list (not the
     // FSPSSM-scoped "accessible" set used on /manage-suborg-teams).
@@ -67,8 +90,10 @@ function InstituteAdminSubOrgPage() {
         const list = Array.isArray(rawSubOrgs)
             ? rawSubOrgs
             : (rawSubOrgs as any)?.content || [];
-        return list.map(normaliseSubOrg).filter(Boolean) as SubOrgItem[];
-    }, [rawSubOrgs]);
+        return list
+            .map((o: unknown) => normaliseSubOrg(o, `Untitled ${term}`))
+            .filter(Boolean) as SubOrgItem[];
+    }, [rawSubOrgs, term]);
 
     const selectedSubOrg = useMemo(
         () => resolveSubOrgBySlug(subOrgSlug, subOrgs),
@@ -125,31 +150,32 @@ function InstituteAdminSubOrgPage() {
             <Helmet>
                 <title>
                     {selectedSubOrg
-                        ? `${selectedSubOrg.name} — Manage Custom Teams`
-                        : 'Manage Custom Teams'}
+                        ? `${selectedSubOrg.name} — Manage ${termPlural}`
+                        : `Manage ${termPlural}`}
                 </title>
             </Helmet>
             <div className="p-6">
+                <SubOrgModuleGate>
                 <div className="mb-6 flex flex-col gap-3">
                     <Link
                         to="/manage-custom-teams"
                         className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                     >
                         <ArrowLeft className="h-3 w-3" />
-                        Back to sub-orgs
+                        Back to {termPlural.toLowerCase()}
                     </Link>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <h1 className="text-h2 font-bold text-neutral-900">
-                                {selectedSubOrg?.name || 'Sub-Org'}
+                                {selectedSubOrg?.name || term}
                             </h1>
                             <p className="text-caption text-neutral-500">
-                                Manage this sub-org&apos;s admin payment, learners, invoices,
-                                and team members. As parent institute admin you have full
-                                edit access to the ledger.
+                                {canEditConfig
+                                    ? `Manage this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`
+                                    : `View this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`}
                             </p>
                         </div>
-                        {selectedSubOrg && (
+                        {selectedSubOrg && canEditConfig && (
                             <div className="flex shrink-0 items-center gap-2">
                                 <MyButton
                                     type="button"
@@ -158,7 +184,7 @@ function InstituteAdminSubOrgPage() {
                                     onClick={() => setEditOpen(true)}
                                 >
                                     <PencilSimple className="size-4" />
-                                    Edit sub-org
+                                    Edit {term.toLowerCase()}
                                 </MyButton>
                                 <MyButton
                                     type="button"
@@ -182,7 +208,7 @@ function InstituteAdminSubOrgPage() {
                 ) : !selectedSubOrg ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
                         <p className="font-medium">
-                            Couldn&apos;t find a sub-org matching this link.
+                            Couldn&apos;t find a {term.toLowerCase()} matching this link.
                         </p>
                         <p className="text-sm">Going back to the list…</p>
                     </div>
@@ -201,8 +227,9 @@ function InstituteAdminSubOrgPage() {
                         />
                     </div>
                 )}
+                </SubOrgModuleGate>
             </div>
-            {selectedSubOrg && (
+            {selectedSubOrg && canEditConfig && (
                 <EditSubOrgModal
                     open={editOpen}
                     onOpenChange={setEditOpen}

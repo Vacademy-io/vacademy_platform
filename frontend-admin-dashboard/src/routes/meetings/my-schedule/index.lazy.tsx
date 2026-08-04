@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { addWeeks } from 'date-fns';
-import { LinkSimple, Plus } from '@phosphor-icons/react';
+import { Browsers, Plus } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -62,10 +62,11 @@ function MySchedulePage() {
                         buttonType="secondary"
                         scale="medium"
                         className="sm:min-w-0"
+                        title="Create and manage your booking pages"
                         onClick={() => setManagerOpen(true)}
                     >
-                        <LinkSimple className="mr-1.5 size-4" />
-                        Share Booking Link
+                        <Browsers className="mr-1.5 size-4" />
+                        Booking Pages
                     </MyButton>
                     <MyButton
                         type="button"

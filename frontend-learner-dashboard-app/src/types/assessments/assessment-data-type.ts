@@ -179,7 +179,13 @@ export interface ParsedHistoryState {
 }
 export interface AssessmentTestReport {
   all_sections: AllSections;
+  // The checked/annotated copy the evaluator produced.
   evaluated_file_id: string;
+  // The learner's own submitted answer sheet (attempt_data "fileId").
+  response_file_id?: string | null;
+  // A result report uploaded by the institute (offline data entry). When set it
+  // replaces the platform-generated report on download.
+  report_file_id?: string | null;
   question_overall_detail_dto: QuestionOverallDetailDTO;
 }
 export interface TestReportDialogProps {

@@ -82,6 +82,34 @@ public class NotificationTemplateVariables {
         private String studentName;
         private String studentEmail;
 
+        // Payment confirmation / receipt notification.
+        // Declared here rather than assembled ad-hoc in the sender so the reflection-based
+        // mapping in SendUniqueLinkService emits both {{camelCase}} and {{snake_case}} keys, and
+        // so a template's own dynamic_parameters can override any of them.
+        private String learnerName;
+        private String courseName;
+        private String amount;
+        private String currency;
+        private String currencySymbol;
+        private String paymentDate;
+        private String paymentMode;
+        private String transactionId;
+        private String invoiceNumber;
+        private String receiptUrl;
+        private String invoicePdfLink;
+        private String instituteAddress;
+        private String instituteContact;
+        private String instituteEmail;
+        private String instituteWebsite;
+        private String instituteLogoUrl;
+        private String instituteLogo; // ready-to-drop <img> tag
+        // Ready-to-drop HTML block, empty when the gateway returned no receipt URL. Follows the
+        // same convention as instituteLogo / the invoice template's line_items: a template cannot
+        // express "render this row only if the value exists", so the sender emits the whole block.
+        private String receiptButton;
+        private String currentDate;
+        private String year;
+
         /**
          * Factory method to create variables from entities
          */

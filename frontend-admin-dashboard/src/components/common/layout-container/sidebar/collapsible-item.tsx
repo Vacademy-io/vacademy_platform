@@ -10,6 +10,7 @@ import { LockKey } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import { recordRecentTab } from './recent-tabs-store';
+import { parseSidebarLink } from './helper';
 
 export const CollapsibleItem = ({
     icon,
@@ -32,7 +33,8 @@ export const CollapsibleItem = ({
 
     // Most-specific match wins: pick the subItem whose link is the longest prefix of currentRoute
     const activeSubLink = (() => {
-        const matches = subItems?.filter((item) => item.subItemLink && isSubLinkActive(item.subItemLink)) ?? [];
+        const matches =
+            subItems?.filter((item) => item.subItemLink && isSubLinkActive(item.subItemLink)) ?? [];
         if (!matches.length) return null;
         return matches.reduce((a, b) =>
             (a.subItemLink?.length ?? 0) >= (b.subItemLink?.length ?? 0) ? a : b
@@ -95,11 +97,7 @@ export const CollapsibleItem = ({
 
     // Normal expanded panel rendering
     return (
-        <Collapsible
-            className="group/collapsible"
-            open={isOpen}
-            onOpenChange={setIsOpen}
-        >
+        <Collapsible className="group/collapsible" open={isOpen} onOpenChange={setIsOpen}>
             <CollapsibleTrigger
                 className="flex w-full items-center"
                 onClick={() => setIsOpen((prev) => !prev)}
@@ -121,7 +119,11 @@ export const CollapsibleItem = ({
                             weight: hover || routeMatches ? 'fill' : 'regular',
                             className: cn(
                                 'flex-shrink-0 transition-colors duration-150',
-                                hover || routeMatches ? (routeMatches ? colors.pillText : colors.text) : 'text-neutral-500'
+                                hover || routeMatches
+                                    ? routeMatches
+                                        ? colors.pillText
+                                        : colors.text
+                                    : 'text-neutral-500'
                             ),
                         })}
 
@@ -132,8 +134,8 @@ export const CollapsibleItem = ({
                             routeMatches
                                 ? cn(colors.pillText, 'font-medium')
                                 : hover
-                                    ? cn(colors.text, 'font-medium')
-                                    : 'text-neutral-600'
+                                  ? cn(colors.text, 'font-medium')
+                                  : 'text-neutral-600'
                         )}
                     >
                         {title}
@@ -144,27 +146,30 @@ export const CollapsibleItem = ({
                         className={cn(
                             'size-3.5 flex-shrink-0 transition-transform duration-200',
                             isOpen && 'rotate-180',
-                            hover || routeMatches ? (routeMatches ? colors.pillText : colors.text) : 'text-neutral-400'
+                            hover || routeMatches
+                                ? routeMatches
+                                    ? colors.pillText
+                                    : colors.text
+                                : 'text-neutral-400'
                         )}
                     />
                 </div>
             </CollapsibleTrigger>
 
-            <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+            <CollapsibleContent className="data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden transition-all">
                 <div className="ml-5 flex flex-col gap-0.5 border-l border-neutral-200 py-1 pl-4">
                     {subItems?.map((obj, key) => {
-                        const isSubActive =
-                            obj.subItemLink && obj.subItemLink === activeSubLink;
+                        const isSubActive = obj.subItemLink && obj.subItemLink === activeSubLink;
+                        // Links can carry a query ("/settings?selectedTab=…"); the
+                        // router needs that half in `search`, not in `to`.
+                        const { to: subTo, search: subSearch } = parseSidebarLink(obj.subItemLink);
                         return (
                             <Link
-                                to={obj.subItemLink}
+                                to={subTo}
+                                search={subSearch}
                                 key={key}
                                 onClick={(e) => {
-                                    handleLockedSubItemClick(
-                                        e,
-                                        obj.subItem || '',
-                                        obj.locked
-                                    );
+                                    handleLockedSubItemClick(e, obj.subItem || '', obj.locked);
                                     handleSubItemClick(obj);
                                 }}
                             >
@@ -184,7 +189,7 @@ export const CollapsibleItem = ({
                                     {obj.locked && (
                                         <LockKey
                                             size={12}
-                                            className="ml-auto flex-shrink-0 text-neutral-400"
+                                            className="ml-auto shrink-0 text-neutral-400"
                                         />
                                     )}
                                 </div>

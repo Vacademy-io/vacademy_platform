@@ -3991,9 +3991,11 @@ class VideoGenerationPipeline:
                     )
                     for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
                         if _bkt in _iv_source_url:
-                            _parts = _iv_source_url.split(f"{_bkt}.s3.amazonaws.com/")
-                            if len(_parts) == 2:
-                                _s3c.download_file(_bkt, _parts[1], str(_iv_video_local))
+                            _m = re.match(
+                                rf"^https?://{re.escape(_bkt)}\.s3[.\-][a-z0-9.\-]*?amazonaws\.com/(.+)$",
+                                _iv_source_url)
+                            if _m:
+                                _s3c.download_file(_bkt, _m.group(1), str(_iv_video_local))
                                 break
                     else:
                         # HTTP fallback
@@ -28750,10 +28752,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     )
                     for bkt in ["vacademy-media-storage-public", "vacademy-media-storage"]:
                         if bkt in source_url:
-                            parts = source_url.split(f"{bkt}.s3.amazonaws.com/")
-                            if len(parts) == 2:
+                            m = re.match(
+                                rf"^https?://{re.escape(bkt)}\.s3[.\-][a-z0-9.\-]*?amazonaws\.com/(.+)$",
+                                source_url)
+                            if m:
                                 try:
-                                    s3.download_file(bkt, parts[1], str(src_path))
+                                    s3.download_file(bkt, m.group(1), str(src_path))
                                     break
                                 except Exception:
                                     continue

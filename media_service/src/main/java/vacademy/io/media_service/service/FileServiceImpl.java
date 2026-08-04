@@ -17,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.DatabaseException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.media.utils.MediaUtil;
-import vacademy.io.media_service.constant.MediaConstant;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.entity.FileMetadata;
@@ -28,12 +27,9 @@ import vacademy.io.media_service.exceptions.FileUploadException;
 import vacademy.io.media_service.repository.FileMetadataRepository;
 import vacademy.io.media_service.repository.UserToFileRepository;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -44,12 +40,11 @@ public class FileServiceImpl implements FileService {
     @Autowired
     private final AmazonS3 s3Client;
     private final UserToFileRepository userToFileRepository;
+    private final CdnUrlService cdnUrlService;
+    private final CloudFrontSignerService cloudFrontSignerService;
 
     @Value("${aws.bucket.name}")
     private String bucketName;
-
-    @Value("${cloud.front.url}")
-    private String cloudFrontUrl;
 
     @Value("${aws.s3.public-bucket}")
     private String publicBucket;
@@ -71,23 +66,23 @@ public class FileServiceImpl implements FileService {
     public String uploadFile(MultipartFile multipartFile) throws IOException {
 
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
-        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), publicObjectMetadata(multipartFile));
         FileMetadata metadata = new FileMetadata(multipartFile.getName(),
                 Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
                 "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadataRepository.save(metadata);
-        return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        return cdnUrlService.publicUrl(key);
     }
 
     @Override
     public FileDetailsDTO uploadFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException {
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
-        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), publicObjectMetadata(multipartFile));
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
                 Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
                 "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
-        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        String url = cdnUrlService.publicUrl(key);
 
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                 .expiry(addTime(100))
@@ -146,16 +141,12 @@ public class FileServiceImpl implements FileService {
     @Override
     public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key)
             throws FileUploadException, IOException {
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentType(
-                multipartFile.getContentType() != null ? multipartFile.getContentType() : "application/octet-stream");
-        metadata.setContentLength(multipartFile.getSize());
-        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), metadata);
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), publicObjectMetadata(multipartFile));
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
                 Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
                 "SCORM_UPLOAD", "SCORM_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
-        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+        String url = cdnUrlService.publicUrl(key);
 
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                 .expiry(addTime(100))
@@ -211,16 +202,17 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public String getPublicUrlWithExpiry(String key, Integer days) {
+        Date expiration = addTime(days);
 
-        // Set the expiration time for the pre-signed URL
-        Calendar c = Calendar.getInstance();
-        c.setTime(new Date()); // Using today's date
-        c.add(Calendar.DATE, days);
+        String signed = trySignedPrivateCdnUrl(key, expiration);
+        if (signed != null) {
+            return signed;
+        }
 
         // Create a request to generate the pre-signed URL
         GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName, key)
                 .withMethod(HttpMethod.GET)
-                .withExpiration(c.getTime());
+                .withExpiration(expiration);
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -235,6 +227,11 @@ public class FileServiceImpl implements FileService {
             if (fileMetadata.isEmpty())
                 throw new FileDownloadException("File Not Found");
 
+            String signed = trySignedPrivateCdnUrl(fileMetadata.get().getKey(), expiryDate);
+            if (signed != null) {
+                return signed;
+            }
+
             // Create a request to generate the pre-signed URL
             GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName,
                     fileMetadata.get().getKey())
@@ -243,10 +240,27 @@ public class FileServiceImpl implements FileService {
 
             // Generate the pre-signed URL
             URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
-
-            // return cloudFrontUrl + fileMetadata.get().getKey();
             return url.toString();
         } catch (Exception e) {
+            log.warn("Could not build URL for file {}: {}", id, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Signed private-CDN URL when the private distribution is configured, else
+     * null so the caller falls back to the S3 presign it always used. Never
+     * throws — a signing problem must degrade to presign, not break playback.
+     */
+    private String trySignedPrivateCdnUrl(String objectKey, Date expiresAt) {
+        if (!cloudFrontSignerService.isEnabled() || !StringUtils.hasText(objectKey)) {
+            return null;
+        }
+        try {
+            return cloudFrontSignerService.signedUrl(objectKey, expiresAt);
+        } catch (Exception e) {
+            log.warn("Private-CDN signing failed for key {} — falling back to S3 presign: {}",
+                    objectKey, e.getMessage());
             return null;
         }
     }
@@ -267,7 +281,7 @@ public class FileServiceImpl implements FileService {
         if (fileMetadata.isEmpty())
             throw new FileDownloadException("File Not Found");
 
-        return MediaConstant.s3baseurl + fileMetadata.get().getKey();
+        return cdnUrlService.publicUrl(fileMetadata.get().getKey());
     }
 
     @Override
@@ -305,20 +319,22 @@ public class FileServiceImpl implements FileService {
     @Override
     public String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays)
             throws FileDownloadException {
-        // Set the expiration time for the pre-signed URL
-        Calendar c = Calendar.getInstance();
-        c.setTime(new Date()); // Using today's date
-        c.add(Calendar.DATE, expiryDays);
+        Date expiration = addTime(expiryDays);
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findTopBySourceAndSourceId(source, sourceId);
         if (fileMetadata.isEmpty())
             throw new FileDownloadException("File Not Found");
 
+        String signed = trySignedPrivateCdnUrl(fileMetadata.get().getKey(), expiration);
+        if (signed != null) {
+            return signed;
+        }
+
         // Create a request to generate the pre-signed URL
         GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName,
                 fileMetadata.get().getKey())
                 .withMethod(HttpMethod.GET)
-                .withExpiration(c.getTime());
+                .withExpiration(expiration);
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -442,8 +458,10 @@ public class FileServiceImpl implements FileService {
         FileMetadata fileMetadata = fileMetadataRepository.findById(acknowledgeRequest.getFileId())
                 .orElseThrow(() -> new DatabaseException("File Not Found"));
         copyFileToPublicBucket(fileMetadata.getKey());
+        // Just copied to the public bucket, so the public-bucket fallback is
+        // correct here (matches the pre-CDN behavior of this endpoint).
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
-                .url(getPublicUrl(acknowledgeRequest.getFileId(), publicBucket))
+                .url(cdnUrlService.publicUrl(fileMetadata.getKey()))
                 .sourceId(fileMetadata.getSourceId())
                 .source(fileMetadata.getSource())
                 .id(fileMetadata.getId())
@@ -462,77 +480,17 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getPublicUrl(String id, String bucketName) {
+    public String getPublicUrl(String id) {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty())
             throw new DatabaseException("File Not Found");
 
-        String objectKey = fileMetadata.get().getKey().trim();
-
-        // Percent-encode the key so special characters in the file name (e.g. '%')
-        // don't break the URL. An unencoded '%' makes S3 reject the request with
-        // "400 Invalid URI: isHexDigit". Path separators ('/') are preserved.
-        return "https://" + bucketName + ".s3.amazonaws.com/" + encodeS3Key(objectKey);
-    }
-
-    /**
-     * Percent-encodes an S3 object key for safe use in a URL path while keeping
-     * the '/' separators intact. URLEncoder targets form encoding, so spaces come
-     * back as '+'; we convert those to '%20' for a valid path segment.
-     *
-     * <p>Each segment is first percent-decoded once (see {@link #safePercentDecode})
-     * and then encoded once. This makes the method idempotent: legacy keys that were
-     * stored already URL-encoded (e.g. a file name "(90%_mgp_b3)" persisted as
-     * "(90%25_mgp_b3)") collapse back to the real S3 object key before re-encoding,
-     * so we no longer double-encode '%' into '%2525' and produce a 404 URL. A clean,
-     * unencoded key passes through unchanged.
-     */
-    private String encodeS3Key(String objectKey) {
-        if (!StringUtils.hasText(objectKey)) {
-            return objectKey;
-        }
-        String[] segments = objectKey.split("/", -1);
-        StringBuilder encoded = new StringBuilder();
-        for (int i = 0; i < segments.length; i++) {
-            if (i > 0) {
-                encoded.append("/");
-            }
-            encoded.append(URLEncoder.encode(safePercentDecode(segments[i]), StandardCharsets.UTF_8)
-                    .replace("+", "%20"));
-        }
-        return encoded.toString();
-    }
-
-    /**
-     * Percent-decodes a single path segment, decoding only valid {@code %XX} hex
-     * escapes (UTF-8 multibyte sequences included). Unlike {@link java.net.URLDecoder},
-     * a literal '+' is preserved instead of becoming a space, and a stray '%' that is
-     * not followed by two hex digits is kept verbatim instead of throwing. This lets
-     * {@link #encodeS3Key} safely run decode-then-encode on keys that may or may not
-     * already be encoded.
-     */
-    private String safePercentDecode(String segment) {
-        if (segment == null || segment.indexOf('%') < 0) {
-            return segment; // nothing to decode; keep '+' and everything else verbatim
-        }
-        ByteArrayOutputStream out = new ByteArrayOutputStream(segment.length());
-        for (int i = 0; i < segment.length(); i++) {
-            char ch = segment.charAt(i);
-            if (ch == '%' && i + 2 < segment.length()
-                    && isHex(segment.charAt(i + 1)) && isHex(segment.charAt(i + 2))) {
-                out.write((Character.digit(segment.charAt(i + 1), 16) << 4)
-                        + Character.digit(segment.charAt(i + 2), 16));
-                i += 2;
-            } else {
-                byte[] bytes = String.valueOf(ch).getBytes(StandardCharsets.UTF_8);
-                out.write(bytes, 0, bytes.length);
-            }
-        }
-        return new String(out.toByteArray(), StandardCharsets.UTF_8);
-    }
-
-    private boolean isHex(char c) {
-        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        // CDN-disabled fallback stays on the main bucket's host — the exact URL
+        // this endpoint always emitted — because presign-uploaded objects are
+        // only guaranteed to exist there until the acknowledge flow copies them
+        // to the public bucket. With the CDN enabled, an origin-failover group
+        // (public bucket -> main bucket) covers both locations.
+        return cdnUrlService.publicUrl(fileMetadata.get().getKey(), bucketName);
     }
 
     public void copyFileToPublicBucket(String objectKey) {
@@ -577,22 +535,30 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException {
-        Date expiryDate = addTime(expiryDays);
-
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(fileId);
         if (fileMetadata.isEmpty()) {
             throw new FileDownloadException("File Not Found");
         }
 
-        // Generate presigned URL for public bucket
-        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(publicBucket,
-                fileMetadata.get().getKey())
-                .withMethod(HttpMethod.GET)
-                .withExpiration(expiryDate);
+        // The object is in the public bucket, so presigning added nothing but an
+        // expiry; return the permanent public/CDN URL instead. expiryDays is kept
+        // in the signature for API compatibility and ignored.
+        return cdnUrlService.publicUrl(fileMetadata.get().getKey());
+    }
 
-        URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
-
-        return url.toString();
+    /**
+     * Metadata for direct-to-public-bucket uploads: preserves the browser's
+     * Content-Type (instead of S3's octet-stream/form-urlencoded default) and
+     * stamps the immutable Cache-Control (keys embed a fresh UUID, so bytes
+     * never change under a key) so CloudFront/browsers cache aggressively.
+     */
+    private ObjectMetadata publicObjectMetadata(MultipartFile multipartFile) {
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentType(
+                multipartFile.getContentType() != null ? multipartFile.getContentType() : "application/octet-stream");
+        metadata.setContentLength(multipartFile.getSize());
+        metadata.setCacheControl(PUBLIC_ASSET_CACHE_CONTROL);
+        return metadata;
     }
 
 }

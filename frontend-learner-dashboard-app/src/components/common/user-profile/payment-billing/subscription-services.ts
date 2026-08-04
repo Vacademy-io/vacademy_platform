@@ -2,7 +2,6 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   LEARNER_SUBSCRIPTION_LIST,
   LEARNER_SUBSCRIPTION_CANCEL,
-  USER_PLAN_PAYMENT_URL,
 } from "@/constants/urls";
 
 /**
@@ -28,6 +27,8 @@ export interface Subscription {
   plan_price?: number | null;
   vendor_id?: string | null;
   can_renew_manually?: boolean;
+  /** Invite has autopay configured — gates the "enable auto-pay" option. */
+  autopay_available?: boolean;
 }
 
 export const SUBSCRIPTION_LIST_QUERY_KEY = "LEARNER_SUBSCRIPTION_LIST";
@@ -57,38 +58,22 @@ export const cancelSubscription = async (
 
 /**
  * Start a MANUAL RENEWAL payment for an existing plan ("pay to continue").
- * Creates a plan-linked payment order with payment_type RENEWAL — on gateway
- * confirmation the backend reactivates the SAME membership (no new records).
+ * The backend derives amount/vendor from the plan itself and creates a
+ * plan-linked RENEWAL order — on gateway confirmation the SAME membership
+ * reactivates (no new records). With withAutopay the checkout opens in
+ * mandate mode: one approval pays AND re-registers auto-pay.
  * Returns the gateway checkout payload (response_data.razorpayKeyId etc.).
  */
 export const initiateRenewalPayment = async (
   instituteId: string,
   sub: Subscription,
-  contact: { email?: string; mobile?: string }
+  withAutopay: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
-  const payload = {
-    amount: sub.plan_price,
-    currency: sub.currency || "INR",
-    description: `Membership renewal — ${sub.plan_name ?? "subscription"}`,
-    order_id: "",
-    institute_id: instituteId,
-    email: contact.email ?? "",
-    vendor: sub.vendor || "RAZORPAY",
-    vendor_id: sub.vendor_id || sub.vendor || "RAZORPAY",
-    payment_type: "RENEWAL",
-    razorpay_request: {
-      customer_id: "",
-      contact: contact.mobile ?? "",
-      email: contact.email ?? "",
-    },
-    stripe_request: {},
-    pay_pal_request: {},
-  };
   const response = await authenticatedAxiosInstance.post(
-    USER_PLAN_PAYMENT_URL,
-    payload,
-    { params: { instituteId, userPlanId: sub.user_plan_id } }
+    `${LEARNER_SUBSCRIPTION_LIST}/${sub.user_plan_id}/renew-payment`,
+    null,
+    { params: { instituteId, withAutopay } }
   );
   return response.data;
 };

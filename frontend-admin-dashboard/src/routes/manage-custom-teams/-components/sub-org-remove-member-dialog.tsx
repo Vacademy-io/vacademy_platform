@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface SubOrgRemoveMemberDialogProps {
     open: boolean;
@@ -55,7 +57,7 @@ export const SubOrgRemoveMemberDialog = ({
 
     return (
         <MyDialog
-            heading="Remove from sub-org"
+            heading={`Remove from ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}`}
             open={open}
             onOpenChange={handleOpenChange}
             dialogWidth="max-w-md"
@@ -63,8 +65,11 @@ export const SubOrgRemoveMemberDialog = ({
         >
             <div className="flex flex-col gap-4">
                 <p className="text-sm text-neutral-600">
-                    Remove <strong>{memberName}</strong> from this sub-org. Their account stays
-                    intact; access to other sub-orgs (if any) is unaffected.
+                    Remove <strong>{memberName}</strong> from this{' '}
+                    {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}. Their
+                    account stays intact; access to other{' '}
+                    {getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()} (if
+                    any) is unaffected.
                 </p>
 
                 <div className="flex flex-col gap-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">

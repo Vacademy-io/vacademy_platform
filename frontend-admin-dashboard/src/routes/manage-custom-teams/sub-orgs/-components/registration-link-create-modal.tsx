@@ -42,7 +42,7 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { formatPlanPrice } from '@/utils/finance-utils';
@@ -208,6 +208,9 @@ export function RegistrationLinkCreateModal({
     onOpenChange,
     editTemplate,
 }: RegistrationLinkCreateModalProps) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
     const isEditMode = !!editTemplate;
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId();
@@ -771,7 +774,7 @@ export function RegistrationLinkCreateModal({
                     <div>
                         <Label>{coursesLabel} *</Label>
                         <p className="text-xs text-muted-foreground">
-                            Every sub-org registered via this link gets exactly these batches.
+                            Every {subOrgTerm.toLowerCase()} registered via this link gets exactly these batches.
                         </p>
                     </div>
                     <ScrollArea className="h-72 rounded-md border p-3">
@@ -841,7 +844,7 @@ export function RegistrationLinkCreateModal({
                             {...form.register('memberCount', { setValueAs: numberOrUndefined })}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Maximum members per spawned sub-org.
+                            Maximum members per spawned {subOrgTerm.toLowerCase()}.
                         </p>
                         {form.formState.errors.memberCount && (
                             <p className="text-sm text-danger-600">
@@ -859,7 +862,7 @@ export function RegistrationLinkCreateModal({
                             {...form.register('validityInDays', { setValueAs: numberOrUndefined })}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Access duration for each spawned sub-org.
+                            Access duration for each spawned {subOrgTerm.toLowerCase()}.
                         </p>
                         {form.formState.errors.validityInDays && (
                             <p className="text-sm text-danger-600">
@@ -1078,7 +1081,7 @@ export function RegistrationLinkCreateModal({
                         <div>
                             <Label>Allowed team roles</Label>
                             <p className="text-xs text-muted-foreground">
-                                Roles the sub-org admin can assign to their own team. Leave empty to
+                                Roles the {subOrgTerm.toLowerCase()} admin can assign to their own team. Leave empty to
                                 allow any custom role.
                             </p>
                         </div>
@@ -1113,7 +1116,7 @@ export function RegistrationLinkCreateModal({
                         <div>
                             <Label>Admin permissions</Label>
                             <p className="text-xs text-muted-foreground">
-                                What the sub-org admin can do. Leave empty to grant FULL access.
+                                What the {subOrgTerm.toLowerCase()} admin can do. Leave empty to grant FULL access.
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2 rounded-md border p-2">

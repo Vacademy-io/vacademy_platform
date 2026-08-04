@@ -2239,3 +2239,234 @@ async def intake_turn(
         model=model_used,
         warnings=intake_warnings,
     )
+
+
+# ─── Site chrome (global settings) copilot ─────────────────────────────────────
+#
+# Global settings — the header, the footer, the theme — sat entirely outside AI
+# reach: the copilot only emits component OPS, and these live on
+# globalSettings.layout.*, not in any page's component tree. So the one screen
+# where hand-entry is most tedious (a footer with four link columns; a nav that
+# must mirror every page) had no assistance at all, and the AI panel just said
+# "Select a page to start editing with AI".
+#
+# Deliberately NARROW write surface: header, footer, theme, fonts, motion.
+# Tracking IDs, lead-collection wiring and the WhatsApp number are excluded on
+# purpose — those are billing identifiers, campaign wiring and real contact
+# details. An LLM has no business inventing any of them, and a wrong analytics
+# ID fails silently for weeks.
+_CHROME_TOOL_KEY = _EDIT_TOOL_KEY  # same cost class as one copilot edit
+
+_CHROME_WRITABLE_KEYS = {"theme", "fonts", "motion"}
+
+
+class SiteChromeRequest(BaseModel):
+    instruction: str
+    # Current globalSettings, sent verbatim so the model edits what is on screen.
+    global_settings: Dict[str, Any] = Field(default_factory=dict)
+    # [{route, title}] so nav/footer links can only point at pages that exist.
+    pages: List[Dict[str, Any]] = Field(default_factory=list)
+    institute_name: Optional[str] = None
+    terminology: Optional[Dict[str, str]] = None
+    history: List[ChatTurn] = Field(default_factory=list)
+    preferred_model: Optional[str] = None
+
+
+class SiteChromeResponse(BaseModel):
+    global_settings: Dict[str, Any]
+    reply: str
+    run_id: str
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    parts.append(
+        "You are the site-chrome assistant for Vacademy's website builder. You edit a site's "
+        "HEADER, FOOTER and THEME — the parts shared by every page — and return the updated "
+        "settings as JSON. You never invent analytics IDs, phone numbers or campaign ids."
+    )
+
+    header_schema = next((c for c in catalog["components"] if c.get("type") == "header"), None)
+    footer_schema = next((c for c in catalog["components"] if c.get("type") == "footer"), None)
+    parts.append(
+        "## HEADER / FOOTER SHAPE (exact prop names — anything else is ignored by the renderer)\n"
+        + json.dumps({"header": header_schema, "footer": footer_schema}, ensure_ascii=False)
+    )
+    parts.append(
+        "## HEADER RULES\n"
+        "- `navigation`: [{label, route, openInSameTab}] — the main menu. `route` is a page route "
+        "from the PAGES list below (use \"\" for home), an #anchor, or an absolute URL. NEVER invent "
+        "a route: a menu item pointing at a page that does not exist is a dead link.\n"
+        "- `authLinks`: [{label, route}] — the buttons on the RIGHT. Use route 'login' for Login and "
+        "'signup' for Sign Up. An enquiry/registration button that opens a campaign form needs an "
+        "audienceId the ADMIN must choose, so emit it with route '' and NO audienceId; the admin "
+        "picks the campaign in the editor. Do not fabricate an audienceId.\n"
+        "- Keep the existing logo and title unless the instruction says to change them."
+    )
+    parts.append(
+        "## FOOTER RULES\n"
+        "- `leftSection`: {title, text, socials[]} — the brand blurb.\n"
+        "- `rightSection`: {title, links[{label, route}]} — a link column.\n"
+        "- `bottomNote`: the copyright line.\n"
+        "- Link routes obey the same rule as the header: existing pages, anchors or absolute URLs only.\n"
+        "- Never invent an address, phone number or email. If the instruction does not supply one, "
+        "leave it out rather than making it up."
+    )
+    parts.append(
+        "## THEME\n" + json.dumps(catalog["globalSettingsSchema"], ensure_ascii=False)
+    )
+    if req.institute_name:
+        parts.append(f"## INSTITUTE\nName: {req.institute_name}")
+    term_block = _terminology_block(req.terminology)
+    if term_block:
+        parts.append(term_block)
+    parts.append(
+        "## PAGES THAT EXIST (label → route; link only to these)\n"
+        + json.dumps(
+            [{"title": p.get("title"), "route": p.get("route")} for p in (req.pages or [])],
+            ensure_ascii=False,
+        )
+    )
+    parts.append(
+        "## CURRENT SETTINGS (edit these; preserve anything the instruction does not mention)\n"
+        + json.dumps(req.global_settings or {}, ensure_ascii=False)[:12000]
+    )
+    if req.history:
+        parts.append(
+            "## CONVERSATION SO FAR\n"
+            + "\n".join(f"{t.role}: {t.content}" for t in req.history[-6:])
+        )
+    parts.append(f"## INSTRUCTION\n{req.instruction.strip()}")
+    parts.append(
+        "## OUTPUT CONTRACT\nReturn ONLY this JSON object, no markdown:\n"
+        '{"globalSettings": {"layout": {"header": {"props": {...}}, "footer": {"props": {...}}}, '
+        '"theme": {...}, "fonts": {...}, "motion": {...}}, '
+        '"reply": "<one or two sentences on what you changed, in plain language>"}\n'
+        "Include ONLY the keys you actually changed. Omit layout entirely if you changed no chrome."
+    )
+    return "\n\n".join(parts)
+
+
+def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -> Dict[str, Any]:
+    """Merge the model's proposal onto the live settings through a narrow gate.
+
+    Only header/footer props and theme/fonts/motion may change. Everything else
+    on globalSettings — tracking, leadCollection, whatsapp, courseCatalogeType —
+    is carried over from `current` untouched, so a hallucinated analytics id or
+    an invented phone number can never reach the config.
+    """
+    merged = json.loads(json.dumps(current or {}))  # deep copy
+    if not isinstance(proposed, dict):
+        warnings.append("Model returned no usable settings")
+        return merged
+
+    # Theme / fonts / motion — reuse the existing clamp so only supported
+    # presets, atmospheres and font stacks survive.
+    theme_like = {k: v for k, v in proposed.items() if k in _CHROME_WRITABLE_KEYS}
+    if theme_like:
+        coerced = _coerce_global_settings(theme_like)
+        if coerced:
+            for k in _CHROME_WRITABLE_KEYS:
+                if k in theme_like and k in coerced:
+                    merged[k] = coerced[k]
+
+    layout_in = proposed.get("layout")
+    if isinstance(layout_in, dict):
+        merged.setdefault("layout", {})
+        for section in ("header", "footer"):
+            section_in = layout_in.get(section)
+            if not isinstance(section_in, dict):
+                continue
+            props_in = section_in.get("props")
+            if not isinstance(props_in, dict):
+                continue
+            # Strings get the same hostile-content scrub as page props.
+            cleaned = clean_urls(props_in, set(), warnings)
+            existing = merged["layout"].get(section)
+            if isinstance(existing, dict):
+                merged["layout"][section] = {
+                    **existing,
+                    "props": {**(existing.get("props") or {}), **cleaned},
+                }
+            else:
+                merged["layout"][section] = {"type": section, "enabled": True, "props": cleaned}
+    return merged
+
+
+@router.post("/v1/site-chrome", response_model=SiteChromeResponse)
+async def edit_site_chrome(
+    body: SiteChromeRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> SiteChromeResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not body.instruction or not body.instruction.strip():
+        raise HTTPException(status_code=400, detail="Tell me what to change.")
+
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    estimate = preflight_tool_credits(
+        db, tool_key=_CHROME_TOOL_KEY, tool_params={}, institute_id=institute_id
+    )
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: this change needs ~{estimate['estimated_credits']} "
+                f"credits but the balance is {estimate.get('current_balance')}."
+            ),
+        )
+
+    catalog = _load_catalog()
+    prompt = _build_chrome_prompt(body, catalog)
+    run_id = uuid.uuid4().hex
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    try:
+        raw_json, model_used, usage = await generate_json(
+            prompt, [primary, *fallbacks], label="site-chrome"
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[site-chrome] failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Could not apply that change: {e}")
+
+    warnings: List[str] = []
+    try:
+        data = json.loads(raw_json)
+    except Exception:
+        data = {}
+        warnings.append("Model output was not valid JSON")
+    merged = _merge_chrome(body.global_settings, data.get("globalSettings"), warnings)
+    reply = _clean_string(str(data.get("reply") or "Updated your site settings."))[:600]
+
+    try:
+        record_tool_billing(
+            tool_key=_CHROME_TOOL_KEY,
+            tool_params={},
+            request_type=RequestType.CONTENT,
+            model=model_used,
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            institute_id=institute_id,
+            user_id=actor_user_id,
+            user_role=None,
+            idempotency_key=f"{_CHROME_TOOL_KEY}:{run_id}",
+            usage_markup=_USAGE_MARKUP,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[site-chrome] billing skipped: %s", e)
+
+    return SiteChromeResponse(
+        global_settings=merged,
+        reply=reply,
+        run_id=run_id,
+        model=model_used,
+        warnings=warnings,
+    )

@@ -6,6 +6,13 @@ import type { InstituteCustomField } from "@/routes/audience-response/-services/
 
 // ── Types (snake_case — mirrors backend open booking API) ────────────────────
 
+/** A bookable session option offered by the page (name + duration). */
+export interface SessionType {
+  id?: string;
+  name: string;
+  duration_minutes: number;
+}
+
 export interface BookingPageResponse {
   slug: string;
   title: string;
@@ -23,6 +30,8 @@ export interface BookingPageResponse {
    * Empty for standalone pages.
    */
   custom_fields?: InstituteCustomField[];
+  /** Optional bookable session options; when present the invitee picks one. */
+  session_types?: SessionType[];
 }
 
 export interface BookingSlotsResponse {
@@ -60,6 +69,8 @@ export interface BookRequest {
   invitee_timezone: string;
   /** Answers to the page's campaign custom fields, keyed by field_key. */
   custom_field_values?: Record<string, string>;
+  /** Chosen session-type length (minutes). Omitted = the page's default duration. */
+  duration_minutes?: number;
 }
 
 // ── API calls (open endpoints — plain axios, no auth interceptor) ────────────
@@ -99,17 +110,19 @@ export const getBookingSlots = async ({
   from,
   to,
   tz,
+  duration,
 }: {
   instituteId: string;
   slug: string;
   from: string; // YYYY-MM-DD
   to: string; // YYYY-MM-DD
   tz: string; // IANA timezone
+  duration?: number; // chosen session-type length; omitted = page default
 }): Promise<BookingSlotsResponse> => {
   const response = await axios({
     method: "GET",
     url: `${OPEN_BOOKING_BASE}/page/${instituteId}/${slug}/slots`,
-    params: { from, to, tz },
+    params: { from, to, tz, ...(duration ? { duration } : {}) },
   });
   return response?.data;
 };
@@ -120,16 +133,18 @@ export const handleGetBookingSlots = ({
   from,
   to,
   tz,
+  duration,
 }: {
   instituteId: string;
   slug: string;
   from: string;
   to: string;
   tz: string;
+  duration?: number;
 }) => {
   return {
-    queryKey: ["GET_BOOKING_SLOTS", instituteId, slug, from, to, tz],
-    queryFn: () => getBookingSlots({ instituteId, slug, from, to, tz }),
+    queryKey: ["GET_BOOKING_SLOTS", instituteId, slug, from, to, tz, duration ?? null],
+    queryFn: () => getBookingSlots({ instituteId, slug, from, to, tz, duration }),
     staleTime: 30 * 1000,
     enabled: !!instituteId && !!slug && !!from && !!to && !!tz,
   };

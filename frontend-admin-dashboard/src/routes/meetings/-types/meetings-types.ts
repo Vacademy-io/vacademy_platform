@@ -61,9 +61,21 @@ export interface BookingPageDTO {
     require_approval?: boolean | null;
     availability?: AvailabilityConfig | null;
     reminder_config?: ReminderConfig | null;
+    form_fields?: BookingFormField[] | null;
     status?: string | null;
     host_name?: string | null;
     created_at?: string | null;
+}
+
+/** A custom intake question on the booking form (independent of any audience list). */
+export interface BookingFormField {
+    id: string;
+    label: string;
+    /** text | textarea | dropdown | number | email | phone */
+    field_type: string;
+    required?: boolean;
+    /** Choices for `dropdown`. */
+    options?: string[];
 }
 
 export interface CreateMeetingBookingRequest {

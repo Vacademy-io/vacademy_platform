@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * DTOs for the per-user AI credit usage views (academy-credits).
  * All values are derived from credit_transactions (net of refunds) joined to
@@ -161,5 +163,104 @@ public class CreditUsageDtos {
         /** user | assistant | tool_call | tool_result */
         private String messageType;
         private String content;
+    }
+
+    // ── Chatbot Analysis (LMS -> Student AI -> Chatbot Analysis) ─────────────
+
+    /**
+     * One Student-AI chat in the institute-wide "recent chats" table, with the
+     * learner resolved from the `student` table.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ChatbotSessionRow {
+        private String sessionId;
+        private String userId;
+        private String studentName;
+        private String studentEmail;
+        /** slide | course_details | general */
+        private String contextType;
+        /** Best-effort human label pulled from context_meta (may be null). */
+        private String contextTitle;
+        /** text | voice_interview | voice_doubt | voice_oral_test */
+        private String sessionMode;
+        private String status;
+        /** Epoch millis. */
+        private Long createdAt;
+        /** Epoch millis. */
+        private Long lastActive;
+        private long messageCount;
+        private long studentMessageCount;
+        /** Most recent learner message, trimmed. */
+        private String lastStudentMessage;
+        /** How many practice quizzes the learner completed in this chat. */
+        private long quizCount;
+    }
+
+    /** A {label, count} pair for the summary breakdowns. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CountByValue {
+        private String value;
+        private long count;
+    }
+
+    /** A topic students asked about, with the event kind it came from. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TopicCount {
+        private String topic;
+        /** doubt | quiz_score */
+        private String eventType;
+        private long count;
+    }
+
+    /** One day in the activity trend (zero-filled by the query). */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DailyActivityRow {
+        /** yyyy-MM-dd */
+        private String date;
+        private long sessions;
+        private long studentMessages;
+    }
+
+    /**
+     * Aggregate Student-AI data points for the window, driving the summary
+     * cards on the Chatbot Analysis screen.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ChatbotSummary {
+        private long sessions;
+        private long activeSessions;
+        private long uniqueStudents;
+        private long sessionsAllTime;
+        private long uniqueStudentsAllTime;
+        private long totalMessages;
+        private long studentMessages;
+        private long aiMessages;
+        private long quizzesGenerated;
+        private long quizzesSubmitted;
+        private long toolCalls;
+        private double avgMessagesPerSession;
+        private long doubtsAsked;
+        private long quizzesTaken;
+        /** Null when no quiz was submitted in the window. */
+        private Double avgQuizScorePct;
+        private List<CountByValue> modeBreakdown;
+        private List<CountByValue> contextBreakdown;
+        private List<TopicCount> topTopics;
+        private List<DailyActivityRow> dailyActivity;
     }
 }

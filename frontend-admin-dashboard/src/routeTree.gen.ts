@@ -68,6 +68,7 @@ import { Route as UserTagsLinkIndexRouteImport } from "./routes/user-tags/link/i
 import { Route as UserTagsInstituteIndexRouteImport } from "./routes/user-tags/institute/index"
 import { Route as TemplatesCreateIndexRouteImport } from "./routes/templates/create/index"
 import { Route as StudyLibraryVoltIndexRouteImport } from "./routes/study-library/volt/index"
+import { Route as StudyLibraryStudentAiIndexRouteImport } from "./routes/study-library/student-ai/index"
 import { Route as StudyLibraryReportsIndexRouteImport } from "./routes/study-library/reports/index"
 import { Route as StudyLibraryLiveSessionIndexRouteImport } from "./routes/study-library/live-session/index"
 import { Route as StudyLibraryDoubtManagementIndexRouteImport } from "./routes/study-library/doubt-management/index"
@@ -112,6 +113,7 @@ import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./route
 import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
+import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
@@ -605,6 +607,14 @@ const StudyLibraryVoltIndexRoute = StudyLibraryVoltIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/study-library/volt/index.lazy").then((d) => d.Route),
 )
+const StudyLibraryStudentAiIndexRoute =
+  StudyLibraryStudentAiIndexRouteImport.update({
+    id: "/study-library/student-ai/",
+    path: "/study-library/student-ai/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/study-library/student-ai/index.lazy").then((d) => d.Route),
+  )
 const StudyLibraryReportsIndexRoute =
   StudyLibraryReportsIndexRouteImport.update({
     id: "/study-library/reports/",
@@ -984,6 +994,13 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
+const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
+  id: "/calling/ai-agents/",
+  path: "/calling/ai-agents/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
+)
 const AutomationChatbotFlowsIndexRoute =
   AutomationChatbotFlowsIndexRouteImport.update({
     id: "/automation/chatbot-flows/",
@@ -1824,6 +1841,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -1868,6 +1886,7 @@ export interface FileRoutesByFullPath {
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports/": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai/": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt/": typeof StudyLibraryVoltIndexRoute
   "/templates/create/": typeof TemplatesCreateIndexRoute
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
@@ -2021,6 +2040,7 @@ export interface FileRoutesByTo {
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
@@ -2065,6 +2085,7 @@ export interface FileRoutesByTo {
   "/study-library/doubt-management": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt": typeof StudyLibraryVoltIndexRoute
   "/templates/create": typeof TemplatesCreateIndexRoute
   "/user-tags/institute": typeof UserTagsInstituteIndexRoute
@@ -2220,6 +2241,7 @@ export interface FileRoutesById {
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
+  "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -2264,6 +2286,7 @@ export interface FileRoutesById {
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
   "/study-library/reports/": typeof StudyLibraryReportsIndexRoute
+  "/study-library/student-ai/": typeof StudyLibraryStudentAiIndexRoute
   "/study-library/volt/": typeof StudyLibraryVoltIndexRoute
   "/templates/create/": typeof TemplatesCreateIndexRoute
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
@@ -2420,6 +2443,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/calling/ai-agents/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2464,6 +2488,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
     | "/study-library/reports/"
+    | "/study-library/student-ai/"
     | "/study-library/volt/"
     | "/templates/create/"
     | "/user-tags/institute/"
@@ -2617,6 +2642,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
+    | "/calling/ai-agents"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
     | "/communication/notification-hub"
@@ -2661,6 +2687,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management"
     | "/study-library/live-session"
     | "/study-library/reports"
+    | "/study-library/student-ai"
     | "/study-library/volt"
     | "/templates/create"
     | "/user-tags/institute"
@@ -2815,6 +2842,7 @@ export interface FileRouteTypes {
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
+    | "/calling/ai-agents/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2859,6 +2887,7 @@ export interface FileRouteTypes {
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
     | "/study-library/reports/"
+    | "/study-library/student-ai/"
     | "/study-library/volt/"
     | "/templates/create/"
     | "/user-tags/institute/"
@@ -3013,6 +3042,7 @@ export interface RootRouteChildren {
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
+  CallingAiAgentsIndexRoute: typeof CallingAiAgentsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
@@ -3057,6 +3087,7 @@ export interface RootRouteChildren {
   StudyLibraryDoubtManagementIndexRoute: typeof StudyLibraryDoubtManagementIndexRoute
   StudyLibraryLiveSessionIndexRoute: typeof StudyLibraryLiveSessionIndexRoute
   StudyLibraryReportsIndexRoute: typeof StudyLibraryReportsIndexRoute
+  StudyLibraryStudentAiIndexRoute: typeof StudyLibraryStudentAiIndexRoute
   StudyLibraryVoltIndexRoute: typeof StudyLibraryVoltIndexRoute
   TemplatesCreateIndexRoute: typeof TemplatesCreateIndexRoute
   UserTagsInstituteIndexRoute: typeof UserTagsInstituteIndexRoute
@@ -3553,6 +3584,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryVoltIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/study-library/student-ai/": {
+      id: "/study-library/student-ai/"
+      path: "/study-library/student-ai"
+      fullPath: "/study-library/student-ai/"
+      preLoaderRoute: typeof StudyLibraryStudentAiIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/reports/": {
       id: "/study-library/reports/"
       path: "/study-library/reports"
@@ -3859,6 +3897,13 @@ declare module "@tanstack/react-router" {
       path: "/certificate-generation/student-data"
       fullPath: "/certificate-generation/student-data/"
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/calling/ai-agents/": {
+      id: "/calling/ai-agents/"
+      path: "/calling/ai-agents"
+      fullPath: "/calling/ai-agents/"
+      preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/automation/chatbot-flows/": {
@@ -4604,6 +4649,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
+  CallingAiAgentsIndexRoute: CallingAiAgentsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
@@ -4659,6 +4705,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryDoubtManagementIndexRoute: StudyLibraryDoubtManagementIndexRoute,
   StudyLibraryLiveSessionIndexRoute: StudyLibraryLiveSessionIndexRoute,
   StudyLibraryReportsIndexRoute: StudyLibraryReportsIndexRoute,
+  StudyLibraryStudentAiIndexRoute: StudyLibraryStudentAiIndexRoute,
   StudyLibraryVoltIndexRoute: StudyLibraryVoltIndexRoute,
   TemplatesCreateIndexRoute: TemplatesCreateIndexRoute,
   UserTagsInstituteIndexRoute: UserTagsInstituteIndexRoute,

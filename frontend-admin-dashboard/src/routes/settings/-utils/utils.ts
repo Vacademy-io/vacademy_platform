@@ -24,6 +24,7 @@ import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
+import MentorshipSettings from '../-components/MentorshipSettings';
 import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
 import { AutomationSettings } from '../-components/Automations';
 import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
@@ -350,6 +351,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.Notification,
             value: 'Notification Settings',
             component: NotificationSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        {
+            tab: SettingsTabs.Mentorship,
+            value: 'Mentorship Settings',
+            component: MentorshipSettings,
             domain: 'Communications',
             group: 'Messaging & Automation',
         },

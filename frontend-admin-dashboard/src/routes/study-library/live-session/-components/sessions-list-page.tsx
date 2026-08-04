@@ -15,7 +15,10 @@ import { SessionSearchRequest } from '../-services/utils';
 import PreviousSessionCard from './previous-session-card';
 import DraftSessionCard from './draft-session-card';
 import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
-import { useLiveSessionListStateStore } from '../-store/useLiveSessionListStateStore';
+import {
+    useLiveSessionListStateStore,
+    ALL_BATCHES_OPTION,
+} from '../-store/useLiveSessionListStateStore';
 import { useLiveSessionStore } from '../schedule/-store/sessionIdstore';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { CaretDown, VideoCameraSlash, Clock, FunnelSimple, X } from '@phosphor-icons/react';
@@ -32,10 +35,7 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { type SelectOption } from '@/components/design-system/SelectChips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
-const AllBatchesOption: SelectOption = {
-    label: 'All Batches',
-    value: 'all',
-};
+const AllBatchesOption: SelectOption = ALL_BATCHES_OPTION;
 
 export default function SessionListPage() {
     const { setNavHeading } = useNavHeadingStore();
@@ -48,23 +48,40 @@ export default function SessionListPage() {
     const tokenData = getTokenDecodedData(accessToken);
     const INSTITUTE_ID = (tokenData && Object.keys(tokenData.authorities)[0]) || '';
 
-    // Tab state — initial value comes from the in-memory list-state store so
-    // pressing browser back from a class detail returns the admin to the same
-    // tab they left from. A hard refresh resets the store and lands on Live.
-    const [selectedTab, setSelectedTab] = useState<SessionStatus>(
-        () => useLiveSessionListStateStore.getState().selectedTab
-    );
+    // Tab + filter + pagination state all live in the in-memory list-state
+    // store rather than component state: opening a class detail unmounts this
+    // page, so `useState` used to drop every applied filter on the way back and
+    // leave the admin on a page index belonging to a result set that no longer
+    // existed. A hard refresh resets the store and lands on Live, page 0, unfiltered.
+    const selectedTab = useLiveSessionListStateStore((s) => s.selectedTab);
+    const setSelectedTab = useLiveSessionListStateStore((s) => s.setSelectedTab);
 
-    // Filter state
-    const [searchQuery, setSearchQuery] = useState<string>('');
-    const [startDate, setStartDate] = useState<Date | undefined>(undefined);
-    const [endDate, setEndDate] = useState<Date | undefined>(undefined);
-    const [meetingTypeFilter, setMeetingTypeFilter] = useState<string>('');
-    const [subjectFilter, setSubjectFilter] = useState<string[]>([]);
-    const [accessFilter, setAccessFilter] = useState<string>('');
-    const [streamingServiceFilter, setStreamingServiceFilter] = useState<string>('');
-    const [startTimeOfDay, setStartTimeOfDay] = useState<string>('');
-    const [endTimeOfDay, setEndTimeOfDay] = useState<string>('');
+    // Committed filter state (see the store for the reset rules).
+    const searchQuery = useLiveSessionListStateStore((s) => s.searchQuery);
+    const setSearchQuery = useLiveSessionListStateStore((s) => s.setSearchQuery);
+    const startDate = useLiveSessionListStateStore((s) => s.startDate);
+    const setStartDate = useLiveSessionListStateStore((s) => s.setStartDate);
+    const endDate = useLiveSessionListStateStore((s) => s.endDate);
+    const setEndDate = useLiveSessionListStateStore((s) => s.setEndDate);
+    const meetingTypeFilter = useLiveSessionListStateStore((s) => s.meetingTypeFilter);
+    const setMeetingTypeFilter = useLiveSessionListStateStore((s) => s.setMeetingTypeFilter);
+    const subjectFilter = useLiveSessionListStateStore((s) => s.subjectFilter);
+    const setSubjectFilter = useLiveSessionListStateStore((s) => s.setSubjectFilter);
+    const accessFilter = useLiveSessionListStateStore((s) => s.accessFilter);
+    const setAccessFilter = useLiveSessionListStateStore((s) => s.setAccessFilter);
+    const streamingServiceFilter = useLiveSessionListStateStore((s) => s.streamingServiceFilter);
+    const setStreamingServiceFilter = useLiveSessionListStateStore(
+        (s) => s.setStreamingServiceFilter
+    );
+    const startTimeOfDay = useLiveSessionListStateStore((s) => s.startTimeOfDay);
+    const setStartTimeOfDay = useLiveSessionListStateStore((s) => s.setStartTimeOfDay);
+    const endTimeOfDay = useLiveSessionListStateStore((s) => s.endTimeOfDay);
+    const setEndTimeOfDay = useLiveSessionListStateStore((s) => s.setEndTimeOfDay);
+    const selectedBatches = useLiveSessionListStateStore((s) => s.selectedBatches);
+    const setSelectedBatches = useLiveSessionListStateStore((s) => s.setSelectedBatches);
+    const clearAllFilters = useLiveSessionListStateStore((s) => s.clearFilters);
+
+    // Purely transient UI state — never worth restoring on back navigation.
     const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
     const { data: instituteDetails } = useQuery(useInstituteQuery());
@@ -83,7 +100,7 @@ export default function SessionListPage() {
         return [AllBatchesOption, ...batches];
     }, [storeInstituteDetails?.batches_for_sessions]);
 
-    const [selectedBatches, setSelectedBatches] = useState<SelectOption[]>([AllBatchesOption]);
+    // Search box inside the Batches picker — transient, resets with the popover.
     const [batchSearch, setBatchSearch] = useState<string>('');
 
     // Controlled state for the Filters popover. Selections inside the popover
@@ -166,19 +183,11 @@ export default function SessionListPage() {
         (filterDraft.streamingServiceFilter ? 1 : 0) +
         (filterDraft.selectedBatches.filter((b) => b.value !== 'all').length > 0 ? 1 : 0);
 
-    // Pagination state - server-side
+    // Pagination state - server-side, also held in the store so it survives a
+    // round-trip into a class detail.
     const ITEMS_PER_PAGE = 10;
-    const [currentPage, setCurrentPage] = useState(
-        () => useLiveSessionListStateStore.getState().currentPage
-    );
-
-    // Sync tab + page back to the in-memory store on every change so a back
-    // navigation from the detail page can restore the same view.
-    useEffect(() => {
-        useLiveSessionListStateStore
-            .getState()
-            .setListState({ selectedTab, currentPage });
-    }, [selectedTab, currentPage]);
+    const currentPage = useLiveSessionListStateStore((s) => s.currentPage);
+    const setCurrentPage = useLiveSessionListStateStore((s) => s.setCurrentPage);
 
     // Build search request based on current filters and tab
     const searchRequest: SessionSearchRequest = useMemo(() => {
@@ -331,9 +340,23 @@ export default function SessionListPage() {
     // Fetch sessions using the new search API
     const { data: searchResponse, isLoading, error } = useSessionSearch(searchRequest);
 
+    // The restored page index can outlive the result set it belonged to — a
+    // session that was Live when the admin opened it has since ended, or a
+    // draft was deleted. Only snap back when the page is genuinely out of
+    // range, otherwise the tab renders its empty state on a non-empty list.
+    useEffect(() => {
+        const totalPages = searchResponse?.pagination?.total_pages ?? 0;
+        if (totalPages > 0 && currentPage >= totalPages) {
+            setCurrentPage(totalPages - 1);
+        }
+    }, [searchResponse, currentPage, setCurrentPage]);
+
     const handleTabChange = (value: string) => {
+        if (value === selectedTab) return;
+        // Deliberately switching tabs is the one navigation that starts a fresh
+        // browse — the store drops the filters and the page index with the tab.
+        // Coming back from a class detail keeps them.
         setSelectedTab(value as SessionStatus);
-        setCurrentPage(0); // Reset to first page when changing tabs
     };
 
     const handlePageChange = (pageIndex: number) => {
@@ -345,20 +368,12 @@ export default function SessionListPage() {
         setCurrentPage(0); // Reset to first page on search
     };
 
+    // "Clear all" — the only control that wipes committed filters. It also
+    // returns to page 0 since the result set is fully replaced. The tab is kept.
     const clearFilters = () => {
-        setSearchQuery('');
-        setStartDate(undefined);
-        setEndDate(undefined);
-        setMeetingTypeFilter('');
-        setSubjectFilter([]);
-        setAccessFilter('');
-        setStreamingServiceFilter('');
-        setStartTimeOfDay('');
-        setEndTimeOfDay('');
-        setSelectedBatches([AllBatchesOption]);
+        clearAllFilters();
         setBatchSearch('');
         setDatePopoverOpen(false);
-        setCurrentPage(0);
     };
 
     // Human-readable label for the active platform value (used in the chip strip).

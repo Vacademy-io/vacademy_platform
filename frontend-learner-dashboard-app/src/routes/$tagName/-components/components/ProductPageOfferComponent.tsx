@@ -8,6 +8,7 @@ import {
   CaretRight,
   Clock,
   MagnifyingGlass,
+  X,
 } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
@@ -37,11 +38,16 @@ interface ProductPageMapping {
   id: string;
   ps_invite_payment_option_id: string;
   package_session_id: string;
+  /** Package (course) id — the details page's route param. */
+  package_id?: string;
+  enroll_invite_id?: string;
   package_name?: string;
   level_name?: string;
   session_name?: string;
   course_preview_image_media_id?: string;
   about_the_course_html?: string;
+  /** Comma-separated course tags (CBSE, ICSE, …). */
+  tags?: string;
   display_order?: number;
   status?: string;
   payment_plan?: {
@@ -67,6 +73,13 @@ interface ProductPageOfferProps {
   showViewAll?: boolean;
   viewAllLabel?: string;
   ctaLabel?: string;
+  /**
+   * Second CTA that opens the course's catalogue details page instead of
+   * dropping straight into checkout. Needs the mapping's package id, so it
+   * silently degrades to the single enrol CTA when the backend has none.
+   */
+  showViewCourse?: boolean;
+  viewCourseLabel?: string;
   showImage?: boolean;
   showChips?: boolean;
   showDescription?: boolean;
@@ -76,17 +89,33 @@ interface ProductPageOfferProps {
   pageSize?: number;
   /** Search box — auto-hidden when the page has only a handful of courses. */
   showSearch?: boolean;
+  /**
+   * Cards rendered in a 'carousel' rail before it hands off to the product
+   * page. 0 renders every course in one row. Ignored when pageSize is set —
+   * that is already an explicit per-page count.
+   */
+  railMaxCards?: number;
   /** Cap the grid's height and scroll inside it instead of growing the page. */
   scrollable?: boolean;
   scrollMaxHeight?: number;
   backgroundColor?: string;
   instituteId?: string;
+  /** Catalogue slug — the details page lives at /{tagName}/{courseId}. */
+  tagName?: string;
   /** Admin canvas passes this so the section always renders something. */
   isPreviewMode?: boolean;
 }
 
 /** Below this a search box is noise rather than help. */
 const SEARCH_MIN_COURSES = 8;
+
+/**
+ * Default length of a horizontal rail, overridable per section via the
+ * `railMaxCards` prop (0 = no cap). A rail is a browse teaser, not a
+ * catalogue: pageSize 0 ("show everything") on a 127-course product page
+ * produced a single row of 127 cards.
+ */
+const DEFAULT_RAIL_MAX_CARDS = 12;
 
 // Backend stores sentinel level/session names ("default", "DEFAULT") on
 // packages the admin never levelled — they are placeholders, not information,
@@ -112,6 +141,29 @@ const displayChips = (values: (string | undefined)[]): string[] => {
   }
   return out;
 };
+
+/** Tags arrive as one comma-separated string ("cbse, ncert"). */
+const splitTags = (raw?: string): string[] =>
+  (raw || "").split(",").map((t) => t.trim()).filter(Boolean);
+
+/**
+ * Course tags render exactly as the admin authored them — toChipCase is for
+ * level/session names (it rewrites "CBSE" to "Cbse", which is wrong for a tag
+ * the institute deliberately spelled that way). Level/session keep their
+ * existing sentinel + casing treatment; both are deduped case-insensitively.
+ */
+const mergeChips = (tags: string[], rest: string[]): string[] => {
+  const out: string[] = [];
+  for (const v of [...tags, ...rest]) {
+    const trimmed = (v || "").trim();
+    if (!trimmed || SENTINEL_CHIP_VALUES.has(trimmed.toLowerCase())) continue;
+    if (!out.some((c) => c.toLowerCase() === trimmed.toLowerCase())) out.push(trimmed);
+  }
+  return out;
+};
+
+/** A card has room for a couple of chips before the row rhythm breaks. */
+const CARD_CHIP_LIMIT = 3;
 
 /** "Summer Sprint 2.0 - Class 6" → "SS" — the monogram for imageless tiles. */
 const initialsOf = (title: string): string =>
@@ -235,17 +287,21 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   showViewAll = false,
   viewAllLabel,
   ctaLabel,
+  showViewCourse = true,
+  viewCourseLabel,
   showImage = true,
   showChips = true,
   showDescription = true,
   showValidity = true,
   showPrice = true,
   pageSize = 9,
+  railMaxCards,
   showSearch = true,
   scrollable = false,
   scrollMaxHeight = 640,
   backgroundColor,
   instituteId,
+  tagName,
   isPreviewMode = false,
 }) => {
   const { data, isLoading, isError } = useQuery({
@@ -280,7 +336,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     const q = query.trim().toLowerCase();
     if (!q || !searchEnabled) return mappings;
     return mappings.filter((m) =>
-      [m.package_name, m.level_name, m.session_name]
+      [m.package_name, m.level_name, m.session_name, ...splitTags(m.tags)]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q))
     );
@@ -293,7 +349,14 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // must not leave the pager parked on a page that no longer exists.
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const start = (safePage - 1) * perPage;
-  const visible = filtered.slice(start, start + perPage);
+  const paged = filtered.slice(start, start + perPage);
+  // An explicit pageSize is an admin decision — respect it. The cap only
+  // applies to an uncapped rail, and the admin can raise it or switch it off
+  // (0) per section via railMaxCards.
+  const railCap = railMaxCards === undefined ? DEFAULT_RAIL_MAX_CARDS : Math.max(Number(railMaxCards) || 0, 0);
+  const railCapped = isCarousel && !(Number(pageSize) > 0) && railCap > 0;
+  const visible = railCapped ? paged.slice(0, railCap) : paged;
+  const railHidden = paged.length - visible.length;
 
   const goToPage = (p: number) => {
     setPage(Math.min(Math.max(p, 1), totalPages));
@@ -339,7 +402,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       <Link
         to="/product-pages/$productPageCode"
         params={{ productPageCode }}
-        search={instituteId ? { instituteId } : {}}
+        search={{ ...(instituteId ? { instituteId } : {}), ...(tagName ? { tagName } : {}) }}
         className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
       >
         {viewAllLabel || "See all"}
@@ -427,23 +490,51 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   const renderCard = (m: ProductPageMapping, i: number) => {
         const name = m.package_name || "Course";
-        const chips = showChips ? displayChips([m.level_name, m.session_name]) : [];
+        // Course tags (CBSE / ICSE …) read first — they are what a visitor
+        // scans for — then the level/session the batch belongs to.
+        const chips = showChips
+          ? mergeChips(
+              splitTags(m.tags),
+              displayChips([m.level_name, m.session_name]),
+            ).slice(0, CARD_CHIP_LIMIT)
+          : [];
         const blurb = showDescription ? toPlainText(m.about_the_course_html) : "";
         const validity = showValidity ? formatValidity(m.payment_plan?.validity_in_days) : "";
 
+        // package_session_id is the canonical form the funnel matches first;
+        // defaultTab=CART drops the visitor straight into checkout with this
+        // course already selected.
+        const enrolSearch = {
+          ...(instituteId ? { instituteId } : {}),
+          ...(tagName ? { tagName } : {}),
+          courseIds: m.package_session_id,
+          defaultTab: "CART" as const,
+        };
+
+        // The details page carries productPageCode so ITS enrol CTA re-enters
+        // this exact checkout instead of the standalone enroll-invite dialog.
+        const detailsLink =
+          showViewCourse && tagName && m.package_id
+            ? {
+                to: "/$tagName/$courseId" as const,
+                params: { tagName, courseId: m.package_id },
+                // Every key the details route validates — its validateSearch
+                // returns them all, so a partial object would not typecheck.
+                search: {
+                  enrollInviteId: m.enroll_invite_id,
+                  packageSessionId: m.package_session_id,
+                  productPageCode,
+                  bannerImage: undefined,
+                  level: m.level_name,
+                  price: m.payment_plan?.actual_price?.toString(),
+                  available_slots: undefined,
+                },
+              }
+            : null;
+
         return (
-          <Link
+          <article
             key={m.id || `${start}-${i}`}
-            to="/product-pages/$productPageCode"
-            params={{ productPageCode }}
-            // package_session_id is the canonical form the funnel matches
-            // first; defaultTab=CART drops the visitor straight into checkout
-            // with this course already selected.
-            search={{
-              ...(instituteId ? { instituteId } : {}),
-              courseIds: m.package_session_id,
-              defaultTab: "CART" as const,
-            }}
             data-stagger-item
             style={{
               ["--stagger-i" as string]: i,
@@ -456,11 +547,21 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 : {}),
             } as React.CSSProperties}
             className={
-              "catalogue-card-elevated group flex flex-col p-4 text-start no-underline" +
+              "catalogue-card-elevated group flex flex-col p-4 text-start" +
               (isCarousel ? " min-w-reg-250 shrink-0 snap-start" : "")
             }
           >
-            {showImage && <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />}
+            {/* Image + title are the "browse" affordance: they open the course
+                page. The enrol CTA below is the "buy" affordance. Keeping them
+                separate is why the card is no longer one big link. */}
+            {showImage &&
+              (detailsLink ? (
+                <Link {...detailsLink} className="no-underline" tabIndex={-1} aria-hidden="true">
+                  <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />
+                </Link>
+              ) : (
+                <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />
+              ))}
             <div className={showImage ? "mt-3 flex flex-1 flex-col" : "flex flex-1 flex-col"}>
               {showChips && chips.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
@@ -479,7 +580,16 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                   Clamped because course names run long ("Chapter 10 | Living
                   Creatures…") and an unclamped title ruins the row rhythm. */}
               <h3 className="mb-1.5 line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">
-                {name}
+                {detailsLink ? (
+                  <Link
+                    {...detailsLink}
+                    className="text-catalogue-text-primary no-underline hover:underline"
+                  >
+                    {name}
+                  </Link>
+                ) : (
+                  name
+                )}
               </h3>
               {blurb && (
                 <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
@@ -491,7 +601,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                   <Clock className="size-3.5" aria-hidden="true" /> {validity}
                 </p>
               )}
-              {/* Price and CTA pinned to the bottom so ragged card bodies
+              {/* Price and CTAs pinned to the bottom so ragged card bodies
                   still line up across the row. */}
               <div className="mt-auto space-y-2.5 pt-1">
                 {showPrice && (
@@ -502,13 +612,33 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                     size="sm"
                   />
                 )}
-                <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm w-full justify-center">
-                  {ctaLabel || "Enrol now"}
-                  <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
-                </span>
+                {/* No min-width: each button keeps its own text width (they
+                    never wrap mid-label), so when both no longer fit — a narrow
+                    phone, or a long custom label — the row wraps and they stack
+                    full-width instead of squashing. */}
+                <div className={detailsLink ? "flex flex-wrap gap-2" : ""}>
+                  {detailsLink && (
+                    <Link
+                      {...detailsLink}
+                      className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
+                    >
+                      {viewCourseLabel || "View course"}
+                    </Link>
+                  )}
+                  <Link
+                    to="/product-pages/$productPageCode"
+                    params={{ productPageCode }}
+                    search={enrolSearch}
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
+                    aria-label={`${ctaLabel || "Enrol now"} — ${name}`}
+                  >
+                    {ctaLabel || "Enrol now"}
+                    <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
+                  </Link>
+                </div>
               </div>
             </div>
-          </Link>
+          </article>
         );
   };
 
@@ -530,6 +660,30 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         aria-label={title || "Courses"}
       >
         {cards}
+        {/* Tail card — states plainly how many courses the rail is not
+            showing, rather than silently truncating the list. */}
+        {railHidden > 0 && productPageCode && (
+          <Link
+            to="/product-pages/$productPageCode"
+            params={{ productPageCode }}
+            search={{ ...(instituteId ? { instituteId } : {}), ...(tagName ? { tagName } : {}) }}
+            style={
+              {
+                flexBasis: `calc((100% - ${(cols - 1) * 1.25}rem) / ${cols})`,
+              } as React.CSSProperties
+            }
+            className="catalogue-card group flex min-w-reg-250 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-catalogue-lg border border-dashed border-catalogue-border p-6 text-center no-underline"
+          >
+            <span className="catalogue-h3 text-catalogue-brand-ink">+{railHidden}</span>
+            <span className="text-sm font-semibold text-catalogue-text-primary">
+              {viewAllLabel || "See all courses"}
+            </span>
+            <span className="text-xs text-catalogue-text-muted">
+              Search and filter the full list
+            </span>
+            <ArrowRight className="size-4 text-catalogue-brand-ink" weight="bold" aria-hidden="true" />
+          </Link>
+        )}
       </div>
 
       {/* Arrows are an affordance on top of native scroll/swipe, not the only
@@ -570,13 +724,23 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           onChange={(e) => { setQuery(e.target.value); setPage(1); }}
           placeholder="Search courses"
           aria-label="Search courses"
-          className="catalogue-input w-full pl-9"
+          className={`catalogue-input catalogue-input-icon-start w-full ${query ? "catalogue-input-icon-end" : ""}`}
         />
+        {query && (
+          <button
+            type="button"
+            onClick={() => { setQuery(""); setPage(1); }}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-catalogue-text-muted transition-colors hover:bg-catalogue-interactive-hover hover:text-catalogue-text-primary"
+          >
+            <X className="size-3.5" weight="bold" aria-hidden="true" />
+          </button>
+        )}
       </div>
       <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
         {filtered.length === 0
           ? "No matches"
-          : `Showing ${start + 1}–${Math.min(start + perPage, filtered.length)} of ${filtered.length}`}
+          : `Showing ${start + 1}–${Math.min(start + visible.length, filtered.length)} of ${filtered.length}`}
       </p>
     </div>
   );

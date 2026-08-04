@@ -112,6 +112,9 @@ interface CreateSubOrgModalProps {
 }
 
 export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOrgModalProps) {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
     const queryClient = useQueryClient();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { uploadFile, isUploading } = useFileUpload();
@@ -263,7 +266,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     const subscriptionMutation = useMutation({
         mutationFn: createSubOrgWithSubscription,
         onSuccess: (data) => {
-            toast.success('Sub-organization created with subscription');
+            toast.success(`${subOrgTerm} created with subscription`);
             if (data.invite_code) {
                 toast.info(`Invite code: ${data.invite_code}`);
             }
@@ -283,7 +286,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     const simpleMutation = useMutation({
         mutationFn: createSubOrg,
         onSuccess: () => {
-            toast.success('Sub-organization created successfully');
+            toast.success(`${subOrgTerm} created successfully`);
             queryClient.invalidateQueries({ queryKey: ['sub-orgs-list', instituteId] });
             resetWizard();
             onOpenChange(false);
@@ -395,7 +398,9 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
 
         // CPO needs an explicit picker selection; price/vendor live on the CPO itself.
         if (data.paymentType === 'CPO' && !data.complexPaymentOptionId) {
-            toast.error('Please select a fee structure (CPO) for the sub-org subscription');
+            toast.error(
+                `Please select a fee structure (CPO) for the ${subOrgTerm.toLowerCase()} subscription`
+            );
             return;
         }
 
@@ -405,7 +410,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             data.paymentType === 'SUBSCRIPTION' ||
             data.paymentType === 'FREE';
         if (reusesOption && !data.paymentOptionId) {
-            toast.error('Please select a payment option for the sub-org admin');
+            toast.error(`Please select a payment option for the ${subOrgTerm.toLowerCase()} admin`);
             return;
         }
 
@@ -740,7 +745,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     <div className="space-y-2 sm:col-span-2">
                                         <Label>Payment Option *</Label>
                                         <p className="text-xs text-muted-foreground">
-                                            The sub-org admin pays via this existing institute
+                                            The {subOrgTerm.toLowerCase()} admin pays via this existing institute
                                             payment option. Price &amp; currency come from the
                                             option&apos;s plan.
                                         </p>
@@ -929,7 +934,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     <div>
                                         <Label>Allowed team roles</Label>
                                         <p className="text-xs text-muted-foreground">
-                                            Roles the sub-org admin can pick when adding
+                                            Roles the {subOrgTerm.toLowerCase()} admin can pick when adding
                                             their own team members. Leave empty to allow
                                             any custom role.
                                         </p>
@@ -969,7 +974,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     <div>
                                         <Label>Admin permissions</Label>
                                         <p className="text-xs text-muted-foreground">
-                                            What the sub-org admin can do. Leave empty to
+                                            What the {subOrgTerm.toLowerCase()} admin can do. Leave empty to
                                             grant FULL access (default).
                                         </p>
                                     </div>
@@ -1057,7 +1062,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     {isPending && (
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     )}
-                                    Create Sub-Organization
+                                    Create {subOrgTerm}
                                 </Button>
                             </DialogFooter>
                         </form>

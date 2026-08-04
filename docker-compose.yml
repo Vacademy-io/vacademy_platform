@@ -150,6 +150,12 @@ services:
       - auth.server.baseurl=${AUTH_SERVER_BASE_URL:-http://localhost}
       - assessmentServerBaseUrl.server.baseurl=${ASSESSMENT_SERVER_BASE_URL:-http://localhost}
       - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
+      # CloudFront over the public bucket; blank = raw S3 URLs (rollback lever)
+      - cdn.public-base-url=${CDN_PUBLIC_BASE_URL:-}
+      # Private CDN signed URLs; all three blank = S3 presigned URLs
+      - cdn.private-base-url=${CDN_PRIVATE_BASE_URL:-}
+      - cdn.private.key-pair-id=${CDN_PRIVATE_KEY_PAIR_ID:-}
+      - cdn.private.private-key-b64=${CDN_PRIVATE_KEY_B64:-}
       # AWS S3 Configuration
       - S3_AWS_ACCESS_KEY=${S3_AWS_ACCESS_KEY:-dummy_aws_access_key}
       - S3_AWS_ACCESS_SECRET=${S3_AWS_ACCESS_SECRET:-dummy_aws_secret}

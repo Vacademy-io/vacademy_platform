@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.learner.service.SubOrgLearnerService;
+import vacademy.io.admin_core_service.features.suborg.service.SubOrgAccessScopeService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
@@ -14,13 +15,19 @@ public class SubOrgLearnerController {
     @Autowired
     private SubOrgLearnerService subOrgLearnerService;
 
+    /** Limits every sub-org-keyed read to the channel partners the caller is assigned to.
+     *  Root / true institute admins are unrestricted. */
+    @Autowired
+    private SubOrgAccessScopeService subOrgAccessScopeService;
+
 
     @GetMapping("/members")
     public ResponseEntity<SubOrgResponseDTO> getUsersByPackageAndSubOrg(
             @RequestParam("package_session_id") String packageSessionId,
             @RequestParam("sub_org_id") String subOrgId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
-        
+
+        subOrgAccessScopeService.assertNotCrossSubOrg(user, subOrgId);
         SubOrgResponseDTO response = subOrgLearnerService
                 .getUsersByPackageSessionAndSubOrg(packageSessionId, subOrgId);
         
@@ -62,6 +69,7 @@ public class SubOrgLearnerController {
             @RequestParam("subOrgId") String subOrgId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
+        subOrgAccessScopeService.assertNotCrossSubOrg(user, subOrgId);
         SubOrgAdminsResponseDTO response = subOrgLearnerService.getSubOrgAdmins(userId, packageSessionId, subOrgId);
 
         return ResponseEntity.ok(response);
@@ -72,6 +80,7 @@ public class SubOrgLearnerController {
             @RequestParam("subOrgId") String subOrgId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
+        subOrgAccessScopeService.assertNotCrossSubOrg(user, subOrgId);
         SubOrgAdminsResponseDTO response = subOrgLearnerService.getAllAdminsBySubOrg(subOrgId);
 
         return ResponseEntity.ok(response);

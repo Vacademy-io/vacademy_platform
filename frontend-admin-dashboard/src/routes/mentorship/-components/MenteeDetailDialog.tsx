@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ChatCircle, PushPin, VideoCamera } from '@phosphor-icons/react';
+import { BookOpenText, CalendarCheck, ChatCircle, NotePencil, PushPin, VideoCamera } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
+import { Progress } from '@/components/ui/progress';
 import { createDirectConversation } from '@/services/chat/chatApi';
+import { useLearnerPackagesQuery } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { useCreateNote, useMenteeCalls, useStudentTimeline } from '../-hooks/use-mentorship';
 import type { MenteeDTO } from '../-types/mentorship-types';
 
@@ -33,6 +35,14 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
     const timeline = useStudentTimeline(open ? studentUserId : undefined);
     const calls = useMenteeCalls(open ? instituteId : undefined, open ? studentUserId : undefined);
     const createNote = useCreateNote();
+    // The mentee's in-progress courses — gives the mentor real learning context.
+    const learning = useLearnerPackagesQuery({
+        instituteId: instituteId ?? '',
+        userId: open ? (studentUserId ?? '') : '',
+        type: 'PROGRESS',
+        page: 0,
+        size: 5,
+    });
 
     if (!mentee) return null;
 
@@ -69,7 +79,7 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
 
     return (
         <MyDialog
-            heading={mentee.name || 'Mentee'}
+            heading={mentee.name || 'Mentee details'}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -80,14 +90,74 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
                     scale="small"
                     onClick={message}
                     disable={messaging}
+                    title="Send this student a direct message"
                 >
                     <ChatCircle size={16} /> Message
                 </MyButton>
             }
         >
             <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-0.5">
+                    <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
+                        Mentee
+                    </span>
+                    {mentee.email && (
+                        <span className="text-caption text-neutral-500">
+                            {mentee.email}
+                            {mentee.mobile_number ? ` · ${mentee.mobile_number}` : ''}
+                        </span>
+                    )}
+                </div>
+
                 <section className="flex flex-col gap-3">
-                    <span className="text-body font-semibold text-neutral-700">Notes</span>
+                    <div className="flex items-center gap-1.5">
+                        <BookOpenText size={16} className="text-neutral-400" />
+                        <span className="text-body font-semibold text-neutral-700">Learning</span>
+                    </div>
+                    {learning.isLoading ? (
+                        <span className="text-caption text-neutral-400">Loading learning progress…</span>
+                    ) : (learning.data?.content?.length ?? 0) === 0 ? (
+                        <span className="text-caption text-neutral-400">
+                            This student hasn&apos;t started any courses yet.
+                        </span>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {(learning.data?.content ?? []).map((c) => {
+                                const pct = Math.min(Math.max(c.percentage_completed ?? 0, 0), 100);
+                                return (
+                                    <div
+                                        key={c.package_session_id ?? c.id}
+                                        className="flex flex-col gap-1"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-body text-neutral-700">
+                                                {c.package_name}
+                                            </span>
+                                            <span className="text-caption text-neutral-500">
+                                                {Math.round(pct)}%
+                                            </span>
+                                        </div>
+                                        <Progress value={pct} className="h-1.5" />
+                                        {c.level_name && (
+                                            <span className="text-caption text-neutral-400">
+                                                {c.level_name}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
+                <section className="flex flex-col gap-3">
+                    <div className="flex items-center gap-1.5">
+                        <NotePencil size={16} className="text-neutral-400" />
+                        <span className="text-body font-semibold text-neutral-700">Notes</span>
+                    </div>
+                    <p className="-mt-2 text-caption text-neutral-400">
+                        Shared with your team&apos;s activity timeline for this student.
+                    </p>
                     <div className="flex items-end gap-2">
                         <div className="flex-1">
                             <MyInput
@@ -111,9 +181,11 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
                         </MyButton>
                     </div>
                     {timeline.isLoading ? (
-                        <span className="text-caption text-neutral-400">Loading…</span>
+                        <span className="text-caption text-neutral-400">Loading notes…</span>
                     ) : (timeline.data?.length ?? 0) === 0 ? (
-                        <span className="text-caption text-neutral-400">No notes yet.</span>
+                        <span className="text-caption text-neutral-400">
+                            No notes yet — add one above to keep track of this student.
+                        </span>
                     ) : (
                         <div className="flex flex-col gap-2">
                             {(timeline.data ?? []).map((ev) => (
@@ -138,11 +210,16 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
                 </section>
 
                 <section className="flex flex-col gap-3">
-                    <span className="text-body font-semibold text-neutral-700">Scheduled calls</span>
+                    <div className="flex items-center gap-1.5">
+                        <CalendarCheck size={16} className="text-neutral-400" />
+                        <span className="text-body font-semibold text-neutral-700">Scheduled calls</span>
+                    </div>
                     {calls.isLoading ? (
-                        <span className="text-caption text-neutral-400">Loading…</span>
+                        <span className="text-caption text-neutral-400">Loading scheduled calls…</span>
                     ) : (calls.data?.length ?? 0) === 0 ? (
-                        <span className="text-caption text-neutral-400">No scheduled calls.</span>
+                        <span className="text-caption text-neutral-400">
+                            No sessions booked with this student yet.
+                        </span>
                     ) : (
                         <div className="flex flex-col gap-2">
                             {(calls.data ?? []).map((c) => (

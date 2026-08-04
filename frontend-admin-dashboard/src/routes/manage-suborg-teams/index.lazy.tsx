@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { SubOrgAnalyticsPanel } from './-components/sub-org-analytics-panel';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/manage-suborg-teams/')({
     component: ManageSubOrgTeams,
@@ -29,7 +31,12 @@ function normaliseSubOrg(org: any): SubOrgItem | null {
     const name =
         org?.name || org?.institute_name || org?.instituteName || org?.subOrgName;
     if (!id) return null;
-    return { id, name: name || 'Untitled Sub-Org' };
+    return {
+        id,
+        name:
+            name ||
+            `Untitled ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}`,
+    };
 }
 
 /**
@@ -48,6 +55,9 @@ function normaliseSubOrg(org: any): SubOrgItem | null {
  */
 function ManageSubOrgTeams() {
     const instituteId = getCurrentInstituteId();
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
 
     const { data: rawSubOrgs, isLoading } = useQuery({
         queryKey: ['sub-orgs-accessible-picker', instituteId],
@@ -103,30 +113,30 @@ function ManageSubOrgTeams() {
         <LayoutContainer>
             <Helmet>
                 <title>
-                    {selectedSubOrg ? `${selectedSubOrg.name} — Sub-Org` : 'Sub-Org'}
+                    {selectedSubOrg ? `${selectedSubOrg.name} — ${subOrgTerm}` : subOrgTerm}
                 </title>
             </Helmet>
             <div className="p-6">
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h1 className="text-h2 font-bold text-neutral-900">
-                            {selectedSubOrg?.name || 'Sub-Org'}
+                            {selectedSubOrg?.name || subOrgTerm}
                         </h1>
                         <p className="text-caption text-neutral-500">
-                            Your sub-org&apos;s payments, learners and team. The ledger
-                            is read-only — the parent institute admin manages installments
-                            and discounts.
+                            Your {subOrgTerm.toLowerCase()}&apos;s payments, learners and team.
+                            The ledger is read-only — the parent institute admin manages
+                            installments and discounts.
                         </p>
                     </div>
                     {subOrgs.length > 1 && (
                         <div className="flex flex-col gap-1">
                             <span className="text-caption text-neutral-500">
-                                Switch sub-org
+                                Switch {subOrgTerm.toLowerCase()}
                             </span>
                             <MyDropdown
                                 dropdownList={dropdownList}
                                 currentValue={selectedSubOrg?.name || ''}
-                                placeholder="Select sub-org"
+                                placeholder={`Select ${subOrgTerm.toLowerCase()}`}
                                 handleChange={(value: string) => setSelectedId(value)}
                                 className="min-w-[220px]"
                             />
@@ -138,9 +148,12 @@ function ManageSubOrgTeams() {
                     <DashboardLoader />
                 ) : !selectedSubOrg ? (
                     <div className="rounded-lg border border-warning-200 bg-warning-50 p-6 text-warning-800">
-                        <p className="font-medium">No sub-org access.</p>
+                        <p className="font-medium">
+                            No {subOrgTerm.toLowerCase()} access.
+                        </p>
                         <p className="text-caption">
-                            Ask your institute admin to grant you sub-org admin access.
+                            Ask your institute admin to grant you {subOrgTerm.toLowerCase()} admin
+                            access.
                         </p>
                     </div>
                 ) : (

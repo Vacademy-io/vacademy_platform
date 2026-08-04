@@ -101,6 +101,11 @@ class CallDiagnostics:
     idle_hangup: bool = False
     cap_farewell: bool = False
     barge_ins: int = 0
+    # Cancels actually put on the wire, against barge-ins seen. The first Rumik
+    # implementation never sent one (the base class tore the socket down first) and
+    # nothing revealed it — so the count is the signal that the primary reason for
+    # choosing this vendor is really happening.
+    barge_in_cancels: int = 0
     # None = NOT MEASURED (never 0-by-default — see module docstring).
     answers_deleted: Optional[int] = None
     answers_deleted_samples: List[str] = field(default_factory=list)
@@ -117,6 +122,18 @@ class CallDiagnostics:
     tts_ttfb: List[float] = field(default_factory=list)
     stt_ttfb: List[float] = field(default_factory=list)
     dead_air: List[float] = field(default_factory=list)
+
+    # ── vendor spend: the vendor's OWN meter, not our arithmetic ──
+    # tts_vendor_credits stays None unless a terminal frame actually carried a
+    # figure. Rumik currently reports credits_used: 0 on our key, and 0 is
+    # indistinguishable from unmetered — so we count the metered requests
+    # separately. "12 requests metered, 0 credits" reads as a broken meter;
+    # a bare 0 would read as a free call, which is a lie we would then bill on.
+    tts_vendor: str = ""
+    tts_vendor_credits: Optional[float] = None
+    tts_meter_frames: int = 0
+    tts_audio_secs: float = 0.0
+    tts_chars: int = 0
 
     # ── infrastructure ──
     stt_reconnects: int = 0
@@ -144,6 +161,17 @@ class CallDiagnostics:
             buf: List[float] = getattr(self, name)
             if len(buf) < _MAX_SAMPLES:
                 buf.append(float(value))
+        except Exception:
+            pass
+
+    def note_tts_spend(self, credits, audio_secs, chars=0) -> None:
+        """Terminal-frame hook. TOTAL: a metering bug must not touch the call."""
+        try:
+            self.tts_meter_frames += 1
+            if credits:
+                self.tts_vendor_credits = (self.tts_vendor_credits or 0.0) + float(credits)
+            self.tts_audio_secs += float(audio_secs or 0.0)
+            self.tts_chars += int(chars or 0)
         except Exception:
             pass
 
@@ -344,6 +372,13 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "silentGenerations": d.tts_silent_generations,
                 "ttfbP50": _p(d.tts_ttfb, 50), "ttfbP95": _p(d.tts_ttfb, 95),
                 "ttfbMax": round(max(d.tts_ttfb), 3) if d.tts_ttfb else None,
+                "vendor": d.tts_vendor or None,
+                # None = the vendor told us nothing. Never rendered as zero cost.
+                "vendorCredits": (round(d.tts_vendor_credits, 4)
+                                  if d.tts_vendor_credits is not None else None),
+                "meteredRequests": d.tts_meter_frames or None,
+                "audioSecs": round(d.tts_audio_secs, 2) if d.tts_audio_secs else None,
+                "chars": d.tts_chars or None,
             },
             "playout": {
                 "repliesGenerated": d.replies_generated,
@@ -352,6 +387,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "turnTaking": {
                 "userTurns": d.user_turns, "botTurns": d.bot_turns,
                 "bargeIns": d.barge_ins,
+                "bargeInCancels": d.barge_in_cancels,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
                 "nudges": d.nudges,

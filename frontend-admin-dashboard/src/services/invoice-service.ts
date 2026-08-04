@@ -63,6 +63,10 @@ export interface UserAccountLedgerEntryDTO {
     reference_id: string | null;
     remarks: string | null;
     created_at: string;
+    /** Discounted accruals only: list price before the coupon (amount is the net). */
+    gross_amount?: number | null;
+    /** Discounted accruals only: the coupon/discount applied. */
+    discount_amount?: number | null;
 }
 
 export interface LedgerPageResponse {

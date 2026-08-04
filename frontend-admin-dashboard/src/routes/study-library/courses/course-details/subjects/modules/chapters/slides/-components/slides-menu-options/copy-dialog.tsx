@@ -1,8 +1,12 @@
 import { useRouter } from '@tanstack/react-router';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { StudyMaterialDetailsForm } from '@/routes/study-library/courses/-components/upload-study-material/study-material-details-form';
 import { MyDialog } from '@/components/design-system/dialog';
-import { Dispatch, SetStateAction } from 'react';
+import {
+    CopyMoveDestinationPicker,
+    type CopyMoveDestination,
+    type CopyMovePlacement,
+} from '@/components/common/study-library/copy-move/copy-move-destination-picker';
+import { Dispatch, SetStateAction, useState } from 'react';
 import { useContentStore } from '../../-stores/chapter-sidebar-store';
 import { useCopySlide } from '../../-services/copySlides';
 import { toast } from 'sonner';
@@ -19,64 +23,82 @@ export const CopyToDialog = ({ openDialog, setOpenDialog }: CopyTo) => {
     const { activeItem } = useContentStore();
     const copySlideMutation = useCopySlide();
     const { getPackageSessionId } = useInstituteDetailsStore();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleCopySlide = async (data: {
-        [x: string]: { id: string; name: string } | undefined;
-    }) => {
+    const handleCopySlide = async (
+        destinations: CopyMoveDestination[],
+        placement: CopyMovePlacement
+    ) => {
         const slideId = activeItem?.id || '';
-        // Old values from route/search params
-        const oldChapterId = chapterId || '';
-        const oldModuleId = moduleId || '';
-        const oldSubjectId = subjectId || '';
-        const oldPackageSessionId =
-            getPackageSessionId({
-                courseId: courseId || '',
-                sessionId: sessionId || '',
-                levelId: levelId || '',
-            }) || '';
-        // New values from form data
-        const newChapterId = data['chapter']?.id || '';
-        const newModuleId = data['module']?.id || '';
-        const newSubjectId = data['subject']?.id || '';
-        const newCourseId = data['course']?.id || '';
-        const newSessionId = data['session']?.id || '';
-        const newLevelId = data['level']?.id || '';
-        const newPackageSessionId =
-            getPackageSessionId({
-                courseId: newCourseId,
-                sessionId: newSessionId,
-                levelId: newLevelId,
-            }) || '';
-        try {
-            await copySlideMutation.mutateAsync({
-                slideId,
-                oldChapterId,
-                oldModuleId,
-                oldSubjectId,
-                oldPackageSessionId,
-                newChapterId,
-                newModuleId,
-                newSubjectId,
-                newPackageSessionId,
-            });
-            toast.success('Slide copied successfully!');
-            setOpenDialog(null);
-        } catch {
-            toast.error('Failed to copy slide');
+        const source = {
+            slideId,
+            oldChapterId: chapterId || '',
+            oldModuleId: moduleId || '',
+            oldSubjectId: subjectId || '',
+            oldPackageSessionId:
+                getPackageSessionId({
+                    courseId: courseId || '',
+                    sessionId: sessionId || '',
+                    levelId: levelId || '',
+                }) || '',
+        };
+
+        setIsSubmitting(true);
+        const failed: CopyMoveDestination[] = [];
+        // Sequential: the backend re-orders slides in the target chapter, so
+        // parallel copies of the same slide can race on slide_order.
+        for (const destination of destinations) {
+            try {
+                await copySlideMutation.mutateAsync({
+                    ...source,
+                    newChapterId: destination.chapterId,
+                    newModuleId: destination.moduleId,
+                    newSubjectId: destination.subjectId,
+                    newPackageSessionId: destination.packageSessionId,
+                    slideStatus: placement.slideStatus,
+                    position: placement.position,
+                });
+            } catch {
+                failed.push(destination);
+            }
         }
+        setIsSubmitting(false);
+
+        const succeeded = destinations.length - failed.length;
+        if (failed.length === 0) {
+            toast.success(
+                succeeded === 1
+                    ? 'Slide copied successfully!'
+                    : `Slide copied to ${succeeded} locations`
+            );
+            setOpenDialog(null);
+            return;
+        }
+        if (succeeded === 0) {
+            toast.error('Failed to copy slide');
+        } else {
+            toast.warning(
+                `Copied to ${succeeded} of ${destinations.length} locations. Retry the rest below.`
+            );
+        }
+        // The source is untouched, so retrying just these is safe.
+        return failed;
     };
 
     return (
         <MyDialog
             heading="Copy to"
-            dialogWidth="w-[400px]"
+            dialogWidth="max-w-2xl"
             open={openDialog == 'copy'}
             onOpenChange={() => setOpenDialog(null)}
         >
-            <StudyMaterialDetailsForm
-                fields={['course', 'session', 'level', 'subject', 'module', 'chapter']}
-                onFormSubmit={handleCopySlide}
-                submitButtonName="Copy"
+            <CopyMoveDestinationPicker
+                leaf="chapter"
+                showPlacementOptions
+                submitLabel="Copy"
+                busyLabel="Copying…"
+                isSubmitting={isSubmitting}
+                onSubmit={handleCopySlide}
             />
         </MyDialog>
     );

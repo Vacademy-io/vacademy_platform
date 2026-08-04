@@ -18,7 +18,11 @@ export type FileType =
     | 'application/msword'
     | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     | 'application/vnd.ms-powerpoint'
-    | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    // Windows reports zips as x-zip-compressed, so both are needed for the
+    // dropzone's accept filter to match a zip picked on any platform.
+    | 'application/zip'
+    | 'application/x-zip-compressed';
 
 export interface FileUploadComponentProps<T extends FieldValues> {
     fileInputRef: MutableRefObject<HTMLInputElement | null>;

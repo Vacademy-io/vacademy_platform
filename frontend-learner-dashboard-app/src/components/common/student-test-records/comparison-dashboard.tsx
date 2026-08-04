@@ -123,6 +123,9 @@ export function ComparisonDashboard({
   const [reportFiles, setReportFiles] = useState<{
     evaluated?: string | null;
     submitted?: string | null;
+    // A report uploaded by the institute (offline data entry), as opposed to
+    // the one the platform generates on download.
+    report?: string | null;
     remark?: string | null;
   }>({});
   const [downloadingReport, setDownloadingReport] = useState(false);
@@ -173,8 +176,12 @@ export function ComparisonDashboard({
         }
         const evaluated = res.data?.evaluated_file_id;
         const submitted = res.data?.response_file_id;
-        setReportFiles({ evaluated, submitted, remark });
-        setIsManualFromDetail(!!evaluated || !!submitted);
+        const report = res.data?.report_file_id;
+        setReportFiles({ evaluated, submitted, report, remark });
+        // An uploaded report alone is enough to warrant the options menu —
+        // otherwise a hand-marked attempt with only a report would fall back to
+        // the plain download and the uploaded file would be unreachable here.
+        setIsManualFromDetail(!!evaluated || !!submitted || !!report);
       } catch {
         // Best-effort; the menu items just stay disabled if this fails.
       }
@@ -408,6 +415,22 @@ export function ComparisonDashboard({
                 <FileArrowDown className="me-2 h-4 w-4" />
                 View submitted
               </DropdownMenuItem>
+              {/* Only when the institute uploaded one — "Download report"
+                  above already covers the generated report. */}
+              {reportFiles.report && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    openInAppViewer(reportFiles.report, {
+                      title: "Result report",
+                      fallbackName: `${assessmentName || "assessment"} - report`,
+                    })
+                  }
+                  disabled={openingFileId === reportFiles.report}
+                >
+                  <Eye className="me-2 h-4 w-4" />
+                  View result report
+                </DropdownMenuItem>
+              )}
               {reportFiles.submitted && (
                 <DropdownMenuItem onClick={() => setAnnotatedOpen(true)}>
                   <Sparkle className="me-2 h-4 w-4" />

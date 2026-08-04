@@ -368,6 +368,67 @@ export interface WorkbenchVisibilitySettings {
     salesDashboardVisible?: boolean;
 }
 
+// Per-role access to the Sub-Organizations (Channel Partners) module —
+// /manage-custom-teams and the per-sub-org drilldown.
+//
+// Off by default for every role. Enabling it for a NON-admin role (teacher or a
+// custom role) surfaces the module in the sidebar and unlocks the route, but the
+// user still only ever sees the channel partners ASSIGNED to them: the backend
+// scopes every sub-org response to the caller's ACTIVE SUB_ORG-linked FSPSSM
+// rows, so search, filters, pagination and counts all operate on the assigned
+// set, and a user with no assignments gets an empty list. Admins are unaffected
+// by the scoping and continue to see the whole network.
+// Per-role capabilities inside the Sub-Organizations (Channel Partners) module.
+// Deliberately mapped to actions that actually exist today — there is no delete
+// endpoint for a channel partner, so there is no delete toggle to offer.
+export interface SubOrgModulePermissions {
+    /** Create a new channel partner. Default false. */
+    canCreate?: boolean;
+    /** Edit a partner's configuration + re-sync its invites. Default false. */
+    canEditConfig?: boolean;
+    /** Add / remove people on a partner's Team tab. Default false. */
+    canManageTeam?: boolean;
+    /** See the Admin Payment + Invoices tabs at all. Default TRUE (read). */
+    canViewFinance?: boolean;
+    /** Record payments, mark invoices paid, send reminders, raise invoices. Default false. */
+    canManageFinance?: boolean;
+    /** Export the partner list to CSV. Default TRUE (read). */
+    canExport?: boolean;
+}
+
+export interface SubOrgModuleSettings {
+    // Grant this role access to the Sub-Organizations module. Missing/undefined
+    // = false (module hidden), so existing institutes are unaffected.
+    moduleEnabled?: boolean;
+
+    // What this role may DO on the channel partners it can see. Read gates are
+    // separate from write gates on purpose: an institute usually wants a regional
+    // sales role to see a partner's finances without being able to move money.
+    //
+    // Every write flag defaults to FALSE and every read flag to TRUE, so granting
+    // the module alone produces a read-only view — the safe end of the range. An
+    // institute admin opts each capability in per role.
+    //
+    // Enforced in BOTH places: the UI hides the affordance, and the backend
+    // re-checks the same flag before mutating. A UI-only gate would be theatre —
+    // the endpoints are reachable directly.
+    permissions?: SubOrgModulePermissions;
+
+    // Sub-org (channel partner) ids every holder of this role can see — a
+    // ROLE-level grant, read server-side by SubOrgAccessScopeService.
+    //
+    // Why this exists alongside per-user assignment: assignment was originally
+    // only per-person (a SUB_ORG-linked FSPSSM row created from a partner's Team
+    // tab). For a regional team ("Gujarat sales") that meant wiring every member
+    // individually and re-doing it for each new joiner. Listing the partners on
+    // the role covers the whole team at once, including people added later.
+    //
+    // The two mechanisms UNION — a per-user assignment still adds on top of what
+    // the role grants, so nothing configured the old way stops working. Empty or
+    // missing = this role grants no partners on its own.
+    assignedSubOrgIds?: string[];
+}
+
 // Admin list surfaces that support custom-field filter/sort gating.
 export type ListCustomFieldSurface = 'LEADS' | 'CONTACTS' | 'STUDENTS';
 
@@ -561,6 +622,12 @@ export interface DisplaySettingsData {
     // sales dashboard (/sales-dashboard). Both default to false. See
     // WorkbenchVisibilitySettings for details.
     workbench?: WorkbenchVisibilitySettings;
+
+    // 13d) Sub-Organizations (Channel Partners) module access for this role.
+    //      Off by default. See SubOrgModuleSettings — enabling it for a
+    //      non-admin role grants the module but keeps visibility limited to the
+    //      channel partners assigned to that user.
+    subOrganizations?: SubOrgModuleSettings;
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{

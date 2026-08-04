@@ -4,11 +4,13 @@ import type { MessageTemplate } from '@/types/message-template-types';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 
+// Mirrors MessageTemplate rather than re-declaring the unions — a locally narrowed copy
+// silently breaks the moment a new template type is added.
 interface TemplateFormData {
     name: string;
-    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+    type: MessageTemplate['type'];
     subject: string;
-    templateType: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    templateType: NonNullable<MessageTemplate['templateType']>;
     isDefault: boolean;
 }
 

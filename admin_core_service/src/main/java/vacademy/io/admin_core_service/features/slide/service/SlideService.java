@@ -39,6 +39,9 @@ import vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRe
 @Slf4j
 public class SlideService {
 
+    /** Copy/move destination placement; anything else means append to the end. */
+    private static final String SLIDE_POSITION_TOP = "TOP";
+
     private final SlideRepository slideRepository;
     private final ChapterRepository chapterRepository;
     private final ChapterToSlidesRepository chapterToSlidesRepository;
@@ -50,6 +53,7 @@ public class SlideService {
     private final VideoSlideQuestionRepository videoSlideQuestionRepository;
     private final HtmlVideoSlideRepository htmlVideoSlideRepository;
     private final ScormSlideRepository scormSlideRepository;
+    private final AudioSlideRepository audioSlideRepository;
     private final QuizSlideQuestionRepository quizSlideQuestionRepository;
     private final AssessmentSlideRepository assessmentSlideRepository;
     private final SlideNotificationService slideNotificationService;
@@ -349,19 +353,25 @@ public class SlideService {
             String newModuleId,
             String newSubjectId,
             String newPackageSessionId,
+            String requestedStatus,
+            String position,
             CustomUserDetails user) {
         Slide slide = getSlideById(slideId);
         Chapter chapter = getChapterById(newChapterId);
 
         Slide newSlide = copySlideByType(slide);
 
-        // Status of the copied slide is driven by the institute's
+        // Status of the copied slide: the caller's explicit choice wins (the
+        // Copy-to dialog lets the admin pick Published/Draft per copy). With no
+        // choice sent, fall back to the institute's
         // COURSE_SETTING.copiedSlideStatus (KEEP_DRAFT | INHERIT_SOURCE |
-        // ALWAYS_PUBLISHED). Default/unset = KEEP_DRAFT, i.e. DRAFT — identical to
-        // the previous hardcoded behaviour, so nothing changes unless an institute
-        // opts in from Settings. copySlideByType creates the slide as DRAFT, so we
-        // only override (and re-save) when the resolved status differs.
-        String copiedStatus = copiedSlideStatusResolver.resolveForCopy(newPackageSessionId, slide.getStatus());
+        // ALWAYS_PUBLISHED); default/unset = KEEP_DRAFT, i.e. the original
+        // behaviour. copySlideByType creates the slide as DRAFT, so we only
+        // override (and re-save) when the resolved status differs.
+        String requested = normalizeRequestedSlideStatus(requestedStatus);
+        String copiedStatus = requested != null
+                ? requested
+                : copiedSlideStatusResolver.resolveForCopy(newPackageSessionId, slide.getStatus());
         if (!copiedStatus.equalsIgnoreCase(newSlide.getStatus())) {
             newSlide.setStatus(copiedStatus);
             if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(copiedStatus)) {
@@ -370,7 +380,8 @@ public class SlideService {
             slideRepository.save(newSlide);
         }
 
-        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, copiedStatus));
+        chapterToSlidesRepository
+                .save(new ChapterToSlides(chapter, newSlide, resolveSlideOrder(newChapterId, position), copiedStatus));
 
         // A copied ASSESSMENT slide keeps the same assessmentId but lands in a new
         // batch. Register that assessment to the target batch so it shows up for
@@ -386,6 +397,45 @@ public class SlideService {
                 newChapterId, newModuleId, newSubjectId, newPackageSessionId);
 
         return "Slide copied successfully.";
+    }
+
+    /**
+     * Only PUBLISHED/DRAFT may be forced by a copy/move caller. Anything else
+     * (null, blank, DELETED, a typo) means "no explicit choice" and leaves the
+     * existing institute-setting / preserve-status behaviour in charge.
+     */
+    private String normalizeRequestedSlideStatus(String requestedStatus) {
+        if (!StringUtils.hasText(requestedStatus)) {
+            return null;
+        }
+        String value = requestedStatus.trim();
+        if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(value)
+                || SlideStatus.DRAFT.name().equalsIgnoreCase(value)) {
+            return value.toUpperCase();
+        }
+        return null;
+    }
+
+    /**
+     * Where a copied/moved slide lands inside the destination chapter.
+     *
+     * <p>{@code TOP} pushes every existing slide down one slot (normalising any
+     * NULL orders on the way — those sort first today and would otherwise stay
+     * above the slide the admin explicitly put at the top). Anything else,
+     * including no value at all, appends to the end, which is the sane default:
+     * before this, copies were written with a NULL order and silently jumped to
+     * the top of the chapter.
+     */
+    private Integer resolveSlideOrder(String chapterId, String position) {
+        if (StringUtils.hasText(position) && SLIDE_POSITION_TOP.equalsIgnoreCase(position.trim())) {
+            List<ChapterToSlides> existing = chapterToSlidesRepository.findByChapterId(chapterId);
+            existing.forEach(mapping -> mapping
+                    .setSlideOrder(mapping.getSlideOrder() == null ? 1 : mapping.getSlideOrder() + 1));
+            chapterToSlidesRepository.saveAll(existing);
+            return 0;
+        }
+        Integer maxOrder = chapterToSlidesRepository.findMaxSlideOrderByChapterId(chapterId);
+        return maxOrder == null ? 0 : maxOrder + 1;
     }
 
     /**
@@ -420,6 +470,9 @@ public class SlideService {
             return createNewSlide(slide, newSourceId);
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
             String newSourceId = copyAssessmentSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.AUDIO.name())) {
+            String newSourceId = copyAudioSlideSource(slide.getSourceId());
             return createNewSlide(slide, newSourceId);
         } else {
             throw new VacademyException("Unsupported slide type for copying: " + sourceType);
@@ -463,12 +516,27 @@ public class SlideService {
             String newModuleId,
             String newSubjectId,
             String newPackageSessionId,
+            String requestedStatus,
+            String position,
             CustomUserDetails user) {
         ChapterToSlides existingMapping = getChapterToSlides(oldChapterId, slideId);
         Chapter newChapter = getChapterById(newChapterId);
 
-        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(), null,
-                existingMapping.getStatus());
+        // A move keeps the slide's own status unless the caller asks for one
+        // (the Move-to dialog offers Published/Draft, same as Copy-to).
+        String requested = normalizeRequestedSlideStatus(requestedStatus);
+        String mappingStatus = requested != null ? requested : existingMapping.getStatus();
+        Slide movedSlide = existingMapping.getSlide();
+        if (requested != null && movedSlide != null && !requested.equalsIgnoreCase(movedSlide.getStatus())) {
+            movedSlide.setStatus(requested);
+            if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(requested)) {
+                movedSlide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+            }
+            slideRepository.save(movedSlide);
+        }
+
+        ChapterToSlides newMapping = new ChapterToSlides(newChapter, existingMapping.getSlide(),
+                resolveSlideOrder(newChapterId, position), mappingStatus);
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);
@@ -827,7 +895,16 @@ public class SlideService {
             return copyScormSlideSource(oldSlide.getSourceId());
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
             return copyAssessmentSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.AUDIO.name())) {
+            return copyAudioSlideSource(oldSlide.getSourceId());
         } else {
+            // Falling through SHARES the source row between the original and the
+            // copy — edits to one then show up in the other. AUDIO used to land
+            // here, which is why course/chapter clones produced audio slides
+            // pointing at the source course's audio_slide row. Every
+            // SlideTypeEnum value now has a branch; this stays only for junk
+            // source types (legacy "QUESTION_SLIDE", blank) where sharing beats
+            // failing the whole clone.
             log.warn("Unknown slide type: {}, copying source ID as-is", sourceType);
             return oldSlide.getSourceId();
         }
@@ -860,6 +937,40 @@ public class SlideService {
             return newDocumentSlide.getId();
         }
         return sourceId;
+    }
+
+    /**
+     * AUDIO was missing from {@link #copySlideByType}, so every "Copy to" on an
+     * audio slide threw "Unsupported slide type for copying: AUDIO" and surfaced
+     * as a bare "Failed to copy slide" (Move was unaffected — it re-points the
+     * chapter link and never clones the source row).
+     *
+     * <p>Mirrors the video copy: a copy starts life as a DRAFT and renders from
+     * the draft field, so fall back to the published file/length when a
+     * published slide has its draft fields cleared.
+     */
+    private String copyAudioSlideSource(String sourceId) {
+        AudioSlide audioSlide = audioSlideRepository.findById(sourceId).orElse(null);
+        if (audioSlide == null) {
+            return sourceId;
+        }
+        AudioSlide newAudioSlide = new AudioSlide();
+        newAudioSlide.setId(UUID.randomUUID().toString());
+        newAudioSlide.setTitle(audioSlide.getTitle());
+        newAudioSlide.setDescription(audioSlide.getDescription());
+        newAudioSlide.setAudioFileId(StringUtils.hasText(audioSlide.getAudioFileId())
+                ? audioSlide.getAudioFileId()
+                : audioSlide.getPublishedAudioFileId());
+        newAudioSlide.setAudioLengthInMillis(audioSlide.getAudioLengthInMillis() != null
+                ? audioSlide.getAudioLengthInMillis()
+                : audioSlide.getPublishedAudioLengthInMillis());
+        newAudioSlide.setPublishedAudioFileId(audioSlide.getPublishedAudioFileId());
+        newAudioSlide.setPublishedAudioLengthInMillis(audioSlide.getPublishedAudioLengthInMillis());
+        newAudioSlide.setThumbnailFileId(audioSlide.getThumbnailFileId());
+        newAudioSlide.setSourceType(audioSlide.getSourceType());
+        newAudioSlide.setExternalUrl(audioSlide.getExternalUrl());
+        newAudioSlide.setTranscript(audioSlide.getTranscript());
+        return audioSlideRepository.save(newAudioSlide).getId();
     }
 
     /**
@@ -906,6 +1017,46 @@ public class SlideService {
             newQuestionSlide.setReAttemptCount(questionSlide.getReAttemptCount());
             newQuestionSlide.setPoints(questionSlide.getPoints());
             newQuestionSlide.setSourceType(questionSlide.getSourceType());
+            // The question text and its options used to be dropped, so a copied
+            // QUESTION slide opened blank with no answers to pick from. Same
+            // treatment the QUIZ path already gives its questions.
+            if (questionSlide.getParentRichText() != null) {
+                newQuestionSlide.setParentRichText(copyRichText(questionSlide.getParentRichText()));
+            }
+            if (questionSlide.getTextData() != null) {
+                newQuestionSlide.setTextData(copyRichText(questionSlide.getTextData()));
+            }
+            if (questionSlide.getExplanationTextData() != null) {
+                newQuestionSlide.setExplanationTextData(copyRichText(questionSlide.getExplanationTextData()));
+            }
+
+            Map<String, String> optionIdMap = new HashMap<>();
+            if (questionSlide.getOptions() != null) {
+                List<Option> newOptions = new ArrayList<>();
+                for (Option oldOption : questionSlide.getOptions()) {
+                    String newOptionId = UUID.randomUUID().toString();
+                    optionIdMap.put(oldOption.getId(), newOptionId);
+                    Option newOption = new Option();
+                    newOption.setId(newOptionId);
+                    newOption.setQuestionSlide(newQuestionSlide);
+                    newOption.setMediaId(oldOption.getMediaId());
+                    if (oldOption.getText() != null) {
+                        newOption.setText(copyRichText(oldOption.getText()));
+                    }
+                    if (oldOption.getExplanationTextData() != null) {
+                        newOption.setExplanationTextData(copyRichText(oldOption.getExplanationTextData()));
+                    }
+                    newOptions.add(newOption);
+                }
+                newQuestionSlide.setOptions(newOptions);
+            }
+            // correctAnswers references option ids, which just changed.
+            if (StringUtils.hasText(newQuestionSlide.getAutoEvaluationJson()) && !optionIdMap.isEmpty()) {
+                newQuestionSlide
+                        .setAutoEvaluationJson(remapOptionIdsInJson(newQuestionSlide.getAutoEvaluationJson(),
+                                optionIdMap));
+            }
+
             newQuestionSlide = questionSlideRepository.save(newQuestionSlide);
             return newQuestionSlide.getId();
         }
@@ -924,6 +1075,48 @@ public class SlideService {
             newAssignmentSlide.setEndDate(assignmentSlide.getEndDate());
             newAssignmentSlide.setReAttemptCount(assignmentSlide.getReAttemptCount());
             newAssignmentSlide.setCommaSeparatedMediaIds(assignmentSlide.getCommaSeparatedMediaIds());
+            // The brief, the marks and the questions used to be dropped, leaving
+            // the copy an empty assignment with only its dates.
+            newAssignmentSlide.setTotalMarks(assignmentSlide.getTotalMarks());
+            newAssignmentSlide.setPassingMarks(assignmentSlide.getPassingMarks());
+            if (assignmentSlide.getParentRichText() != null) {
+                newAssignmentSlide.setParentRichText(copyRichText(assignmentSlide.getParentRichText()));
+            }
+            if (assignmentSlide.getTextData() != null) {
+                newAssignmentSlide.setTextData(copyRichText(assignmentSlide.getTextData()));
+            }
+
+            if (assignmentSlide.getAssignmentSlideQuestions() != null) {
+                List<AssignmentSlideQuestion> newQuestions = new ArrayList<>();
+                for (AssignmentSlideQuestion oldQuestion : assignmentSlide.getAssignmentSlideQuestions()) {
+                    AssignmentSlideQuestion newQuestion = new AssignmentSlideQuestion();
+                    newQuestion.setId(UUID.randomUUID().toString());
+                    newQuestion.setAssignmentSlide(newAssignmentSlide);
+                    newQuestion.setQuestionType(oldQuestion.getQuestionType());
+                    newQuestion.setQuestionOrder(oldQuestion.getQuestionOrder());
+                    newQuestion.setStatus(oldQuestion.getStatus());
+                    if (oldQuestion.getTextData() != null) {
+                        newQuestion.setTextData(copyRichText(oldQuestion.getTextData()));
+                    }
+                    if (oldQuestion.getOptions() != null) {
+                        List<AssignmentSlideQuestionOption> newOptions = new ArrayList<>();
+                        for (AssignmentSlideQuestionOption oldOption : oldQuestion.getOptions()) {
+                            AssignmentSlideQuestionOption newOption = new AssignmentSlideQuestionOption();
+                            newOption.setId(UUID.randomUUID().toString());
+                            newOption.setAssignmentSlideQuestion(newQuestion);
+                            newOption.setMediaId(oldOption.getMediaId());
+                            if (oldOption.getText() != null) {
+                                newOption.setText(copyRichText(oldOption.getText()));
+                            }
+                            newOptions.add(newOption);
+                        }
+                        newQuestion.setOptions(newOptions);
+                    }
+                    newQuestions.add(newQuestion);
+                }
+                newAssignmentSlide.setAssignmentSlideQuestions(newQuestions);
+            }
+
             newAssignmentSlide = assignmentSlideRepository.save(newAssignmentSlide);
             return newAssignmentSlide.getId();
         }
@@ -1062,6 +1255,43 @@ public class SlideService {
             newVideoSlideQuestion.setQuestionOrder(videoSlideQuestion.getQuestionOrder());
             newVideoSlideQuestion.setQuestionTimeInMillis(videoSlideQuestion.getQuestionTimeInMillis());
             newVideoSlideQuestion.setStatus(videoSlideQuestion.getStatus());
+            // Same omission as QUESTION: text and options were left behind.
+            if (videoSlideQuestion.getParentRichText() != null) {
+                newVideoSlideQuestion.setParentRichText(copyRichText(videoSlideQuestion.getParentRichText()));
+            }
+            if (videoSlideQuestion.getTextData() != null) {
+                newVideoSlideQuestion.setTextData(copyRichText(videoSlideQuestion.getTextData()));
+            }
+            if (videoSlideQuestion.getExplanationTextData() != null) {
+                newVideoSlideQuestion
+                        .setExplanationTextData(copyRichText(videoSlideQuestion.getExplanationTextData()));
+            }
+
+            Map<String, String> optionIdMap = new HashMap<>();
+            if (videoSlideQuestion.getOptions() != null) {
+                List<VideoSlideQuestionOption> newOptions = new ArrayList<>();
+                for (VideoSlideQuestionOption oldOption : videoSlideQuestion.getOptions()) {
+                    String newOptionId = UUID.randomUUID().toString();
+                    optionIdMap.put(oldOption.getId(), newOptionId);
+                    VideoSlideQuestionOption newOption = new VideoSlideQuestionOption();
+                    newOption.setId(newOptionId);
+                    newOption.setVideoSlideQuestion(newVideoSlideQuestion);
+                    newOption.setMediaId(oldOption.getMediaId());
+                    if (oldOption.getText() != null) {
+                        newOption.setText(copyRichText(oldOption.getText()));
+                    }
+                    if (oldOption.getExplanationTextData() != null) {
+                        newOption.setExplanationTextData(copyRichText(oldOption.getExplanationTextData()));
+                    }
+                    newOptions.add(newOption);
+                }
+                newVideoSlideQuestion.setOptions(newOptions);
+            }
+            if (StringUtils.hasText(newVideoSlideQuestion.getAutoEvaluationJson()) && !optionIdMap.isEmpty()) {
+                newVideoSlideQuestion.setAutoEvaluationJson(
+                        remapOptionIdsInJson(newVideoSlideQuestion.getAutoEvaluationJson(), optionIdMap));
+            }
+
             newVideoSlideQuestion = videoSlideQuestionRepository.save(newVideoSlideQuestion);
             return newVideoSlideQuestion.getId();
         }

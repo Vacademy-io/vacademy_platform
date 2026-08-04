@@ -60,15 +60,37 @@ type OutputDataPoint = {
     [key: string]: unknown;
 };
 
+/** "meetingLink" → "Meeting Link": admin-readable labels for setting names. */
+function humanizeFieldName(name: string): string {
+    return name
+        .replace(/[_-]/g, ' ')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Editable query params in the simple view: plain scalars, never '#' refs or SpEL. */
+function isEditableQueryParam(value: unknown): boolean {
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    return trimmed.length > 0 && !trimmed.startsWith('#') && !trimmed.startsWith("'") && !trimmed.startsWith('T(');
+}
+
 /**
  * What the simple (non-developer) view can edit on a node: plain-text settings
- * rows and/or literal message variables. Nodes with neither are hidden there.
+ * rows, literal message variables and/or scalar query knobs.
  */
-function normalEditableSections(configText: string): { settings: boolean; message: boolean } {
+function normalEditableSections(configText: string): {
+    settings: boolean;
+    message: boolean;
+    queryParams: boolean;
+} {
     try {
         const p: unknown = JSON.parse(configText);
         if (!p || typeof p !== 'object' || Array.isArray(p)) {
-            return { settings: false, message: false };
+            return { settings: false, message: false, queryParams: false };
         }
         const cfg = p as Record<string, unknown>;
         const points = Array.isArray(cfg.outputDataPoints)
@@ -85,10 +107,87 @@ function normalEditableSections(configText: string): { settings: boolean; messag
                 : null;
         const message =
             !!vars && Object.values(vars).some((v) => !String(v ?? '').trim().startsWith('#'));
-        return { settings, message };
+        const params =
+            cfg.prebuiltKey && cfg.params && typeof cfg.params === 'object' && !Array.isArray(cfg.params)
+                ? (cfg.params as Record<string, unknown>)
+                : null;
+        const queryParams = !!params && Object.values(params).some(isEditableQueryParam);
+        return { settings, message, queryParams };
     } catch {
-        return { settings: false, message: false };
+        return { settings: false, message: false, queryParams: false };
     }
+}
+
+/**
+ * Simple-view editor for a QUERY node's plain scalar knobs (e.g. how many days
+ * before a charge to notify). Internal references ('#ctx…') never appear.
+ */
+function QueryParamsEditor({
+    configText,
+    onChange,
+    devMode,
+}: {
+    configText: string;
+    onChange: (next: string) => void;
+    devMode: boolean;
+}) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        const p: unknown = JSON.parse(configText);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+            parsed = p as Record<string, unknown>;
+        }
+    } catch {
+        // invalid JSON — raw editor shows the error
+    }
+    const params =
+        parsed && parsed.prebuiltKey && parsed.params && typeof parsed.params === 'object' && !Array.isArray(parsed.params)
+            ? (parsed.params as Record<string, unknown>)
+            : null;
+    if (!parsed || !params) return null;
+    const cfg = parsed;
+    const editable = Object.entries(params).filter(([, v]) => isEditableQueryParam(v));
+    if (editable.length === 0) return null;
+
+    const writeParam = (key: string, raw: string) => {
+        const previous = params[key];
+        let next: unknown = raw;
+        if (typeof previous === 'number') {
+            const parsedNumber = Number(raw);
+            next = Number.isNaN(parsedNumber) ? raw : parsedNumber;
+        } else if (typeof previous === 'boolean') {
+            next = raw.trim().toLowerCase() === 'true';
+        }
+        onChange(
+            JSON.stringify({ ...cfg, params: { ...params, [key]: next } }, null, 2)
+        );
+    };
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <Label className="mb-2 block text-xs text-neutral-600">
+                Step settings
+                <span className="ml-1.5 text-caption text-neutral-400">
+                    how this step selects its data
+                </span>
+            </Label>
+            <div className="space-y-2">
+                {editable.map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                        <span className="w-44 shrink-0 truncate text-right text-xs text-neutral-500">
+                            {devMode ? key : humanizeFieldName(key)}
+                        </span>
+                        <Input
+                            value={String(value)}
+                            onChange={(e) => writeParam(key, e.target.value)}
+                            spellCheck={false}
+                            className="h-8 max-w-48 text-xs"
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 /** True for a two-level map of strings: { day1: { "05:30": "url", ... }, ... } */
@@ -234,7 +333,11 @@ function OutputDataPointsEditor({
             return (
                 <NestedMapGridEditor
                     key={index}
-                    label={point.fieldName ?? 'schedule'}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'schedule')
+                            : humanizeFieldName(point.fieldName ?? 'schedule')
+                    }
                     grid={point.value as Record<string, Record<string, string>>}
                     onChange={(next) => updateRow(index, { value: next })}
                 />
@@ -269,7 +372,7 @@ function OutputDataPointsEditor({
                     />
                 ) : (
                     <span className="mt-2 w-44 shrink-0 truncate text-right text-xs text-neutral-500">
-                        {point.fieldName}
+                        {humanizeFieldName(point.fieldName ?? '')}
                     </span>
                 )}
                 <Textarea
@@ -636,9 +739,10 @@ function NodeConfigEditorCard({
 
     const nodeMeta = WORKFLOW_NODE_TYPES.find((t) => t.type === node.node_type);
 
-    // Simple view: only show nodes a non-technical admin can act on.
+    // Simple view: every node stays visible (the admin should see the whole
+    // pipeline) — nodes without safe settings just say so.
     const editable = normalEditableSections(configText);
-    if (!devMode && !editable.settings && !editable.message) return null;
+    const hasSimpleSettings = editable.settings || editable.message || editable.queryParams;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white">
@@ -737,6 +841,12 @@ function NodeConfigEditorCard({
                     devMode={devMode}
                     templates={templates}
                 />
+                <QueryParamsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
+                {!devMode && !hasSimpleSettings && (
+                    <p className="text-xs text-neutral-400">
+                        Automatic step — nothing to configure here.
+                    </p>
+                )}
 
                 {/* config_json editor */}
                 <div className={devMode ? '' : 'hidden'}>
@@ -806,7 +916,13 @@ function NodeConfigEditorCard({
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-2 border-t border-neutral-100 pt-3">
+                <div
+                    className={
+                        devMode || hasSimpleSettings
+                            ? 'flex items-center justify-end gap-2 border-t border-neutral-100 pt-3'
+                            : 'hidden'
+                    }
+                >
                     {savedOk && (
                         <span className="mr-auto flex items-center gap-1 text-xs text-green-600">
                             <CheckCircle size={14} weight="fill" /> Saved

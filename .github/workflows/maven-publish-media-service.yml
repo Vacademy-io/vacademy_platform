@@ -115,6 +115,10 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            CDN_PUBLIC_BASE_URL=${{ secrets.CDN_PUBLIC_BASE_URL }} \
+            CDN_PRIVATE_BASE_URL=${{ secrets.CDN_PRIVATE_BASE_URL }} \
+            CDN_PRIVATE_KEY_PAIR_ID=${{ secrets.CDN_PRIVATE_KEY_PAIR_ID }} \
+            CDN_PRIVATE_KEY_B64=${{ secrets.CDN_PRIVATE_KEY_B64 }} \
             MEDIA_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/media_service \
             MEDIA_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/media_service_read \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \

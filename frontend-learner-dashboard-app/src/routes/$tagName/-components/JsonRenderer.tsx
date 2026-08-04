@@ -303,6 +303,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             key={id}
             {...props}
             instituteId={instituteId}
+            tagName={tagName}
             isPreviewMode={isPreviewMode}
           />
         );

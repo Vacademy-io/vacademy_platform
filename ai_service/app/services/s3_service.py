@@ -13,6 +13,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from ..config import get_settings
+from .s3_url_utils import extract_s3_key, public_base_url
 
 
 class S3Service:
@@ -35,6 +36,9 @@ class S3Service:
         # Use aws_bucket_name (same as image service uses)
         # Fallback to aws_s3_public_bucket if needed
         self.public_bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
+
+        # CloudFront base fronting this bucket; None = emit raw S3 URLs
+        self.cdn_base_url = settings.cdn_public_base_url
         
         if not access_key or not secret_key:
             raise ValueError(
@@ -112,13 +116,13 @@ class S3Service:
                 s3_key,
                 ExtraArgs=extra_args
             )
-            
-            # Return public URL
-            return f"https://{self.public_bucket}.s3.amazonaws.com/{s3_key}"
-        
+
+            # Return public URL (CDN when configured)
+            return f"{public_base_url(self.public_bucket, self.cdn_base_url)}/{s3_key}"
+
         except ClientError as e:
             raise RuntimeError(f"Failed to upload to S3: {e}") from e
-    
+
     def upload_file_content(
         self,
         content: bytes,
@@ -165,9 +169,9 @@ class S3Service:
                 Body=content,
                 **extra_args
             )
-            
-            # Return public URL
-            return f"https://{self.public_bucket}.s3.amazonaws.com/{s3_key}"
+
+            # Return public URL (CDN when configured)
+            return f"{public_base_url(self.public_bucket, self.cdn_base_url)}/{s3_key}"
         
         except ClientError as e:
             raise RuntimeError(f"Failed to upload to S3: {e}") from e
@@ -255,17 +259,12 @@ class S3Service:
             return False
         
         try:
-            # Extract key from URL
-            # Format: https://{bucket}.s3.amazonaws.com/{key}
-            if self.public_bucket not in s3_url:
+            # Extract key from URL — tolerant of raw S3 (global/regional/
+            # accelerate), path-style, and CloudFront hosts
+            s3_key = extract_s3_key(s3_url, str(self.public_bucket), self.cdn_base_url)
+            if not s3_key:
                 return False
-            
-            parts = s3_url.split(f"{self.public_bucket}.s3.amazonaws.com/")
-            if len(parts) != 2:
-                return False
-            
-            s3_key = parts[1]
-            
+
             # Ensure parent directory exists
             local_path.parent.mkdir(parents=True, exist_ok=True)
             
@@ -304,17 +303,12 @@ class S3Service:
             return False
         
         try:
-            # Extract key from URL
-            # Format: https://{bucket}.s3.amazonaws.com/{key}
-            if self.public_bucket not in s3_url:
+            # Extract key from URL — tolerant of raw S3 (global/regional/
+            # accelerate), path-style, and CloudFront hosts
+            s3_key = extract_s3_key(s3_url, str(self.public_bucket), self.cdn_base_url)
+            if not s3_key:
                 return False
-            
-            parts = s3_url.split(f"{self.public_bucket}.s3.amazonaws.com/")
-            if len(parts) != 2:
-                return False
-            
-            s3_key = parts[1]
-            
+
             self.s3_client.delete_object(
                 Bucket=str(self.public_bucket),  # Ensure bucket is string
                 Key=s3_key

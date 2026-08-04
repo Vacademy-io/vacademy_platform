@@ -20,6 +20,7 @@ from uuid import uuid4
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..db import db_session as _fresh_db_session
 from .s3_service import S3Service
+from .s3_url_utils import extract_s3_key
 from . import cancellation_registry
 
 
@@ -2535,10 +2536,10 @@ class VideoGenerationService:
                         for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
                             if _bkt in _ctx_url:
                                 try:
-                                    _parts = _ctx_url.split(f"{_bkt}.s3.amazonaws.com/")
-                                    if len(_parts) == 2:
+                                    _key = extract_s3_key(_ctx_url, _bkt)
+                                    if _key:
                                         self.s3_service.s3_client.download_file(
-                                            _bkt, _parts[1], str(context_path)
+                                            _bkt, _key, str(context_path)
                                         )
                                         _downloaded = True
                                         break

@@ -15,6 +15,7 @@ import {
   MapPin,
   VideoCamera,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { handleGetPublicInstituteDetails } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
@@ -192,6 +193,16 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
   const [submitting, setSubmitting] = useState(false);
   const [booking, setBooking] = useState<BookingView | null>(null);
 
+  // Session types: when the page offers more than one bookable length the invitee
+  // picks one first; its duration drives slot fetching and the booking length.
+  const sessionTypes = pageData.session_types ?? [];
+  const [selectedTypeIdx, setSelectedTypeIdx] = useState(0);
+  const selectedType =
+    sessionTypes.length > 0
+      ? sessionTypes[Math.min(selectedTypeIdx, sessionTypes.length - 1)]
+      : undefined;
+  const selectedDuration = selectedType?.duration_minutes;
+
   const { data: instituteData } = useQuery(
     handleGetPublicInstituteDetails({ instituteId })
   );
@@ -246,6 +257,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
           ...(Object.keys(customFieldValues).length
             ? { custom_field_values: customFieldValues }
             : {}),
+          ...(selectedDuration ? { duration_minutes: selectedDuration } : {}),
         },
       });
       setBooking(result);
@@ -312,7 +324,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
             <div className="mt-2 flex flex-wrap items-center gap-4 text-caption text-neutral-500">
               <span className="flex items-center gap-1">
                 <Clock size={16} className="text-primary-500" />
-                {pageData.duration_minutes} min
+                {selectedDuration ?? pageData.duration_minutes} min
               </span>
               {pageData.location_type && (
                 <span className="flex items-center gap-1">
@@ -332,6 +344,44 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
           <ModernCard variant="glass" padding="lg" rounded="lg">
             {step === "pick" && (
               <>
+                {sessionTypes.length > 0 && (
+                  <div className="mb-5">
+                    <ModernCardHeader className="mb-3 p-0">
+                      <ModernCardTitle size="md" className="text-neutral-700">
+                        Choose a session
+                      </ModernCardTitle>
+                    </ModernCardHeader>
+                    <div className="flex flex-wrap gap-2">
+                      {sessionTypes.map((st, i) => {
+                        const active = i === selectedTypeIdx;
+                        return (
+                          <button
+                            key={st.id ?? `${st.name}-${i}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTypeIdx(i);
+                              setSelectedSlot(null);
+                            }}
+                            className={cn(
+                              "flex flex-col items-start rounded-lg border px-4 py-2 text-left transition-colors",
+                              active
+                                ? "border-primary-500 bg-primary-50"
+                                : "border-neutral-200 bg-white hover:border-primary-200"
+                            )}
+                          >
+                            <span className="text-body font-medium text-neutral-700">
+                              {st.name}
+                            </span>
+                            <span className="flex items-center gap-1 text-caption text-neutral-500">
+                              <Clock size={12} className="text-primary-500" />
+                              {st.duration_minutes} min
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <ModernCardHeader className="mb-4 p-0">
                   <ModernCardTitle size="md" className="text-neutral-700">
                     Pick a time
@@ -351,6 +401,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
                   onWeekOffsetChange={setWeekOffset}
                   selectedDayKey={selectedDayKey}
                   onSelectedDayKeyChange={setSelectedDayKey}
+                  duration={selectedDuration}
                 />
               </>
             )}

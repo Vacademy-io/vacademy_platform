@@ -763,6 +763,11 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             showViewAll: true,
             viewAllLabel: 'See all',
             ctaLabel: 'Enrol now',
+            // Second CTA per card: browse the course details page first. Its
+            // enrol button re-enters this product page's checkout, so both
+            // paths converge on the same funnel.
+            showViewCourse: true,
+            viewCourseLabel: 'View course',
             showImage: true,
             showChips: true,
             showDescription: true,
@@ -771,6 +776,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             // Product pages can carry 150+ courses (book stores especially), so
             // paginate by default; 0 renders every course with no pager.
             pageSize: 9,
+            // Only applies to a 'carousel' layout with pageSize 0 — how many
+            // cards the row holds before it ends with a link to the product
+            // page. 0 puts every course in the row.
+            railMaxCards: 12,
             showSearch: true,
             scrollable: false,
             scrollMaxHeight: 640,

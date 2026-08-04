@@ -109,6 +109,7 @@ export const OfflineEntryMainComponent = () => {
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     const { uploadFile } = useFileUpload();
     const adminUserId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
@@ -194,6 +195,7 @@ export const OfflineEntryMainComponent = () => {
     const handleSubmit = async () => {
         if (!selectedStudent) return;
         setIsSubmitting(true);
+        setSubmitError(null);
         try {
             const iId = instituteDetails?.id ?? '';
 
@@ -264,13 +266,19 @@ export const OfflineEntryMainComponent = () => {
             setStep('COMPLETED');
         } catch (error) {
             // Surface the real reason — an upload failure names the file that
-            // failed, which "Failed to submit" alone never told the admin.
+            // failed, which "Failed to submit" alone never told the admin. Kept
+            // on screen as well as toasted: a toast disappears while the admin is
+            // still looking at the form they need to fix.
+            console.error('Offline entry submit failed:', error);
             const backendMessage = (error as { response?: { data?: { ex?: string } } })?.response
                 ?.data?.ex;
-            toast.error(
+            const message =
                 backendMessage ??
-                    (error instanceof Error ? error.message : 'Failed to submit offline responses')
-            );
+                (error instanceof Error && error.message
+                    ? error.message
+                    : 'Failed to submit offline responses');
+            setSubmitError(message);
+            toast.error(message);
         } finally {
             setIsSubmitting(false);
             setShowSubmitDialog(false);
@@ -478,6 +486,7 @@ export const OfflineEntryMainComponent = () => {
                 files={attachments}
                 onChange={setAttachments}
                 disabled={isSubmitting}
+                error={submitError}
             />
 
             <OfflineEntrySubmitDialog

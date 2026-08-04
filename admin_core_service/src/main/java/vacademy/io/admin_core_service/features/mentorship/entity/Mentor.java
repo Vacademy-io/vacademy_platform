@@ -56,6 +56,10 @@ public class Mentor {
     @Column(name = "booking_page_id")
     private String bookingPageId;
 
+    /** The mentor's own connected Google account (GoogleAccount.id) — bookings use it for Meet + Calendar. */
+    @Column(name = "google_account_id")
+    private String googleAccountId;
+
     @Column(name = "sub_org_id")
     private String subOrgId;
 

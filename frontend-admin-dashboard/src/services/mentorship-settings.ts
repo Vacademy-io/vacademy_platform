@@ -1,0 +1,208 @@
+import { GET_INSTITUTE_SETTING_DATA, SAVE_INSTITUTE_SETTING } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+
+/**
+ * Institute-setting key for the mentorship notification configuration. The blob
+ * mirrors what {@code MentorshipNotificationService} on admin_core_service reads,
+ * so field names here are the exact snake_case keys the backend looks up. When the
+ * setting is absent the backend falls back to code defaults, which these defaults
+ * mirror — so what the admin sees is what actually gets sent.
+ */
+export const SETTING_KEY_MENTORSHIP = 'MENTORSHIP_SETTING';
+
+/** Placeholders admins can drop into any template field. Kept in sync with the backend. */
+export const MENTORSHIP_PLACEHOLDERS = [
+    { token: '{{name}}', label: "Recipient's name" },
+    { token: '{{mentor_name}}', label: "Mentor's name" },
+    { token: '{{student_name}}', label: "Student's name" },
+    { token: '{{session_title}}', label: 'Session title (booking/cancellation)' },
+    { token: '{{session_datetime}}', label: 'Session date & time (booking/cancellation)' },
+] as const;
+
+/** Email channel: on/off + editable subject + HTML body (with {{placeholders}}). */
+export interface MentorshipEmailTemplate {
+    enabled: boolean;
+    subject: string;
+    body: string;
+}
+
+/** In-app alert / push channel: on/off + editable title + body (with {{placeholders}}). */
+export interface MentorshipTextTemplate {
+    enabled: boolean;
+    title: string;
+    body: string;
+}
+
+/**
+ * WhatsApp channel: on/off + an APPROVED Meta template name + language, plus an
+ * optional variable mapping (template variable → mentorship field, or `static:<literal>`).
+ * When the mapping is empty the backend name-matches the template's variables to the
+ * mentorship fields automatically.
+ */
+export interface MentorshipWhatsappTemplate {
+    enabled: boolean;
+    template_name: string;
+    language_code: string;
+    variable_mapping: Record<string, string>;
+}
+
+export interface MentorshipTriggerSettings {
+    email: MentorshipEmailTemplate;
+    system_alert: MentorshipTextTemplate;
+    push: MentorshipTextTemplate;
+    whatsapp: MentorshipWhatsappTemplate;
+}
+
+export interface MentorshipAssignmentTrigger extends MentorshipTriggerSettings {
+    notify_student: boolean;
+    notify_mentor: boolean;
+}
+
+export interface MentorshipSettings {
+    /** A mentor↔student assignment was created (manual or round-robin). */
+    assignment: MentorshipAssignmentTrigger;
+    /** A learner booked a 1:1 mentor session. Email defaults OFF (the booking page emails). */
+    booking: MentorshipTriggerSettings;
+    /** A mentor session was cancelled. */
+    cancellation: MentorshipTriggerSettings;
+}
+
+const whatsappDefault = (): MentorshipWhatsappTemplate => ({
+    enabled: false,
+    template_name: '',
+    language_code: 'en',
+    variable_mapping: {},
+});
+
+export const DEFAULT_MENTORSHIP_SETTINGS: MentorshipSettings = {
+    assignment: {
+        notify_student: true,
+        notify_mentor: true,
+        email: {
+            enabled: true,
+            subject: 'You have a new mentor',
+            body: "<p>Hi {{name}},</p><p>You've been assigned a mentor: <b>{{mentor_name}}</b>. Open <b>My Mentors</b> to book a session or send a message.</p>",
+        },
+        system_alert: {
+            enabled: true,
+            title: 'You have a new mentor',
+            body: "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book a session or message them.",
+        },
+        push: {
+            enabled: true,
+            title: 'You have a new mentor',
+            body: "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.",
+        },
+        whatsapp: whatsappDefault(),
+    },
+    booking: {
+        email: {
+            enabled: false,
+            subject: 'Mentor session booked',
+            body: '<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> is confirmed for <b>{{session_datetime}}</b>.</p>',
+        },
+        system_alert: {
+            enabled: true,
+            title: 'Mentor session booked',
+            body: 'Your session "{{session_title}}" is confirmed for {{session_datetime}}.',
+        },
+        push: {
+            enabled: true,
+            title: 'Mentor session booked',
+            body: 'Your session "{{session_title}}" is confirmed for {{session_datetime}}.',
+        },
+        whatsapp: whatsappDefault(),
+    },
+    cancellation: {
+        email: {
+            enabled: true,
+            subject: 'Mentor session cancelled',
+            body: '<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> for {{session_datetime}} was cancelled.</p>',
+        },
+        system_alert: {
+            enabled: true,
+            title: 'Mentor session cancelled',
+            body: 'Your session "{{session_title}}" was cancelled.',
+        },
+        push: {
+            enabled: true,
+            title: 'Mentor session cancelled',
+            body: 'Your session "{{session_title}}" was cancelled.',
+        },
+        whatsapp: whatsappDefault(),
+    },
+};
+
+const getInstituteId = (): string => {
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
+    const instituteIds = Object.keys(tokenData?.authorities || {});
+    if (instituteIds.length === 0) throw new Error('No institute ID found in token');
+    return instituteIds[0]!;
+};
+
+// Merge a persisted channel object (or legacy boolean) onto the default channel.
+const mergeChannel = <T extends { enabled: boolean }>(def: T, raw: unknown): T => {
+    if (typeof raw === 'boolean') return { ...def, enabled: raw };
+    if (raw && typeof raw === 'object') return { ...def, ...(raw as Partial<T>) };
+    return def;
+};
+
+const mergeTrigger = <T extends MentorshipTriggerSettings>(def: T, raw: unknown): T => {
+    const p = (raw ?? {}) as Partial<Record<keyof MentorshipTriggerSettings, unknown>> &
+        Record<string, unknown>;
+    return {
+        ...def,
+        ...(raw && typeof raw === 'object' ? (raw as Partial<T>) : {}),
+        email: mergeChannel(def.email, p.email),
+        system_alert: mergeChannel(def.system_alert, p.system_alert),
+        push: mergeChannel(def.push, p.push),
+        whatsapp: mergeChannel(def.whatsapp, p.whatsapp),
+    };
+};
+
+export const getMentorshipSettings = async (): Promise<MentorshipSettings> => {
+    try {
+        const instituteId = getInstituteId();
+        const response = await authenticatedAxiosInstance.get(GET_INSTITUTE_SETTING_DATA, {
+            params: { instituteId, settingKey: SETTING_KEY_MENTORSHIP },
+        });
+        const raw = response.data;
+        if (!raw || typeof raw !== 'object') return DEFAULT_MENTORSHIP_SETTINGS;
+        const partial = raw as Partial<MentorshipSettings>;
+        return {
+            assignment: {
+                ...mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.assignment, partial.assignment),
+                notify_student:
+                    (partial.assignment as MentorshipAssignmentTrigger | undefined)?.notify_student ??
+                    DEFAULT_MENTORSHIP_SETTINGS.assignment.notify_student,
+                notify_mentor:
+                    (partial.assignment as MentorshipAssignmentTrigger | undefined)?.notify_mentor ??
+                    DEFAULT_MENTORSHIP_SETTINGS.assignment.notify_mentor,
+            },
+            booking: mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.booking, partial.booking),
+            cancellation: mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.cancellation, partial.cancellation),
+        };
+    } catch (err) {
+        console.error('Failed to load mentorship settings, using defaults', err);
+        return DEFAULT_MENTORSHIP_SETTINGS;
+    }
+};
+
+export const saveMentorshipSettings = async (settings: MentorshipSettings): Promise<void> => {
+    const instituteId = getInstituteId();
+    // GenericSettingRequest uses @JsonNaming(SnakeCaseStrategy) — the wrapper keys
+    // must be snake_case (setting_name / setting_data) or the save silently no-ops.
+    await authenticatedAxiosInstance.post(
+        SAVE_INSTITUTE_SETTING,
+        {
+            setting_name: 'Mentorship Settings',
+            setting_data: settings,
+        },
+        {
+            params: { instituteId, settingKey: SETTING_KEY_MENTORSHIP },
+        }
+    );
+};

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.sql.Timestamp;
+import java.util.List;
 
 /** Admin-facing create/update/read DTO for a booking page. */
 @Data
@@ -38,6 +39,8 @@ public class BookingPageDTO {
     private Boolean requireApproval;
     private BookingAvailabilityDTO availability;
     private BookingReminderConfigDTO reminderConfig;
+    private List<BookingSessionTypeDTO> sessionTypes;
+    private List<BookingFormFieldDTO> formFields;
     private String status;
     private String createdByUserId;
     private Timestamp createdAt;

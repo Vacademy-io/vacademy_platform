@@ -97,6 +97,27 @@ export const HeaderComponent: React.FC<HeaderProps & {
       ? authLinks
       : authLinks.filter((link) => normalizeRoute(link.route) !== 'signup');
 
+    // Shared by the desktop bar, the mobile bar and the mobile menu so a
+    // configured auth link behaves identically wherever it is tapped.
+    const handleAuthLinkClick = (link: { route: string; label: string; audienceId?: string; formTitle?: string }) => {
+      const r = normalizeRoute(link.route);
+      if (r === 'login' || r === 'signup') {
+        if (useModalForAuth) {
+          (r === 'login' ? loginAuthModalRef : signupAuthModalRef).current?.setIsOpen(true);
+        } else {
+          window.location.href = `/${r}`;
+        }
+      } else if ((link.audienceId || '').trim()) {
+        window.dispatchEvent(new CustomEvent('openAudienceForm', {
+          detail: { audienceId: (link.audienceId || '').trim(), title: link.formTitle || link.label },
+        }));
+      } else if (isLeadFormLink(link)) {
+        window.dispatchEvent(new CustomEvent('openLeadCollection'));
+      } else {
+        handleNavigation(link.route, link.label);
+      }
+    };
+
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
       const checkAuth = async () => {
@@ -593,6 +614,30 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </button>
               )}
 
+              {/* Auth Links - Mobile bar. The desktop pair (Login filled,
+                  Get Started outlined) is `hidden md:flex` below, and the
+                  mobile menu that used to carry these is only reachable via a
+                  hamburger that renders when `navigation.length > 0` — so a
+                  header with no nav items (the common case for a catalogue that
+                  only wants auth CTAs) showed NO way to log in on a phone.
+                  Same links, same handler, compact sizing. */}
+              {!isCourseCatalogeTypeEnabled && !isAuthenticated && visibleAuthLinks.length > 0 && (
+                <div className="flex md:hidden items-center gap-1.5">
+                  {visibleAuthLinks.map((link, index) => (
+                    <button
+                      key={`auth-mobile-${index}`}
+                      onClick={() => handleAuthLinkClick(link)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors duration-200 ${index === 0
+                        ? 'bg-primary-500 text-white hover:bg-primary-400'
+                        : 'border border-primary-500 text-primary-500 hover:bg-primary-50'
+                        }`}
+                    >
+                      {link.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Auth Links - Desktop only */}
               <div className="hidden md:flex items-center gap-2">
                 {isAuthenticated ? (
@@ -612,27 +657,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   visibleAuthLinks.map((link, index) => (
                     <button
                       key={index}
-                      onClick={() => {
-                        const r = normalizeRoute(link.route);
-                        if (r === 'login' || r === 'signup') {
-                          if (useModalForAuth) {
-                            (r === 'login' ? loginAuthModalRef : signupAuthModalRef)
-                              .current?.setIsOpen(true);
-                          } else {
-                            window.location.href = `/${r}`;
-                          }
-                        } else if (((link as any).audienceId || '').trim()) {
-                          // Header CTA bound to an Audience campaign — open its
-                          // form as a popup (Enquire Now / Register).
-                          window.dispatchEvent(new CustomEvent('openAudienceForm', {
-                            detail: { audienceId: ((link as any).audienceId || '').trim(), title: (link as any).formTitle || link.label },
-                          }));
-                        } else if (isLeadFormLink(link)) {
-                          window.dispatchEvent(new CustomEvent('openLeadCollection'));
-                        } else {
-                          handleNavigation(link.route, link.label);
-                        }
-                      }}
+                      onClick={() => handleAuthLinkClick(link)}
                       className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
                         ? 'bg-primary-500 text-white hover:bg-primary-400'
                         : 'border border-primary-500 text-primary-500 hover:bg-primary-50'

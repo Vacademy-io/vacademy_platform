@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -20,6 +22,8 @@ import vacademy.io.admin_core_service.features.live_session.dto.CancelBookingReq
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.service.BookingManagementService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleCalendarService;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorshipNotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -63,9 +67,11 @@ public class PublicBookingService {
     private final BookingManagementService bookingManagementService;
     private final ScheduleNotificationRepository scheduleNotificationRepository;
     private final GoogleCalendarService googleCalendarService;
+    private final MentorRepository mentorRepository;
     private final AudienceService audienceService;
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
+    private final MentorshipNotificationService mentorshipNotificationService;
 
     public PublicBookingDTOs.PublicPageDTO getPage(String instituteId, String slug) {
         BookingPage page = activePage(instituteId, slug);
@@ -81,24 +87,66 @@ public class PublicBookingService {
                 .minNoticeMinutes(page.getMinNoticeMinutes())
                 .bookingHorizonDays(page.getBookingHorizonDays())
                 .customFields(customFieldsFor(page))
+                .sessionTypes(bookingPageService.readSessionTypes(page))
                 .build();
     }
 
-    /** Booking-form fields = the linked audience list's campaign custom fields. */
+    /**
+     * Booking-form fields = the linked audience list's campaign custom fields (if any)
+     * PLUS the page's own intake questions (form_fields_json), which have no audience/CRM
+     * coupling. Both render identically on the learner form and their answers save to
+     * booking_instance.custom_field_values_json.
+     */
     private java.util.List<vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO>
             customFieldsFor(BookingPage page) {
-        if (page.getAudienceId() == null || page.getAudienceId().isBlank()) return List.of();
-        try {
-            return instituteCustomFiledService.findCustomFieldsAsJson(
-                    page.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), page.getAudienceId());
-        } catch (Exception e) {
-            log.warn("customFieldsFor page {} failed: {}", page.getId(), e.getMessage());
-            return List.of();
+        java.util.List<vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO> out =
+                new java.util.ArrayList<>();
+        if (page.getAudienceId() != null && !page.getAudienceId().isBlank()) {
+            try {
+                out.addAll(instituteCustomFiledService.findCustomFieldsAsJson(
+                        page.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), page.getAudienceId()));
+            } catch (Exception e) {
+                log.warn("customFieldsFor page {} failed: {}", page.getId(), e.getMessage());
+            }
         }
+        java.util.List<vacademy.io.admin_core_service.features.booking.dto.BookingFormFieldDTO> formFields =
+                bookingPageService.readFormFields(page);
+        if (formFields != null) {
+            int order = out.size();
+            for (var f : formFields) {
+                var cf = toInstituteCustomField(f, order++);
+                if (cf != null) out.add(cf);
+            }
+        }
+        return out;
+    }
+
+    /** Convert a page intake question into the InstituteCustomFieldDTO shape the learner form consumes. */
+    private static vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO toInstituteCustomField(
+            vacademy.io.admin_core_service.features.booking.dto.BookingFormFieldDTO f, int order) {
+        if (f == null || f.getId() == null || f.getId().isBlank()) return null;
+        boolean required = Boolean.TRUE.equals(f.getRequired());
+        String config = (f.getOptions() != null && !f.getOptions().isEmpty())
+                ? String.join(",", f.getOptions()) : null;
+        var cf = vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO.builder()
+                .fieldKey(f.getId())
+                .fieldName(f.getLabel() != null && !f.getLabel().isBlank() ? f.getLabel() : f.getId())
+                .fieldType(f.getFieldType() != null && !f.getFieldType().isBlank() ? f.getFieldType() : "text")
+                .config(config)
+                .isMandatory(required)
+                .formOrder(order)
+                .build();
+        return vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO.builder()
+                .customField(cf)
+                .isMandatory(required)
+                .individualOrder(order)
+                .status("ACTIVE")
+                .build();
     }
 
     public PublicBookingDTOs.SlotsResponseDTO getSlots(String instituteId, String slug,
-                                                       String fromDate, String toDate, String displayTz) {
+                                                       String fromDate, String toDate, String displayTz,
+                                                       Integer durationMinutes) {
         BookingPage page = activePage(instituteId, slug);
         LocalDate from;
         LocalDate to;
@@ -109,13 +157,17 @@ public class PublicBookingService {
             throw new VacademyException("from/to must be yyyy-MM-dd");
         }
         ZoneId zone = resolveZone(displayTz, page.getTimezone());
-        List<String> slots = bookingSlotService.availableSlots(page, from, to).stream()
+        // When a session type is chosen its length overrides the page default so slots
+        // fit the actual meeting length.
+        Integer effectiveDuration = durationMinutes != null && durationMinutes > 0
+                ? durationMinutes : page.getDurationMinutes();
+        List<String> slots = bookingSlotService.availableSlots(page, from, to, durationMinutes).stream()
                 .map(instant -> instant.atZone(zone).toOffsetDateTime()
                         .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
                 .collect(Collectors.toList());
         return PublicBookingDTOs.SlotsResponseDTO.builder()
                 .slots(slots)
-                .durationMinutes(page.getDurationMinutes())
+                .durationMinutes(effectiveDuration)
                 .timezone(zone.getId())
                 .build();
     }
@@ -144,7 +196,7 @@ public class PublicBookingService {
             throw new VacademyException("email or phone is required");
         }
         Instant slotStart = parseStart(request.getStartTime());
-        if (!bookingSlotService.isSlotAvailable(page, slotStart)) {
+        if (!bookingSlotService.isSlotAvailable(page, slotStart, request.getDurationMinutes())) {
             throw new VacademyException("This slot is no longer available. Please pick another time.");
         }
         enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
@@ -186,6 +238,7 @@ public class PublicBookingService {
                 .inviteeTimezone(request.getInviteeTimezone())
                 .audienceResponseId(audienceResponseId)
                 .customFieldValues(request.getCustomFieldValues())
+                .durationMinutes(request.getDurationMinutes())
                 .build();
         BookingInstanceDTO created = meetingBookingService.createBooking(booking, hostPrincipal(page));
 
@@ -205,7 +258,52 @@ public class PublicBookingService {
         BookingInstance instance = instanceByToken(manageToken);
         assertMutable(instance);
         cancelUnderlying(instance, request != null ? request.getReason() : null);
+        notifyMentorshipCancellation(instance);
         return toView(instance, pageOf(instance));
+    }
+
+    /**
+     * Fire the mentorship cancellation notification (email + in-app + push) once this
+     * cancel transaction commits — a no-op unless the host is a mentor. Kept out of the
+     * transaction so notification HTTP calls can never roll the cancellation back.
+     */
+    private void notifyMentorshipCancellation(BookingInstance instance) {
+        BookingPage page = pageOf(instance);
+        String title = page != null && page.getTitle() != null ? page.getTitle() : "Mentor session";
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(firstNonBlankZone(instance.getInviteeTimezone(),
+                    page != null ? page.getTimezone() : null));
+        } catch (Exception e) {
+            zone = ZoneId.of("Asia/Kolkata");
+        }
+        String when = instance.getScheduledStartUtc() != null
+                ? instance.getScheduledStartUtc().toInstant().atZone(zone)
+                        .format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm")) + " (" + zone.getId() + ")"
+                : null;
+        final String fTitle = title;
+        final String fWhen = when;
+        final BookingInstance fInstance = instance;
+        Runnable task = () -> mentorshipNotificationService.notifyBooking(
+                fInstance.getInstituteId(), fInstance.getHostUserId(), fInstance.getInviteeUserId(),
+                fInstance.getInviteeEmail(), fInstance.getInviteePhone(), fInstance.getInviteeName(),
+                fTitle, fWhen, true);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
+        }
+    }
+
+    private static String firstNonBlankZone(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return "Asia/Kolkata";
     }
 
     public PublicBookingDTOs.PublicBookingViewDTO reschedule(String manageToken,
@@ -293,7 +391,12 @@ public class PublicBookingService {
         // Remove the mirrored Google Calendar event so cancelled/rescheduled slots
         // don't linger on the host's + invitee's calendars (best-effort, scope-gated).
         if (instance.getGoogleCalendarEventId() != null && !instance.getGoogleCalendarEventId().isBlank()) {
-            googleCalendarService.deleteEvent(instance.getInstituteId(), instance.getGoogleCalendarEventId());
+            String accountId = mentorRepository
+                    .findByInstituteIdAndUserIdAndStatusNot(instance.getInstituteId(), instance.getHostUserId(), "DELETED")
+                    .map(vacademy.io.admin_core_service.features.mentorship.entity.Mentor::getGoogleAccountId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .orElse(null);
+            googleCalendarService.deleteEvent(instance.getInstituteId(), accountId, instance.getGoogleCalendarEventId());
         }
     }
 

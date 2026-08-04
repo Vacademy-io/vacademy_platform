@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyPagination } from '@/components/design-system/pagination';
+import { useCourseListStateStore } from '../-stores/course-list-state-store';
 
 interface PackageEntity {
     id: string;
@@ -175,7 +176,10 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const [submittingCourseId, setSubmittingCourseId] = useState<string | null>(null);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
     const [historyDialogCourseId, setHistoryDialogCourseId] = useState<string | null>(null);
-    const [currentPage, setCurrentPage] = useState<number>(0);
+    // Page index lives in the shared course-list store so it survives opening a
+    // course and navigating back (this component unmounts in between).
+    const currentPage = useCourseListStateStore((s) => s.authoredPage);
+    const setCurrentPage = useCourseListStateStore((s) => s.setAuthoredPage);
     const [pageSize] = useState<number>(20);
     const [totalPages, setTotalPages] = useState<number>(0);
     const [totalElements, setTotalElements] = useState<number>(0);
@@ -248,8 +252,14 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         if (coursesResponse) {
             setTotalPages(coursesResponse.totalPages);
             setTotalElements(coursesResponse.totalElements);
+            // The stored page can outlive the courses it pointed at (e.g. the
+            // last course on the page was deleted). Only snap back when it is
+            // genuinely out of range.
+            if (coursesResponse.totalPages > 0 && currentPage >= coursesResponse.totalPages) {
+                setCurrentPage(coursesResponse.totalPages - 1);
+            }
         }
-    }, [coursesResponse]);
+    }, [coursesResponse, currentPage, setCurrentPage]);
 
     // Create editable copy mutation. We prepend a synthesized DRAFT entry to page 0's
     // cache as soon as the POST returns, so the new card shows up instantly without

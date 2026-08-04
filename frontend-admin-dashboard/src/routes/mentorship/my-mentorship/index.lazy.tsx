@@ -1,15 +1,31 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { ChatCircle, NotePencil, UsersThree } from '@phosphor-icons/react';
+import {
+    CalendarCheck,
+    ChatCircle,
+    CheckCircle,
+    Clock,
+    Copy,
+    GoogleLogo,
+    LinkSimple,
+    NotePencil,
+    UsersThree,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { createDirectConversation } from '@/services/chat/chatApi';
-import { useMyMentees } from '../-hooks/use-mentorship';
+import { useMyMentees, useMyMentorProfile } from '../-hooks/use-mentorship';
+import { initiateMyGoogle } from '../-services/mentorship-service';
 import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
+import { AvailabilityDialog } from '../-components/AvailabilityDialog';
+import { MyScheduleCard } from '../-components/MyScheduleCard';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -38,10 +54,40 @@ function MyMentorshipPage() {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const { data, isLoading, isError, refetch } = useMyMentees(instituteId);
+    const profileQuery = useMyMentorProfile(instituteId);
     const [messagingId, setMessagingId] = useState<string | null>(null);
     const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
+    const [connecting, setConnecting] = useState(false);
+    const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
     const mentees = data ?? [];
+    const profile = profileQuery.data;
+
+    const connectGoogle = async () => {
+        if (!instituteId) return;
+        setConnecting(true);
+        try {
+            const { oauth_url } = await initiateMyGoogle(instituteId);
+            window.location.href = oauth_url;
+        } catch {
+            toast.error("Couldn't start Google connect. Please try again.");
+            setConnecting(false);
+        }
+    };
+
+    const myBookingUrl = profile?.booking_page_slug
+        ? `${BASE_URL_LEARNER_DASHBOARD}/booking-response?instituteId=${instituteId}&slug=${profile.booking_page_slug}`
+        : null;
+
+    const copyMyBookingLink = async () => {
+        if (!myBookingUrl) return;
+        try {
+            await navigator.clipboard.writeText(myBookingUrl);
+            toast.success('Booking link copied');
+        } catch {
+            toast.error('Could not copy link');
+        }
+    };
 
     const message = async (mentee: MenteeDTO) => {
         setMessagingId(mentee.student_user_id);
@@ -62,15 +108,161 @@ function MyMentorshipPage() {
     return (
         <div className="flex flex-col gap-6 p-6">
             <div className="flex flex-col">
-                <h2 className="text-title font-semibold text-neutral-700">My mentees</h2>
-                <p className="text-body text-neutral-500">Students assigned to you for mentorship.</p>
+                <h2 className="text-title font-semibold text-neutral-700">My mentorship</h2>
+                <p className="text-body text-neutral-500">
+                    Your mentees, availability and booking link.
+                </p>
+            </div>
+
+            {profileQuery.isLoading && (
+                <div className="flex flex-col gap-3">
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+            )}
+
+            {!profileQuery.isLoading && profileQuery.isError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                    <div className="flex items-center gap-2">
+                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                        <p className="text-body text-danger-600">
+                            Couldn&apos;t load your mentor profile.
+                        </p>
+                    </div>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => profileQuery.refetch()}
+                    >
+                        Retry
+                    </MyButton>
+                </div>
+            )}
+
+            {profile && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <GoogleLogo size={20} weight="bold" className="text-primary-600" />
+                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-body font-medium text-neutral-700">Google Calendar</span>
+                            <span className="text-caption text-neutral-500">
+                                {profile.google_connected
+                                    ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
+                                    : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
+                            </span>
+                        </div>
+                    </div>
+                    {profile.google_connected ? (
+                        <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                            <CheckCircle size={14} weight="fill" /> Connected
+                        </span>
+                    ) : (
+                        <MyButton
+                            type="button"
+                            buttonType="primary"
+                            scale="small"
+                            onClick={connectGoogle}
+                            disable={connecting}
+                        >
+                            {connecting ? 'Redirecting…' : 'Connect Google'}
+                        </MyButton>
+                    )}
+                </div>
+            )}
+
+            {profile && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <CalendarCheck size={20} weight="bold" className="text-primary-600" />
+                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-body font-medium text-neutral-700">
+                                Your 1:1 booking link
+                            </span>
+                            <span className="text-caption text-neutral-500">
+                                {myBookingUrl
+                                    ? 'Share this link so learners can book a session with you.'
+                                    : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
+                            </span>
+                            {myBookingUrl && (
+                                <span className="mt-1 flex items-center gap-1 text-caption text-neutral-400">
+                                    <LinkSimple size={12} />
+                                    <span className="max-w-sm truncate">{myBookingUrl}</span>
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setAvailabilityOpen(true)}
+                            title="Set your weekly hours, meeting location and session types"
+                        >
+                            <Clock size={16} /> Edit availability
+                        </MyButton>
+                        {myBookingUrl && (
+                            <>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={copyMyBookingLink}
+                                    title="Copy your booking link to share with learners"
+                                >
+                                    <Copy size={16} /> Copy link
+                                </MyButton>
+                                <a
+                                    href={myBookingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                    title="Open your booking page in a new tab"
+                                >
+                                    Open
+                                </a>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <MyScheduleCard instituteId={instituteId} />
+
+            <div className="flex flex-col">
+                <h3 className="text-title font-semibold text-neutral-700">Mentees</h3>
+                <p className="text-caption text-neutral-500">Students assigned to you for mentorship.</p>
             </div>
 
             {isLoading ? (
-                <div className="text-body text-neutral-400">Loading mentees…</div>
+                <div className="flex flex-col gap-3">
+                    {[1, 2].map((i) => (
+                        <div
+                            key={i}
+                            className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="size-10 rounded-full" />
+                                <div className="flex flex-col gap-1.5">
+                                    <Skeleton className="h-3.5 w-32" />
+                                    <Skeleton className="h-3 w-24" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-8 w-40" />
+                        </div>
+                    ))}
+                </div>
             ) : isError ? (
-                <div className="flex flex-col items-start gap-2">
-                    <p className="text-body text-danger-600">Couldn&apos;t load your mentees.</p>
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
+                    <div className="flex items-center gap-2">
+                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
+                        <p className="text-body text-danger-600">Couldn&apos;t load your mentees.</p>
+                    </div>
                     <MyButton type="button" buttonType="secondary" scale="small" onClick={() => refetch()}>
                         Retry
                     </MyButton>
@@ -78,7 +270,12 @@ function MyMentorshipPage() {
             ) : mentees.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
-                    <p className="text-body text-neutral-500">No students are assigned to you yet.</p>
+                    <div className="flex flex-col gap-1">
+                        <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
+                        <p className="text-caption text-neutral-500">
+                            Your admin will assign students to you here.
+                        </p>
+                    </div>
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
@@ -106,6 +303,7 @@ function MyMentorshipPage() {
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={() => setDetailMentee(mentee)}
+                                    title="View learning progress, notes and scheduled calls"
                                 >
                                     <NotePencil size={16} /> Details
                                 </MyButton>
@@ -115,6 +313,7 @@ function MyMentorshipPage() {
                                     scale="small"
                                     onClick={() => message(mentee)}
                                     disable={messagingId === mentee.student_user_id}
+                                    title="Send this student a direct message"
                                 >
                                     <ChatCircle size={16} /> Message
                                 </MyButton>
@@ -131,6 +330,12 @@ function MyMentorshipPage() {
                 onOpenChange={(o) => {
                     if (!o) setDetailMentee(null);
                 }}
+            />
+
+            <AvailabilityDialog
+                instituteId={instituteId}
+                open={availabilityOpen}
+                onOpenChange={setAvailabilityOpen}
             />
         </div>
     );

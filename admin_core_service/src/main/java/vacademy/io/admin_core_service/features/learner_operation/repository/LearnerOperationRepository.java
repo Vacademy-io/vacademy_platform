@@ -80,4 +80,108 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
         Double findMaxCoursePercentageForUser(
                         @Param("courseId") String courseId,
                         @Param("userId") String userId);
+
+        /** One slide-level progress row (operation → raw value) for the overlay queries below. */
+        interface SlideOperationRow {
+                String getSourceId();
+
+                String getOperation();
+
+                String getValue();
+        }
+
+        /** Slide-derived completion percentage for one chapter. */
+        interface ChapterProgressRow {
+                String getChapterId();
+
+                Double getPercentageCompleted();
+        }
+
+        /** LAST_SLIDE_VIEWED value for one chapter. */
+        interface ChapterLastSlideRow {
+                String getChapterId();
+
+                String getLastSlideViewed();
+        }
+
+        /**
+         * The user's slide-level progress rows for every chapter of a package
+         * session. Overlaid onto the cached (user-independent) slides structure
+         * by LearnerStudyLibraryService. Ordered by updated_at so that when
+         * legacy duplicate rows exist, the newest wins in the caller's map.
+         */
+        @Query(value = """
+                        SELECT lo.source_id AS "sourceId", lo.operation AS "operation", lo.value AS "value"
+                        FROM learner_operation lo
+                        WHERE lo.user_id = :userId
+                          AND lo.source = 'SLIDE'
+                          AND lo.operation IN (:operations)
+                          AND lo.source_id IN (
+                              SELECT cs.slide_id
+                              FROM chapter_to_slides cs
+                              JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+                              WHERE cpsm.package_session_id = :packageSessionId AND cpsm.status = 'ACTIVE'
+                          )
+                        ORDER BY lo.updated_at ASC
+                        """, nativeQuery = true)
+        java.util.List<SlideOperationRow> findSlideOperationsForPackageSession(
+                        @Param("userId") String userId,
+                        @Param("packageSessionId") String packageSessionId,
+                        @Param("operations") java.util.List<String> operations);
+
+        /**
+         * Per-chapter completion % for the user, derived from slide-level
+         * operations exactly like the chapter_slide_pct subquery inside
+         * ModuleChapterMappingRepository.getModuleChapterProgress — average
+         * over the chapter's slides of the best percentage op, capped at 100,
+         * slides without progress counting as 0.
+         */
+        @Query(value = """
+                        SELECT sub.chapter_id AS "chapterId", AVG(sub.slide_pct) AS "percentageCompleted"
+                        FROM (
+                            SELECT cts.chapter_id, s.id,
+                                COALESCE(MAX(CASE
+                                    WHEN lo.operation IN (
+                                            'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
+                                            'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                         AND lo.value ~ '^[0-9]+(\\.[0-9]+)?$'
+                                    THEN LEAST(CAST(lo.value AS FLOAT), 100)
+                                    ELSE NULL
+                                END), 0) AS slide_pct
+                            FROM chapter_to_slides cts
+                            JOIN slide s ON s.id = cts.slide_id AND s.status IN (:slideStatusList)
+                            LEFT JOIN learner_operation lo
+                                ON lo.source_id = s.id AND lo.source = 'SLIDE' AND lo.user_id = :userId
+                            WHERE cts.status IN (:chapterToSlideStatusList)
+                              AND cts.chapter_id IN (
+                                  SELECT cpsm.chapter_id FROM chapter_package_session_mapping cpsm
+                                  WHERE cpsm.package_session_id = :packageSessionId AND cpsm.status = 'ACTIVE'
+                              )
+                            GROUP BY cts.chapter_id, s.id
+                        ) sub
+                        GROUP BY sub.chapter_id
+                        """, nativeQuery = true)
+        java.util.List<ChapterProgressRow> findChapterSlideProgressForPackageSession(
+                        @Param("userId") String userId,
+                        @Param("packageSessionId") String packageSessionId,
+                        @Param("slideStatusList") java.util.List<String> slideStatusList,
+                        @Param("chapterToSlideStatusList") java.util.List<String> chapterToSlideStatusList);
+
+        /** The user's LAST_SLIDE_VIEWED per chapter of the package session. */
+        @Query(value = """
+                        SELECT lo.source_id AS "chapterId", MAX(lo.value) AS "lastSlideViewed"
+                        FROM learner_operation lo
+                        WHERE lo.user_id = :userId
+                          AND lo.source = 'CHAPTER'
+                          AND lo.operation = 'LAST_SLIDE_VIEWED'
+                          AND lo.source_id IN (
+                              SELECT cpsm.chapter_id FROM chapter_package_session_mapping cpsm
+                              WHERE cpsm.package_session_id = :packageSessionId AND cpsm.status = 'ACTIVE'
+                          )
+                        GROUP BY lo.source_id
+                        """, nativeQuery = true)
+        java.util.List<ChapterLastSlideRow> findChapterLastSlideViewedForPackageSession(
+                        @Param("userId") String userId,
+                        @Param("packageSessionId") String packageSessionId);
 }

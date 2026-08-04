@@ -1,12 +1,18 @@
 export interface MessageTemplate {
     id: string;
     name: string;
-    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL' | 'PAYMENT_CONFIRMATION';
     subject?: string; // For email templates
     content: string;
     variables: string[]; // Available variables like {{student_name}}, {{course_name}}, etc.
     isDefault: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    templateType?:
+        | 'marketing'
+        | 'utility'
+        | 'transactional'
+        | 'INVOICE'
+        | 'INVOICE_EMAIL'
+        | 'PAYMENT_CONFIRMATION';
     mjml?: string; // MJML JSON data for email templates (editor state)
     previewText?: string; // Email preview text shown in inbox before opening
     createdAt: string;
@@ -17,12 +23,18 @@ export interface MessageTemplate {
 
 export interface CreateTemplateRequest {
     name: string;
-    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL' | 'PAYMENT_CONFIRMATION';
     subject?: string;
     content: string;
     variables: string[];
     isDefault?: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    templateType?:
+        | 'marketing'
+        | 'utility'
+        | 'transactional'
+        | 'INVOICE'
+        | 'INVOICE_EMAIL'
+        | 'PAYMENT_CONFIRMATION';
     mjml?: string; // MJML JSON data for email templates (editor state)
     previewText?: string; // Email preview text shown in inbox before opening
 }
@@ -30,12 +42,18 @@ export interface CreateTemplateRequest {
 export interface UpdateTemplateRequest {
     id: string;
     name?: string;
-    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL' | 'PAYMENT_CONFIRMATION';
     subject?: string;
     content?: string;
     variables?: string[];
     isDefault?: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    templateType?:
+        | 'marketing'
+        | 'utility'
+        | 'transactional'
+        | 'INVOICE'
+        | 'INVOICE_EMAIL'
+        | 'PAYMENT_CONFIRMATION';
     mjml?: string; // MJML JSON data for email templates (editor state)
     previewText?: string; // Email preview text shown in inbox before opening
 }

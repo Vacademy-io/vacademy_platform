@@ -75,7 +75,7 @@ public class AiAgentService {
         agent.setEnabled(dto.getEnabled() == null ? Boolean.TRUE : dto.getEnabled());
         agent.setDirection(normalizeDirection(dto.getDirection()));
         agent.setLanguage(blankToNull(dto.getLanguage()));
-        agent.setVoice(blankToNull(dto.getVoice()));
+        applyEngineAndVoice(agent, dto);
         agent.setOpeningLine(blankToNull(dto.getOpeningLine()));
         agent.setSystemPrompt(blankToNull(dto.getSystemPrompt()));
         agent.setExtractionQuestions(writeJson(dto.getExtractionQuestions()));
@@ -162,6 +162,55 @@ public class AiAgentService {
         }
     }
 
+    /**
+     * Resolve the TTS engine and the voice together, because they are not
+     * independent — the two palettes share no names, so a voice that survives a
+     * model switch either kills the audio (Sarvam rejects an unknown speaker) or,
+     * on Rumik, is quietly replaced by a default voice the institute never chose
+     * while the bot keeps conjugating Hindi for the one they did.
+     *
+     * <p>Engine rules:
+     * <ul>
+     *   <li><b>Create, field absent:</b> {@code rumik}. New agents get the default
+     *       engine explicitly stamped, so no DB default or NULL convention has to
+     *       carry a pricing decision.
+     *   <li><b>Update, field absent:</b> KEEP the stored engine. An older frontend
+     *       that does not know about this field must not be able to reprice an
+     *       agent by omission — and every other field here is last-write-wins, so
+     *       this exception is deliberate.
+     *   <li><b>Unrecognised value:</b> reject loudly. Defaulting a typo would
+     *       silently serve one engine while billing for another; "silk muga" in
+     *       particular must not fall through to Mulberry.
+     * </ul>
+     */
+    private void applyEngineAndVoice(AiAgent agent, AiAgentDTO dto) {
+        String requested = dto.getTtsModel();
+        String engine;
+        if (requested == null || requested.isBlank()) {
+            engine = agent.getTtsModel() != null && !agent.getTtsModel().isBlank()
+                    ? TtsVoiceCatalog.normalizeModel(agent.getTtsModel())
+                    : TtsVoiceCatalog.NEW_AGENT_DEFAULT;
+            if (engine == null) engine = TtsVoiceCatalog.MODEL_SARVAM; // unreadable stored value
+        } else {
+            engine = TtsVoiceCatalog.normalizeModel(requested);
+            if (engine == null) {
+                throw new VacademyException("Unsupported TTS model: " + requested);
+            }
+        }
+        agent.setTtsModel(engine);
+
+        String voice = blankToNull(dto.getVoice());
+        if (voice != null && !TtsVoiceCatalog.isVoiceOf(engine, voice)) {
+            // Belongs to the other engine (or is a typo). Fall back to the engine's
+            // default rather than storing a name that mutes every call.
+            log.warn("ai-agent {}: voice '{}' is not a {} voice — using '{}'",
+                    agent.getId(), voice, engine, TtsVoiceCatalog.defaultVoice(engine));
+            voice = null;
+        }
+        agent.setVoice(voice != null ? voice.trim().toLowerCase(java.util.Locale.ROOT)
+                                     : TtsVoiceCatalog.defaultVoice(engine));
+    }
+
     private AiAgentDTO toDto(AiAgent a) {
         return AiAgentDTO.builder()
                 .id(a.getId())
@@ -179,6 +228,7 @@ public class AiAgentService {
                 .maxCallMinutes(a.getMaxCallMinutes())
                 .pace(a.getPace())
                 .temperature(a.getTemperature())
+                .ttsModel(a.getTtsModel())
                 .bookingPageId(a.getBookingPageId())
                 .build();
     }

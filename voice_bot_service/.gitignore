@@ -1,0 +1,4 @@
+
+# Scratch probes run against live vendor APIs — keep them out of the image.
+probe_*.py
+e2e_*.py

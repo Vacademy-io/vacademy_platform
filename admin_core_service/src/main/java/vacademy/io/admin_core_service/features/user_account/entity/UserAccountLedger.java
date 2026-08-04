@@ -65,6 +65,18 @@ public class UserAccountLedger {
     @Column(name = "remarks", columnDefinition = "TEXT")
     private String remarks;
 
+    /**
+     * Pricing breakdown for discounted DEBIT_ACCRUAL rows: {@code amount} is the
+     * NET obligation, {@code grossAmount} the list price before the discount and
+     * {@code discountAmount} the coupon/discount applied. Null when no discount —
+     * the panel renders "gross struck through → net" only when these are set.
+     */
+    @Column(name = "gross_amount", precision = 12, scale = 2)
+    private BigDecimal grossAmount;
+
+    @Column(name = "discount_amount", precision = 12, scale = 2)
+    private BigDecimal discountAmount;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 }

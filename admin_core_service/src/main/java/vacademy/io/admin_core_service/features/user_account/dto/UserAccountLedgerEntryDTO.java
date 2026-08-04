@@ -24,4 +24,11 @@ public class UserAccountLedgerEntryDTO {
     private String referenceId;
     private String remarks;
     private LocalDateTime createdAt;
+    /**
+     * Discounted accruals only: list price before discount and the discount
+     * applied — {@code amount} is the net. Null when no discount; the panel
+     * strikes through {@code grossAmount} next to the net amount when present.
+     */
+    private BigDecimal grossAmount;
+    private BigDecimal discountAmount;
 }

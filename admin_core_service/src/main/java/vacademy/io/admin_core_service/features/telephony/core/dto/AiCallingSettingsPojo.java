@@ -80,6 +80,18 @@ public class AiCallingSettingsPojo {
     /** Dispositions that are terminal → set a status and stop (no retry, no assign). */
     private List<String> stopOnDispositions = List.of("Not_Interested");
 
+    /**
+     * Admin-defined outcomes beyond {@link #BUILT_IN_DISPOSITIONS} — the extra
+     * disposition strings this institute's own AI agents may return. Saved by the
+     * "AI Calling" settings tab as free text; they behave exactly like the built-ins
+     * in the Outcome → Action table.
+     *
+     * <p>Modelled here (rather than being an unknown property) because the Call Log's
+     * disposition filter builds its vocabulary from this setting — an outcome an admin
+     * configured must be filterable.
+     */
+    private List<String> customDispositions = new ArrayList<>();
+
     private String assignmentMode = "ROUND_ROBIN";
     private boolean assignExhaustedToHuman = true;
 
@@ -92,8 +104,40 @@ public class AiCallingSettingsPojo {
      */
     private InboundLeadCapture inboundLeadCapture = new InboundLeadCapture();
 
+    /**
+     * The product's fixed AI-outcome vocabulary — the rows the "AI Calling" settings
+     * tab always renders in its Outcome → Action table, before the institute adds any
+     * {@link #customDispositions}. Mirrored by {@code DISPOSITIONS} in
+     * {@code AiCallingSettings.tsx}; keep the two in step.
+     */
+    public static final List<String> BUILT_IN_DISPOSITIONS = List.of(
+            "Interested", "Likely_Interested", "Callback",
+            "Requirement_Not_Clear", "Incomplete", "Not_Interested");
+
     public static AiCallingSettingsPojo defaults() {
         return new AiCallingSettingsPojo();
+    }
+
+    /**
+     * Every AI outcome this institute has configured, in settings-tab order:
+     * the built-ins, then the admin's custom ones, then anything referenced only by
+     * the assign/stop lists. De-duplicated case-insensitively, order-preserving —
+     * this is the AI half of the Call Log's disposition filter vocabulary.
+     */
+    public List<String> configuredDispositions() {
+        java.util.LinkedHashMap<String, String> byKey = new java.util.LinkedHashMap<>();
+        List<List<String>> sources = List.of(
+                BUILT_IN_DISPOSITIONS,
+                customDispositions == null ? List.<String>of() : customDispositions,
+                assignOnDispositions == null ? List.<String>of() : assignOnDispositions,
+                stopOnDispositions == null ? List.<String>of() : stopOnDispositions);
+        for (List<String> source : sources) {
+            for (String d : source) {
+                if (d == null || d.isBlank()) continue;
+                byKey.putIfAbsent(d.trim().toUpperCase(), d.trim());
+            }
+        }
+        return List.copyOf(byKey.values());
     }
 
     /**

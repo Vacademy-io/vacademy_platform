@@ -14,6 +14,9 @@ import time
 
 import pytest
 
+import inspect
+import json as _json
+
 import app.bot as b
 import app.providers as pv
 
@@ -1120,3 +1123,339 @@ def test_caller_words_cancel_a_pending_close():
     on_tr = on_tr[:on_tr.index("transcript = TranscriptCollector")]
     assert 'flags["end_pending_since"] = 0.0' in on_tr
     assert "outcome.end_requested = False" in on_tr
+
+
+# ── Rumik Silk TTS (default provider) ────────────────────────────────────────
+
+def test_build_tts_picks_rumik_by_default_and_sarvam_on_request(monkeypatch):
+    class _S: pass
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        r = pv.build_tts(8000, voice="ira", aiohttp_session=None, tts_model="rumik")
+        assert type(r).__name__ == "RumikTTSService"
+        # 24 kHz is Rumik's ONLY output. pipecat resolves
+        # _sample_rate = _init_sample_rate or transport rate, so declaring 24k
+        # makes the OUTPUT TRANSPORT resample to the 8k Plivo leg. Declaring 8k
+        # would play 24k audio at 8k = chipmunk speech.
+        assert r._init_sample_rate == 24000
+        s = pv.build_tts(8000, voice="shubh", aiohttp_session=None, tts_model="sarvam")
+        assert type(s).__name__ == "ResilientSarvamTTSService"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_falls_back_to_sarvam_without_a_key(monkeypatch):
+    """Never leave a call mute because a key is missing."""
+    monkeypatch.setenv("TTS_MODEL", "rumik")
+    monkeypatch.delenv("RUMIK_API_KEY", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        t = pv.build_tts(8000, aiohttp_session=None, tts_model="rumik")
+        assert type(t).__name__ == "ResilientSarvamTTSService"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_started_flag_is_initialised():
+    """run_tts reads _started. TTSService.start() creates it, but our first
+    utterance can reach run_tts before that — a live e2e caught the FIRST
+    utterance of every call dying with AttributeError."""
+    svc = pv.RumikTTSService.__new__(pv.RumikTTSService)
+    src = inspect.getsource(pv.RumikTTSService.__init__)
+    assert "self._started = False" in src
+
+
+
+def test_rumik_skips_letterless_and_records_credits():
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "has_word_char(text)" in run
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "credits_used" in recv, "the vendor's own meter is the honest cost signal"
+
+
+def test_rumik_implements_the_websocket_contract():
+    """WebsocketService gives connection verification + reconnect-with-backoff
+    only if these exact hooks exist."""
+    for m in ("_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_agent_without_a_tts_model_stays_on_sarvam(monkeypatch):
+    """A billing-relevant switch must never happen by omission. Agents predating
+    the picker pay the Sarvam rate and approved a Sarvam voice."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_tts_model({}) == "sarvam"
+        assert b._agent_tts_model({"tts_model": "rumik"}) == "rumik"
+        assert b._agent_tts_model({"tts_model": " Rumik "}) == "rumik"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_voice_from_the_other_vendors_palette_is_dropped(monkeypatch):
+    """Voice names don't cross vendors, and the failure is asymmetric (both probed
+    live): Sarvam 400s on an unknown speaker (no audio at all), while Rumik quietly
+    substitutes its default voice — so the caller hears a voice nobody picked, with
+    Hindi grammar conjugated for the configured one. Neither is acceptable, so drop
+    the name and use the provider default."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_voice({"tts_model": "rumik", "voice": "priya"}) is None
+        assert b._agent_voice({"tts_model": "rumik", "voice": "ira"}) == "ira"
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "ira"}) is None
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "priya"}) == "priya"
+        assert b._agent_voice({"voice": "shubh"}) == "shubh"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_male_voices_get_masculine_hindi_grammar():
+    """Hindi first-person verbs are gendered. A male voice saying "kar rahi hoon"
+    is the #1 immersion breaker, and Rumik's palette shares NO names with
+    Sarvam's — so every Rumik male preset must be in the table."""
+    for v in ("adam", "noah", "theo", "lucas"):
+        assert b._voice_gender(v) == "male", v
+    for v in ("ira", "emma", "mia", "sophia", "ava", "siya", "aisha", "zoya"):
+        assert b._voice_gender(v) == "female", v
+
+
+def test_grammar_follows_the_voice_we_actually_speak_with(monkeypatch):
+    """If the configured voice was dropped as cross-vendor, the grammar must match
+    the fallback voice, not the discarded name."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        # a Sarvam MALE name left behind on an agent switched to Rumik: we will
+        # speak with Rumik's female default, so grammar must be feminine.
+        a = {"tts_model": "rumik", "voice": "shubh"}
+        assert b._agent_voice(a) is None
+        assert b._voice_gender(b._agent_voice(a)
+                                    or b._default_voice_for(a)) == "female"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+# ── Rumik: the four P0s an adversarial review found, as BEHAVIOURAL tests ─────
+#
+# The test these replace asserted `"_disconnect" not in inspect.getsource(...)` of
+# the override — and passed precisely because the teardown lived in the PARENT
+# class. Grepping source proves what the code says, not what it does. Everything
+# below drives the real methods against a fake socket.
+
+class _FakeSock:
+    """Minimal stand-in for a websockets client connection."""
+
+    def __init__(self, inbound=None):
+        from websockets.protocol import State
+        self.sent = []
+        self.state = State.OPEN
+        self.closed = False
+        self._inbound = list(inbound or [])
+
+    async def send(self, msg):
+        self.sent.append(_json.loads(msg) if msg.startswith("{") else msg)
+
+    async def close(self):
+        from websockets.protocol import State
+        self.closed = True
+        self.state = State.CLOSED
+
+    async def ping(self):
+        return True
+
+    def __aiter__(self):
+        async def gen():
+            for m in self._inbound:
+                yield m
+        return gen()
+
+
+def _rumik_stub(inbound=None):
+    """A RumikTTSService with pipecat's I/O stubbed, ready to drive directly."""
+    svc = pv.RumikTTSService(api_key="rk_test", voice="ira", sample_rate=24000)
+    svc._websocket = _FakeSock(inbound)
+    svc._sample_rate = 24000
+    pushed = []
+
+    async def push(frame, *a, **k):
+        pushed.append(type(frame).__name__)
+    svc.push_frame = push
+    for m in ("stop_ttfb_metrics", "start_ttfb_metrics", "start_tts_usage_metrics",
+              "stop_all_metrics"):
+        setattr(svc, m, lambda *a, **k: asyncio.sleep(0))
+    return svc, pushed
+
+
+@pytest.mark.asyncio
+async def test_rumik_barge_in_cancels_and_keeps_the_socket():
+    """The whole reason to prefer Rumik. Sarvam has no cancel, so barge-in there
+    closes the socket — the root of 13 stalls in 220 calls. This must send one
+    cancel frame and NOT tear the connection down."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = True
+    torn = []
+    svc._disconnect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+    svc._connect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [{"type": "cancel"}], svc._websocket.sent
+    assert not svc._websocket.closed, "barge-in must not close the socket"
+    assert not torn, "must not call the base class's disconnect/reconnect"
+    assert svc._cancels_sent == 1
+
+
+@pytest.mark.asyncio
+async def test_rumik_leaves_the_quiet_window_reply_alone():
+    """pipecat pushes an InterruptionFrame on EVERY VAD onset while the bot is
+    quiet. Our own measurement: 60 of 63 such pre-playout kills went on to play
+    anyway. Cancelling there turns a cough into a lost answer."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = False
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [], "must not cancel while the bot is silent"
+    assert svc._request_active, "the in-flight reply must survive to play"
+
+
+@pytest.mark.asyncio
+async def test_rumik_raises_when_the_peer_closes():
+    """websockets' __aiter__ swallows ConnectionClosedOK, so returning quietly makes
+    pipecat's `while True: await _receive_messages()` spin without ever yielding —
+    starving the event loop for EVERY concurrent call on the box, not just this
+    one. Raising routes into the base's reconnect-with-backoff instead."""
+    svc, _ = _rumik_stub(inbound=[])
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_does_not_raise_on_our_own_teardown():
+    """...but an intentional close at end of call must NOT trigger a reconnect."""
+    svc, _ = _rumik_stub(inbound=[])
+    svc._closing = True
+    await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_ends_the_turn_only_after_the_LAST_sentence():
+    """Rumik's socket is request/response and cancels the in-flight request when the
+    next arrives, so sends are serialised. The turn must end when no sentence is
+    still outstanding — gating on queue emptiness ended it while the last sentence
+    was unsent, and 71% of a three-sentence reply reached the caller."""
+    done = _json.dumps({"type": "done", "duration_s": 1.0, "credits_used": 0})
+    svc, pushed = _rumik_stub(inbound=[done, done, done])
+    svc._started = True
+    svc._pending_sends = 3          # three sentences enqueued for one reply
+
+    # The fake stream ending IS a peer close, so the ConnectionError from the
+    # previous test's behaviour is correct here too — consume it and assert on what
+    # happened while the three terminal frames were being processed.
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+    assert pushed.count("TTSStoppedFrame") == 1, \
+        f"one Stopped per REPLY, not per sentence: {pushed}"
+    assert svc._pending_sends == 0, "a leaked counter means the turn never ends"
+
+
+@pytest.mark.asyncio
+async def test_rumik_pending_count_cannot_leak_on_abandon():
+    """A stuck positive count means TTSStoppedFrame never fires and the pipeline
+    believes the bot is speaking for the rest of the call."""
+    svc, _ = _rumik_stub()
+    svc._pending_sends = 3
+    svc._bot_speaking = True
+    svc._request_active = True
+    for _ in range(3):
+        svc._send_queue.put_nowait("x")
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._pending_sends == 0
+    assert svc._send_queue.empty()
+
+
+def test_rumik_implements_the_hooks_bot_py_duck_types_on():
+    """bot.py wires stall detection through hasattr(). Missing hooks skip SILENTLY,
+    which unplugged stall recovery, TTS_WEDGE and REPLY_UNPLAYED on every Rumik
+    call — on the provider whose justification was fixing stalls."""
+    for m in ("set_diagnostics", "set_generate_callback", "set_credits_callback",
+              "_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_rumik_stamps_generate_on_send_not_on_done():
+    """A stamp that lands after the audio makes the stall condition unreachable by
+    construction — the masking failure mode with extra steps."""
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "_on_generate" in run, "generate stamp must happen in run_tts (on send)"
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "_on_generate" not in recv, "must NOT stamp from the receive path"
+
+
+class _DummyInterruption:
+    pass
+
+
+def test_rumik_pace_ladder_is_monotonic_and_covers_the_range():
+    """Rumik has no numeric speed control — only prose steering, measured live.
+    The ladder must be monotonic, or a higher pace could produce slower speech."""
+    f = pv.rumik_pace_description
+    # Distinct instruction per band, fastest at the top.
+    fast, rapid, quick, brisk = f(1.4), f(1.1), f(1.0), f(0.9)
+    assert len({fast, rapid, quick, brisk}) == 4, "bands must not collapse"
+    assert f(1.2) == fast, "everything above the top threshold gets the top grade"
+    assert f(0.8) is None, "near-natural pace sends no instruction at all"
+    assert "slow" in f(0.6), "below the floor must explicitly ask for slow"
+    assert f(None) is None, "no pace configured = no steering"
+
+
+def test_rumik_pace_ladder_avoids_the_wording_that_did_nothing():
+    """Measured: 'brisk, upbeat' moved the rate 1% — indistinguishable from no
+    instruction. Only assertive wording ('no pauses') moved it, because the model
+    is modulating PAUSES, not words per second. The fast grades must say so."""
+    for pace in (1.05, 1.15, 1.4):
+        assert "pause" in pv.rumik_pace_description(pace), \
+            f"pace {pace} needs pause-suppressing wording to have any effect"
+
+
+def test_rumik_gets_the_agent_pace_at_all(monkeypatch):
+    """It previously got NO pace: build_tts dropped the agent's value on this path
+    entirely, so the field an admin sets did nothing on Rumik calls."""
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        fast = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=1.4)
+        slow = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=0.6)
+        assert fast._description != slow._description, "pace must reach the service"
+        assert "slow" in slow._description
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_preview_carries_the_same_pace_steering_a_call_would():
+    """A voice tester that auditions a delivery the caller never hears is worse than
+    no tester. Probing the DEPLOYED endpoint caught this: pace 1.1 and pace 0.6
+    returned 7.34s and 7.08s — indistinguishable, because the Rumik preview branch
+    dropped pace entirely."""
+    src = inspect.getsource(m.preview)
+    assert "rumik_pace_description(pace)" in src, "preview must derive the steering"
+    assert "description=pace_desc" in src, "...and pass it to the synthesiser"
+    # And the cache must not serve the first pace forever.
+    assert "{pace_desc}" in src, "pace must be part of the Rumik cache key"
+
+
+def test_rumik_synthesize_wav_accepts_a_description():
+    import inspect as _i
+    sig = _i.signature(pv.rumik_synthesize_wav)
+    assert "description" in sig.parameters

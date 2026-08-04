@@ -30,6 +30,22 @@ public class SubscriptionController {
     }
 
     /**
+     * Start a manual renewal payment for the learner's own plan ("pay to
+     * continue"). Amount and vendor are derived server-side from the plan.
+     * withAutopay=true (only when the invite has autopay enabled) opens the
+     * checkout in mandate mode so the payment also re-registers auto-pay.
+     */
+    @PostMapping("/{userPlanId}/renew-payment")
+    public ResponseEntity<vacademy.io.common.payment.dto.PaymentResponseDTO> renewPayment(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String instituteId,
+            @PathVariable String userPlanId,
+            @RequestParam(defaultValue = "false") boolean withAutopay) {
+        return ResponseEntity.ok(
+                subscriptionService.initiateRenewalPayment(user, instituteId, userPlanId, withAutopay));
+    }
+
+    /**
      * Cancel autopay for one subscription. Revokes the mandate and stops future
      * charges; access is retained until end_date.
      */

@@ -39,6 +39,8 @@ public class SubscriptionService {
     private final UserInstitutePaymentGatewayMappingService mandateService;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final WorkflowTriggerService workflowTriggerService;
+    private final vacademy.io.admin_core_service.features.payments.service.PaymentService paymentService;
+    private final vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
 
     private static final List<String> VISIBLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
@@ -143,7 +145,78 @@ public class SubscriptionService {
                 .planPrice(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getActualPrice() : null)
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
+                .autopayAvailable(isAutopayAvailable(plan))
                 .build();
+    }
+
+    /** Whether the plan's invite has autopay configured (AUTOPAY_SETTING.ENABLED). */
+    private boolean isAutopayAvailable(UserPlan plan) {
+        if (plan.getEnrollInvite() == null || !StringUtils.hasText(plan.getEnrollInvite().getSettingJson())) {
+            return false;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(plan.getEnrollInvite().getSettingJson())
+                    .path("setting").path("AUTOPAY_SETTING").path("ENABLED").asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Start a MANUAL RENEWAL payment for the learner's existing plan ("pay to
+     * continue"). Amount/vendor are SERVER-derived from the plan (never trusted
+     * from the client). With {@code withAutopay} (allowed only when the invite
+     * has AUTOPAY_SETTING.ENABLED) the checkout opens in mandate mode: the same
+     * approval charges the price AND registers a fresh UPI Autopay/e-mandate,
+     * so future cycles auto-deduct again.
+     */
+    public vacademy.io.common.payment.dto.PaymentResponseDTO initiateRenewalPayment(
+            vacademy.io.common.auth.model.CustomUserDetails userDetails,
+            String instituteId, String userPlanId, boolean withAutopay) {
+        UserPlan plan = userPlanRepository.findById(userPlanId)
+                .orElseThrow(() -> new VacademyException("Subscription not found: " + userPlanId));
+        if (!userDetails.getUserId().equals(plan.getUserId())) {
+            throw new VacademyException("Subscription does not belong to the current user");
+        }
+        if (plan.getEnrollInvite() == null) {
+            throw new VacademyException("Subscription has no enrollment invite — cannot build payment");
+        }
+        if (plan.getPaymentPlan() == null || plan.getPaymentPlan().getActualPrice() <= 0) {
+            throw new VacademyException("Subscription has no payable plan price");
+        }
+        if (withAutopay && !isAutopayAvailable(plan)) {
+            throw new VacademyException("Autopay is not enabled for this membership's invite");
+        }
+
+        var invite = plan.getEnrollInvite();
+        List<vacademy.io.common.auth.dto.UserDTO> users =
+                authService.getUsersFromAuthServiceByUserIds(List.of(plan.getUserId()));
+        if (users.isEmpty()) {
+            throw new VacademyException("Learner account not found");
+        }
+        var user = users.get(0);
+
+        var request = new vacademy.io.common.payment.dto.PaymentInitiationRequestDTO();
+        request.setAmount(plan.getPaymentPlan().getActualPrice());
+        request.setCurrency(StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency() : "INR");
+        request.setDescription("Membership renewal — "
+                + (plan.getPaymentPlan().getName() != null ? plan.getPaymentPlan().getName() : "subscription"));
+        request.setInstituteId(instituteId);
+        request.setEmail(user.getEmail());
+        request.setVendor(invite.getVendor());
+        request.setVendorId(invite.getVendorId());
+        request.setPaymentType(vacademy.io.common.payment.enums.PaymentType.RENEWAL);
+        var razorpayRequest = new vacademy.io.common.payment.dto.RazorpayRequestDTO();
+        razorpayRequest.setContact(user.getMobileNumber());
+        razorpayRequest.setEmail(user.getEmail());
+        request.setRazorpayRequest(razorpayRequest);
+
+        if (withAutopay) {
+            // Mandate-mode checkout: charge + register a fresh recurring mandate.
+            return paymentService.handleMandatePayment(user, instituteId, invite, plan, request);
+        }
+        return paymentService.handleUserPlanPayment(request, instituteId, userDetails, userPlanId);
     }
 
     private String resolveVendor(UserPlan plan) {

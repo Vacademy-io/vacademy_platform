@@ -39,6 +39,7 @@ public class RenewalPaymentService {
     private final PaymentLogRepository paymentLogRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final AuthService authService;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService mandateService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -86,11 +87,28 @@ public class RenewalPaymentService {
             userPlan.setIsTrial(false);
             userPlan.setRenewalAttemptCount(0);
             userPlan.setLastRenewalAttemptAt(null);
-            // Re-arm the auto-charge only when autopay is still on. A learner who
-            // revoked their mandate stays in manual mode (next_charge_at null) —
-            // the pre-expiry workflow sends them the payment link each cycle
-            // instead of the sweep attempting a charge against a dead mandate.
+            // Re-arm the auto-charge only when autopay is on. A learner who revoked
+            // their mandate stays in manual mode (next_charge_at null) — the
+            // pre-expiry workflow sends them the payment link each cycle instead of
+            // the sweep attempting a charge against a dead mandate. If the renewal
+            // checkout ALSO registered a fresh mandate ("enable auto-pay" option),
+            // resume autopay: a live mandate for this plan flips the flag back on.
             boolean autopayOn = Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled());
+            if (!autopayOn) {
+                try {
+                    String vendor = userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().getVendor() : null;
+                    var mandate = vendor != null ? mandateService.getMandateOrLegacyToken(
+                            userPlan.getUserId(), instituteId, vendor, userPlan.getId()) : null;
+                    if (mandate != null && vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.STATUS_ACTIVE
+                            .equalsIgnoreCase(mandate.getStatus())) {
+                        userPlan.setAutoRenewalEnabled(true);
+                        autopayOn = true;
+                        log.info("Plan {}: fresh ACTIVE mandate found on renewal — autopay resumed", userPlan.getId());
+                    }
+                } catch (Exception me) {
+                    log.warn("Plan {}: could not check mandate for autopay resume: {}", userPlan.getId(), me.getMessage());
+                }
+            }
             userPlan.setNextChargeAt(autopayOn ? newEndDate : null);
             userPlanRepository.save(userPlan);
 

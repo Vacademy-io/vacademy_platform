@@ -198,6 +198,9 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
   const [renewingPlanId, setRenewingPlanId] = useState<string | null>(null);
+  // Per-plan "also enable auto-pay" choice (offered only when the invite has
+  // autopay configured). Default off: the learner cancelled it deliberately.
+  const [autopayChoice, setAutopayChoice] = useState<Record<string, boolean>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
 
   const refetchSoon = () => {
@@ -229,7 +232,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       } catch {
         // best effort — the backend resolves the customer from the JWT anyway
       }
-      const response = await initiateRenewalPayment(instituteId, sub, { email, mobile });
+      const withAutopay = Boolean(
+        sub.autopay_available && autopayChoice[sub.user_plan_id]
+      );
+      const response = await initiateRenewalPayment(instituteId, sub, withAutopay);
       const orderDetails =
         response?.payment_response?.response_data || response?.response_data;
       if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
@@ -242,6 +248,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         currency: orderDetails.currency || sub.currency || "INR",
         contact: mobile,
         email,
+        // Mandate mode: present when the backend registered a recurring order —
+        // the same approval pays and re-authorizes auto-pay.
+        recurring: orderDetails.recurring,
+        customerId: orderDetails.customerId,
       });
     } catch (e) {
       toast.error("Couldn't start the payment", {
@@ -396,7 +406,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
             )}
 
             {sub.can_renew_manually && sub.plan_price != null && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
+              <div className="space-y-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
                 <div className="text-sm text-gray-700">
                   {sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED" ? (
                     <span>
@@ -411,19 +421,41 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                     </span>
                   )}
                 </div>
-                <MyButton
-                  type="button"
-                  scale="small"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  onClick={() => startRenewal(sub)}
-                  disable={renewingPlanId === sub.user_plan_id}
-                >
-                  <CreditCard className="me-1.5 size-4" />
-                  {renewingPlanId === sub.user_plan_id
-                    ? "Starting payment..."
-                    : `Pay ${formatPrice(sub.plan_price, sub.currency)} to continue`}
-                </MyButton>
+                {sub.autopay_available && (
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 accent-primary-500"
+                      checked={Boolean(autopayChoice[sub.user_plan_id])}
+                      onChange={(e) =>
+                        setAutopayChoice((prev) => ({
+                          ...prev,
+                          [sub.user_plan_id]: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      Also enable auto-pay for future renewals — one approval
+                      pays now and sets up automatic deduction, no more manual
+                      payments.
+                    </span>
+                  </label>
+                )}
+                <div className="flex justify-end">
+                  <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="primary"
+                    layoutVariant="default"
+                    onClick={() => startRenewal(sub)}
+                    disable={renewingPlanId === sub.user_plan_id}
+                  >
+                    <CreditCard className="me-1.5 size-4" />
+                    {renewingPlanId === sub.user_plan_id
+                      ? "Starting payment..."
+                      : `Pay ${formatPrice(sub.plan_price, sub.currency)} to continue`}
+                  </MyButton>
+                </div>
               </div>
             )}
           </div>

@@ -430,7 +430,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         );
       })}
 
-      {/* Headless gateway checkout — opened programmatically by startRenewal */}
+      {/* Gateway checkout host — visually hidden (its built-in card UI shows a
+          placeholder amount); the SDK's payment modal attaches to document.body,
+          so hiding this wrapper doesn't affect the checkout itself. */}
+      <div className="hidden">
       <RazorpayCheckoutForm
         ref={razorpayRef}
         error={null}
@@ -447,6 +450,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
           toast.error("Payment not completed", { description: message })
         }
       />
+      </div>
 
       <Dialog
         open={Boolean(toCancel)}

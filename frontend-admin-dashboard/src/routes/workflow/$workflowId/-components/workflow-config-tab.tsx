@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+    getTemplatesByTypeQuery,
     getWorkflowRawQuery,
     updateNodeTemplate,
     WorkflowRawNode,
 } from '@/services/workflow-service';
+import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -376,14 +378,68 @@ function OutputDataPointsEditor({
  * up front; values starting with '#' are SpEL formulas and live in the advanced
  * fold. Writes into the same config text as the raw JSON editor.
  */
+/** Minimal shape of a WhatsApp template as served by the templates API. */
+type WhatsAppTemplateInfo = {
+    name: string;
+    content?: string;
+    dynamic_parameters?: string;
+};
+
+/**
+ * Renders the template body with the variables substituted in place: editable
+ * values highlighted, formula-driven ones shown as labeled chips. Live-updates
+ * as the admin types in the variable boxes below.
+ */
+function TemplateBodyPreview({
+    template,
+    vars,
+}: {
+    template: WhatsAppTemplateInfo | undefined;
+    vars: Record<string, string>;
+}) {
+    if (!template?.content) return null;
+    let labels: Record<string, string> = {};
+    try {
+        labels = template.dynamic_parameters ? JSON.parse(template.dynamic_parameters) : {};
+    } catch {
+        // labels stay empty — chips fall back to the variable number
+    }
+    const segments = template.content.split(/(\{\{\s*[^}]+?\s*\}\})/g);
+    return (
+        <div className="mb-2 whitespace-pre-wrap rounded-md border border-neutral-200 bg-white p-3 text-xs leading-relaxed text-neutral-700">
+            {segments.map((segment, i) => {
+                const match = segment.match(/^\{\{\s*([^}]+?)\s*\}\}$/);
+                if (!match) return <span key={i}>{segment}</span>;
+                const key = match[1] ?? '';
+                const value = vars[key];
+                const isFormula = String(value ?? '').trim().startsWith('#');
+                if (value != null && !isFormula && String(value).length > 0) {
+                    return (
+                        <span key={i} className="rounded bg-primary-50 px-1 font-medium text-primary-600">
+                            {value}
+                        </span>
+                    );
+                }
+                return (
+                    <span key={i} className="rounded bg-neutral-100 px-1 text-caption italic text-neutral-500">
+                        {'⟨'}{labels[key] ?? `var ${key}`}{'⟩'}
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
 function TemplateVarsEditor({
     configText,
     onChange,
     devMode,
+    templates,
 }: {
     configText: string;
     onChange: (next: string) => void;
     devMode: boolean;
+    templates: WhatsAppTemplateInfo[];
 }) {
     let parsed: Record<string, unknown> | null = null;
     try {
@@ -461,6 +517,12 @@ function TemplateVarsEditor({
                     )}
                 </div>
             )}
+            {/* Full message preview: the approved template body with this node's
+                variable values substituted live. */}
+            <TemplateBodyPreview
+                template={templates.find((t) => t.name === cfg.templateName)}
+                vars={vars}
+            />
             <div className="space-y-2">{textVars.map(renderVar)}</div>
             {devMode && formulaVars.length > 0 && (
                 <details className="mt-2">
@@ -478,10 +540,12 @@ function NodeConfigEditorCard({
     workflowId,
     node,
     devMode,
+    templates,
 }: {
     workflowId: string;
     node: WorkflowRawNode;
     devMode: boolean;
+    templates: WhatsAppTemplateInfo[];
 }) {
     const queryClient = useQueryClient();
 
@@ -667,7 +731,12 @@ function NodeConfigEditorCard({
 
                 {/* Friendly settings editors — each shows only when the config has its section */}
                 <OutputDataPointsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
-                <TemplateVarsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
+                <TemplateVarsEditor
+                    configText={configText}
+                    onChange={setConfigText}
+                    devMode={devMode}
+                    templates={templates}
+                />
 
                 {/* config_json editor */}
                 <div className={devMode ? '' : 'hidden'}>
@@ -772,6 +841,14 @@ function NodeConfigEditorCard({
 
 export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
     const { data, isLoading, error } = useQuery(getWorkflowRawQuery(workflowId));
+    // Approved WhatsApp templates — used to render full message previews in the
+    // Message content panels (body text with variables substituted).
+    const { data: instituteDetails } = useQuery(useInstituteQuery());
+    const { data: whatsappTemplates } = useQuery({
+        ...getTemplatesByTypeQuery(instituteDetails?.id ?? '', 'WHATSAPP'),
+        enabled: !!instituteDetails?.id,
+    });
+    const templates: WhatsAppTemplateInfo[] = (whatsappTemplates ?? []) as WhatsAppTemplateInfo[];
     // Simple view by default; the developer toggle persists across visits.
     const [devMode, setDevMode] = useState(
         () => localStorage.getItem('workflow-config-dev-mode') === 'true'
@@ -852,6 +929,7 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     workflowId={workflowId}
                     node={node}
                     devMode={devMode}
+                    templates={templates}
                 />
             ))}
         </div>

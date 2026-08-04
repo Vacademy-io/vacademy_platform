@@ -124,6 +124,9 @@ public class RenewalPaymentService {
             // Renewals previously emitted NO workflow events at all.
             Map<String, Object> extra = new HashMap<>();
             extra.put("newEndDate", newEndDate.toString());
+            // Message-ready label ("11 Sep 2026") so confirmation templates don't
+            // have to parse java.util.Date.toString().
+            extra.put("newEndDateLabel", new java.text.SimpleDateFormat("dd MMM yyyy").format(newEndDate));
             emitRenewalEvent(WorkflowTriggerEvent.PAYMENT_SUCCESS, userPlan, instituteId, extra);
 
         } catch (Exception e) {

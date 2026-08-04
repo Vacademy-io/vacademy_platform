@@ -120,21 +120,67 @@
             window.__earlyErrors.push({ kind: 'unhandledrejection', reason: e.reason });
         });
     </script>
-    <!-- Post-deploy stale-HTML recovery: when this (cached) page references
-         hashed chunks that no longer exist on the server, the entry module
-         graph fails BEFORE the app can boot, so src/lib/chunk-reload.ts never
-         installs. This pre-boot guard catches load failures of our own hashed
-         build assets (/assets/*) and forces a reload to fetch fresh HTML.
-         It shares chunk-reload.ts's sessionStorage budget (same key/limits —
-         keep them in sync) so combined reloads stay capped. -->
+    <!-- Post-deploy recovery for assets that come back as HTML. Two causes:
+         (a) this cached page references hashed chunks that no longer exist,
+         (b) far more common — Cloudflare Pages has no 404, so during the
+             deploy-propagation window an edge holding the new index.html but
+             not yet its assets answers /assets/<chunk>.js with the SPA
+             fallback: 200 text/html, cache-control max-age=14400.
+         Either way the entry module graph fails BEFORE the app can boot, so
+         src/lib/chunk-reload.ts never installs and this pre-boot guard is the
+         only thing running. Because (b) leaves HTML cached under a .js URL for
+         four hours, a plain location.reload() re-reads the poisoned body and
+         can never recover — so we re-fetch the failed URLs with
+         cache:'reload' (bypasses AND overwrites the cache entry) first, then
+         reload after a short backoff so the retry lands once propagation has
+         finished. Shares chunk-reload.ts's sessionStorage budget, backoff and
+         in-flight flag (same key/limits/flag — keep the two in sync). -->
     <script>
         (function () {
             var KEY = 'vacademy:chunk-reload-attempts';
-            var WINDOW_MS = 10000;
-            var MAX_RELOADS = 2;
-            var reloading = false; // several assets can fail at once; spend at most 1 budget slot per page load
+            var WINDOW_MS = 60000; // must exceed all attempts' purge + backoff + load, else the budget resets and we loop forever
+            var MAX_RELOADS = 3;
+            var BACKOFF_MS = [0, 1500, 3000];
+            var PURGE_TIMEOUT_MS = 8000; // a purge cut short mid-download does NOT replace the cached entry
+            var COLLECT_MS = 150; // the entry graph fails as a burst; gather the whole burst before purging
+            var failed = [];
+            var scheduled = false;
+
+            function recover() {
+                // Shared with chunk-reload.ts so the two guards can't both spend a slot.
+                if (window.__chunkRecovering__) return;
+                var rec = { count: 0, firstAt: 0 };
+                try {
+                    var parsed = JSON.parse(sessionStorage.getItem(KEY));
+                    if (parsed && Date.now() - parsed.firstAt <= WINDOW_MS) rec = parsed;
+                } catch (err) { /* missing/corrupt record — treat as empty */ }
+                if (rec.count >= MAX_RELOADS) return; // genuinely broken deploy: stop, leave the error visible
+                window.__chunkRecovering__ = true;
+                try {
+                    sessionStorage.setItem(KEY, JSON.stringify({
+                        count: rec.count + 1,
+                        firstAt: rec.firstAt || Date.now(),
+                    }));
+                } catch (err) { /* storage unavailable — still reload (matches chunk-reload.ts) */ }
+
+                var delay = BACKOFF_MS[rec.count] || 0;
+                var done = false;
+                function reload() {
+                    if (done) return;
+                    done = true;
+                    setTimeout(function () { window.location.reload(); }, delay);
+                }
+                if (typeof fetch !== 'function') return reload();
+                setTimeout(reload, PURGE_TIMEOUT_MS); // a hanging edge must not strand the page
+                var purges = failed.map(function (url) {
+                    return fetch(url, { cache: 'reload', credentials: 'same-origin' })
+                        .then(function () { }, function () { });
+                });
+                Promise.all(purges).then(reload, reload);
+            }
+
             window.addEventListener('error', function (e) {
-                if (reloading) return;
+                if (window.__chunkRecovering__) return;
                 var t = e.target;
                 if (!t || t === window || !t.tagName) return; // runtime JS error, not a resource load failure
                 var url = '';
@@ -147,20 +193,10 @@
                 // Only our hashed build output — never third-party scripts
                 // (CDN/analytics blocked by an ad-blocker must not reload us).
                 if (url.indexOf(location.origin + '/assets/') !== 0) return;
-                var rec = { count: 0, firstAt: 0 };
-                try {
-                    var parsed = JSON.parse(sessionStorage.getItem(KEY));
-                    if (parsed && Date.now() - parsed.firstAt <= WINDOW_MS) rec = parsed;
-                } catch (err) { /* missing/corrupt record — treat as empty */ }
-                if (rec.count >= MAX_RELOADS) return; // genuinely broken deploy: stop, leave the error visible
-                reloading = true;
-                try {
-                    sessionStorage.setItem(KEY, JSON.stringify({
-                        count: rec.count + 1,
-                        firstAt: rec.firstAt || Date.now(),
-                    }));
-                } catch (err) { /* storage unavailable — still reload (matches chunk-reload.ts) */ }
-                window.location.reload();
+                if (failed.indexOf(url) === -1) failed.push(url);
+                if (scheduled) return;
+                scheduled = true;
+                setTimeout(recover, COLLECT_MS);
             }, true);
         })();
     </script>

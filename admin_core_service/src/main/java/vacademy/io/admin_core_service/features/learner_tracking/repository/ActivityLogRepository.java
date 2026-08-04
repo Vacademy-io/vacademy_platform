@@ -1315,11 +1315,17 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                AVG(sp.slide_pct) AS chapter_pct
                         FROM (
                             SELECT cs.subject_id, cs.module_id, cs.chapter_id, cs.slide_id,
+                                -- Must list EVERY slide-level completion operation. An operation
+                                -- missing here is not skipped: the CASE yields NULL and COALESCE
+                                -- turns it into 0, so a fully-completed slide silently drags the
+                                -- chapter average down. Keep in sync with the write-side cascade
+                                -- (LearnerTrackingAsyncService#updateChapterCompletionPercentage).
                                 COALESCE(MAX(CASE
                                     WHEN slo.operation IN (
                                             'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                             'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                            'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                          AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                     THEN LEAST(CAST(slo.value AS FLOAT), 100)
                                     ELSE NULL

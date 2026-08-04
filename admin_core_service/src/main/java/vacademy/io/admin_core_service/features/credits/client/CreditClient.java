@@ -278,8 +278,11 @@ public class CreditClient {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/institutes/" + instituteId + "/balance";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            // /balance requires auth. We have no caller JWT to forward here — most
+            // callers are schedulers (EngagementDispatchJob, AiCallService) — so we
+            // authenticate as a service. Without this the read 401s, getBalance
+            // returns null, and every fail-closed affordability gate blocks.
+            HttpHeaders headers = buildInternalHeaders();
 
             HttpEntity<String> request = new HttpEntity<>(headers);
 
@@ -303,18 +306,25 @@ public class CreditClient {
 
     /**
      * Grant credits to an institute (super admin action).
+     *
+     * The caller (SuperAdminCreditController) has already enforced isRootUser, and
+     * ai_service's /grant accepts either a ROOT_ADMIN JWT or the internal service
+     * token. We authenticate with the token — there is no JWT on this RestTemplate
+     * to forward — and pass actingUserId so the transaction is attributed to the
+     * real super admin instead of "system".
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> grantCredits(String instituteId, Double amount, String description) {
+    public Map<String, Object> grantCredits(String instituteId, Double amount, String description,
+            String actingUserId) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/institutes/" + instituteId + "/grant";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildInternalHeaders();
 
-            Map<String, Object> body = Map.of(
-                    "amount", amount,
-                    "description", description != null ? description : "Super admin grant");
+            Map<String, Object> body = new HashMap<>();
+            body.put("amount", amount);
+            body.put("description", description != null ? description : "Super admin grant");
+            body.put("acting_user_id", actingUserId);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -338,19 +348,21 @@ public class CreditClient {
     }
 
     /**
-     * Deduct credits from an institute (super admin action).
+     * Deduct credits from an institute (super admin action). Internal-token
+     * authenticated for the same reason as {@link #grantCredits}.
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> deductCreditsAdmin(String instituteId, Double amount, String description) {
+    public Map<String, Object> deductCreditsAdmin(String instituteId, Double amount, String description,
+            String actingUserId) {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/institutes/" + instituteId + "/deduct-admin";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildInternalHeaders();
 
-            Map<String, Object> body = Map.of(
-                    "amount", amount,
-                    "description", description != null ? description : "Super admin deduction");
+            Map<String, Object> body = new HashMap<>();
+            body.put("amount", amount);
+            body.put("description", description != null ? description : "Super admin deduction");
+            body.put("acting_user_id", actingUserId);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 

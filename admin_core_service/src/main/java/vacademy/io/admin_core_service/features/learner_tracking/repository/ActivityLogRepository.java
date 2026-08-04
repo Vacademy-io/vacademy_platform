@@ -226,6 +226,26 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     WHERE mcm.module_id = :moduleId
                       AND cpm.status IN (:chapterStatusList)
                       AND c.status IN (:chapterStatusList)
+                      -- A chapter with no learner-visible slide can never produce a
+                      -- percentage: getChapterCompletionPercentage divides by a count
+                      -- of 0, returns NULL, and the cascade drops the write, so no
+                      -- CHAPTER row is ever stored. It would then land here via the
+                      -- LEFT JOIN as 0 and drag the module down forever -- a chapter
+                      -- the learner cannot even open counted as work they failed to
+                      -- do, capping the course below 100% and blocking certificates.
+                      -- Count a chapter only when it could actually produce a value.
+                      -- Slide statuses are pinned rather than parameterised because
+                      -- every caller passes exactly PUBLISHED + UNSYNC, matching
+                      -- getChapterCompletionPercentage's own denominator.
+                      AND EXISTS (
+                          SELECT 1
+                          FROM chapter_to_slides cts
+                          JOIN slide s ON s.id = cts.slide_id
+                          WHERE cts.chapter_id = c.id
+                            AND cts.status IN ('PUBLISHED', 'UNSYNC')
+                            AND s.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                                  'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+                      )
                 ) distinct_chapters
             LEFT JOIN (
                 SELECT DISTINCT ON (lo.source_id)
@@ -1315,11 +1335,17 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                AVG(sp.slide_pct) AS chapter_pct
                         FROM (
                             SELECT cs.subject_id, cs.module_id, cs.chapter_id, cs.slide_id,
+                                -- Must list EVERY slide-level completion operation. An operation
+                                -- missing here is not skipped: the CASE yields NULL and COALESCE
+                                -- turns it into 0, so a fully-completed slide silently drags the
+                                -- chapter average down. Keep in sync with the write-side cascade
+                                -- (LearnerTrackingAsyncService#updateChapterCompletionPercentage).
                                 COALESCE(MAX(CASE
                                     WHEN slo.operation IN (
                                             'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                             'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                            'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                          AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                     THEN LEAST(CAST(slo.value AS FLOAT), 100)
                                     ELSE NULL

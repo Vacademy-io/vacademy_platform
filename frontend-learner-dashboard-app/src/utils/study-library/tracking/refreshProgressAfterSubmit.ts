@@ -26,6 +26,13 @@ import type { QueryClient } from "@tanstack/react-query";
 const ROLLUP_KEYS = [
   "MODULES_WITH_CHAPTERS",
   "GET_MODULES_WITH_CHAPTERS",
+  // The course-details tree caches under its own namespace with a 60s
+  // staleTime. React Query matches keys element by element, so invalidating
+  // "MODULES_WITH_CHAPTERS" does NOT reach "MODULES_WITH_CHAPTERS_RESOLVED" —
+  // it has to be listed explicitly. Without it the tree keeps serving a
+  // pre-completion rollup for up to a minute after the learner finishes a
+  // slide, which is what made rendering the backend percentage there unsafe.
+  "MODULES_WITH_CHAPTERS_RESOLVED",
   "GET_COURSE_INIT",
 ];
 

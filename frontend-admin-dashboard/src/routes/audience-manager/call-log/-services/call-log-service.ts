@@ -5,7 +5,8 @@
  * Backed by the telephony dashboard endpoints (admin-core-service):
  *   POST /v1/telephony/calls/search        — paginated, RBAC-scoped, filtered
  *   POST /v1/telephony/calls/metrics       — KPI strip + worklist chip badges
- *   GET  /v1/telephony/calls/dispositions  — call-outcome catalog (picker)
+ *   GET  /v1/telephony/calls/dispositions  — call-outcome catalog (picker; settable only)
+ *   GET  /v1/telephony/calls/dispositions/options — full filter vocabulary (catalog + AI)
  *   POST /v1/telephony/calls/{id}/disposition — set a call's outcome
  *   POST /v1/telephony/calls/export        — CSV/XLSX blob
  *   GET  /v1/telephony/calls/{id}/recording — presigned recording URL
@@ -321,16 +322,66 @@ export interface DispositionOption {
     color: string | null;
     category: 'CONNECTED' | 'NOT_CONNECTED' | 'CALLBACK' | 'OTHER' | string;
     maps_to_lead_status: boolean;
+    /**
+     * Whether a counsellor may APPLY this outcome. False for AI-sourced outcomes —
+     * they're reported by the agent and only exist to be filtered on; `POST
+     * /{id}/disposition` rejects them. Absent on an older backend ⇒ treat as settable
+     * (that backend only ever returned catalog rows).
+     */
+    settable?: boolean;
+    /** CATALOG | AI_SETTINGS | AI_AGENT | OBSERVED — where the outcome was declared. */
+    source?: string;
 }
 
 export const dispositionCatalogKey = (instituteId: string) =>
     ['crm-call-disposition-catalog', instituteId] as const;
 
+/**
+ * The outcomes a counsellor may SET — `call_disposition_catalog` only. This is the
+ * quick-disposition picker's list and the only vocabulary the apply endpoint accepts.
+ */
 export async function fetchDispositionCatalog(instituteId: string): Promise<DispositionOption[]> {
     const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/dispositions`, {
         params: { instituteId },
     });
     return Array.isArray(data) ? data : [];
+}
+
+// ── GET /dispositions/options (filter vocabulary) ──────────────────────────
+
+export const dispositionOptionsKey = (instituteId: string) =>
+    ['crm-call-disposition-options', instituteId] as const;
+
+/**
+ * The wider vocabulary the Disposition FILTER must offer: the settable catalog plus
+ * the AI outcomes the institute configured in Settings → AI Calling (built-ins,
+ * custom outcomes, assign/stop lists), the ones its AI agents declare, and the ones
+ * its calls have actually returned.
+ *
+ * The catalog alone can't drive this filter: an AI call's outcome lives in
+ * `ai_call_result.disposition` and is never a catalog code, so on an AI-heavy
+ * institute every option matched zero rows.
+ *
+ * Falls back to the catalog when the endpoint isn't deployed yet, so the dropdown
+ * degrades to its old contents instead of emptying.
+ */
+export async function fetchDispositionFilterOptions(
+    instituteId: string
+): Promise<DispositionOption[]> {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/dispositions/options`, {
+            params: { instituteId },
+        });
+        if (Array.isArray(data) && data.length) return data;
+    } catch (error) {
+        if (!isCallLogEndpointMissing(error)) throw error;
+    }
+    return fetchDispositionCatalog(instituteId);
+}
+
+/** Alphanumerics only, upper-cased — mirrors the backend's disposition match key. */
+export function normalizeDispositionKey(raw: string | null | undefined): string {
+    return raw ? raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : '';
 }
 
 // ── POST /{id}/disposition ─────────────────────────────────────────────────

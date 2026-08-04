@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.telephony.core.CallDetailService;
+import vacademy.io.admin_core_service.features.telephony.core.CallDispositionOptionsService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService.AppliedDisposition;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportAiEnricher;
@@ -52,6 +53,7 @@ public class CallDashboardController {
 
     private final CallSearchService callSearchService;
     private final CallDispositionService callDispositionService;
+    private final CallDispositionOptionsService callDispositionOptionsService;
     private final CallExportService callExportService;
     private final CallDetailService callDetailService;
     private final CallExportAiEnricher callExportAiEnricher;
@@ -96,7 +98,12 @@ public class CallDashboardController {
                 callDetailService.detail(callLogId, instituteId, unmask, canSeeDiagnostics));
     }
 
-    /** Call-outcome catalog for the disposition picker + the dashboard's disposition filter. */
+    /**
+     * Call-outcome catalog — the outcomes a counsellor may APPLY. This is the picker's
+     * list, and the only vocabulary {@code POST /{id}/disposition} accepts.
+     * For the dashboard's disposition FILTER use {@link #dispositionOptions} instead:
+     * an AI call's outcome comes from the agent, not this catalog.
+     */
     @GetMapping("/dispositions")
     public ResponseEntity<List<CallDispositionCatalogDTO>> dispositions(
             @RequestParam("instituteId") String instituteId,
@@ -108,6 +115,24 @@ public class CallDashboardController {
         List<CallDispositionCatalogDTO> out = callDispositionService.listForInstitute(instituteId).stream()
                 .map(CallDispositionCatalogDTO::from).toList();
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Filter vocabulary for the Call Log's Disposition dropdown: the settable catalog
+     * PLUS the AI outcomes this institute configured (Settings → AI Calling, and its
+     * AI agents' declared dispositions) and the ones its calls have actually returned.
+     * Each entry carries {@code settable} — false for the AI-sourced ones, which are
+     * filterable but cannot be applied by hand.
+     */
+    @GetMapping("/dispositions/options")
+    public ResponseEntity<List<CallDispositionCatalogDTO>> dispositionOptions(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("instituteId is required");
+        }
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(callDispositionOptionsService.filterOptions(instituteId));
     }
 
     /** Quick after-call disposition; syncs the lead's pipeline status when the outcome maps to one. */

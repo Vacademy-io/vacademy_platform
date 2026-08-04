@@ -31,6 +31,17 @@ interface MultiSelectFilterProps {
     placeholder?: string;
     /** Width class for the trigger button (default: w-44). */
     widthClass?: string;
+    /**
+     * Summarize the selection ON the trigger instead of appending "· <count>" to
+     * {@link label}: the chosen option's own label when exactly one is picked,
+     * "<n> selected" beyond that.
+     *
+     * Opt-in, for filter bars that already caption the control with a field
+     * `<Label>` above it (e.g. the Call Log's). There "All · 1" reads as noise where
+     * "Callback" reads as the value; the default "<label> · <count>" stays right for
+     * the self-captioning toolbar pill Recent Leads uses.
+     */
+    showSelectedLabel?: boolean;
 }
 
 /**
@@ -46,6 +57,7 @@ export function MultiSelectFilter({
     onChange,
     placeholder = 'Search…',
     widthClass = 'w-44',
+    showSelectedLabel = false,
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
 
@@ -63,7 +75,15 @@ export function MultiSelectFilter({
     };
 
     const count = selected.length;
-    const triggerLabel = count > 0 ? `${label} · ${count}` : label;
+    const soleSelectedLabel =
+        count === 1 ? options.find((o) => o.value === selected[0])?.label : undefined;
+    const triggerLabel = showSelectedLabel
+        ? count === 0
+            ? label
+            : (soleSelectedLabel ?? `${count} selected`)
+        : count > 0
+          ? `${label} · ${count}`
+          : label;
 
     return (
         <Popover open={open} onOpenChange={setOpen}>

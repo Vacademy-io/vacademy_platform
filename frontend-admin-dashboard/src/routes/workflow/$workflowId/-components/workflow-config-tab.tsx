@@ -99,7 +99,9 @@ function normalEditableSections(configText: string): {
         const settings = points.some(
             (row) =>
                 row.compute === undefined &&
-                (typeof row.value === 'string' || isNestedStringMap(row.value))
+                (typeof row.value === 'string' ||
+                    isNestedStringMap(row.value) ||
+                    isFlatObjectList(row.value))
         );
         const vars =
             cfg.templateVars && typeof cfg.templateVars === 'object' && !Array.isArray(cfg.templateVars)
@@ -183,6 +185,114 @@ function QueryParamsEditor({
                             spellCheck={false}
                             className="h-8 max-w-48 text-xs"
                         />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * True for a repeatable list of flat records — e.g. learner-screen buttons,
+ * each carrying text, url and colour fields.
+ */
+function isFlatObjectList(value: unknown): boolean {
+    if (!Array.isArray(value) || value.length === 0) return false;
+    return value.every(
+        (entry) =>
+            entry &&
+            typeof entry === 'object' &&
+            !Array.isArray(entry) &&
+            Object.values(entry as Record<string, unknown>).every(
+                (v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+            )
+    );
+}
+
+/**
+ * Repeatable-rows editor for a list of flat records (buttons, links, …). The
+ * admin can edit every field, add as many rows as they like, and remove any —
+ * no JSON, no developer view needed.
+ */
+function ObjectListEditor({
+    label,
+    items,
+    onChange,
+}: {
+    label: string;
+    items: Array<Record<string, string | number | boolean>>;
+    onChange: (next: Array<Record<string, string | number | boolean>>) => void;
+}) {
+    const fields = Object.keys(items[0] ?? {});
+    const blankRow = () =>
+        fields.reduce<Record<string, string | number | boolean>>((acc, f) => {
+            const sample = items[0]?.[f];
+            acc[f] = typeof sample === 'boolean' ? true : typeof sample === 'number' ? 0 : '';
+            return acc;
+        }, {});
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2">
+            <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-600">
+                    {label}
+                    <span className="ml-1.5 text-caption font-normal text-neutral-400">
+                        add as many as you need — an empty link hides that entry
+                    </span>
+                </p>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-neutral-500"
+                    onClick={() => onChange([...items, blankRow()])}
+                >
+                    <Plus size={12} /> Add
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {items.map((item, index) => (
+                    <div
+                        key={index}
+                        className="flex flex-wrap items-center gap-2 rounded border border-neutral-100 p-2"
+                    >
+                        {fields.map((field) => (
+                            <label key={field} className="flex items-center gap-1">
+                                <span className="text-caption text-neutral-500">
+                                    {humanizeFieldName(field)}
+                                </span>
+                                <Input
+                                    value={String(item[field] ?? '')}
+                                    onChange={(e) =>
+                                        onChange(
+                                            items.map((row, i) =>
+                                                i === index
+                                                    ? {
+                                                          ...row,
+                                                          [field]:
+                                                              typeof row[field] === 'boolean'
+                                                                  ? e.target.value.trim().toLowerCase() === 'true'
+                                                                  : typeof row[field] === 'number'
+                                                                    ? Number(e.target.value) || 0
+                                                                    : e.target.value,
+                                                      }
+                                                    : row
+                                            )
+                                        )
+                                    }
+                                    spellCheck={false}
+                                    className="h-8 w-44 text-xs"
+                                />
+                            </label>
+                        ))}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 shrink-0 px-2 text-neutral-400 hover:text-red-600"
+                            onClick={() => onChange(items.filter((_, i) => i !== index))}
+                            title="Remove"
+                        >
+                            <Trash size={14} />
+                        </Button>
                     </div>
                 ))}
             </div>
@@ -329,6 +439,20 @@ function OutputDataPointsEditor({
         const isCompute = point.compute !== undefined;
         // Two-level string maps (e.g. a day → slot → link schedule) get a grid
         // editor; other structured values point to the raw JSON editor.
+        if (!isCompute && isFlatObjectList(point.value)) {
+            return (
+                <ObjectListEditor
+                    key={index}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'items')
+                            : humanizeFieldName(point.fieldName ?? 'items')
+                    }
+                    items={point.value as Array<Record<string, string | number | boolean>>}
+                    onChange={(next) => updateRow(index, { value: next })}
+                />
+            );
+        }
         if (!isCompute && isNestedStringMap(point.value)) {
             return (
                 <NestedMapGridEditor
@@ -429,7 +553,10 @@ function OutputDataPointsEditor({
     // In the simple view, hide the panel entirely when there is nothing a
     // non-technical admin can safely change here.
     const normalEditable = textEntries.filter(
-        ({ p }) => typeof p.value === 'string' || isNestedStringMap(p.value)
+        ({ p }) =>
+            typeof p.value === 'string' ||
+            isNestedStringMap(p.value) ||
+            isFlatObjectList(p.value)
     );
     if (!devMode && normalEditable.length === 0) return null;
 

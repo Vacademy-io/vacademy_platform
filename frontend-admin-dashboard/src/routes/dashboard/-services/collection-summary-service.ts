@@ -2,7 +2,8 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_PAYMENT_COLLECTION_SUMMARY } from '@/constants/urls';
 
 export interface CollectionDailyPoint {
-    date: string; // YYYY-MM-DD (UTC)
+    /** YYYY-MM-DD in the viewer's own zone (see `browserTimeZone`), not UTC. */
+    date: string;
     amount: number;
     count: number;
 }
@@ -21,6 +22,8 @@ export interface CollectionSummaryRequest {
     /** Optional ISO local date-time (YYYY-MM-DDTHH:mm:ss); omit for all-time. */
     start_date_in_utc?: string;
     end_date_in_utc?: string;
+    /** IANA zone the per-day series is bucketed in. Backend falls back to UTC when absent. */
+    time_zone?: string;
 }
 
 /** Time windows for the "amount collected" panel. `days: null` = all time. */
@@ -54,13 +57,27 @@ export function rangeToWindow(range: CollectionRangeKey): {
     return { start_date_in_utc: toLocalIso(start), end_date_in_utc: toLocalIso(end) };
 }
 
+/**
+ * The zone the per-day buckets should be cut in. payment_log.created_at is a UTC instant, so
+ * without this the backend split days on UTC midnight and a payment taken at 00:30 IST was charted
+ * under the previous day. Undefined on the rare runtime with no Intl — the backend then keeps its
+ * UTC default rather than guessing.
+ */
+const browserTimeZone = (): string | undefined => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 export async function fetchCollectionSummary(
     request: CollectionSummaryRequest
 ): Promise<CollectionSummary> {
-    const res = await authenticatedAxiosInstance.post(
-        GET_PAYMENT_COLLECTION_SUMMARY,
-        request
-    );
+    const res = await authenticatedAxiosInstance.post(GET_PAYMENT_COLLECTION_SUMMARY, {
+        ...request,
+        time_zone: request.time_zone ?? browserTimeZone(),
+    });
     const d = (res.data ?? {}) as Partial<CollectionSummary>;
     return {
         total_amount: typeof d.total_amount === 'number' ? d.total_amount : 0,

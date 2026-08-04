@@ -2,7 +2,18 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CurrencyInr, Receipt, TrendUp } from '@phosphor-icons/react';
+import {
+    CurrencyCny,
+    CurrencyDollar,
+    CurrencyEur,
+    CurrencyGbp,
+    CurrencyInr,
+    CurrencyJpy,
+    Money,
+    Receipt,
+    TrendUp,
+    type Icon,
+} from '@phosphor-icons/react';
 import {
     Area,
     AreaChart,
@@ -14,6 +25,7 @@ import {
 } from 'recharts';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { cn } from '@/lib/utils';
+import { isRealCurrency } from '@/utils/payment-currency';
 import {
     fetchCollectionSummary,
     rangeToWindow,
@@ -28,19 +40,45 @@ interface RevenueTrendsWidgetProps {
     title?: string;
 }
 
+/**
+ * Format in the currency the backend actually collected in. It used to fall back to INR whenever
+ * the aggregate returned no code — which was every institute whose payment_log rows carry a blank
+ * currency, so USD/AUD/GBP collections were labelled with a ₹. An unresolvable code now renders a
+ * bare number rather than a wrong symbol. Locale stays en-IN so compact notation reads as L/Cr.
+ */
 const money = (n: number, currency: string | null): string => {
-    const code = currency && currency.trim().length === 3 ? currency.trim().toUpperCase() : 'INR';
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: code,
-            maximumFractionDigits: 0,
-            notation: n >= 100000 ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `${Math.round(n).toLocaleString('en-IN')}`;
+    const code = currency?.trim().toUpperCase() || '';
+    const notation = n >= 100000 ? 'compact' : 'standard';
+    if (isRealCurrency(code)) {
+        try {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: code,
+                maximumFractionDigits: 0,
+                notation,
+            }).format(n);
+        } catch {
+            /* fall through to the plain-number form below */
+        }
     }
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0, notation }).format(n);
 };
+
+/** Header glyph follows the collected currency; codes without a dedicated icon get a banknote. */
+const CURRENCY_ICONS: Record<string, Icon> = {
+    INR: CurrencyInr,
+    USD: CurrencyDollar,
+    AUD: CurrencyDollar,
+    CAD: CurrencyDollar,
+    SGD: CurrencyDollar,
+    GBP: CurrencyGbp,
+    EUR: CurrencyEur,
+    JPY: CurrencyJpy,
+    CNY: CurrencyCny,
+};
+
+const currencyIcon = (currency: string | null): Icon =>
+    CURRENCY_ICONS[currency?.trim().toUpperCase() || ''] ?? Money;
 
 const nfmt = (n: number) => n.toLocaleString('en-IN');
 
@@ -87,13 +125,14 @@ export default function RevenueTrendsWidget({ subOrgId, title }: RevenueTrendsWi
     const count = data?.total_count ?? 0;
     const currency = data?.currency ?? null;
     const rangeLabel = COLLECTION_RANGES.find((r) => r.key === range)?.label ?? '';
+    const CurrencyIcon = currencyIcon(currency);
 
     return (
         <Card className="p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                        <CurrencyInr size={14} weight="duotone" />
+                        <CurrencyIcon size={14} weight="duotone" />
                     </span>
                     <div className="min-w-0">
                         <h3 className="line-clamp-1 text-sm font-semibold text-neutral-900">

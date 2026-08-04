@@ -50,9 +50,10 @@ import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
-import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.institute.entity.Institute;
@@ -60,9 +61,6 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.common.logging.SentryLogger;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 
 import java.util.Comparator;
@@ -157,6 +155,9 @@ public class LearnerEnrollRequestService {
     private vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     @Autowired
+    private PaymentServiceFactory paymentServiceFactory;
+
+    @Autowired
     private StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
     @Autowired
@@ -202,18 +203,20 @@ public class LearnerEnrollRequestService {
             }
         }
 
-        // ── Razorpay phase 2 (payment completion) ─────────────────────────────────
-        // The learner dashboard deliberately re-calls this endpoint after Razorpay
-        // Checkout succeeds, with razorpay_payment_id/order_id/signature filled in,
-        // expecting the enrollment created on the FIRST call to be completed. Without
-        // this branch the second call re-ran the full enrollment: a duplicate
+        // ── Gateway payment confirmation ("phase 2") ──────────────────────────────
+        // Some gateways (Razorpay Checkout today) confirm a payment by having the
+        // learner app re-call this endpoint with proof of payment attached to the
+        // original request. Such a call must COMPLETE the enrollment created on the
+        // first call — without this branch it re-ran the full enrollment: a duplicate
         // PENDING_FOR_PAYMENT user_plan, a duplicate ledger debit accrual, and an
-        // orphan Razorpay order for every paid learner. Verify the signature, mark the
-        // original payment log PAID (idempotent with the webhook) and return — never
-        // fall through to fresh enrollment.
-        if (isRazorpayPhase2Completion(enrollDTO)) {
-            return completeRazorpayPhase2(learnerEnrollRequestDTO,
-                    enrollDTO.getPaymentInitiationRequest());
+        // orphan gateway order for every paid learner. Detection and proof
+        // verification are delegated to the vendor's PaymentServiceStrategy (same
+        // opt-in pattern as initiateMandatePayment/chargeRecurring).
+        PaymentServiceStrategy gatewayStrategy = resolvePaymentStrategy(enrollDTO);
+        if (gatewayStrategy != null
+                && gatewayStrategy.isClientPaymentConfirmation(enrollDTO.getPaymentInitiationRequest())) {
+            return completeGatewayPaymentConfirmation(learnerEnrollRequestDTO,
+                    enrollDTO.getPaymentInitiationRequest(), gatewayStrategy);
         }
 
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
@@ -784,58 +787,71 @@ public class LearnerEnrollRequestService {
     }
 
     /**
-     * True when this request is the learner dashboard's second ("phase 2") call
-     * after a successful Razorpay Checkout — it carries the payment id, the
-     * Razorpay order id of the order created on the FIRST call, and the checkout
-     * signature. Such a request must complete the existing enrollment, never
-     * create a new one.
+     * Resolves the {@link PaymentServiceStrategy} for the request's payment
+     * vendor, or null when the request has no payment initiation / an unknown
+     * vendor (e.g. MANUAL) — callers then proceed with the normal enrollment
+     * flow.
      */
-    private boolean isRazorpayPhase2Completion(LearnerPackageSessionsEnrollDTO enrollDTO) {
+    private PaymentServiceStrategy resolvePaymentStrategy(LearnerPackageSessionsEnrollDTO enrollDTO) {
         if (enrollDTO == null || enrollDTO.getPaymentInitiationRequest() == null) {
-            return false;
+            return null;
         }
-        RazorpayRequestDTO rr = enrollDTO.getPaymentInitiationRequest().getRazorpayRequest();
-        return rr != null
-                && StringUtils.hasText(rr.getRazorpayPaymentId())
-                && StringUtils.hasText(rr.getRazorpayOrderId())
-                && StringUtils.hasText(rr.getRazorpaySignature());
+        String vendor = enrollDTO.getPaymentInitiationRequest().getVendor();
+        if (!StringUtils.hasText(vendor)) {
+            return null;
+        }
+        try {
+            return paymentServiceFactory.getStrategy(PaymentGateway.valueOf(vendor.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
-    private LearnerEnrollResponseDTO completeRazorpayPhase2(
+    /**
+     * Completes an enrollment whose payment the client just confirmed ("phase 2"):
+     * the gateway strategy verifies the proof of payment and returns the gateway
+     * order reference, which locates the payment log created on the FIRST call.
+     * The log is then marked PAID through the same idempotent path the webhook
+     * uses — whichever of webhook and this call arrives second is a no-op. Never
+     * falls through to fresh enrollment.
+     */
+    private LearnerEnrollResponseDTO completeGatewayPaymentConfirmation(
             LearnerEnrollRequestDTO learnerEnrollRequestDTO,
-            PaymentInitiationRequestDTO paymentInit) {
+            PaymentInitiationRequestDTO paymentInit,
+            PaymentServiceStrategy gatewayStrategy) {
         String instituteId = learnerEnrollRequestDTO.getInstituteId();
-        RazorpayRequestDTO rr = paymentInit.getRazorpayRequest();
+        String vendor = paymentInit.getVendor();
 
-        verifyRazorpayCheckoutSignature(rr, instituteId);
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+        String gatewayOrderRef = gatewayStrategy.verifyClientPaymentConfirmation(paymentInit, gatewayData);
 
-        // The order was created on the first call; its payment log carries the
-        // Razorpay order id inside payment_specific_data (response_data.razorpayOrderId).
-        // Prefer the earliest log with a user plan — that is the order creator.
+        // The order was created on the first call; its payment log carries the gateway
+        // order reference inside payment_specific_data. Prefer the earliest log with
+        // a user plan — that is the order creator.
         vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog paymentLog =
-                paymentLogRepository.findAllByOrderIdInJson(rr.getRazorpayOrderId())
+                paymentLogRepository.findAllByOrderIdInJson(gatewayOrderRef)
                         .stream()
                         .filter(pl -> pl.getUserPlan() != null)
                         .min(Comparator.comparing(
                                 vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog::getCreatedAt))
                         .orElseThrow(() -> new VacademyException(
-                                "Payment received but the originating enrollment was not found for Razorpay order "
-                                        + rr.getRazorpayOrderId()));
+                                "Payment received but the originating enrollment was not found for " + vendor
+                                        + " order " + gatewayOrderRef));
 
-        log.info("Razorpay phase-2 completion: verified payment {} for order {} -> paymentLog={}, userPlan={}",
-                rr.getRazorpayPaymentId(), rr.getRazorpayOrderId(), paymentLog.getId(),
-                paymentLog.getUserPlan().getId());
+        log.info("{} payment confirmation: verified order {} -> paymentLog={}, userPlan={}",
+                vendor, gatewayOrderRef, paymentLog.getId(), paymentLog.getUserPlan().getId());
 
         // Idempotent with the webhook: marks the log PAID and runs plan activation /
-        // invoicing exactly once — whichever of webhook and phase-2 arrives second is
-        // a no-op thanks to the conditional paid-claim in updatePaymentLogsByOrderId.
+        // invoicing exactly once — whichever of webhook and this call arrives second
+        // is a no-op thanks to the conditional paid-claim in updatePaymentLogsByOrderId.
         paymentLogService.updatePaymentLog(paymentLog.getId(), PaymentStatusEnum.PAID.name(), instituteId);
 
         PaymentResponseDTO paymentResponse = new PaymentResponseDTO();
         paymentResponse.setOrderId(paymentLog.getId());
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("paymentStatus", PaymentStatusEnum.PAID.name());
-        responseData.put("razorpayOrderId", rr.getRazorpayOrderId());
+        responseData.put("gatewayOrderId", gatewayOrderRef);
         responseData.put("amount", paymentLog.getPaymentAmount());
         paymentResponse.setResponseData(responseData);
 
@@ -849,7 +865,7 @@ public class LearnerEnrollRequestService {
                     user = users.get(0);
                 }
             } catch (Exception e) {
-                log.warn("Could not resolve user {} for phase-2 response: {}",
+                log.warn("Could not resolve user {} for payment-confirmation response: {}",
                         paymentLog.getUserId(), e.getMessage());
             }
         }
@@ -859,44 +875,6 @@ public class LearnerEnrollRequestService {
         response.setPaymentResponse(paymentResponse);
         response.setUserPlanId(paymentLog.getUserPlan().getId());
         return response;
-    }
-
-    /**
-     * Verifies the Razorpay Checkout signature: HMAC-SHA256 of
-     * "order_id|payment_id" with the institute's key secret. Unlike the
-     * product-page variant this throws when the secret is missing — an institute
-     * taking Razorpay payments must have one, and skipping verification would let
-     * anyone activate a pending enrollment with a forged payment id.
-     */
-    private void verifyRazorpayCheckoutSignature(RazorpayRequestDTO rr, String instituteId) {
-        try {
-            Map<String, Object> gatewayData = institutePaymentGatewayMappingService
-                    .findInstitutePaymentGatewaySpecifData(PaymentGateway.RAZORPAY.name(), instituteId);
-            String keySecret = gatewayData != null
-                    ? (String) gatewayData.getOrDefault("publishableKey", gatewayData.get("keySecret"))
-                    : null;
-            if (keySecret == null) {
-                keySecret = gatewayData != null ? (String) gatewayData.get("apiSecret") : null;
-            }
-            if (!StringUtils.hasText(keySecret)) {
-                throw new VacademyException("Razorpay key secret not configured for institute " + instituteId);
-            }
-            String payload = rr.getRazorpayOrderId() + "|" + rr.getRazorpayPaymentId();
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            if (!hex.toString().equals(rr.getRazorpaySignature())) {
-                throw new VacademyException("Razorpay payment signature verification failed");
-            }
-        } catch (VacademyException ve) {
-            throw ve;
-        } catch (Exception e) {
-            throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
-        }
     }
 
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {

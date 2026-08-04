@@ -21,6 +21,9 @@ import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.payment.enums.PaymentType;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +121,63 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
                     "operation", "findCustomerByEmail"
             ));
             return null;
+        }
+    }
+
+    // ── Client-side payment confirmation (Checkout "phase 2") ──────────────
+
+    /**
+     * Razorpay Checkout hands the browser a payment_id + signature on success and
+     * the client re-submits the original request with them — that re-submission is
+     * a confirmation, not a new payment.
+     */
+    @Override
+    public boolean isClientPaymentConfirmation(PaymentInitiationRequestDTO request) {
+        RazorpayRequestDTO rr = request != null ? request.getRazorpayRequest() : null;
+        return rr != null
+                && StringUtils.hasText(rr.getRazorpayPaymentId())
+                && StringUtils.hasText(rr.getRazorpayOrderId())
+                && StringUtils.hasText(rr.getRazorpaySignature());
+    }
+
+    /**
+     * Verifies the Checkout signature — HMAC-SHA256 of "order_id|payment_id" with
+     * the key secret — and returns the Razorpay order id. Throws when the secret
+     * is missing rather than skipping: an institute taking Razorpay payments must
+     * have one, and skipping verification would let anyone confirm a pending
+     * enrollment with a forged payment id.
+     */
+    @Override
+    public String verifyClientPaymentConfirmation(PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            RazorpayRequestDTO rr = request.getRazorpayRequest();
+            String keySecret = paymentGatewaySpecificData != null
+                    ? (String) paymentGatewaySpecificData.getOrDefault("publishableKey",
+                            paymentGatewaySpecificData.get("keySecret"))
+                    : null;
+            if (keySecret == null && paymentGatewaySpecificData != null) {
+                keySecret = (String) paymentGatewaySpecificData.get("apiSecret");
+            }
+            if (!StringUtils.hasText(keySecret)) {
+                throw new VacademyException("Razorpay key secret not configured for this institute");
+            }
+            String payload = rr.getRazorpayOrderId() + "|" + rr.getRazorpayPaymentId();
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            if (!hex.toString().equals(rr.getRazorpaySignature())) {
+                throw new VacademyException("Razorpay payment signature verification failed");
+            }
+            return rr.getRazorpayOrderId();
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
         }
     }
 

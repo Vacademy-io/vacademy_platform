@@ -28,7 +28,24 @@ public enum NotificationEventType {
      * channel, so an institute can run its own branded EMAIL body (and later a WhatsApp one)
      * while the seeded DEFAULT config keeps every other institute rendering unchanged.
      */
-    PAYMENT_CONFIRMATION("PAYMENT_CONFIRMATION");
+    PAYMENT_CONFIRMATION("PAYMENT_CONFIRMATION"),
+
+    /**
+     * Transactional emails that predate this enum and were dispatched with no event key at all.
+     * They are named here so they can be selected as CC/BCC triggers in notification settings —
+     * each value must match the {@code source} its sender stamps on the outgoing send.
+     */
+    INVOICE("INVOICE"),
+    SCHOOL_FEE_RECEIPT("SCHOOL_FEE_RECEIPT"),
+    APPLICATION_FEE_RECEIPT("APPLICATION_FEE_RECEIPT"),
+    CERTIFICATE_ISSUED("CERTIFICATE_ISSUED"),
+
+    /**
+     * Team/admin invitation email (initial + reminder). Sent by auth-service, NOT admin-core —
+     * listed here only to keep the event-name catalogue in one place. The value must stay in sync
+     * with {@code NotificationConstant.EVENT_TEAM_INVITE} in auth-service.
+     */
+    TEAM_INVITE("TEAM_INVITE");
 
     private final String value;
 

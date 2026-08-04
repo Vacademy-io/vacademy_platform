@@ -103,6 +103,21 @@ public class UnifiedSendRequest {
         // Rate limiting (optional — for bulk sends like announcements)
         private Integer rateLimitPerSecond;
 
+        /**
+         * Explicit copy recipients for EMAIL sends. When null/empty the send falls back to the
+         * institute's configured {@code emailCc} block, matched on {@link #source} — see
+         * {@code EmailCcResolver}. Set this only to override the institute config for one send.
+         * Ignored by WhatsApp/Push, which have no copy-recipient concept.
+         */
+        private List<String> cc;
+
+        /**
+         * "CC" (visible to the primary recipient) or "BCC" (hidden). Defaults to BCC when unset,
+         * because copies are almost always internal staff who should not be exposed on a
+         * learner-facing receipt. Only meaningful alongside {@link #cc}.
+         */
+        private String ccMode;
+
         // General
         private String source;  // caller identifier for logging
         private String sourceId;

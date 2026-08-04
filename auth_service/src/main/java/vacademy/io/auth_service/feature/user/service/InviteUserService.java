@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
+import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.util.RandomCredentialGenerator;
@@ -124,6 +125,9 @@ public class InviteUserService {
         emailRequest.setTo(to);
         emailRequest.setSubject(subject);
         emailRequest.setBody(body);
+        // Names the event so institute-configured CC/BCC copies can match it. Shared by both the
+        // initial invitation and the reminder — an institute copying team invites wants both.
+        emailRequest.setService(NotificationConstant.EVENT_TEAM_INVITE);
         return emailRequest;
     }
 

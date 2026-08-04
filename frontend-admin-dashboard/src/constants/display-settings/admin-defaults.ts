@@ -5,6 +5,7 @@ import type {
     SidebarTabConfig,
     DashboardWidgetConfig,
 } from '@/types/display-settings';
+import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
 const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
@@ -192,6 +193,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
     courseListCard: {
         showEnrolledStudentCount: false,
     },
+    assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

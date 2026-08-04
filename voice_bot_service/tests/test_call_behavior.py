@@ -1441,3 +1441,21 @@ def test_rumik_gets_the_agent_pace_at_all(monkeypatch):
         assert "slow" in slow._description
     finally:
         pv.get_settings.cache_clear()
+
+
+def test_preview_carries_the_same_pace_steering_a_call_would():
+    """A voice tester that auditions a delivery the caller never hears is worse than
+    no tester. Probing the DEPLOYED endpoint caught this: pace 1.1 and pace 0.6
+    returned 7.34s and 7.08s — indistinguishable, because the Rumik preview branch
+    dropped pace entirely."""
+    src = inspect.getsource(m.preview)
+    assert "rumik_pace_description(pace)" in src, "preview must derive the steering"
+    assert "description=pace_desc" in src, "...and pass it to the synthesiser"
+    # And the cache must not serve the first pace forever.
+    assert "{pace_desc}" in src, "pace must be part of the Rumik cache key"
+
+
+def test_rumik_synthesize_wav_accepts_a_description():
+    import inspect as _i
+    sig = _i.signature(pv.rumik_synthesize_wav)
+    assert "description" in sig.parameters

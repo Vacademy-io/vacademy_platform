@@ -719,7 +719,8 @@ def rumik_pace_description(pace):
 
 
 async def rumik_synthesize_wav(text: str, voice: str, api_key: str,
-                               session=None, model: str = "mulberry") -> bytes:
+                               session=None, model: str = "mulberry",
+                               description: str | None = None) -> bytes:
     """One-shot Rumik synthesis -> WAV bytes. For the admin voice tester.
 
     Deliberately NOT reusing RumikTTSService: that is a pipecat pipeline component
@@ -751,7 +752,12 @@ async def rumik_synthesize_wav(text: str, voice: str, api_key: str,
         pcm = bytearray()
         async with session.ws_connect(f'{mint["ws_url"]}?token={mint["token"]}',
                                       timeout=aiohttp.ClientTimeout(total=20)) as ws:
-            await ws.send_json({"text": text, "speaker": (voice or "ira").strip().lower()})
+            payload = {"text": text, "speaker": (voice or "ira").strip().lower()}
+            # The preview MUST carry the same pace steering a call would, or the
+            # admin auditions a delivery the caller never hears.
+            if description:
+                payload["description"] = description
+            await ws.send_json(payload)
             while True:
                 msg = await asyncio.wait_for(ws.receive(), timeout=25)
                 if msg.type == aiohttp.WSMsgType.BINARY:

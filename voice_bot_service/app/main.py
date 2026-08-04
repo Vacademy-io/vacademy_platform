@@ -31,6 +31,7 @@ from fastapi.responses import PlainTextResponse
 from . import admin_core
 from .bot import CallOutcome, run_bot
 from .config import get_settings
+from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
 
 logging.basicConfig(level=logging.INFO,
@@ -301,15 +302,20 @@ async def preview(
         if not s.rumik_api_key:
             logger.warning("preview: rumik requested but RUMIK_API_KEY unset")
             return Response(status_code=503)
+        # pace MUST be in the cache key. Without it the first pace previewed for a
+        # given voice+text is served forever, so moving the slider appears to do
+        # nothing — which is indistinguishable from the steering being broken.
+        pace_desc = rumik_pace_description(pace)
         key = hashlib.sha1(
-            f"pv|rumik|{voice}|{text}".encode("utf-8")).hexdigest()
+            f"pv|rumik|{voice}|{pace_desc}|{text}".encode("utf-8")).hexdigest()
         # .wav, not .mp3: Rumik streams raw PCM and we do not carry an mp3 encoder.
         # The route name is historical; the Content-Type is what browsers obey.
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
             from .providers import rumik_synthesize_wav
             raw = await rumik_synthesize_wav(text, voice, s.rumik_api_key,
-                                             session=app.state.http_session)
+                                             session=app.state.http_session,
+                                             description=pace_desc)
             if not raw:
                 return Response(status_code=502)
             try:

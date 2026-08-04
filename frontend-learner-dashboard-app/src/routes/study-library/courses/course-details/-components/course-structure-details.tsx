@@ -75,7 +75,6 @@ import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 import { BatchChatPanel } from "@/components/chat/BatchChatPanel";
 import { CourseLeaderboard } from "./CourseLeaderboard";
-import { calculateOverallCompletion } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getFilePublicUrlQuery } from "@/services/file-url-cache";
 import { getLatestResume } from "@/services/resume-thread";
 import { useTranslation } from "react-i18next";
@@ -87,6 +86,10 @@ export interface Chapter {
   description: string;
   file_id: string | null;
   chapter_order: number;
+  // Server-computed rollup from /modules-with-chapters. Always present in the
+  // payload; typed optional only because a few local placeholder objects in
+  // this file construct a Chapter without it.
+  percentage_completed?: number;
   drip_condition_json?: string | null;
   drip_condition?: string | null; // JSON string from API
 }
@@ -110,6 +113,8 @@ export interface Module {
 export interface ModuleWithChapters {
   module: Module;
   module_order: number | null;
+  // Server-computed module rollup from /modules-with-chapters.
+  percentage_completed?: number;
   chapters: Chapter[];
 }
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
@@ -221,34 +226,17 @@ export const CourseStructureDetails = ({
     [formatDuration]
   );
 
-  // Helper: calculate module progress from chapters
-  const calculateModuleProgress = (moduleChapters: Chapter[]): number => {
-    if (!moduleChapters || moduleChapters.length === 0) return 0;
+  // Module progress: the server's rollup, rendered as-is.
+  //
+  // Previously this re-averaged the chapters we had loaded, which quietly
+  // reimplemented the backend's rule — and got it wrong in two ways at once:
+  // chapters whose slides hadn't been fetched counted as 0%, and chapters with
+  // no learner-visible slides at all counted as 0% forever (the reason a course
+  // could sit at 67% with every reachable chapter finished).
+  const calculateModuleProgress = (mod: ModuleWithChapters): number =>
+    Math.round(mod?.percentage_completed ?? 0);
 
-    // A chapter we have loaded and found to be empty is excluded from the
-    // average entirely. There is nothing in it for the learner to open, so
-    // counting it as 0% would cap the module below 100% forever and block the
-    // course certificate. Mirrors the backend, which now excludes chapters
-    // with no learner-visible slides from the module denominator
-    // (ActivityLogRepository#getModuleCompletionPercentage).
-    //
-    // Chapters we have NOT loaded yet stay in the denominator: absent slides
-    // mean "unknown", not "empty", and dropping them would make the module
-    // percentage jump around as the learner expands the tree.
-    const countedChapters = moduleChapters.filter((chapter) => {
-      const slides = slidesMap[chapter.id];
-      return slides === undefined || slides.length > 0;
-    });
-    if (countedChapters.length === 0) return 0;
-
-    const totalProgress = countedChapters.reduce((sum, chapter) => {
-      return sum + calculateChapterProgress(chapter.id);
-    }, 0);
-
-    return Math.round(totalProgress / countedChapters.length);
-  };
-
-  // Helper: subject progress = mean of its MODULE percentages.
+  // Subject progress = mean of its MODULE percentages.
   //
   // Deliberately mean-of-module-means, not a flat average over every chapter in
   // the subject. The backend computes it the same way
@@ -263,7 +251,7 @@ export const CourseStructureDetails = ({
     if (modules.length === 0) return 0;
 
     const totalProgress = modules.reduce(
-      (sum, mod) => sum + calculateModuleProgress(mod.chapters ?? []),
+      (sum, mod) => sum + (mod.percentage_completed ?? 0),
       0
     );
 
@@ -475,13 +463,37 @@ export const CourseStructureDetails = ({
   >({});
   const [isModulesLoading, setIsModulesLoading] = useState<boolean>(false);
   const queryClient = useQueryClient();
-  // Helper: calculate chapter progress from slides
+
+  // Chapter id -> server-computed percentage, flattened from the loaded modules.
+  const chapterPercentById = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const modules of Object.values(subjectModulesMap)) {
+      for (const mod of modules) {
+        for (const chapter of mod.chapters ?? []) {
+          map[chapter.id] = chapter.percentage_completed ?? 0;
+        }
+      }
+    }
+    return map;
+  }, [subjectModulesMap]);
+
+  // Chapter progress comes from the server, not from re-averaging the slides
+  // we happen to have fetched.
+  //
+  // This tree used to compute its own chapter/module/subject percentages from
+  // slidesMap. That made it a second, parallel implementation of a rule the
+  // backend already owns, and the two drifted: the tree counted chapters it
+  // hadn't loaded as 0%, applied a different completion rule, and rendered a
+  // number that contradicted the course card on the same screen. Both of the
+  // bugs this change set fixes were that drift showing through.
+  //
+  // Staleness is handled by invalidation, not by recomputing: the rollup
+  // cascade runs @Async, and refreshProgressAfterSubmit re-invalidates this
+  // page's query (MODULES_WITH_CHAPTERS_RESOLVED) across several backoff waves
+  // after any slide submit.
   const calculateChapterProgress = useCallback(
-    (chapterId: string): number => {
-      const slides = slidesMap[chapterId] || [];
-      return calculateOverallCompletion(slides);
-    },
-    [slidesMap]
+    (chapterId: string): number => chapterPercentById[chapterId] ?? 0,
+    [chapterPercentById]
   );
 
   // Get drip condition from store as fallback if not provided via props
@@ -1425,7 +1437,7 @@ export const CourseStructureDetails = ({
                                     className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
                                   />
                                   {renderStatusIcon(
-                                    calculateModuleProgress(mod.chapters || [])
+                                    calculateModuleProgress(mod)
                                   )}
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
@@ -1453,9 +1465,7 @@ export const CourseStructureDetails = ({
                                   {/* Module progress: % text only (bar lives on the branch top level) */}
                                   <span className="ms-auto flex shrink-0 items-center gap-2">
                                     {renderCompletionBadge(
-                                      calculateModuleProgress(
-                                        mod.chapters || []
-                                      )
+                                      calculateModuleProgress(mod)
                                     )}
                                   </span>
                                 </div>
@@ -1800,7 +1810,7 @@ export const CourseStructureDetails = ({
                           className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
                         />
                         {renderStatusIcon(
-                          calculateModuleProgress(mod.chapters || []),
+                          calculateModuleProgress(mod),
                           { size: 18 }
                         )}
                         {showContentPrefixes && (
@@ -1814,7 +1824,7 @@ export const CourseStructureDetails = ({
                         {/* Top-level module keeps the branch bar */}
                         <div className="flex items-center gap-2 ms-auto shrink-0">
                           {(() => {
-                            const progress = calculateModuleProgress(mod.chapters || []);
+                            const progress = calculateModuleProgress(mod);
                             return (
                               <>
                                 <div className="w-16 hidden sm:block">
@@ -2295,7 +2305,7 @@ export const CourseStructureDetails = ({
                                   className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
                                 />
                                 {renderStatusIcon(
-                                  calculateModuleProgress(mod.chapters || [])
+                                  calculateModuleProgress(mod)
                                 )}
                                 {showContentPrefixes && (
                                   <span className="w-6 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
@@ -2308,7 +2318,7 @@ export const CourseStructureDetails = ({
                                 {/* Module progress: % text only */}
                                 <span className="ms-auto flex shrink-0 items-center gap-2">
                                   {renderCompletionBadge(
-                                    calculateModuleProgress(mod.chapters || [])
+                                    calculateModuleProgress(mod)
                                   )}
                                 </span>
                               </div>

@@ -5,6 +5,7 @@ import type {
     SidebarTabConfig,
     DashboardWidgetConfig,
 } from '@/types/display-settings';
+import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
 function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu
@@ -216,6 +217,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
     courseListCard: {
         showEnrolledStudentCount: false,
     },
+    assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

@@ -33,6 +33,7 @@ import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
+import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1290,6 +1291,10 @@ export default function AdminDisplaySettings() {
                     })()}
                 </CardContent>
             </Card>
+            <AssessmentActionsCard
+                settings={settings.assessmentPage}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
+            />
             </section>
 
             <section id="grp-layout" className="space-y-6">

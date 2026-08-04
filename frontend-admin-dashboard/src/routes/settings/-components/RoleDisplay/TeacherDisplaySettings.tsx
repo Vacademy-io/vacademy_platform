@@ -21,6 +21,7 @@ import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
+import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -1258,6 +1259,10 @@ export default function TeacherDisplaySettings() {
                     })()}
                 </CardContent>
             </Card>
+            <AssessmentActionsCard
+                settings={settings.assessmentPage}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
+            />
             </section>
 
             <section id="grp-layout" className="space-y-6">

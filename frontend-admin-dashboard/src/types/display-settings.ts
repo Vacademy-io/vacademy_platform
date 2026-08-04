@@ -134,6 +134,32 @@ export interface CourseCreationSettings {
     limitToSingleLevel: boolean;
 }
 
+// Per-role visibility of the assessment create / edit / delete actions. Applies
+// across every surface that exposes them: the Assessments list header, the
+// /assessment type picker, the sidebar "Create …" shortcuts, the in-slide
+// "Create new assessment" option, the Assessment Details edit (pencil) button
+// and the "Delete Assessment" item in each assessment card's "…" menu — plus
+// the Evaluation Centre and Homework clones of those lists.
+//
+// Every flag is optional and DEFAULTS TO TRUE (on). Read sites must therefore
+// test `=== false` / `!== false`, never truthiness, so a role that has never
+// been configured keeps seeing the actions.
+export interface AssessmentActionSettings {
+    // "Create Assessment" / "Create Homework" entry points.
+    showCreateAssessment?: boolean;
+    // The edit (pencil) button on Assessment Details that reopens the
+    // create-assessment wizard for an existing assessment.
+    showEditAssessment?: boolean;
+    // "Delete Assessment" / "Delete Homework" in the card "…" menu.
+    showDeleteAssessment?: boolean;
+}
+
+export const DEFAULT_ASSESSMENT_ACTION_SETTINGS: AssessmentActionSettings = {
+    showCreateAssessment: true,
+    showEditAssessment: true,
+    showDeleteAssessment: true,
+};
+
 // Stable identifiers for the student side-view tabs. Used as keys in the
 // settings ordering map and as values for the default-tab selector. These
 // match the `setCategory(...)` strings the side-view component already uses.
@@ -560,6 +586,10 @@ export interface DisplaySettingsData {
         // Show the number of ACTIVE enrolled students on each course card
         showEnrolledStudentCount: boolean;
     };
+
+    // 10d) Assessment action visibility toggles. See AssessmentActionSettings —
+    //      every flag defaults to ON so existing roles are unaffected.
+    assessmentPage?: AssessmentActionSettings;
 
     // 11) Course creation configuration
     courseCreation?: CourseCreationSettings;

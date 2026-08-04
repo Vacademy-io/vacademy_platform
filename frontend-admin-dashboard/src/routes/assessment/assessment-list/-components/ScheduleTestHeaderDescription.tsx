@@ -8,6 +8,7 @@ import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { Examination, Mock, Practice, Survey } from '@/svgs';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { cn } from '@/lib/utils';
+import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 
 export const ScheduleTestHeaderDescription = ({
     isCourseOutline = false,
@@ -17,6 +18,7 @@ export const ScheduleTestHeaderDescription = ({
     const isMobile = useIsMobile();
     const navigate = useNavigate();
     const { getCourseFromPackage } = useInstituteDetailsStore();
+    const { canCreate } = useAssessmentActionVisibility();
 
     const handleRedirectRoute = (type: string) => {
         navigate({
@@ -58,79 +60,86 @@ export const ScheduleTestHeaderDescription = ({
                     settingsKey={SettingsTabs.Assessment}
                     label="Assessment settings"
                 />
-                <Dialog>
-                <DialogTrigger
-                    disabled={getCourseFromPackage().length === 0}
-                    className={cn(
-                        getCourseFromPackage().length === 0 && 'pointer-events-none opacity-55'
-                    )}
-                >
-                    <MyButton
-                        scale="large"
-                        buttonType="primary"
-                        layoutVariant="default"
-                        id="create-assessment"
-                    >
-                        <CalendarBlank size={32} />
-                        Create Assessment
-                    </MyButton>
-                </DialogTrigger>
-                <DialogContent className="no-scrollbar !m-0 flex h-screen !w-4/5 flex-col gap-8 overflow-y-auto !p-0">
-                    <h1 className="rounded-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                        Create Assessment
-                    </h1>
-                    <div className="mb-4 flex size-auto flex-col items-center justify-center gap-11">
-                        <div className="flex items-center gap-12">
-                            <div
-                                onClick={() => handleRedirectRoute('EXAM')}
-                                className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
+                {canCreate && (
+                    <Dialog>
+                        <DialogTrigger
+                            disabled={getCourseFromPackage().length === 0}
+                            className={cn(
+                                getCourseFromPackage().length === 0 &&
+                                    'pointer-events-none opacity-55'
+                            )}
+                        >
+                            <MyButton
+                                scale="large"
+                                buttonType="primary"
+                                layoutVariant="default"
+                                id="create-assessment"
                             >
-                                <Examination />
-                                <h1 className="text-[1.4rem] font-semibold">Examination</h1>
-                                <p className="text-center text-sm text-neutral-500">
-                                    A Fixed-time assessment that goes live for a specific schedule,
-                                    simulating real exam conditions.
-                                </p>
+                                <CalendarBlank size={32} />
+                                Create Assessment
+                            </MyButton>
+                        </DialogTrigger>
+                        <DialogContent className="no-scrollbar !m-0 flex h-screen !w-4/5 flex-col gap-8 overflow-y-auto !p-0">
+                            <h1 className="rounded-lg bg-primary-50 p-4 font-semibold text-primary-500">
+                                Create Assessment
+                            </h1>
+                            <div className="mb-4 flex size-auto flex-col items-center justify-center gap-11">
+                                <div className="flex items-center gap-12">
+                                    <div
+                                        onClick={() => handleRedirectRoute('EXAM')}
+                                        className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
+                                    >
+                                        <Examination />
+                                        <h1 className="text-[1.4rem] font-semibold">Examination</h1>
+                                        <p className="text-center text-sm text-neutral-500">
+                                            A Fixed-time assessment that goes live for a specific
+                                            schedule, simulating real exam conditions.
+                                        </p>
+                                    </div>
+                                    <div
+                                        onClick={() => handleRedirectRoute('MOCK')}
+                                        className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
+                                    >
+                                        <Mock />
+                                        <h1 className="text-[1.4rem] font-semibold">
+                                            Mock Assessment
+                                        </h1>
+                                        <p className="text-center text-sm text-neutral-500">
+                                            A practice assessment always available, with a fixed
+                                            duration to replicate exam scenarios.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-12">
+                                    <div
+                                        onClick={() => handleRedirectRoute('PRACTICE')}
+                                        className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
+                                    >
+                                        <Practice />
+                                        <h1 className="text-[1.4rem] font-semibold">
+                                            Practice Assessment
+                                        </h1>
+                                        <p className="text-center text-sm text-neutral-500">
+                                            An on-demand assessment with no time limits, allowing
+                                            students to attempt it anytime.
+                                        </p>
+                                    </div>
+                                    <div
+                                        onClick={() => handleRedirectRoute('SURVEY')}
+                                        className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
+                                    >
+                                        <Survey />
+                                        <h1 className="text-[1.4rem] font-semibold">Survey</h1>
+                                        <p className="text-center text-sm text-neutral-500">
+                                            A set of questions for feedback or opinions, with no
+                                            right or wrong answers.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <div
-                                onClick={() => handleRedirectRoute('MOCK')}
-                                className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
-                            >
-                                <Mock />
-                                <h1 className="text-[1.4rem] font-semibold">Mock Assessment</h1>
-                                <p className="text-center text-sm text-neutral-500">
-                                    A practice assessment always available, with a fixed duration to
-                                    replicate exam scenarios.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-12">
-                            <div
-                                onClick={() => handleRedirectRoute('PRACTICE')}
-                                className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
-                            >
-                                <Practice />
-                                <h1 className="text-[1.4rem] font-semibold">Practice Assessment</h1>
-                                <p className="text-center text-sm text-neutral-500">
-                                    An on-demand assessment with no time limits, allowing students
-                                    to attempt it anytime.
-                                </p>
-                            </div>
-                            <div
-                                onClick={() => handleRedirectRoute('SURVEY')}
-                                className="flex size-[300px] cursor-pointer flex-col items-center rounded-xl border bg-neutral-50 p-8"
-                            >
-                                <Survey />
-                                <h1 className="text-[1.4rem] font-semibold">Survey</h1>
-                                <p className="text-center text-sm text-neutral-500">
-                                    A set of questions for feedback or opinions, with no right or
-                                    wrong answers.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
         </div>
     );

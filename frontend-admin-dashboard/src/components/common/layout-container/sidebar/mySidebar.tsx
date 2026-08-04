@@ -70,6 +70,14 @@ import {
     useHasCallIntelligenceData,
 } from '@/components/shared/leads';
 
+// Sidebar sub-items under "Assessments and Tests" that deep-link into the
+// create-assessment wizard. Hidden together with the Create Assessment button.
+const ASSESSMENT_CREATE_SUB_ITEM_IDS = new Set([
+    'create-deadline-test',
+    'create-anytime-test',
+    'create-survey',
+]);
+
 const voltSidebarData: SidebarItemsType[] = [
     {
         icon: Lightning,
@@ -241,6 +249,10 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         }
     }, []);
 
+    // Reuse the roleDisplay blob loaded above rather than the assessment-actions
+    // hook — the hook would fire a second identical fetch on a cold cache.
+    const canCreateAssessment = roleDisplay?.assessmentPage?.showCreateAssessment !== false;
+
     // Compute final sidebar items (same logic as before)
     const finalSidebarItems = (() => {
         const rawBase = isVoltSubdomain
@@ -259,17 +271,24 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // notifications.chat is on) and AI Intelligence (unless Call Intelligence is
         // on OR there's historical analyzed data to look back on). Applied together
         // so we only remap once.
-        const base =
-            isChatEnabled && isCrmIntelligenceAvailable
-                ? rawBase
-                : rawBase.map((item) => ({
-                      ...item,
-                      subItems: item.subItems?.filter(
-                          (s) =>
-                              (isChatEnabled || s.subItemId !== 'chat') &&
-                              (isCrmIntelligenceAvailable || s.subItemId !== 'ai-intelligence')
-                      ),
-                  }));
+        // Also strip the assessment "Create …" shortcuts when Display Settings
+        // turns off assessment creation for this role — those sub-items link
+        // straight into the create wizard, so leaving them would contradict the
+        // hidden Create Assessment button.
+        const needsSubItemFilter =
+            !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment;
+        const base = !needsSubItemFilter
+            ? rawBase
+            : rawBase.map((item) => ({
+                  ...item,
+                  subItems: item.subItems?.filter(
+                      (s) =>
+                          (isChatEnabled || s.subItemId !== 'chat') &&
+                          (isCrmIntelligenceAvailable || s.subItemId !== 'ai-intelligence') &&
+                          (canCreateAssessment ||
+                              !ASSESSMENT_CREATE_SUB_ITEM_IDS.has(s.subItemId || ''))
+                  ),
+              }));
         if (!roleDisplay) return base;
 
         // Build a lookup of what each sidebar item would look like with system

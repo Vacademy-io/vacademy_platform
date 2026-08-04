@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 import vacademy.io.admin_core_service.features.chapter.dto.LearnerChapterDetailsDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerChapterSlidesDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
@@ -35,7 +36,9 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Slf4j
@@ -53,6 +56,26 @@ public class LearnerStudyLibraryService {
     private final ObjectMapper objectMapper;
     private final InstituteSettingService instituteSettingService;
     private final MediaService mediaService;
+    private final LearnerCourseStructureCacheService structureCacheService;
+    private final LearnerOperationRepository learnerOperationRepository;
+
+    // Which learner_operation supplies each slide-level progress field, per
+    // slide source_type. Mirrors the per-branch LEFT JOINs in
+    // SlideRepository.getLearnerSlidesByPackageSessionId (HTML_VIDEO has none).
+    private static final Map<String, LearnerOperationEnum> SLIDE_PERCENT_OPERATIONS = Map.of(
+            "VIDEO", LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED,
+            "DOCUMENT", LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED,
+            "QUESTION", LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED,
+            "ASSIGNMENT", LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED,
+            "QUIZ", LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED,
+            "SCORM", LearnerOperationEnum.PERCENTAGE_SCORM_COMPLETED,
+            "AUDIO", LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED,
+            "ASSESSMENT", LearnerOperationEnum.PERCENTAGE_ASSESSMENT_DONE);
+
+    private static final Map<String, LearnerOperationEnum> SLIDE_MARKER_OPERATIONS = Map.of(
+            "VIDEO", LearnerOperationEnum.VIDEO_LAST_TIMESTAMP,
+            "DOCUMENT", LearnerOperationEnum.DOCUMENT_LAST_PAGE,
+            "AUDIO", LearnerOperationEnum.AUDIO_LAST_TIMESTAMP);
 
 
 
@@ -66,20 +89,46 @@ public class LearnerStudyLibraryService {
     }
 
     public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId,CustomUserDetails user) {
-        String rawResponse = moduleChapterMappingRepository.getModuleChapterProgress(
-                subjectId,
-                packageSessionId,
-                user.getUserId(),
-                LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
-                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
-                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-                List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-                List.of(ChapterStatus.ACTIVE.name()),
-                List.of(ModuleStatusEnum.ACTIVE.name())
-        );
+        // Cached user-independent structure + fresh per-user progress overlay.
+        // The structure JSON is parsed per request, so overlay mutations never
+        // touch the shared cached string.
+        String rawResponse = structureCacheService.getModulesWithChaptersStructureJson(subjectId, packageSessionId);
         List<LearnerModuleDTOWithDetails> modules = mapToLearnerModuleDTOWithDetails(rawResponse);
+        overlayModuleChapterProgress(modules, user.getUserId(), packageSessionId);
         sortChaptersByOrder(modules);
         return modules;
+    }
+
+    private void overlayModuleChapterProgress(List<LearnerModuleDTOWithDetails> modules, String userId, String packageSessionId) {
+        if (modules.isEmpty()) {
+            return;
+        }
+        Map<String, Double> pctByChapter = new HashMap<>();
+        learnerOperationRepository.findChapterSlideProgressForPackageSession(
+                userId,
+                packageSessionId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()))
+                .forEach(row -> pctByChapter.put(row.getChapterId(), row.getPercentageCompleted()));
+        Map<String, String> lastSlideByChapter = new HashMap<>();
+        learnerOperationRepository.findChapterLastSlideViewedForPackageSession(userId, packageSessionId)
+                .forEach(row -> lastSlideByChapter.put(row.getChapterId(), row.getLastSlideViewed()));
+
+        for (LearnerModuleDTOWithDetails module : modules) {
+            List<LearnerChapterDetailsDTO> chapters = module.getChapters();
+            if (chapters == null || chapters.isEmpty()) {
+                module.setPercentageCompleted(0.0);
+                continue;
+            }
+            double chapterPctSum = 0.0;
+            for (LearnerChapterDetailsDTO chapter : chapters) {
+                Double pct = pctByChapter.getOrDefault(chapter.getId(), 0.0);
+                chapter.setPercentageCompleted(pct);
+                chapter.setLastSlideViewed(lastSlideByChapter.get(chapter.getId()));
+                chapterPctSum += (pct == null ? 0.0 : pct);
+            }
+            module.setPercentageCompleted(chapterPctSum / chapters.size());
+        }
     }
 
     private List<LearnerModuleDTOWithDetails> mapToLearnerModuleDTOWithDetails(String rawJson) {
@@ -141,21 +190,84 @@ public class LearnerStudyLibraryService {
             throw new VacademyException("Please provide packageSessionId");
         }
         String lang = LocaleRegistry.normalize(LocaleContextHolder.getLocale().toLanguageTag());
-        String jsonChapters = slideRepository.getLearnerSlidesByPackageSessionId(
-                packageSessionId,
-                user.getUserId(),
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                List.of(QuestionStatusEnum.ACTIVE.name()),
-                lang
-        );
+        // Cached user-independent structure + fresh per-user progress overlay
+        // (parsed per request, so the shared cache entry is never mutated).
+        String jsonChapters = structureCacheService.getPackageSlidesStructureJson(packageSessionId, lang);
         if (!StringUtils.hasText(jsonChapters)) {
             return List.of();
         }
+        List<LearnerChapterSlidesDTO> chapters;
         try {
-            return objectMapper.readValue(jsonChapters, new TypeReference<List<LearnerChapterSlidesDTO>>() {});
+            chapters = objectMapper.readValue(jsonChapters, new TypeReference<List<LearnerChapterSlidesDTO>>() {});
         } catch (Exception e) {
             throw new VacademyException("Unable to map chapter slides list: " + e.getMessage());
+        }
+        overlaySlideProgress(chapters, user.getUserId(), packageSessionId);
+        return chapters;
+    }
+
+    private void overlaySlideProgress(List<LearnerChapterSlidesDTO> chapters, String userId, String packageSessionId) {
+        if (chapters.isEmpty()) {
+            return;
+        }
+        List<String> operations = new ArrayList<>();
+        SLIDE_PERCENT_OPERATIONS.values().forEach(op -> operations.add(op.name()));
+        SLIDE_MARKER_OPERATIONS.values().forEach(op -> operations.add(op.name()));
+
+        // Rows arrive oldest-first, so newer duplicates overwrite older ones.
+        Map<String, Map<String, String>> valuesBySlide = new HashMap<>();
+        learnerOperationRepository.findSlideOperationsForPackageSession(userId, packageSessionId, operations)
+                .forEach(row -> valuesBySlide
+                        .computeIfAbsent(row.getSourceId(), k -> new HashMap<>())
+                        .put(row.getOperation(), row.getValue()));
+        if (valuesBySlide.isEmpty()) {
+            return;
+        }
+
+        for (LearnerChapterSlidesDTO chapter : chapters) {
+            if (chapter.getSlides() == null) {
+                continue;
+            }
+            for (LearnerSlidesDetailDTO slide : chapter.getSlides()) {
+                Map<String, String> slideValues = valuesBySlide.get(slide.getId());
+                if (slideValues == null) {
+                    continue;
+                }
+                LearnerOperationEnum percentOp = SLIDE_PERCENT_OPERATIONS.get(slide.getSourceType());
+                if (percentOp != null) {
+                    slide.setPercentageCompleted(parseDoubleOrNull(slideValues.get(percentOp.name())));
+                }
+                LearnerOperationEnum markerOp = SLIDE_MARKER_OPERATIONS.get(slide.getSourceType());
+                if (markerOp != null) {
+                    slide.setProgressMarker(parseLongOrNull(slideValues.get(markerOp.name())));
+                }
+            }
+        }
+    }
+
+    private Double parseDoubleOrNull(String value) {
+        if (!StringUtils.hasText(value) || "null".equals(value)) {
+            return null;
+        }
+        try {
+            return Double.valueOf(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Long parseLongOrNull(String value) {
+        if (!StringUtils.hasText(value) || "null".equals(value)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException e) {
+            try {
+                return (long) Double.parseDouble(value);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
     }
 

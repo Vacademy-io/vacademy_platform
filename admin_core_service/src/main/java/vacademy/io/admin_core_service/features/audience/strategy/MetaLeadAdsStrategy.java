@@ -84,6 +84,26 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     @Value("${meta.webhook.verify.token:}")
     private String configuredVerifyToken;
 
+    /**
+     * Facebook Login for Business Configuration ID. When set, the OAuth dialog uses
+     * this configuration (which defines the requested permissions + the Page-asset
+     * selection step) instead of a raw scope list. This is what makes regular
+     * (non-app-role) users able to grant Page access AND makes the selected Pages
+     * enumerable from the token's granular_scopes. Empty = legacy scope-based flow.
+     */
+    @Value("${meta.login.config.id:}")
+    private String loginConfigId;
+
+    /**
+     * Master switch for the config-based Login-for-Business (Path 2) flow. When
+     * false, the classic scope-based OAuth (Path 1) is used even if a config id is
+     * present — so we can keep {@code META_LOGIN_CONFIG_ID} stored while temporarily
+     * reverting to Path 1 (e.g. while pages_manage_ads App Review is pending), then
+     * flip back to Path 2 by setting it true again. Default true.
+     */
+    @Value("${meta.login.config.enabled:true}")
+    private boolean loginConfigEnabled;
+
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
     private final TokenEncryptionService tokenEncryptionService;
@@ -344,12 +364,24 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     public String buildOAuthUrl(String stateToken, String redirectUri) {
         String uri = redirectUri != null ? redirectUri : defaultRedirectUri;
         try {
-            return META_OAUTH_BASE
+            String base = META_OAUTH_BASE
                     + "?client_id=" + appId
                     + "&redirect_uri=" + URLEncoder.encode(uri, StandardCharsets.UTF_8)
-                    + "&scope=" + URLEncoder.encode(OAUTH_SCOPE, StandardCharsets.UTF_8)
                     + "&state=" + URLEncoder.encode(stateToken, StandardCharsets.UTF_8)
                     + "&response_type=code";
+            if (loginConfigEnabled && loginConfigId != null && !loginConfigId.isBlank()) {
+                // Facebook Login for Business: the Configuration defines the requested
+                // permissions and the Page-asset selection. config_id makes Meta return
+                // the selected Pages as asset-scoped grants (readable from the token's
+                // granular_scopes) — the only reliable way to enumerate business-owned
+                // Pages, which /me/accounts omits for regular users. No scope param: the
+                // configuration owns the permission list.
+                return base
+                        + "&config_id=" + URLEncoder.encode(loginConfigId, StandardCharsets.UTF_8)
+                        + "&override_default_response_type=true";
+            }
+            // Legacy classic-scope flow (no Configuration set).
+            return base + "&scope=" + URLEncoder.encode(OAUTH_SCOPE, StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new VacademyException("Failed to build Meta OAuth URL: " + e.getMessage());
         }
@@ -357,11 +389,25 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
 
     @Override
     public OAuthTokenResult exchangeCodeForToken(String code, String redirectUri) {
-        // Step 1: exchange code → short-lived user access token
-        String shortLived = exchangeCodeForShortLivedToken(code, redirectUri);
+        // Step 1: exchange code → access token
+        String initial = exchangeCodeForShortLivedToken(code, redirectUri);
 
-        // Step 2: exchange short-lived → long-lived (~60 days) user access token
-        return exchangeForLongLivedToken(shortLived);
+        // Step 2: upgrade to a long-lived (~60 day) token via fb_exchange_token.
+        try {
+            return exchangeForLongLivedToken(initial);
+        } catch (Exception e) {
+            // System-user (Business Login / Tech-Provider config) tokens are already
+            // long-lived and do NOT support the fb_exchange_token upgrade — it 4xxs.
+            // In config-based mode, fall back to the initial token; in the classic scope
+            // flow a long-lived failure is a genuine error, so rethrow there.
+            if (!loginConfigEnabled || loginConfigId == null || loginConfigId.isBlank()) throw e;
+            log.warn("Long-lived exchange failed with config_id set (system-user token?); "
+                    + "using the initial token: {}", e.getMessage());
+            return OAuthTokenResult.builder()
+                    .accessToken(initial)
+                    .expiresAt(LocalDateTime.now().plusDays(60))
+                    .build();
+        }
     }
 
     private String exchangeCodeForShortLivedToken(String code, String redirectUri) {
@@ -452,6 +498,82 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     }
 
     /**
+     * Page IDs the connecting user granted this app, read from the token's
+     * granular_scopes.target_ids (asset-scoped grants). This is how config_id-based
+     * Facebook Login for Business exposes the Pages the user selected — those Pages
+     * do NOT appear in /me/accounts for regular users when they're business-owned.
+     * Requires the app secret (to build the debug_token app access token).
+     */
+    public List<String> listGrantedPageIds(String userToken) {
+        List<String> ids = new ArrayList<>();
+        if (appSecret == null || appSecret.isBlank()) return ids;
+        // App access token = "{app-id}|{app-secret}"; the pipe is pre-encoded as %7C so
+        // URI.create accepts it and WebClient sends it verbatim (no double-encoding).
+        String url = GRAPH_API_BASE + "/debug_token"
+                + "?input_token=" + userToken
+                + "&access_token=" + appId + "%7C" + appSecret;
+        JsonNode resp;
+        try {
+            resp = webClient.get().uri(URI.create(url))
+                    .exchangeToMono(r -> r.bodyToMono(JsonNode.class))
+                    .block();
+        } catch (Exception e) {
+            log.warn("debug_token call failed while reading granted page IDs: {}", e.getMessage());
+            return ids;
+        }
+        if (resp == null || resp.has("error")) return ids;
+        for (JsonNode scope : resp.path("data").path("granular_scopes")) {
+            for (JsonNode target : scope.path("target_ids")) {
+                String id = target.asText(null);
+                if (id != null && !id.isBlank() && !ids.contains(id)) ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Discover the Pages this user can connect, merging two sources so it works for
+     * BOTH classic logins (app-role users) and Login-for-Business grants:
+     *   1. GET /me/accounts — returns Pages for app-role/classic users (with tasks).
+     *   2. Pages granted via Login for Business — enumerated from the token's
+     *      granular_scopes.target_ids and fetched directly ({@link #fetchPageById}),
+     *      because business-owned Pages are omitted from /me/accounts for regular users.
+     * Deduplicated by Page id. Each entry carries id, name, access_token (+ tasks when known).
+     */
+    public List<Map<String, String>> discoverConnectablePages(String userToken) {
+        List<Map<String, String>> pages = new ArrayList<>();
+        // /me/accounts throws for tokens that don't support it (e.g. a system-user
+        // token has no personal Pages edge) — don't let that abort discovery; the
+        // granular-scopes path below is the one that matters for Login for Business.
+        try {
+            pages.addAll(listConnectableAccounts(userToken));
+        } catch (Exception e) {
+            log.warn("/me/accounts enumeration failed (expected for system-user tokens): {}",
+                    e.getMessage());
+        }
+        Set<String> seen = new HashSet<>();
+        for (Map<String, String> p : pages) seen.add(p.get("id"));
+
+        for (String pageId : listGrantedPageIds(userToken)) {
+            if (pageId == null || seen.contains(pageId)) continue;
+            try {
+                Map<String, String> page = fetchPageById(pageId, userToken); // id, name, access_token
+                // We can't read tasks on a Page node directly. The user granted
+                // pages_manage_metadata and selected this Page, so assume MANAGE; the
+                // page-subscribe step is the real gate and reports #200 if that's wrong.
+                page.put("tasks", MANAGE_TASK);
+                page.put("has_manage", "true");
+                pages.add(page);
+                seen.add(pageId);
+            } catch (Exception e) {
+                log.warn("Login-for-Business page {} could not be resolved: {}",
+                        pageId, e.getMessage());
+            }
+        }
+        return pages;
+    }
+
+    /**
      * Fetch just the display name of a single Lead Gen Form. Used by the
      * one-time backfill endpoint that populates platform_form_name on
      * connectors created before that column existed. Returns null on any
@@ -475,6 +597,48 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
             log.warn("Failed to fetch form name for formId={}: {}", formId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Fetch a single Page directly by its ID using the connecting USER token,
+     * returning {id, name, access_token} (the Page access token).
+     *
+     * Fallback for when {@code /me/accounts} doesn't enumerate the Page — which
+     * happens for business-owned Pages granted via Facebook Login for Business: they
+     * only appear in /me/accounts for app-role users (testers/devs), not regular
+     * users. The Page is still directly readable with pages_read_engagement, so the
+     * admin supplies the Page ID (shown in Meta's connect dialog) and we resolve it.
+     */
+    public Map<String, String> fetchPageById(String pageId, String userToken) {
+        String url = GRAPH_API_BASE + "/" + pageId
+                + "?access_token=" + userToken
+                + "&fields=id,name,access_token";
+        JsonNode node;
+        try {
+            node = webClient.get().uri(url)
+                    .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
+                    .block();
+        } catch (Exception e) {
+            throw new VacademyException("Couldn't reach Facebook to load that Page: " + e.getMessage());
+        }
+        if (node == null) {
+            throw new VacademyException("No response from Facebook for Page " + pageId);
+        }
+        if (node.has("error")) {
+            String msg = node.path("error").path("message").asText("unknown error");
+            throw new VacademyException("Facebook couldn't load Page " + pageId + ": " + msg);
+        }
+        String token = node.path("access_token").asText(null);
+        if (token == null || token.isBlank()) {
+            throw new VacademyException("Facebook didn't return an access token for this Page. "
+                    + "Make sure you granted this app access to the Page during login, and that "
+                    + "you selected the correct Page ID.");
+        }
+        Map<String, String> page = new LinkedHashMap<>();
+        page.put("id", node.path("id").asText(pageId));
+        page.put("name", node.path("name").asText("Facebook Page"));
+        page.put("access_token", token);
+        return page;
     }
 
     /**

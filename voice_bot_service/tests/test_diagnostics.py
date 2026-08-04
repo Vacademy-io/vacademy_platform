@@ -298,3 +298,30 @@ def test_genuinely_unanswered_dial_stays_green():
     d = dg.CallDiagnostics(user_turns=0, bot_turns=3, unheard_utterances=0)
     d.sample("dead_air", 8.8)
     assert dg.verdict(d)["health"] == dg.GREEN
+
+def test_vendor_meter_of_zero_is_not_reported_as_free():
+    """Rumik returns credits_used: 0 on our current key. 0 and "unmetered" are
+    indistinguishable, and reporting a 0 as real spend would be a lie we then
+    bill on — so credits stay None while the metered-request count still proves
+    the frames arrived."""
+    d = dg.CallDiagnostics()
+    d.note_tts_spend(0.0, 5.8, 96)
+    d.note_tts_spend(0.0, 4.9, 80)
+    out = dg.to_payload(d)["tts"]
+    assert out["vendorCredits"] is None, "a zero meter must not read as zero cost"
+    assert out["meteredRequests"] == 2, "but we must show the meter DID report"
+    assert out["audioSecs"] == 10.7 and out["chars"] == 176
+
+
+def test_vendor_meter_accumulates_when_real():
+    d = dg.CallDiagnostics()
+    d.note_tts_spend(0.55, 5.8, 96)
+    d.note_tts_spend(0.21, 2.0, 40)
+    assert dg.to_payload(d)["tts"]["vendorCredits"] == 0.76
+
+
+def test_note_tts_spend_never_raises_into_the_call():
+    d = dg.CallDiagnostics()
+    d.note_tts_spend("junk", None, "x")   # must not raise
+    d.note_tts_spend(None, None)
+    assert dg.to_payload(d)["health"] is not None

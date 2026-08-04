@@ -147,7 +147,7 @@ export const createMessageTemplate = async (
 };
 
 export const getMessageTemplates = async (
-    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
+    type?: MessageTemplate['type'],
     page = 0,
     size = 10,
     searchText?: string
@@ -274,7 +274,7 @@ export const getMessageTemplates = async (
  * keep the INVOICE and INVOICE_EMAIL lists separate).
  */
 export const getMessageTemplatesByType = async (
-    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'
+    type: MessageTemplate['type']
 ): Promise<MessageTemplate[]> => {
     const accessToken = getAccessToken();
     if (!accessToken) {
@@ -426,7 +426,10 @@ export const updateMessageTemplate = async (
         
         const { id, ...updateData } = template;
 
-        const resolvedUpdateType = (updateData.type === 'INVOICE' || updateData.type === 'INVOICE_EMAIL')
+        // Type-bearing templates are looked up by their exact type on the backend, so they must
+        // round-trip uppercase. Everything else keeps the legacy lowercase form.
+        const TYPE_BEARING: MessageTemplate['type'][] = ['INVOICE', 'INVOICE_EMAIL', 'PAYMENT_CONFIRMATION'];
+        const resolvedUpdateType = updateData.type && TYPE_BEARING.includes(updateData.type)
             ? updateData.type : (updateData.type?.toLowerCase() || 'email');
 
         const payload = {

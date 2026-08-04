@@ -33,9 +33,27 @@ public class UserAccountLedgerService {
                                    LocalDate dueDate,
                                    String sourceType, String sourceId,
                                    String invoiceId, String remarks) {
+        recordDebitAccrual(userId, instituteId, amount, currency, dueDate,
+                sourceType, sourceId, invoiceId, remarks, null, null);
+    }
+
+    /**
+     * Discounted-obligation variant: {@code amount} is the NET the learner owes;
+     * {@code grossAmount}/{@code discountAmount} carry the list price and the
+     * coupon/discount so the transaction line can render the breakdown
+     * (gross struck through → net). Pass nulls when no discount applies.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDebitAccrual(String userId, String instituteId,
+                                   BigDecimal amount, String currency,
+                                   LocalDate dueDate,
+                                   String sourceType, String sourceId,
+                                   String invoiceId, String remarks,
+                                   BigDecimal grossAmount, BigDecimal discountAmount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return;
         save(userId, instituteId, "DEBIT_ACCRUAL", amount, currency,
-                dueDate, sourceType, sourceId, invoiceId, null, remarks);
+                dueDate, sourceType, sourceId, invoiceId, null, remarks,
+                grossAmount, discountAmount);
     }
 
     /** Called when a payment is confirmed (gateway success or manual offline). */
@@ -121,6 +139,15 @@ public class UserAccountLedgerService {
                       BigDecimal amount, String currency, LocalDate dueDate,
                       String sourceType, String sourceId,
                       String invoiceId, String referenceId, String remarks) {
+        save(userId, instituteId, eventType, amount, currency, dueDate,
+                sourceType, sourceId, invoiceId, referenceId, remarks, null, null);
+    }
+
+    private void save(String userId, String instituteId, String eventType,
+                      BigDecimal amount, String currency, LocalDate dueDate,
+                      String sourceType, String sourceId,
+                      String invoiceId, String referenceId, String remarks,
+                      BigDecimal grossAmount, BigDecimal discountAmount) {
         try {
             UserAccountLedger entry = UserAccountLedger.builder()
                     .userId(userId)
@@ -134,6 +161,8 @@ public class UserAccountLedgerService {
                     .invoiceId(invoiceId)
                     .referenceId(referenceId)
                     .remarks(remarks)
+                    .grossAmount(grossAmount)
+                    .discountAmount(discountAmount)
                     .build();
             repository.save(entry);
         } catch (Exception e) {
@@ -156,6 +185,8 @@ public class UserAccountLedgerService {
                 .referenceId(e.getReferenceId())
                 .remarks(e.getRemarks())
                 .createdAt(e.getCreatedAt())
+                .grossAmount(e.getGrossAmount())
+                .discountAmount(e.getDiscountAmount())
                 .build();
     }
 }

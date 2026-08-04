@@ -43,10 +43,29 @@
 
 ---
 
+## 🖥️ Interactive Feature Docs
+
+Two self-contained HTML pages (no build step, no server — just open them in a browser) that walk through the product end to end:
+
+| Page | What's inside |
+|------|---------------|
+| **[Admin Portal Demo](docs/features/admin-portal-demo.html)** | Guided, click-through tour of the admin portal — screens, flows, and annotated walkthroughs of day-to-day admin tasks |
+| **[Feature Catalog](docs/features/vacademy-features.html)** | Searchable catalog of every platform feature, grouped by module, with descriptions and where to find each one |
+
+```bash
+# Open locally after cloning
+open docs/features/admin-portal-demo.html      # macOS
+xdg-open docs/features/vacademy-features.html  # Linux
+```
+
+> GitHub renders `.html` files as source, not as pages. Clone the repo and open them locally, or view the same catalog in Markdown: **[vacademy-features.md](docs/features/vacademy-features.md)**. Both HTML pages are generated from JSON by the scripts in [docs/features/build/](docs/features/build/).
+
 ## 📚 Documentation Index
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
+| **[Admin Portal Demo](docs/features/admin-portal-demo.html)** | Interactive click-through tour of the admin portal | Everyone / Evaluators |
+| **[Feature Catalog](docs/features/vacademy-features.html)** | Full feature catalog ([Markdown version](docs/features/vacademy-features.md)) | Everyone / Evaluators |
 | **[Local Development Guide](docs/deployment/LOCAL_DEVELOPMENT.md)** | Complete setup for local development | Developers |
 | **[GitHub Secrets Configuration](docs/deployment/GITHUB_SECRETS.md)** | Production secrets management | DevOps/Administrators |
 | **[Security Migration Summary](docs/guides/SECURITY_MIGRATION_SUMMARY.md)** | Security improvements overview | Technical Teams |
@@ -54,6 +73,8 @@
 
 ## 🚀 Quick Links
 
+- **[🖥️ Admin Portal Demo](docs/features/admin-portal-demo.html)** - Interactive tour of the admin portal
+- **[📖 Feature Catalog](docs/features/vacademy-features.html)** - Every feature, module by module
 - **[🐳 Local Development Setup](#-local-development-recommended)** - Get started in 2 minutes
 - **[🏗️ Architecture Overview](#️-backend-architecture--services)** - Understand the system
 - **[📋 Service Access](#-service-access-points)** - Access points and APIs

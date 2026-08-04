@@ -47,4 +47,10 @@ public class SubscriptionDTO {
     private Double planPrice;
     private String vendorId;
     private boolean canRenewManually;
+
+    /**
+     * True when the plan's invite has AUTOPAY_SETTING.ENABLED — gates the
+     * "also enable auto-pay for future renewals" option on manual renewal.
+     */
+    private boolean autopayAvailable;
 }

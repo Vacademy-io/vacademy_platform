@@ -535,8 +535,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
-              {/* Mobile menu button - Right side when courseCatalogeType is disabled */}
-              {!isCourseCatalogeTypeEnabled && navigation.length > 0 && (
+              {/* Mobile menu button - Right side when courseCatalogeType is disabled.
+                  Gated on nav items OR auth links, matching what the menu below
+                  actually renders: a header configured with only Login /
+                  Get Started (no nav) used to show no toggle at all, leaving
+                  those links unreachable on a phone. */}
+              {!isCourseCatalogeTypeEnabled && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
                 <button
                   ref={setHamburgerButtonRef}
                   onClick={() => {
@@ -614,31 +618,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </button>
               )}
 
-              {/* Auth Links - Mobile bar. The desktop pair (Login filled,
-                  Get Started outlined) is `hidden md:flex` below, and the
-                  mobile menu that used to carry these is only reachable via a
-                  hamburger that renders when `navigation.length > 0` — so a
-                  header with no nav items (the common case for a catalogue that
-                  only wants auth CTAs) showed NO way to log in on a phone.
-                  Same links, same handler, compact sizing. */}
-              {!isCourseCatalogeTypeEnabled && !isAuthenticated && visibleAuthLinks.length > 0 && (
-                <div className="flex md:hidden items-center gap-1.5">
-                  {visibleAuthLinks.map((link, index) => (
-                    <button
-                      key={`auth-mobile-${index}`}
-                      onClick={() => handleAuthLinkClick(link)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors duration-200 ${index === 0
-                        ? 'bg-primary-500 text-white hover:bg-primary-400'
-                        : 'border border-primary-500 text-primary-500 hover:bg-primary-50'
-                        }`}
-                    >
-                      {link.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Auth Links - Desktop only */}
+              {/* Auth Links - Desktop only. On mobile these live in the
+                  hamburger menu (see the toggle above), not in the bar: the
+                  sticky MobileActionBar already carries Login / Get Started, so
+                  repeating them in the header just doubled the same two CTAs. */}
               <div className="hidden md:flex items-center gap-2">
                 {isAuthenticated ? (
                   <div className="flex items-center gap-3 shrink-0">
@@ -851,7 +834,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             </div>
           ) : (
             // Standard mobile menu
-            isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
+            isMobileMenuOpen && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
               <div
                 ref={setMobileMenuRef}
                 className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}`}
@@ -879,9 +862,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     );
                   })}
 
-                  {/* Auth Links */}
-                  {(authLinks.length > 0 || isAuthenticated) && (
-                    <div className="border-t border-catalogue-border-subtle pt-3 mt-3 space-y-2">
+                  {/* Auth Links. The rule separates them from the nav items
+                      above — with no nav configured there is nothing to
+                      separate, so it would read as a stray line. */}
+                  {(visibleAuthLinks.length > 0 || isAuthenticated) && (
+                    <div className={`space-y-2 ${navigation.length > 0 ? 'border-t border-catalogue-border-subtle pt-3 mt-3' : ''}`}>
                       {isAuthenticated ? (
                         <>
                           <button

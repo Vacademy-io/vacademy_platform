@@ -29,4 +29,12 @@ public class CollectionSummaryRequestDTO {
 
     /** Optional. Null = now. Filters payment_log.created_at. */
     private LocalDateTime endDateInUtc;
+
+    /**
+     * Optional IANA zone (e.g. "Asia/Kolkata") the per-day series should be bucketed in. The window
+     * above is always a UTC instant range; only the day boundaries move. Omitted or unrecognised
+     * falls back to UTC, which is what every caller got before this existed — so a payment taken at
+     * 00:30 IST would be charted under the previous day.
+     */
+    private String timeZone;
 }

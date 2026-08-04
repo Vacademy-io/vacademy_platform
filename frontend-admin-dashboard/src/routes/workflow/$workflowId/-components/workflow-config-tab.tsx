@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+    getTemplatesByTypeQuery,
     getWorkflowRawQuery,
     updateNodeTemplate,
     WorkflowRawNode,
 } from '@/services/workflow-service';
+import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +17,8 @@ import { Switch } from '@/components/ui/switch';
 import {
     FloppyDisk,
     ArrowCounterClockwise,
+    CaretDown,
+    CaretRight,
     CheckCircle,
     Warning,
     BracketsCurly,
@@ -58,15 +62,37 @@ type OutputDataPoint = {
     [key: string]: unknown;
 };
 
+/** "meetingLink" → "Meeting Link": admin-readable labels for setting names. */
+function humanizeFieldName(name: string): string {
+    return name
+        .replace(/[_-]/g, ' ')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Editable query params in the simple view: plain scalars, never '#' refs or SpEL. */
+function isEditableQueryParam(value: unknown): boolean {
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    return trimmed.length > 0 && !trimmed.startsWith('#') && !trimmed.startsWith("'") && !trimmed.startsWith('T(');
+}
+
 /**
  * What the simple (non-developer) view can edit on a node: plain-text settings
- * rows and/or literal message variables. Nodes with neither are hidden there.
+ * rows, literal message variables and/or scalar query knobs.
  */
-function normalEditableSections(configText: string): { settings: boolean; message: boolean } {
+function normalEditableSections(configText: string): {
+    settings: boolean;
+    message: boolean;
+    queryParams: boolean;
+} {
     try {
         const p: unknown = JSON.parse(configText);
         if (!p || typeof p !== 'object' || Array.isArray(p)) {
-            return { settings: false, message: false };
+            return { settings: false, message: false, queryParams: false };
         }
         const cfg = p as Record<string, unknown>;
         const points = Array.isArray(cfg.outputDataPoints)
@@ -75,7 +101,9 @@ function normalEditableSections(configText: string): { settings: boolean; messag
         const settings = points.some(
             (row) =>
                 row.compute === undefined &&
-                (typeof row.value === 'string' || isNestedStringMap(row.value))
+                (typeof row.value === 'string' ||
+                    isNestedStringMap(row.value) ||
+                    isFlatObjectList(row.value))
         );
         const vars =
             cfg.templateVars && typeof cfg.templateVars === 'object' && !Array.isArray(cfg.templateVars)
@@ -83,10 +111,195 @@ function normalEditableSections(configText: string): { settings: boolean; messag
                 : null;
         const message =
             !!vars && Object.values(vars).some((v) => !String(v ?? '').trim().startsWith('#'));
-        return { settings, message };
+        const params =
+            cfg.prebuiltKey && cfg.params && typeof cfg.params === 'object' && !Array.isArray(cfg.params)
+                ? (cfg.params as Record<string, unknown>)
+                : null;
+        const queryParams = !!params && Object.values(params).some(isEditableQueryParam);
+        return { settings, message, queryParams };
     } catch {
-        return { settings: false, message: false };
+        return { settings: false, message: false, queryParams: false };
     }
+}
+
+/**
+ * Simple-view editor for a QUERY node's plain scalar knobs (e.g. how many days
+ * before a charge to notify). Internal references ('#ctx…') never appear.
+ */
+function QueryParamsEditor({
+    configText,
+    onChange,
+    devMode,
+}: {
+    configText: string;
+    onChange: (next: string) => void;
+    devMode: boolean;
+}) {
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        const p: unknown = JSON.parse(configText);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+            parsed = p as Record<string, unknown>;
+        }
+    } catch {
+        // invalid JSON — raw editor shows the error
+    }
+    const params =
+        parsed && parsed.prebuiltKey && parsed.params && typeof parsed.params === 'object' && !Array.isArray(parsed.params)
+            ? (parsed.params as Record<string, unknown>)
+            : null;
+    if (!parsed || !params) return null;
+    const cfg = parsed;
+    const editable = Object.entries(params).filter(([, v]) => isEditableQueryParam(v));
+    if (editable.length === 0) return null;
+
+    const writeParam = (key: string, raw: string) => {
+        const previous = params[key];
+        let next: unknown = raw;
+        if (typeof previous === 'number') {
+            const parsedNumber = Number(raw);
+            next = Number.isNaN(parsedNumber) ? raw : parsedNumber;
+        } else if (typeof previous === 'boolean') {
+            next = raw.trim().toLowerCase() === 'true';
+        }
+        onChange(
+            JSON.stringify({ ...cfg, params: { ...params, [key]: next } }, null, 2)
+        );
+    };
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <Label className="mb-2 block text-xs text-neutral-600">
+                Step settings
+                <span className="ml-1.5 text-caption text-neutral-400">
+                    how this step selects its data
+                </span>
+            </Label>
+            <div className="space-y-2">
+                {editable.map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                        <span className="w-44 shrink-0 truncate text-right text-xs text-neutral-500">
+                            {devMode ? key : humanizeFieldName(key)}
+                        </span>
+                        <Input
+                            value={String(value)}
+                            onChange={(e) => writeParam(key, e.target.value)}
+                            spellCheck={false}
+                            className="h-8 max-w-48 text-xs"
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * True for a repeatable list of flat records — e.g. learner-screen buttons,
+ * each carrying text, url and colour fields.
+ */
+function isFlatObjectList(value: unknown): boolean {
+    if (!Array.isArray(value) || value.length === 0) return false;
+    return value.every(
+        (entry) =>
+            entry &&
+            typeof entry === 'object' &&
+            !Array.isArray(entry) &&
+            Object.values(entry as Record<string, unknown>).every(
+                (v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+            )
+    );
+}
+
+/**
+ * Repeatable-rows editor for a list of flat records (buttons, links, …). The
+ * admin can edit every field, add as many rows as they like, and remove any —
+ * no JSON, no developer view needed.
+ */
+function ObjectListEditor({
+    label,
+    items,
+    onChange,
+}: {
+    label: string;
+    items: Array<Record<string, string | number | boolean>>;
+    onChange: (next: Array<Record<string, string | number | boolean>>) => void;
+}) {
+    const fields = Object.keys(items[0] ?? {});
+    const blankRow = () =>
+        fields.reduce<Record<string, string | number | boolean>>((acc, f) => {
+            const sample = items[0]?.[f];
+            acc[f] = typeof sample === 'boolean' ? true : typeof sample === 'number' ? 0 : '';
+            return acc;
+        }, {});
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2">
+            <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-600">
+                    {label}
+                    <span className="ml-1.5 text-caption font-normal text-neutral-400">
+                        add as many as you need — an empty link hides that entry
+                    </span>
+                </p>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-neutral-500"
+                    onClick={() => onChange([...items, blankRow()])}
+                >
+                    <Plus size={12} /> Add
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {items.map((item, index) => (
+                    <div
+                        key={index}
+                        className="flex flex-wrap items-center gap-2 rounded border border-neutral-100 p-2"
+                    >
+                        {fields.map((field) => (
+                            <label key={field} className="flex items-center gap-1">
+                                <span className="text-caption text-neutral-500">
+                                    {humanizeFieldName(field)}
+                                </span>
+                                <Input
+                                    value={String(item[field] ?? '')}
+                                    onChange={(e) =>
+                                        onChange(
+                                            items.map((row, i) =>
+                                                i === index
+                                                    ? {
+                                                          ...row,
+                                                          [field]:
+                                                              typeof row[field] === 'boolean'
+                                                                  ? e.target.value.trim().toLowerCase() === 'true'
+                                                                  : typeof row[field] === 'number'
+                                                                    ? Number(e.target.value) || 0
+                                                                    : e.target.value,
+                                                      }
+                                                    : row
+                                            )
+                                        )
+                                    }
+                                    spellCheck={false}
+                                    className="h-8 w-44 text-xs"
+                                />
+                            </label>
+                        ))}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 shrink-0 px-2 text-neutral-400 hover:text-red-600"
+                            onClick={() => onChange(items.filter((_, i) => i !== index))}
+                            title="Remove"
+                        >
+                            <Trash size={14} />
+                        </Button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 /** True for a two-level map of strings: { day1: { "05:30": "url", ... }, ... } */
@@ -228,11 +441,29 @@ function OutputDataPointsEditor({
         const isCompute = point.compute !== undefined;
         // Two-level string maps (e.g. a day → slot → link schedule) get a grid
         // editor; other structured values point to the raw JSON editor.
+        if (!isCompute && isFlatObjectList(point.value)) {
+            return (
+                <ObjectListEditor
+                    key={index}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'items')
+                            : humanizeFieldName(point.fieldName ?? 'items')
+                    }
+                    items={point.value as Array<Record<string, string | number | boolean>>}
+                    onChange={(next) => updateRow(index, { value: next })}
+                />
+            );
+        }
         if (!isCompute && isNestedStringMap(point.value)) {
             return (
                 <NestedMapGridEditor
                     key={index}
-                    label={point.fieldName ?? 'schedule'}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'schedule')
+                            : humanizeFieldName(point.fieldName ?? 'schedule')
+                    }
                     grid={point.value as Record<string, Record<string, string>>}
                     onChange={(next) => updateRow(index, { value: next })}
                 />
@@ -267,7 +498,7 @@ function OutputDataPointsEditor({
                     />
                 ) : (
                     <span className="mt-2 w-44 shrink-0 truncate text-right text-xs text-neutral-500">
-                        {point.fieldName}
+                        {humanizeFieldName(point.fieldName ?? '')}
                     </span>
                 )}
                 <Textarea
@@ -324,7 +555,10 @@ function OutputDataPointsEditor({
     // In the simple view, hide the panel entirely when there is nothing a
     // non-technical admin can safely change here.
     const normalEditable = textEntries.filter(
-        ({ p }) => typeof p.value === 'string' || isNestedStringMap(p.value)
+        ({ p }) =>
+            typeof p.value === 'string' ||
+            isNestedStringMap(p.value) ||
+            isFlatObjectList(p.value)
     );
     if (!devMode && normalEditable.length === 0) return null;
 
@@ -376,14 +610,68 @@ function OutputDataPointsEditor({
  * up front; values starting with '#' are SpEL formulas and live in the advanced
  * fold. Writes into the same config text as the raw JSON editor.
  */
+/** Minimal shape of a WhatsApp template as served by the templates API. */
+type WhatsAppTemplateInfo = {
+    name: string;
+    content?: string;
+    dynamic_parameters?: string;
+};
+
+/**
+ * Renders the template body with the variables substituted in place: editable
+ * values highlighted, formula-driven ones shown as labeled chips. Live-updates
+ * as the admin types in the variable boxes below.
+ */
+function TemplateBodyPreview({
+    template,
+    vars,
+}: {
+    template: WhatsAppTemplateInfo | undefined;
+    vars: Record<string, string>;
+}) {
+    if (!template?.content) return null;
+    let labels: Record<string, string> = {};
+    try {
+        labels = template.dynamic_parameters ? JSON.parse(template.dynamic_parameters) : {};
+    } catch {
+        // labels stay empty — chips fall back to the variable number
+    }
+    const segments = template.content.split(/(\{\{\s*[^}]+?\s*\}\})/g);
+    return (
+        <div className="mb-2 whitespace-pre-wrap rounded-md border border-neutral-200 bg-white p-3 text-xs leading-relaxed text-neutral-700">
+            {segments.map((segment, i) => {
+                const match = segment.match(/^\{\{\s*([^}]+?)\s*\}\}$/);
+                if (!match) return <span key={i}>{segment}</span>;
+                const key = match[1] ?? '';
+                const value = vars[key];
+                const isFormula = String(value ?? '').trim().startsWith('#');
+                if (value != null && !isFormula && String(value).length > 0) {
+                    return (
+                        <span key={i} className="rounded bg-primary-50 px-1 font-medium text-primary-600">
+                            {value}
+                        </span>
+                    );
+                }
+                return (
+                    <span key={i} className="rounded bg-neutral-100 px-1 text-caption italic text-neutral-500">
+                        {'⟨'}{labels[key] ?? `var ${key}`}{'⟩'}
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
 function TemplateVarsEditor({
     configText,
     onChange,
     devMode,
+    templates,
 }: {
     configText: string;
     onChange: (next: string) => void;
     devMode: boolean;
+    templates: WhatsAppTemplateInfo[];
 }) {
     let parsed: Record<string, unknown> | null = null;
     try {
@@ -461,6 +749,12 @@ function TemplateVarsEditor({
                     )}
                 </div>
             )}
+            {/* Full message preview: the approved template body with this node's
+                variable values substituted live. */}
+            <TemplateBodyPreview
+                template={templates.find((t) => t.name === cfg.templateName)}
+                vars={vars}
+            />
             <div className="space-y-2">{textVars.map(renderVar)}</div>
             {devMode && formulaVars.length > 0 && (
                 <details className="mt-2">
@@ -478,10 +772,16 @@ function NodeConfigEditorCard({
     workflowId,
     node,
     devMode,
+    templates,
+    collapsed,
+    onToggleCollapsed,
 }: {
     workflowId: string;
     node: WorkflowRawNode;
     devMode: boolean;
+    templates: WhatsAppTemplateInfo[];
+    collapsed: boolean;
+    onToggleCollapsed: () => void;
 }) {
     const queryClient = useQueryClient();
 
@@ -572,19 +872,43 @@ function NodeConfigEditorCard({
 
     const nodeMeta = WORKFLOW_NODE_TYPES.find((t) => t.type === node.node_type);
 
-    // Simple view: only show nodes a non-technical admin can act on.
+    // Simple view: every node stays visible (the admin should see the whole
+    // pipeline) — nodes without safe settings just say so.
     const editable = normalEditableSections(configText);
-    if (!devMode && !editable.settings && !editable.message) return null;
+    const hasSimpleSettings = editable.settings || editable.message || editable.queryParams;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white">
-            {/* Card header */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-3">
+            {/* Card header — click anywhere to collapse/expand */}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onToggleCollapsed}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onToggleCollapsed();
+                    }
+                }}
+                className={`flex cursor-pointer select-none flex-wrap items-center gap-2 px-4 py-3 ${
+                    collapsed ? '' : 'border-b border-neutral-100'
+                }`}
+            >
+                {collapsed ? (
+                    <CaretRight size={14} className="shrink-0 text-neutral-400" />
+                ) : (
+                    <CaretDown size={14} className="shrink-0 text-neutral-400" />
+                )}
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-500">
                     {node.node_order}
                 </span>
                 <span className="text-lg">{nodeMeta?.icon ?? '⚙️'}</span>
                 <span className="font-medium text-neutral-800">{node.node_name}</span>
+                {collapsed && isDirty && (
+                    <span className="rounded-full bg-warning-50 px-2 py-0.5 text-caption text-warning-600">
+                        unsaved
+                    </span>
+                )}
                 {devMode && (
                     <Badge variant="outline" className="text-[10px] font-medium text-neutral-600">
                         {nodeMeta?.label ?? node.node_type}
@@ -603,8 +927,8 @@ function NodeConfigEditorCard({
                 )}
             </div>
 
-            {/* Card body */}
-            <div className="space-y-4 p-4">
+            {/* Card body — hidden while collapsed (state and unsaved edits survive) */}
+            <div className={collapsed ? 'hidden' : 'space-y-4 p-4'}>
                 {/* Node metadata row */}
                 <div className={devMode ? 'grid grid-cols-1 gap-3 sm:grid-cols-3' : 'hidden'}>
                     <div>
@@ -667,7 +991,18 @@ function NodeConfigEditorCard({
 
                 {/* Friendly settings editors — each shows only when the config has its section */}
                 <OutputDataPointsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
-                <TemplateVarsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
+                <TemplateVarsEditor
+                    configText={configText}
+                    onChange={setConfigText}
+                    devMode={devMode}
+                    templates={templates}
+                />
+                <QueryParamsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
+                {!devMode && !hasSimpleSettings && (
+                    <p className="text-xs text-neutral-400">
+                        Automatic step — nothing to configure here.
+                    </p>
+                )}
 
                 {/* config_json editor */}
                 <div className={devMode ? '' : 'hidden'}>
@@ -737,7 +1072,13 @@ function NodeConfigEditorCard({
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-2 border-t border-neutral-100 pt-3">
+                <div
+                    className={
+                        devMode || hasSimpleSettings
+                            ? 'flex items-center justify-end gap-2 border-t border-neutral-100 pt-3'
+                            : 'hidden'
+                    }
+                >
                     {savedOk && (
                         <span className="mr-auto flex items-center gap-1 text-xs text-green-600">
                             <CheckCircle size={14} weight="fill" /> Saved
@@ -772,6 +1113,14 @@ function NodeConfigEditorCard({
 
 export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
     const { data, isLoading, error } = useQuery(getWorkflowRawQuery(workflowId));
+    // Approved WhatsApp templates — used to render full message previews in the
+    // Message content panels (body text with variables substituted).
+    const { data: instituteDetails } = useQuery(useInstituteQuery());
+    const { data: whatsappTemplates } = useQuery({
+        ...getTemplatesByTypeQuery(instituteDetails?.id ?? '', 'WHATSAPP'),
+        enabled: !!instituteDetails?.id,
+    });
+    const templates: WhatsAppTemplateInfo[] = (whatsappTemplates ?? []) as WhatsAppTemplateInfo[];
     // Simple view by default; the developer toggle persists across visits.
     const [devMode, setDevMode] = useState(
         () => localStorage.getItem('workflow-config-dev-mode') === 'true'
@@ -781,6 +1130,28 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
         setDevMode(next);
         localStorage.setItem('workflow-config-dev-mode', String(next));
     };
+    // Collapsed cards, by node id. Long workflows (a node per day) start folded
+    // so the page reads as an index; short ones stay open.
+    const [collapsedIds, setCollapsedIds] = useState<Set<string> | null>(null);
+    const nodeIds = useMemo(
+        () => (data?.nodes ?? []).map((n) => n.node_template_id),
+        [data]
+    );
+    const effectiveCollapsed = useMemo(() => {
+        if (collapsedIds) return collapsedIds;
+        return nodeIds.length > 5 ? new Set(nodeIds) : new Set<string>();
+    }, [collapsedIds, nodeIds]);
+    const toggleCollapsed = (id: string) =>
+        setCollapsedIds(() => {
+            const next = new Set(effectiveCollapsed);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    const allCollapsed = nodeIds.length > 0 && nodeIds.every((id) => effectiveCollapsed.has(id));
 
     if (isLoading) {
         return (
@@ -839,6 +1210,16 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     variant="outline"
                     size="sm"
                     className="shrink-0 gap-1.5"
+                    onClick={() => setCollapsedIds(allCollapsed ? new Set<string>() : new Set(nodeIds))}
+                    title={allCollapsed ? 'Expand every step' : 'Collapse every step'}
+                >
+                    {allCollapsed ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                    {allCollapsed ? 'Expand all' : 'Collapse all'}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
                     onClick={toggleDevMode}
                 >
                     <BracketsCurly size={14} />
@@ -852,6 +1233,9 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     workflowId={workflowId}
                     node={node}
                     devMode={devMode}
+                    templates={templates}
+                    collapsed={effectiveCollapsed.has(node.node_template_id)}
+                    onToggleCollapsed={() => toggleCollapsed(node.node_template_id)}
                 />
             ))}
         </div>

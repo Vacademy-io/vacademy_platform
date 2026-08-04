@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.telephony.controller;
 
+import vacademy.io.admin_core_service.features.telephony.core.TtsVoiceCatalog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -52,35 +53,19 @@ public class AiAgentController {
     }
 
     /**
-     * Static catalog of Sarvam Bulbul v3 speakers for the voice dropdown + tester.
-     * Source: docs.sarvam.ai bulbul model page (37 speakers, verified 2026-07-16);
-     * genders per the voice-bot's speaker→grammatical-gender map (bot.py) — the
-     * bot conjugates Hindi by this same mapping, so the two must agree. Not
-     * institute-scoped (no access check needed).
+     * Voices for the dropdown + tester, model-tagged so the picker can show only
+     * the palette that belongs to the selected engine. Served from
+     * {@link TtsVoiceCatalog} — previously three hand-maintained copies that drifted.
+     * Not institute-scoped (no access check needed).
      */
     @GetMapping("/voices")
     public ResponseEntity<List<Map<String, String>>> voices() {
-        return ResponseEntity.ok(VOICES);
+        return ResponseEntity.ok(TtsVoiceCatalog.all());
     }
 
-    private static final List<Map<String, String>> VOICES = List.of(
-            // female
-            v("ritu", "female"), v("priya", "female"), v("neha", "female"),
-            v("pooja", "female"), v("simran", "female"), v("kavya", "female"),
-            v("ishita", "female"), v("shreya", "female"), v("roopa", "female"),
-            v("tanya", "female"), v("shruti", "female"), v("suhani", "female"),
-            v("kavitha", "female"), v("rupali", "female"),
-            // male
-            v("shubh", "male"), v("aditya", "male"), v("rahul", "male"),
-            v("rohan", "male"), v("amit", "male"), v("dev", "male"),
-            v("ratan", "male"), v("varun", "male"), v("manan", "male"),
-            v("sumit", "male"), v("kabir", "male"), v("aayan", "male"),
-            v("ashutosh", "male"), v("advait", "male"), v("anand", "male"),
-            v("tarun", "male"), v("sunny", "male"), v("mani", "male"),
-            v("gokul", "male"), v("vijay", "male"), v("mohit", "male"),
-            v("rehan", "male"), v("soham", "male"));
-
-    private static Map<String, String> v(String id, String gender) {
-        return Map.of("id", id, "gender", gender, "model", "bulbul:v3");
+    /** Engines we sell, each with its label, surcharge note, default and voice list. */
+    @GetMapping("/tts-models")
+    public ResponseEntity<List<Map<String, Object>>> ttsModels() {
+        return ResponseEntity.ok(TtsVoiceCatalog.models());
     }
 }

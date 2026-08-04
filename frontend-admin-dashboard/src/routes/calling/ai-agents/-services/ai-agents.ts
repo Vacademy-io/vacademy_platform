@@ -13,58 +13,21 @@ import { BASE_URL } from '@/constants/urls';
 export type { AiAgent } from '@/routes/settings/-components/AiAgentsCard';
 import type { AiAgent } from '@/routes/settings/-components/AiAgentsCard';
 
-export interface VoiceOption {
-    id: string;
-    gender: string;
-    model: string;
-}
+export type { VoiceOption, TtsModelId, TtsModelMeta } from './tts-catalog';
+export {
+    FALLBACK_VOICES,
+    TTS_MODELS,
+    normalizeTtsModel,
+    resolveTtsModel,
+    voicesForModel,
+    defaultVoiceFor,
+    patchForModelChange,
+} from './tts-catalog';
+import { FALLBACK_VOICES, resolveTtsModel } from './tts-catalog';
+import type { VoiceOption } from './tts-catalog';
 
 export const AI_AGENTS_URL = `${BASE_URL}/admin-core-service/v1/telephony/ai-agents`;
 
-/** Fallback when the catalog endpoint is unreachable — Bulbul v3 speakers. */
-export const FALLBACK_VOICES: VoiceOption[] = [
-    ...[
-        'ritu',
-        'priya',
-        'neha',
-        'pooja',
-        'simran',
-        'kavya',
-        'ishita',
-        'shreya',
-        'roopa',
-        'tanya',
-        'shruti',
-        'suhani',
-        'kavitha',
-        'rupali',
-    ].map((id) => ({ id, gender: 'female', model: 'bulbul:v3' })),
-    ...[
-        'shubh',
-        'aditya',
-        'rahul',
-        'rohan',
-        'amit',
-        'dev',
-        'ratan',
-        'varun',
-        'manan',
-        'sumit',
-        'kabir',
-        'aayan',
-        'ashutosh',
-        'advait',
-        'anand',
-        'tarun',
-        'sunny',
-        'mani',
-        'gokul',
-        'vijay',
-        'mohit',
-        'rehan',
-        'soham',
-    ].map((id) => ({ id, gender: 'male', model: 'bulbul:v3' })),
-];
 
 /** Expressiveness presets → Bulbul v3 temperature. */
 export const EXPRESSIVENESS_OPTIONS: { label: string; value: string; temperature?: number }[] = [
@@ -91,6 +54,10 @@ export function voicePreviewUrl(agent: AiAgent, text: string): string {
         voice: (agent.voice || 'priya').trim().toLowerCase(),
         lang: previewLang(agent.language),
         pace: String(agent.pace ?? 1.0),
+        // The preview must synthesise on the SAME engine the call will use —
+        // otherwise the founder auditions a voice the caller never hears, and a
+        // Rumik voice name sent to Sarvam 400s on every preview.
+        model: resolveTtsModel(agent),
     });
     if (agent.temperature != null) params.set('temperature', String(agent.temperature));
     return `${BASE_URL}/voice-bot-service/preview.mp3?${params.toString()}`;
@@ -103,7 +70,12 @@ export function blankAgent(instituteId: string): AiAgent {
         enabled: true,
         direction: 'OUTBOUND',
         language: 'hinglish',
-        voice: 'priya',
+        // New agents get the default engine and ITS voice, stamped explicitly so
+        // no default anywhere downstream has to carry the pricing decision.
+        // See TtsVoiceCatalog.NEW_AGENT_DEFAULT — Rumik is ~6x cheaper per
+        // character on the line that dominates call cost.
+        ttsModel: 'rumik',
+        voice: 'ira',
         openingLine: '',
         systemPrompt: '',
         extractionQuestions: [],

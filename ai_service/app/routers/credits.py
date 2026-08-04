@@ -11,15 +11,17 @@ Endpoints for managing institute credits:
 - Pricing configuration
 """
 
+import hmac
 import logging
 from typing import Optional, List
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..db import db_dependency
-from ..core.security import get_current_user
+from ..core.security import get_current_user, get_optional_user
 from ..dependencies import require_internal_service_token
 from ..services.credit_service import CreditService
 from ..services.credit_rate_service import CreditRateService
@@ -77,6 +79,76 @@ def check_root_admin(user) -> bool:
     return "ROOT_ADMIN" in roles
 
 
+def _actor_id(user) -> str:
+    """
+    Actor id for the audit trail. get_current_user/get_optional_user return a
+    CustomUserDetails (a pydantic model, NOT a dict), so `user.get("user_id")`
+    raises AttributeError — read the attribute, tolerating either shape.
+    """
+    if not user:
+        return "system"
+    if isinstance(user, dict):
+        return user.get("user_id") or "system"
+    return getattr(user, "user_id", None) or "system"
+
+
+def _internal_token_matches(token: Optional[str]) -> bool:
+    """True when the caller presented this server's service-to-service secret."""
+    expected = get_settings().internal_service_token
+    if not expected or not token:
+        return False
+    return hmac.compare_digest(token, expected)
+
+
+def _require_user_or_internal(user, internal_token: Optional[str]) -> None:
+    """
+    Gate for endpoints that BOTH a signed-in dashboard user and our own backend
+    call. admin_core_service's CreditClient reaches us over the cluster network
+    with no JWT to forward — it is frequently acting for a scheduler rather than
+    a request (EngagementDispatchJob, AiCallService) — so a JWT-only gate 401s
+    every server-to-server read.
+    """
+    if _internal_token_matches(internal_token):
+        return
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+        )
+
+
+def _authorize_credit_adjustment(
+    user,
+    internal_token: Optional[str],
+    acting_user_id: Optional[str],
+    action: str,
+) -> str:
+    """
+    Authorize a super-admin credit adjustment and return the actor id recorded
+    on the transaction. Two accepted callers:
+
+      - admin_core_service's /super-admin/v1/institutes/{id}/grant-credits
+        controller, presenting X-Internal-Service-Token. It has already enforced
+        isRootUser via SuperAdminAuthUtil, so the acting_user_id it sends in the
+        body is trusted — that path is unreachable without the shared secret.
+      - a ROOT_ADMIN JWT hitting this endpoint directly, in which case the actor
+        comes from the verified token and the body field is ignored.
+    """
+    if _internal_token_matches(internal_token):
+        return acting_user_id or "system"
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+        )
+    if not check_root_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Only ROOT_ADMIN can {action} credits",
+        )
+    return _actor_id(user)
+
+
 # ============================================================================
 # Balance Endpoints
 # ============================================================================
@@ -90,9 +162,12 @@ def check_root_admin(user) -> bool:
 def get_balance(
     institute_id: str,
     service: CreditService = Depends(get_credit_service),
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: Optional[dict] = Depends(get_optional_user),
+    x_internal_service_token: Optional[str] = Header(None),
 ):
     """Get current credit balance for an institute."""
+    _require_user_or_internal(current_user, x_internal_service_token)
+
     balance = service.get_balance(institute_id)
     
     if not balance:
@@ -106,23 +181,23 @@ def get_balance(
     "/institutes/{institute_id}/grant",
     response_model=CreditGrantResponse,
     summary="Grant credits to institute (ROOT_ADMIN only)",
-    description="Grant credits to an institute. Only ROOT_ADMIN can perform this action.",
+    description=(
+        "Grant credits to an institute. Callable with a ROOT_ADMIN JWT or with "
+        "X-Internal-Service-Token (admin_core_service's super-admin console)."
+    ),
 )
 def grant_credits(
     institute_id: str,
     request: CreditGrantRequest,
     service: CreditService = Depends(get_credit_service),
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: Optional[dict] = Depends(get_optional_user),
+    x_internal_service_token: Optional[str] = Header(None),
 ):
     """Grant credits to an institute (admin action)."""
-    if not check_root_admin(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only ROOT_ADMIN can grant credits",
-        )
-    
-    user_id = current_user.get("user_id", "system") if current_user else "system"
-    return service.grant_credits(institute_id, request, granted_by=user_id)
+    granted_by = _authorize_credit_adjustment(
+        current_user, x_internal_service_token, request.acting_user_id, "grant"
+    )
+    return service.grant_credits(institute_id, request, granted_by=granted_by)
 
 
 # ============================================================================
@@ -133,23 +208,24 @@ def grant_credits(
     "/institutes/{institute_id}/deduct-admin",
     response_model=CreditGrantResponse,
     summary="Deduct credits from institute (ROOT_ADMIN only)",
-    description="Admin deduction of credits from an institute. Only ROOT_ADMIN can perform this action.",
+    description=(
+        "Admin deduction of credits from an institute. Callable with a ROOT_ADMIN "
+        "JWT or with X-Internal-Service-Token (admin_core_service's super-admin "
+        "console)."
+    ),
 )
 def admin_deduct_credits(
     institute_id: str,
     request: CreditGrantRequest,
     service: CreditService = Depends(get_credit_service),
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: Optional[dict] = Depends(get_optional_user),
+    x_internal_service_token: Optional[str] = Header(None),
 ):
     """Deduct credits from an institute (admin action)."""
-    if not check_root_admin(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only ROOT_ADMIN can deduct credits",
-        )
-
-    user_id = current_user.get("user_id", "system") if current_user else "system"
-    return service.admin_deduct_credits(institute_id, request, deducted_by=user_id)
+    deducted_by = _authorize_credit_adjustment(
+        current_user, x_internal_service_token, request.acting_user_id, "deduct"
+    )
+    return service.admin_deduct_credits(institute_id, request, deducted_by=deducted_by)
 
 
 # ============================================================================

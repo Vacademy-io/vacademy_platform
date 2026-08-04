@@ -47,4 +47,32 @@ public interface PaymentServiceStrategy {
             Map<String, Object> paymentGatewaySpecificData) {
         throw new UnsupportedOperationException("Recurring charge not supported for this payment gateway");
     }
+
+    // ── Client-side payment confirmation (checkout "phase 2") ──────────────
+    // Some gateways confirm a payment by having the CLIENT re-submit the original
+    // request with proof of payment (Razorpay Checkout: payment_id + signature).
+    // Others confirm synchronously (Stripe, eWay) or via redirect + webhook
+    // (Cashfree, PhonePe) and never do this — hence the opt-in defaults.
+
+    /**
+     * True when {@code request} is not a new payment initiation but the client's
+     * post-checkout confirmation of one — i.e. it carries this gateway's proof
+     * of payment. Default false: most gateways have no client-confirmation leg.
+     */
+    default boolean isClientPaymentConfirmation(PaymentInitiationRequestDTO request) {
+        return false;
+    }
+
+    /**
+     * Verifies the client-supplied proof of payment for a confirmation request
+     * (e.g. Razorpay Checkout's HMAC signature) and returns the gateway's order
+     * reference so the caller can locate the originating payment log. Throws on
+     * verification failure. Default: unsupported — only reachable for gateways
+     * whose {@link #isClientPaymentConfirmation} returns true.
+     */
+    default String verifyClientPaymentConfirmation(PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData) {
+        throw new UnsupportedOperationException(
+                "Client payment confirmation not supported for this payment gateway");
+    }
 }

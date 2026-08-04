@@ -31,6 +31,7 @@ from fastapi.responses import PlainTextResponse
 from . import admin_core
 from .bot import CallOutcome, run_bot
 from .config import get_settings
+from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
 
 logging.basicConfig(level=logging.INFO,
@@ -202,7 +203,14 @@ async def _ensure_cached(text: str, voice: str, lang: str) -> str | None:
     return path
 
 
-def _serve_mp3(path: str, *, touch: bool = False) -> Response:
+def _serve_audio(path: str, media_type: str, *, touch: bool = False) -> Response:
+    """Same delivery contract as _serve_mp3 (full-body 200, LRU touch, 404 on an
+    eviction race) for a non-mp3 container. Rumik previews are WAV because Rumik
+    streams raw PCM and we carry no mp3 encoder."""
+    return _serve_mp3(path, touch=touch, media_type=media_type)
+
+
+def _serve_mp3(path: str, *, touch: bool = False, media_type: str = "audio/mpeg") -> Response:
     # Plain 200 with the FULL body (NOT FileResponse/206): FreeSWITCH's mod_httapi
     # fetches the whole file and plays SILENCE on a 206 partial response. Content is a
     # 44.1 kHz MPEG-1 MP3 (the only profile Plivo's decoder plays).
@@ -224,7 +232,7 @@ def _serve_mp3(path: str, *, touch: bool = False) -> Response:
         # Raced by the eviction thread between the caller's exists-check and here;
         # a 404 lets Plivo fall through to its <Speak> fallback rather than 500.
         return Response(status_code=404)
-    return Response(content=body, media_type="audio/mpeg",
+    return Response(content=body, media_type=media_type,
                     headers={"Cache-Control": "public, max-age=31536000",
                              "Content-Length": str(len(body))})
 
@@ -272,6 +280,7 @@ async def preview(
     lang: str = Query("hi-IN", max_length=8),
     pace: float = Query(1.0, ge=0.5, le=2.0),
     temperature: float | None = Query(None, ge=0.01, le=2.0),
+    model: str = Query("sarvam", max_length=24),
 ):
     """Voice tester for the admin AI-Agents editor: speak a short sample text in any
     Bulbul speaker at a chosen pace/expressiveness, so admins can A/B voices before
@@ -282,6 +291,44 @@ async def preview(
     voice+pace-aware key. Text is capped hard: this is a public endpoint spending
     Sarvam credits — cache + cap bound the cost (same exposure class as /tts)."""
     s = get_settings()
+    # Route to the SAME engine the agent will use on a call. Without this the admin
+    # auditions a Sarvam voice and the caller hears Rumik (or, for a Rumik voice
+    # name, Sarvam 400s and the tester just fails) — an audition that lies about
+    # what ships is worse than no audition.
+    engine = (model or "").strip().lower()
+    is_rumik = engine.startswith("rumik") or engine.startswith("silk") \
+        or engine.startswith("mulberry")
+    if is_rumik:
+        if not s.rumik_api_key:
+            logger.warning("preview: rumik requested but RUMIK_API_KEY unset")
+            return Response(status_code=503)
+        # pace MUST be in the cache key. Without it the first pace previewed for a
+        # given voice+text is served forever, so moving the slider appears to do
+        # nothing — which is indistinguishable from the steering being broken.
+        pace_desc = rumik_pace_description(pace)
+        key = hashlib.sha1(
+            f"pv|rumik|{voice}|{pace_desc}|{text}".encode("utf-8")).hexdigest()
+        # .wav, not .mp3: Rumik streams raw PCM and we do not carry an mp3 encoder.
+        # The route name is historical; the Content-Type is what browsers obey.
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            from .providers import rumik_synthesize_wav
+            raw = await rumik_synthesize_wav(text, voice, s.rumik_api_key,
+                                             session=app.state.http_session,
+                                             description=pace_desc)
+            if not raw:
+                return Response(status_code=502)
+            try:
+                os.makedirs(s.tts_cache_dir, exist_ok=True)
+                tmp = f"{path}.{os.getpid()}.tmp"
+                with open(tmp, "wb") as f:
+                    f.write(raw)
+                os.replace(tmp, path)
+            except Exception:
+                logger.exception("preview: cache write failed")
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
     key = hashlib.sha1(
         f"pv|{s.sarvam_tts_model}|{voice}|{lang}|{pace}|{temperature}|{text}".encode("utf-8")
     ).hexdigest()

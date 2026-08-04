@@ -337,9 +337,19 @@ public class CallSearchService {
                 sb.append(" AND (acr.acr_id IS NULL AND tcl.provider_type <> 'AAVTAAR')");
             }
         }
-        if (f.getDispositionKeys() != null && !f.getDispositionKeys().isEmpty()) {
-            sb.append(" AND tcl.disposition_key IN (:dispositionKeys)");
-            params.addValue("dispositionKeys", f.getDispositionKeys());
+        // Disposition filter matches the EFFECTIVE outcome — the same value the
+        // Disposition column renders: the counsellor's manual key when set, else the
+        // AI agent's. Matching tcl.disposition_key alone silently excluded every AI
+        // call (their outcome lives in ai_call_result), which on an AI-heavy institute
+        // is the entire log. Comparison is on the normalized key so "NOT_INTERESTED"
+        // (catalog), "Not_Interested" (AI settings) and "Not Interested" (a hand-typed
+        // agent value) are one outcome — see CallDispositionOptionsService.
+        List<String> dispositionKeys = normalizedDispositionKeys(f.getDispositionKeys());
+        if (!dispositionKeys.isEmpty()) {
+            sb.append(" AND UPPER(REGEXP_REPLACE("
+                    + "COALESCE(NULLIF(tcl.disposition_key, ''), acr.ai_disposition), "
+                    + "'[^A-Za-z0-9]', '', 'g')) IN (:dispositionKeys)");
+            params.addValue("dispositionKeys", dispositionKeys);
         }
         if (notBlank(f.getFromNumber())) {
             sb.append(" AND RIGHT(regexp_replace(tcl.from_number, '[^0-9]', '', 'g'), 10)"
@@ -372,6 +382,21 @@ public class CallSearchService {
             params.addValue("nowUtc", LocalDateTime.now(ZoneOffset.UTC), Types.TIMESTAMP);
         }
         return sb.toString();
+    }
+
+    /**
+     * Requested disposition keys reduced to their normalized form, blanks dropped.
+     * Empty out ⇒ no disposition predicate at all (same as an absent filter), never a
+     * predicate that can't match — a selection of only-blank keys is not a request for
+     * zero rows.
+     */
+    private static List<String> normalizedDispositionKeys(List<String> requested) {
+        if (requested == null || requested.isEmpty()) return List.of();
+        return requested.stream()
+                .map(CallDispositionOptionsService::normalizeKey)
+                .filter(k -> !k.isEmpty())
+                .distinct()
+                .toList();
     }
 
     /** Whitelisted sort — never interpolate user input into SQL. */

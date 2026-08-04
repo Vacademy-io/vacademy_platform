@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.super_admin.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
@@ -26,8 +27,9 @@ public class SuperAdminCreditController {
             @RequestBody CreditGrantRequestDTO request) {
         try {
             SuperAdminAuthUtil.requireSuperAdmin(user);
-            Map<String, Object> result = creditClient.grantCredits(instituteId, request.getAmount(), request.getDescription());
-            return ResponseEntity.ok(result);
+            Map<String, Object> result = creditClient.grantCredits(
+                    instituteId, request.getAmount(), request.getDescription(), user.getUserId());
+            return respond(result);
         } catch (Exception e) {
             log.error("Error granting credits to institute {}: {}", instituteId, e.getMessage());
             throw e;
@@ -42,11 +44,23 @@ public class SuperAdminCreditController {
         try {
             SuperAdminAuthUtil.requireSuperAdmin(user);
             Map<String, Object> result = creditClient.deductCreditsAdmin(
-                    instituteId, request.getAmount(), request.getDescription());
-            return ResponseEntity.ok(result);
+                    instituteId, request.getAmount(), request.getDescription(), user.getUserId());
+            return respond(result);
         } catch (Exception e) {
             log.error("Error deducting credits from institute {}: {}", instituteId, e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * CreditClient swallows transport failures into {success:false, message:...}
+     * rather than throwing. Returning 200 for those made a failed adjustment look
+     * like a successful one in the console, so map them to 502 instead.
+     */
+    private ResponseEntity<Map<String, Object>> respond(Map<String, Object> result) {
+        if (result != null && Boolean.FALSE.equals(result.get("success"))) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(result);
+        }
+        return ResponseEntity.ok(result);
     }
 }

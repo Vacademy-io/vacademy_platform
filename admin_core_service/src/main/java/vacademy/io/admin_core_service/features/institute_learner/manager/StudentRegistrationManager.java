@@ -85,6 +85,9 @@ public class StudentRegistrationManager {
     @Autowired
     private InstituteRepository instituteRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute_learner.service.EnrollmentCredentialPolicyService enrollmentCredentialPolicyService;
+
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
     }
@@ -161,8 +164,22 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails()
                 .setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
+        // Was hardcoded true, which made this the one enrollment path no institute setting
+        // could silence — institutes running their own LEARNER_BATCH_ENROLLMENT welcome mail
+        // got two emails per learner, both carrying the password.
+        //
+        // Only honour the institute's opt-out when the caller is enrolling as ACTIVE, because
+        // that is the only case where addStudentToInstitute fires the enrollment workflow that
+        // sends the institute's own mail instead. Non-ACTIVE adds (the invite-response flow
+        // registers learners as INVITED) fire no workflow, so suppressing here would leave the
+        // learner with no credentials at all.
+        String instituteId = instituteStudentDTO.getInstituteStudentDetails().getInstituteId();
+        boolean enrollmentWorkflowWillFire = LearnerSessionStatusEnum.ACTIVE.name()
+                .equalsIgnoreCase(instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus());
+        boolean sendCredentials = !enrollmentWorkflowWillFire
+                || enrollmentCredentialPolicyService.shouldSendCredentialEmail(instituteId);
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(),
-                instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
+                instituteId, sendCredentials);
         instituteStudentDTO.getUserDetails().setId(createdUser.getId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
@@ -682,12 +699,28 @@ public class StudentRegistrationManager {
     public String shiftStudentBatch(
             StudentSessionInstituteGroupMapping invitedPackageSession,
             String newStatus) {
+        return shiftStudentBatch(invitedPackageSession, newStatus, null);
+    }
+
+    /**
+     * Variant that stamps {@code activeUserPlanId} on the resulting ACTIVE mapping.
+     * The plain overload copies user_plan_id from the INVITED row being shifted —
+     * but when a learner retried a failed checkout, that INVITED row still points
+     * at the FIRST (failed) plan, so the ACTIVE mapping ended up referencing a
+     * PAYMENT_FAILED plan instead of the plan that was actually paid. That broke
+     * finance/roster joins and defeated the plan-stacking dedupe
+     * (hasRealEnrollmentEntries never saw the paid plan's entries).
+     */
+    public String shiftStudentBatch(
+            StudentSessionInstituteGroupMapping invitedPackageSession,
+            String newStatus,
+            String activeUserPlanId) {
         try {
             String userId = invitedPackageSession.getUserId();
             String instituteId = invitedPackageSession.getInstitute().getId();
 
             StudentSessionInstituteGroupMapping mappingToUse = findOrCreateMapping(
-                    instituteId, userId, newStatus, invitedPackageSession);
+                    instituteId, userId, newStatus, invitedPackageSession, activeUserPlanId);
 
             markOldMappingDeleted(invitedPackageSession);
 
@@ -702,7 +735,13 @@ public class StudentRegistrationManager {
             String instituteId,
             String userId,
             String newStatus,
-            StudentSessionInstituteGroupMapping invitedPackageSession) {
+            StudentSessionInstituteGroupMapping invitedPackageSession,
+            String activeUserPlanId) {
+        // The plan the ACTIVE mapping must reference: the explicitly supplied (paid)
+        // plan when given, else whatever the shifted row carried.
+        String effectiveUserPlanId = StringUtils.hasText(activeUserPlanId)
+                ? activeUserPlanId
+                : invitedPackageSession.getUserPlanId();
         Optional<StudentSessionInstituteGroupMapping> existingMappingOpt = studentSessionRepository
                 .findTopByPackageSessionIdAndUserIdAndStatusIn(
                         invitedPackageSession.getDestinationPackageSession().getId(), instituteId, userId,
@@ -710,6 +749,9 @@ public class StudentRegistrationManager {
         StudentSessionInstituteGroupMapping activePackageSession;
         if (existingMappingOpt.isPresent()) {
             activePackageSession = existingMappingOpt.get();
+            if (StringUtils.hasText(activeUserPlanId)) {
+                activePackageSession.setUserPlanId(activeUserPlanId);
+            }
         } else {
             activePackageSession = new StudentSessionInstituteGroupMapping();
             activePackageSession.setInstitute(invitedPackageSession.getInstitute());
@@ -718,7 +760,7 @@ public class StudentRegistrationManager {
             activePackageSession.setEnrolledDate(new Date());
             activePackageSession.setStatus(newStatus);
             activePackageSession.setPackageSession(invitedPackageSession.getDestinationPackageSession());
-            activePackageSession.setUserPlanId(invitedPackageSession.getUserPlanId());
+            activePackageSession.setUserPlanId(effectiveUserPlanId);
             // Set type to PACKAGE_SESSION for final enrollment (not ABANDONED_CART or PAYMENT_FAILED)
             activePackageSession.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
             // destinationPackageSession should be null for final enrollment (not set)
@@ -732,7 +774,7 @@ public class StudentRegistrationManager {
         Date baseDate = activePackageSession.getExpiryDate() != null ? activePackageSession.getExpiryDate()
                 : new Date();
         activePackageSession
-                .setExpiryDate(calculateNewExpiryDate(baseDate, invitedPackageSession.getUserPlanId(), null));
+                .setExpiryDate(calculateNewExpiryDate(baseDate, effectiveUserPlanId, null));
         return activePackageSession;
     }
 

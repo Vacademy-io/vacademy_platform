@@ -174,8 +174,11 @@ public class MetaOAuthController {
             OAuthTokenResult tokenResult = metaStrategy.exchangeCodeForToken(code, metaRedirectUri);
             String userToken = tokenResult.getAccessToken();
 
-            // Fetch pages the user manages (server-side, token never leaves)
-            List<Map<String, String>> rawPages = metaStrategy.listConnectableAccounts(userToken);
+            // Fetch pages the user can connect (server-side, token never leaves).
+            // Merges /me/accounts (app-role/classic users) with Login-for-Business
+            // granular grants (business-owned Pages that /me/accounts omits for
+            // regular users) so both flows surface the selected Page.
+            List<Map<String, String>> rawPages = metaStrategy.discoverConnectablePages(userToken);
 
             // Encrypt per-page access tokens and build the pages JSON to store
             List<Map<String, String>> pagesForStorage = new ArrayList<>();
@@ -267,6 +270,78 @@ public class MetaOAuthController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(pages);
+    }
+
+    // ── Step 3b: Resolve a Page by ID (fallback when /me/accounts is empty) ──
+
+    /**
+     * Resolve a Facebook Page directly by its ID and add it to the session.
+     *
+     * Fallback for business-owned Pages that Facebook Login for Business does NOT
+     * return via {@code /me/accounts} for regular (non-app-role) users. The Page is
+     * still directly readable with pages_read_engagement, so the admin supplies the
+     * Page ID (shown in Meta's connect dialog) and we fetch it with the session's user
+     * token, store its encrypted Page token, and return it — so the rest of the flow
+     * (list forms → save connector) works unchanged.
+     */
+    @PostMapping("/session/{sessionKey}/pages/resolve")
+    @Transactional
+    public ResponseEntity<MetaPageDTO> resolvePageById(
+            @PathVariable String sessionKey,
+            @RequestParam String pageId) {
+
+        OAuthConnectState state = stateRepository
+                .findValidById(sessionKey, LocalDateTime.now())
+                .orElseThrow(() -> new VacademyException(
+                        "Session not found or expired. Please reconnect Meta."));
+        if (!"AUTHORIZED".equals(state.getSessionStatus())) {
+            throw new VacademyException("OAuth session not yet authorized");
+        }
+        if (state.getUserTokenEnc() == null) {
+            throw new VacademyException("No user token on this session — please reconnect Meta.");
+        }
+        String cleanPageId = pageId == null ? null : pageId.trim();
+        if (cleanPageId == null || cleanPageId.isBlank()) {
+            throw new VacademyException("Page ID is required");
+        }
+
+        String userToken = tokenEncryptionService.decrypt(state.getUserTokenEnc());
+
+        // Fetch the Page directly (id, name, access_token) with the user token.
+        Map<String, String> page = metaStrategy.fetchPageById(cleanPageId, userToken);
+
+        // Add/replace it in the session's stored pages so resolvePageToken() works later.
+        List<Map<String, String>> pages;
+        try {
+            pages = decryptAndListPages(state);
+        } catch (Exception e) {
+            pages = new ArrayList<>();
+        }
+        pages.removeIf(p -> cleanPageId.equals(p.get("id")));
+
+        Map<String, String> entry = new LinkedHashMap<>();
+        entry.put("id", page.get("id"));
+        entry.put("name", page.get("name"));
+        entry.put("token_enc", tokenEncryptionService.encrypt(page.get("access_token")));
+        // Tasks aren't readable on a Page node; the admin granted pages_manage_metadata
+        // and supplied this Page, so assume Full control — the subscribe step is the
+        // real gate and reports #200 if that's wrong.
+        entry.put("tasks", "MANAGE");
+        entry.put("has_manage", "true");
+        pages.add(entry);
+
+        try {
+            state.setPagesJsonEnc(tokenEncryptionService.encrypt(
+                    objectMapper.writeValueAsString(pages)));
+        } catch (Exception e) {
+            throw new VacademyException("Failed to store resolved page: " + e.getMessage());
+        }
+        state.setExpiresAt(LocalDateTime.now().plusMinutes(30));
+        stateRepository.save(state);
+
+        log.info("Resolved Meta page {} ({}) by ID for session {}",
+                cleanPageId, page.get("name"), sessionKey);
+        return ResponseEntity.ok(toPageDTO(entry));
     }
 
     // ── Step 4a: List forms for a page ──────────────────────────────────────

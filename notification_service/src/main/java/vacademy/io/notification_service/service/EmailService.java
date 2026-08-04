@@ -114,8 +114,47 @@ public class EmailService {
             logger.info("Email blocked - previously bounced: {}", email);
             return true;
         }
-        
+
         return false;
+    }
+
+    /**
+     * Attach copy recipients (CC/BCC) to an outgoing message. Shared by every send path that
+     * supports copies.
+     *
+     * <p>Each address is run through {@link #isEmailBlocked} exactly like the primary recipient:
+     * a bounced or blocklisted staff address must never be re-mailed, or it silently degrades the
+     * SES reputation of EVERY send that carries the copy.
+     *
+     * <p>Defaults to BCC. Copies are typically internal staff (accounts@, admissions@) and putting
+     * them in a visible CC exposes internal addresses on a learner-facing receipt — callers must
+     * opt in to "CC" deliberately.
+     *
+     * <p>Never throws: a malformed configured address degrades to "no copies" rather than failing
+     * the primary send, which would turn a settings typo into an enrollment/payment email outage.
+     */
+    private void applyCopyRecipients(MimeMessage message, List<String> cc, String ccMode) {
+        if (cc == null || cc.isEmpty()) {
+            return;
+        }
+        try {
+            List<String> clean = cc.stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .distinct()
+                    .filter(address -> !isEmailBlocked(address))
+                    .toList();
+            if (clean.isEmpty()) {
+                return;
+            }
+            Message.RecipientType type = "CC".equalsIgnoreCase(ccMode)
+                    ? Message.RecipientType.CC
+                    : Message.RecipientType.BCC;
+            message.setRecipients(type, InternetAddress.parse(String.join(",", clean)));
+            logger.info("Attached {} copy recipient(s) as {}", clean.size(), type);
+        } catch (Exception e) {
+            logger.warn("Failed to attach copy recipients {} — sending without copies: {}", cc, e.getMessage());
+        }
     }
 
     /**
@@ -677,6 +716,19 @@ public class EmailService {
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType,
             String correlationId, String userId) {
+        sendHtmlEmail(to, subject, service, body, instituteId, customFromEmail, customFromName, emailType,
+                correlationId, userId, null, null);
+    }
+
+    /**
+     * Widest overload: adds copy recipients ({@code cc} + {@code ccMode}) on top of the ledger
+     * attribution above. Copies are resolved per-institute by {@code EmailCcResolver} and passed
+     * down from {@code UnifiedSendService}; all narrower overloads pass null and behave exactly
+     * as before.
+     */
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName, String emailType,
+            String correlationId, String userId, List<String> cc, String ccMode) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
@@ -712,6 +764,7 @@ public class EmailService {
                 try {
                     MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+                    applyCopyRecipients(message, cc, ccMode);
 
                     // Set from address with optional display name
                     if (finalFromName != null) {
@@ -767,6 +820,16 @@ public class EmailService {
 
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId, String emailType) {
+        sendAttachmentEmail(to, subject, service, body, attachments, instituteId, emailType, null, null);
+    }
+
+    /**
+     * Attachment send with copy recipients. Copies receive the SAME attachment payload (typically
+     * the invoice/receipt PDF) as the primary recipient, which is the point of an accounts BCC.
+     */
+    public void sendAttachmentEmail(String to, String subject, String service, String body,
+            Map<String, byte[]> attachments, String instituteId, String emailType,
+            List<String> cc, String ccMode) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
@@ -795,6 +858,7 @@ public class EmailService {
                     MimeMessage message = new MimeMessage(session);
 
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+                    applyCopyRecipients(message, cc, ccMode);
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
 

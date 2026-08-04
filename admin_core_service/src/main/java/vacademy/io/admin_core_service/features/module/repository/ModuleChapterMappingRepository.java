@@ -29,7 +29,15 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
+                    -- AVG over chapter_pct WITHOUT coalescing the inner NULL to 0:
+                    -- chapter_slide_pct only yields a row for a chapter that has at
+                    -- least one learner-visible slide, so an empty chapter arrives as
+                    -- NULL and AVG skips it in both numerator and denominator. Wrapping
+                    -- it in COALESCE(...,0) first would count a chapter the learner
+                    -- cannot open as 0% and cap the module below 100% permanently.
+                    -- The per-chapter value below still coalesces to 0 -- an empty
+                    -- chapter is displayed as 0%, it just does not drag the module.
+                    'percentage_completed', COALESCE(AVG(chapter_slide_pct.chapter_pct), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
@@ -99,11 +107,17 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     SELECT sub.chapter_id, AVG(sub.slide_pct) AS chapter_pct
                     FROM (
                         SELECT cts2.chapter_id, s2.id AS slide_id,
+                            -- Must list EVERY slide-level completion operation. An operation
+                            -- missing here is not skipped: the CASE yields NULL and COALESCE
+                            -- turns it into 0, so a fully-completed slide silently drags the
+                            -- chapter average down. Keep in sync with the write-side cascade
+                            -- (LearnerTrackingAsyncService#updateChapterCompletionPercentage).
                             COALESCE(MAX(CASE
                                 WHEN slo.operation IN (
                                         'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                         'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                        'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                        'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                        'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                      AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                 THEN LEAST(CAST(slo.value AS FLOAT), 100)
                                 ELSE NULL
@@ -211,7 +225,15 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
+                    -- AVG over chapter_pct WITHOUT coalescing the inner NULL to 0:
+                    -- chapter_slide_pct only yields a row for a chapter that has at
+                    -- least one learner-visible slide, so an empty chapter arrives as
+                    -- NULL and AVG skips it in both numerator and denominator. Wrapping
+                    -- it in COALESCE(...,0) first would count a chapter the learner
+                    -- cannot open as 0% and cap the module below 100% permanently.
+                    -- The per-chapter value below still coalesces to 0 -- an empty
+                    -- chapter is displayed as 0%, it just does not drag the module.
+                    'percentage_completed', COALESCE(AVG(chapter_slide_pct.chapter_pct), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
@@ -627,11 +649,17 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     SELECT sub.chapter_id, AVG(sub.slide_pct) AS chapter_pct
                     FROM (
                         SELECT cts2.chapter_id, s2.id AS slide_id,
+                            -- Must list EVERY slide-level completion operation. An operation
+                            -- missing here is not skipped: the CASE yields NULL and COALESCE
+                            -- turns it into 0, so a fully-completed slide silently drags the
+                            -- chapter average down. Keep in sync with the write-side cascade
+                            -- (LearnerTrackingAsyncService#updateChapterCompletionPercentage).
                             COALESCE(MAX(CASE
                                 WHEN slo.operation IN (
                                         'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                         'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                        'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                        'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                        'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                      AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                 THEN LEAST(CAST(slo.value AS FLOAT), 100)
                                 ELSE NULL

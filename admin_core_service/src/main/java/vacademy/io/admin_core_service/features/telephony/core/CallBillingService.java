@@ -71,6 +71,13 @@ public class CallBillingService {
     public static final String RT_AI_OUT = "ai_call_out";
     public static final String RT_AI_IN = "ai_call_in";
 
+    /**
+     * Engine assumed when an agent cannot be resolved. MUST match the voice bot's
+     * own fallback for a missing tts_model (voice_bot_service/app/config.py,
+     * TTS_MODEL default) — see {@link #resolveEngine}.
+     */
+    private static final String ENGINE_FALLBACK = "sarvam";
+
     @Autowired private CreditClient creditClient;
     @Autowired private VoiceCallingSettingsService voiceSettings;
     @Autowired private TelephonyCallLogRepository callLogRepo;
@@ -129,12 +136,17 @@ public class CallBillingService {
      */
     @Async("callBillingExecutor")
     public void billAiLeg(String idempotencyKey, String aiCallResultId, String instituteId,
-                          String provider, String direction, int durationSeconds) {
+                          String provider, String direction, int durationSeconds,
+                          String agentId) {
         try {
             String requestType = "INBOUND".equalsIgnoreCase(direction) ? RT_AI_IN : RT_AI_OUT;
+            String engine = resolveEngine(provider, agentId);
+            BigDecimal surcharge = resolveEngineSurcharge(engine);
             boolean ok = bill(aiCallResultId, instituteId, requestType, durationSeconds,
                     idempotencyKey,
-                    "AI call minutes (" + provider + " " + direction + ")");
+                    "AI call minutes (" + provider + " " + direction
+                            + (engine != null ? " · " + engine : "") + ")",
+                    surcharge);
             if (ok) aiCallResultRepo.markCreditsBilled(aiCallResultId, Instant.now());
         } catch (Exception e) {
             log.error("call-billing: ai leg failed result={} inst={}: {}",
@@ -145,6 +157,13 @@ public class CallBillingService {
     /** @return true when ai_service acknowledged the charge (or its idempotent replay). */
     private boolean bill(String refId, String instituteId, String requestType,
                          int durationSeconds, String idempotencyKey, String description) {
+        return bill(refId, instituteId, requestType, durationSeconds, idempotencyKey,
+                description, BigDecimal.ZERO);
+    }
+
+    private boolean bill(String refId, String instituteId, String requestType,
+                         int durationSeconds, String idempotencyKey, String description,
+                         BigDecimal engineSurcharge) {
         if (instituteId == null || instituteId.isBlank() || durationSeconds <= 0) return false;
 
         Rate rate = resolveRate(instituteId, requestType);
@@ -153,8 +172,20 @@ public class CallBillingService {
                     requestType, refId);
             return false;
         }
+        BigDecimal perMinute = rate.perMinute();
+        if (engineSurcharge != null && engineSurcharge.signum() > 0) {
+            if (rate.negotiated()) {
+                // A per-institute override is an AGREED all-in price. Silently adding
+                // a surcharge on top would break a negotiated number that somebody
+                // quoted in writing, so the override always wins outright.
+                log.info("call-billing: institute {} has a negotiated {} rate — engine surcharge {} not applied",
+                        instituteId, requestType, engineSurcharge);
+            } else {
+                perMinute = perMinute.add(engineSurcharge);
+            }
+        }
         long minutes = (durationSeconds + 59) / 60; // ceil, min 1 for any >0 duration
-        BigDecimal cost = rate.perMinute().multiply(BigDecimal.valueOf(minutes))
+        BigDecimal cost = perMinute.multiply(BigDecimal.valueOf(minutes))
                 .max(rate.minimum())
                 .setScale(4, RoundingMode.HALF_UP);
         if (cost.signum() <= 0) {
@@ -171,7 +202,9 @@ public class CallBillingService {
         return ok;
     }
 
-    private record Rate(BigDecimal perMinute, BigDecimal minimum) {}
+    /** @param negotiated true when this came from a per-institute override, i.e. an
+     *  agreed all-in price that engine surcharges must not be stacked onto. */
+    private record Rate(BigDecimal perMinute, BigDecimal minimum, boolean negotiated) {}
 
     /**
      * Per-institute override → global credit_pricing. Overrides live in
@@ -181,6 +214,70 @@ public class CallBillingService {
      * update today and a root-admin surface later. The legacy blanket
      * perMinuteCreditOverride applies to the VOICE meters only.
      */
+    /**
+     * Which TTS engine this call is PRICED against.
+     *
+     * <p>Deliberately the agent's CONFIGURED engine, not the engine that actually
+     * spoke (which the voice bot records separately in the call diagnostics). The
+     * institute agreed a price for the engine they chose; if our own infrastructure
+     * falls back to the other one — a missing API key, a vendor outage — that is our
+     * problem, and letting it move the customer's bill either way would make their
+     * per-minute price depend on our incidents. The diagnostics field is the audit
+     * trail for spotting the mismatch.
+     *
+     * <p>Only VACADEMY_AI calls run through our TTS at all. AAVTAAR brings its own,
+     * so there is nothing of ours to surcharge.
+     *
+     * <p>An unresolvable agent (no id, deleted row, or the built-in fallback persona,
+     * which has no row) resolves to 'sarvam' — matching the voice bot's OWN fallback
+     * for a missing tts_model. These two defaults must stay in lockstep: if they ever
+     * disagree we would serve one engine and charge for the other.
+     */
+    private String resolveEngine(String provider, String agentId) {
+        if (!ProviderType.VACADEMY_AI.equals(provider)) return null;
+        if (agentId == null || agentId.isBlank()) return ENGINE_FALLBACK;
+        try {
+            List<?> rows = entityManager.createNativeQuery(
+                    "SELECT tts_model FROM ai_agent WHERE id = :id")
+                    .setParameter("id", agentId)
+                    .getResultList();
+            if (rows.isEmpty()) return ENGINE_FALLBACK;
+            Object v = rows.get(0);
+            String m = v == null ? null : String.valueOf(v).trim().toLowerCase();
+            return (m == null || m.isEmpty() || "null".equals(m)) ? ENGINE_FALLBACK : m;
+        } catch (Exception e) {
+            log.error("call-billing: tts_model lookup failed for agent {}: {}", agentId, e.getMessage());
+            return ENGINE_FALLBACK;
+        }
+    }
+
+    /**
+     * Per-minute credit surcharge for an engine, from ai_tts_model_pricing (V421).
+     *
+     * <p>Returns ZERO on a missing row and logs it loudly. That is a deliberate
+     * choice to UNDER-bill rather than skip the charge entirely: dropping the whole
+     * AI-minutes charge because a pricing row is absent would lose the base revenue
+     * too, and the reconciliation sweeper would then retry it forever.
+     */
+    private BigDecimal resolveEngineSurcharge(String engine) {
+        if (engine == null || engine.isBlank()) return BigDecimal.ZERO;
+        try {
+            List<?> rows = entityManager.createNativeQuery(
+                    "SELECT surcharge_credits_per_min FROM ai_tts_model_pricing "
+                    + "WHERE model = :m AND is_active = TRUE")
+                    .setParameter("m", engine)
+                    .getResultList();
+            if (rows.isEmpty()) {
+                log.error("call-billing: no ai_tts_model_pricing row for engine '{}' — billing base rate only", engine);
+                return BigDecimal.ZERO;
+            }
+            return toDecimal(rows.get(0));
+        } catch (Exception e) {
+            log.error("call-billing: engine surcharge lookup failed for '{}': {}", engine, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
     private Rate resolveRate(String instituteId, String requestType) {
         VoiceCallingSettingsPojo.BillingConfig billing = null;
         try {
@@ -200,7 +297,7 @@ public class CallBillingService {
                 default -> null;
             };
             if (override != null) {
-                return new Rate(BigDecimal.valueOf(override), BigDecimal.ZERO);
+                return new Rate(BigDecimal.valueOf(override), BigDecimal.ZERO, true);
             }
         }
 
@@ -214,7 +311,7 @@ public class CallBillingService {
                     .getResultList();
             if (rows.isEmpty()) return null;
             Object[] row = rows.get(0);
-            return new Rate(toDecimal(row[0]), toDecimal(row[1]));
+            return new Rate(toDecimal(row[0]), toDecimal(row[1]), false);
         } catch (Exception e) {
             log.error("call-billing: credit_pricing lookup failed for {}: {}", requestType, e.getMessage());
             return null;

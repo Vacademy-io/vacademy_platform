@@ -556,11 +556,71 @@ _MALE_VOICES = {
     "abhilash", "karun", "hitesh",
     # bulbul:v1 male (legacy)
     "amol", "amartya", "arvind", "neel", "vian",
+    # Rumik Silk Mulberry 1.5 male presets. These MUST be here: this set is the
+    # only thing that makes the LLM write masculine Hindi verb endings, and a
+    # Rumik agent on "adam" would otherwise say "kar rahi hoon" in a male voice.
+    "lucas", "noah", "theo", "adam",
 }
+
+# Rumik Mulberry 1.5 female presets, kept explicit rather than inferred from the
+# male set's complement — _voice_gender defaults unknown names to female, so an
+# unlisted female voice is harmless, but naming them documents the real palette
+# for the picker and catches a typo'd voice at review time.
+_RUMIK_FEMALE_VOICES = {
+    "emma", "mia", "sophia", "ava", "ira", "siya", "aisha", "zoya",
+}
+_RUMIK_MALE_VOICES = {"lucas", "noah", "theo", "adam"}
+RUMIK_VOICES = _RUMIK_FEMALE_VOICES | _RUMIK_MALE_VOICES
+
+
+def _default_voice_for(agent) -> str:
+    """Provider default voice — both are female, so grammar stays feminine."""
+    return "ira" if _agent_tts_model(agent).startswith(("rumik", "silk")) else "priya"
 
 
 def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
+
+
+def _agent_tts_model(agent) -> str:
+    """Which TTS vendor this agent speaks through.
+
+    Explicit agent config wins; otherwise the env default. Institutes created
+    before the picker existed have no tts_model, and they are billed at the
+    Sarvam rate, so they must KEEP Sarvam — silently moving a paying institute
+    to a different-sounding voice is not a config change, it is a product change.
+    """
+    m = (agent.get("tts_model") or "").strip().lower()
+    return m or get_settings().tts_model
+
+
+def _agent_voice(agent):
+    """The configured voice, dropped if it belongs to the other vendor's palette.
+
+    Voice names do not cross vendors, and the two engines fail DIFFERENTLY when you
+    send the wrong one (both probed against the live APIs):
+
+      * Sarvam REJECTS an unknown speaker outright ("Speaker 'x' is not compatible
+        with model bulbul:v3", HTTP 400) — so a Rumik name on a Sarvam agent means
+        no audio at all.
+      * Rumik SILENTLY SUBSTITUTES its default voice. It returned 184 KB of clean
+        audio for "priya". So the call is not mute — it is worse in a quieter way:
+        the caller hears a voice nobody chose, and because the LLM's Hindi verb
+        gender was conjugated for the CONFIGURED voice, a male-configured agent can
+        end up speaking masculine Hindi in a female voice.
+
+    Either way the stored name is not usable, so fall back to the provider default,
+    which at least keeps voice and grammar consistent with each other.
+    """
+    voice = (agent.get("voice") or "").strip()
+    if not voice:
+        return None
+    is_rumik = _agent_tts_model(agent).startswith(("rumik", "silk"))
+    if is_rumik and voice.lower() not in RUMIK_VOICES:
+        return None
+    if not is_rumik and voice.lower() in RUMIK_VOICES:
+        return None
+    return voice
 
 
 def _as_float(v) -> float | None:
@@ -824,7 +884,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     name = agent.get("name") or "the assistant"
     stt_tag, lang_label = _agent_language(agent)
     is_english = stt_tag == "en-IN"
-    gender = _voice_gender(agent.get("voice"))
+    # _agent_voice, not agent["voice"]: if the name was dropped as belonging to
+    # the other vendor we speak with the provider default, so the grammar has to
+    # match THAT voice, not the discarded config.
+    gender = _voice_gender(_agent_voice(agent) or _default_voice_for(agent))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
     now_line = _now_line(context)
 
@@ -1279,16 +1342,24 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # LIVE calls' audio doesn't glitch while this one dials (part of the measured
     # 3.2s StartFrame gap; lifespan pre-warm covers the import cost).
     llm = await asyncio.to_thread(build_llm)
-    tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
+    tts = build_tts(settings.sample_rate, voice=_agent_voice(agent),
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
-                    temperature=_as_float(agent.get("temperature")))
+                    temperature=_as_float(agent.get("temperature")),
+                    tts_model=_agent_tts_model(agent))
     # Audio-stall watchdog stamp: run_tts marks "audio pending"; BotStartedSpeaking
     # clears it. MUST be wired after tts exists (a pre-assignment hasattr(tts, …)
     # here crashed EVERY call with UnboundLocalError on 2026-07-27).
     for _svc in (stt, tts):
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)
+    # Vendor cost, recorded from the vendor's own terminal frame. tts_vendor is
+    # stamped unconditionally (both providers) so the panel always shows WHICH
+    # engine spoke — that is the first question when a call sounds wrong.
+    diag.tts_vendor = getattr(tts, "model_name", "") or type(tts).__name__
+    if hasattr(tts, "set_credits_callback"):
+        tts.set_credits_callback(
+            lambda credits, secs, chars=0: diag.note_tts_spend(credits, secs, chars))
     if hasattr(tts, "set_generate_callback"):
         def _stamp_generate():
             # Only stamp while the bot is QUIET: a clause generated mid-playout is

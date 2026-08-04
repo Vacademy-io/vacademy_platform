@@ -829,6 +829,25 @@ public class DynamicNotificationService {
     }
 
     /**
+     * Institute-scoped config for an event/channel, falling back to the platform-wide
+     * {@code DEFAULT} row — the same two-step lookup every event-driven notification here uses.
+     *
+     * <p>Exposed so senders that own their own delivery mechanics (the payment-confirmation
+     * mail attaches an invoice PDF and copies billing/admin recipients, which
+     * {@link #sendNotificationViaUnifiedApi} does not model) can still resolve their template
+     * through the standard config binding instead of hardcoding a template name.
+     */
+    public Optional<NotificationEventConfig> findEventConfig(
+            NotificationEventType eventType, String instituteId, NotificationTemplateType templateType) {
+        return configRepository
+                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                        eventType, NotificationSourceType.INSTITUTE, instituteId, templateType)
+                .or(() -> configRepository
+                        .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                eventType, NotificationSourceType.INSTITUTE, "DEFAULT", templateType));
+    }
+
+    /**
      * Hands a learner their portal credentials on the channel the caller asks
      * for, using whatever template this institute has bound to
      * {@link NotificationEventType#LEARNER_CREDENTIALS_SHARED}.
@@ -855,18 +874,8 @@ public class DynamicNotificationService {
             String password) {
 
         try {
-            NotificationEventConfig config = configRepository
-                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                            NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                            NotificationSourceType.INSTITUTE,
-                            instituteId,
-                            channel)
-                    .or(() -> configRepository
-                            .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                                    NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                                    NotificationSourceType.INSTITUTE,
-                                    "DEFAULT",
-                                    channel))
+            NotificationEventConfig config = findEventConfig(
+                    NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel)
                     .orElse(null);
 
             if (config == null) {
@@ -922,7 +931,7 @@ public class DynamicNotificationService {
      * to one shared WATI-approved template name). Falls back to name-based lookup when no
      * templateId is set on the config or when the id no longer resolves to a row.
      */
-    private Template resolveTemplate(NotificationEventConfig config, String instituteId) {
+    public Template resolveTemplate(NotificationEventConfig config, String instituteId) {
         if (config.getTemplateId() != null && !config.getTemplateId().isBlank()) {
             Optional<Template> byId = templateRepository.findById(config.getTemplateId());
             if (byId.isPresent()) return byId.get();

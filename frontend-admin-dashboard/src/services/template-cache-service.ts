@@ -8,7 +8,7 @@ class TemplateCacheService {
     private lastFetch: Map<string, number> = new Map();
     private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-    async getTemplates(type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'): Promise<MessageTemplate[]> {
+    async getTemplates(type?: MessageTemplate['type']): Promise<MessageTemplate[]> {
         const cacheKey = type || 'all';
         const now = Date.now();
         const lastFetchTime = this.lastFetch.get(cacheKey) || 0;
@@ -37,7 +37,7 @@ class TemplateCacheService {
         }
     }
 
-    private async loadTemplates(type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'): Promise<MessageTemplate[]> {
+    private async loadTemplates(type?: MessageTemplate['type']): Promise<MessageTemplate[]> {
         try {
             const response = await getMessageTemplates(type);
             return response.templates;
@@ -48,7 +48,7 @@ class TemplateCacheService {
     }
 
     // Clear cache for a specific type or all
-    clearCache(type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'): void {
+    clearCache(type?: MessageTemplate['type']): void {
         if (type) {
             const cacheKey = type;
             this.cache.delete(cacheKey);
@@ -67,13 +67,13 @@ class TemplateCacheService {
     }
 
     // Get cached templates without making API call
-    getCachedTemplates(type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'): MessageTemplate[] | null {
+    getCachedTemplates(type?: MessageTemplate['type']): MessageTemplate[] | null {
         const cacheKey = type || 'all';
         return this.cache.get(cacheKey) || null;
     }
 
     // Check if cache is fresh
-    isCacheFresh(type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'): boolean {
+    isCacheFresh(type?: MessageTemplate['type']): boolean {
         const cacheKey = type || 'all';
         const now = Date.now();
         const lastFetchTime = this.lastFetch.get(cacheKey) || 0;

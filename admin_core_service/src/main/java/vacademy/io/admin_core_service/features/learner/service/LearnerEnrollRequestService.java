@@ -50,6 +50,12 @@ import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
+import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentGateway;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
@@ -57,6 +63,8 @@ import vacademy.io.common.logging.SentryLogger;
 
 import java.text.SimpleDateFormat;
 
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -138,6 +146,18 @@ public class LearnerEnrollRequestService {
     private InstituteStudentRepository instituteStudentRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
+
+    @Autowired
+    private PaymentServiceFactory paymentServiceFactory;
+
+    @Autowired
     private StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
     @Autowired
@@ -181,6 +201,22 @@ public class LearnerEnrollRequestService {
                         integrityInvite.getInstituteId());
                 learnerEnrollRequestDTO.setInstituteId(integrityInvite.getInstituteId());
             }
+        }
+
+        // ── Gateway payment confirmation ("phase 2") ──────────────────────────────
+        // Some gateways (Razorpay Checkout today) confirm a payment by having the
+        // learner app re-call this endpoint with proof of payment attached to the
+        // original request. Such a call must COMPLETE the enrollment created on the
+        // first call — without this branch it re-ran the full enrollment: a duplicate
+        // PENDING_FOR_PAYMENT user_plan, a duplicate ledger debit accrual, and an
+        // orphan gateway order for every paid learner. Detection and proof
+        // verification are delegated to the vendor's PaymentServiceStrategy (same
+        // opt-in pattern as initiateMandatePayment/chargeRecurring).
+        PaymentServiceStrategy gatewayStrategy = resolvePaymentStrategy(enrollDTO);
+        if (gatewayStrategy != null
+                && gatewayStrategy.isClientPaymentConfirmation(enrollDTO.getPaymentInitiationRequest())) {
+            return completeGatewayPaymentConfirmation(learnerEnrollRequestDTO,
+                    enrollDTO.getPaymentInitiationRequest(), gatewayStrategy);
         }
 
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
@@ -748,6 +784,97 @@ public class LearnerEnrollRequestService {
                     "Seat limit reached for this organization. Current members: %d, Maximum allowed: %d.",
                     currentCount, memberCount));
         }
+    }
+
+    /**
+     * Resolves the {@link PaymentServiceStrategy} for the request's payment
+     * vendor, or null when the request has no payment initiation / an unknown
+     * vendor (e.g. MANUAL) — callers then proceed with the normal enrollment
+     * flow.
+     */
+    private PaymentServiceStrategy resolvePaymentStrategy(LearnerPackageSessionsEnrollDTO enrollDTO) {
+        if (enrollDTO == null || enrollDTO.getPaymentInitiationRequest() == null) {
+            return null;
+        }
+        String vendor = enrollDTO.getPaymentInitiationRequest().getVendor();
+        if (!StringUtils.hasText(vendor)) {
+            return null;
+        }
+        try {
+            return paymentServiceFactory.getStrategy(PaymentGateway.valueOf(vendor.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Completes an enrollment whose payment the client just confirmed ("phase 2"):
+     * the gateway strategy verifies the proof of payment and returns the gateway
+     * order reference, which locates the payment log created on the FIRST call.
+     * The log is then marked PAID through the same idempotent path the webhook
+     * uses — whichever of webhook and this call arrives second is a no-op. Never
+     * falls through to fresh enrollment.
+     */
+    private LearnerEnrollResponseDTO completeGatewayPaymentConfirmation(
+            LearnerEnrollRequestDTO learnerEnrollRequestDTO,
+            PaymentInitiationRequestDTO paymentInit,
+            PaymentServiceStrategy gatewayStrategy) {
+        String instituteId = learnerEnrollRequestDTO.getInstituteId();
+        String vendor = paymentInit.getVendor();
+
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+        String gatewayOrderRef = gatewayStrategy.verifyClientPaymentConfirmation(paymentInit, gatewayData);
+
+        // The order was created on the first call; its payment log carries the gateway
+        // order reference inside payment_specific_data. Prefer the earliest log with
+        // a user plan — that is the order creator.
+        vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog paymentLog =
+                paymentLogRepository.findAllByOrderIdInJson(gatewayOrderRef)
+                        .stream()
+                        .filter(pl -> pl.getUserPlan() != null)
+                        .min(Comparator.comparing(
+                                vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog::getCreatedAt))
+                        .orElseThrow(() -> new VacademyException(
+                                "Payment received but the originating enrollment was not found for " + vendor
+                                        + " order " + gatewayOrderRef));
+
+        log.info("{} payment confirmation: verified order {} -> paymentLog={}, userPlan={}",
+                vendor, gatewayOrderRef, paymentLog.getId(), paymentLog.getUserPlan().getId());
+
+        // Idempotent with the webhook: marks the log PAID and runs plan activation /
+        // invoicing exactly once — whichever of webhook and this call arrives second
+        // is a no-op thanks to the conditional paid-claim in updatePaymentLogsByOrderId.
+        paymentLogService.updatePaymentLog(paymentLog.getId(), PaymentStatusEnum.PAID.name(), instituteId);
+
+        PaymentResponseDTO paymentResponse = new PaymentResponseDTO();
+        paymentResponse.setOrderId(paymentLog.getId());
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("paymentStatus", PaymentStatusEnum.PAID.name());
+        responseData.put("gatewayOrderId", gatewayOrderRef);
+        responseData.put("amount", paymentLog.getPaymentAmount());
+        paymentResponse.setResponseData(responseData);
+
+        UserDTO user = learnerEnrollRequestDTO.getUser();
+        if ((user == null || !StringUtils.hasText(user.getId()))
+                && StringUtils.hasText(paymentLog.getUserId())) {
+            try {
+                List<UserDTO> users = authService
+                        .getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId()));
+                if (users != null && !users.isEmpty()) {
+                    user = users.get(0);
+                }
+            } catch (Exception e) {
+                log.warn("Could not resolve user {} for payment-confirmation response: {}",
+                        paymentLog.getUserId(), e.getMessage());
+            }
+        }
+
+        LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
+        response.setUser(user);
+        response.setPaymentResponse(paymentResponse);
+        response.setUserPlanId(paymentLog.getUserPlan().getId());
+        return response;
     }
 
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {

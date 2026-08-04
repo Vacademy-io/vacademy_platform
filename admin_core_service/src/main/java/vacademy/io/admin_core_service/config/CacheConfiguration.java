@@ -154,6 +154,16 @@ public class CacheConfiguration {
                                 "superAdminInstituteCourses",
                                 caffeineCache2mBuilder().build());
 
+                // Learner course structure caches (user-independent JSON trees; the
+                // per-user progress is overlaid fresh on every request). Payloads can
+                // be large (embedded document/quiz content), so sizes are kept small.
+                CaffeineCache learnerModulesStructure = new CaffeineCache(
+                                "learnerModulesStructure",
+                                caffeineCacheStructureBuilder().build());
+                CaffeineCache learnerPackageSlidesStructure = new CaffeineCache(
+                                "learnerPackageSlidesStructure",
+                                caffeineCacheStructureBuilder().build());
+
                 // Parent-portal caches. MUST be registered or @Cacheable throws in the proxy.
                 // guardianChildren: the authoritative guardian->children list (auth_service HMAC),
                 // keyed on parentUserId, 60s so an admin re-link takes effect within a minute.
@@ -197,6 +207,8 @@ public class CacheConfiguration {
                                 superAdminInstituteDetail,
                                 superAdminPlatformDashboard,
                                 superAdminInstituteCourses,
+                                learnerModulesStructure,
+                                learnerPackageSlidesStructure,
                                 guardianChildren,
                                 parentPortalSettings));
 
@@ -260,6 +272,18 @@ public class CacheConfiguration {
                 return Caffeine.newBuilder()
                                 .maximumSize(10000) // Support up to 10k active users in memory
                                 .expireAfterWrite(5, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * Course-structure JSON cache builder. 2-minute TTL bounds how long an
+         * admin content edit can take to reach learners; small max size because
+         * each entry is a whole course tree (can run to megabytes).
+         */
+        private Caffeine<Object, Object> caffeineCacheStructureBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(300)
+                                .expireAfterWrite(2, TimeUnit.MINUTES)
                                 .recordStats();
         }
 

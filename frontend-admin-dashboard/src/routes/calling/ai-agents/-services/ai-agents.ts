@@ -72,8 +72,10 @@ export function blankAgent(instituteId: string): AiAgent {
         language: 'hinglish',
         // New agents get the default engine and ITS voice, stamped explicitly so
         // no default anywhere downstream has to carry the pricing decision.
-        ttsModel: 'rumik',
-        voice: 'ira',
+        // Sarvam until the Rumik port's four P0s are fixed and it has been heard
+        // on a live call — see TtsVoiceCatalog.NEW_AGENT_DEFAULT.
+        ttsModel: 'sarvam',
+        voice: 'priya',
         openingLine: '',
         systemPrompt: '',
         extractionQuestions: [],

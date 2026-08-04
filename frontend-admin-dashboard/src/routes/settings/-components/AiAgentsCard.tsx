@@ -107,8 +107,9 @@ function blankAgent(instituteId: string): AiAgent {
         enabled: true,
         direction: 'OUTBOUND',
         language: 'hinglish',
-        ttsModel: 'rumik',
-        voice: 'ira',
+        // See TtsVoiceCatalog.NEW_AGENT_DEFAULT — Rumik is not call-ready yet.
+        ttsModel: 'sarvam',
+        voice: 'priya',
         openingLine: '',
         systemPrompt: '',
         extractionQuestions: [],

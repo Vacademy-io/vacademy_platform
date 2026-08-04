@@ -86,7 +86,7 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
  * preserve and gets the default engine.
  */
 export function resolveTtsModel(agent: { id?: string; ttsModel?: string }): TtsModelId {
-    return normalizeTtsModel(agent.ttsModel) ?? (agent.id ? 'sarvam' : 'rumik');
+    return normalizeTtsModel(agent.ttsModel) ?? 'sarvam';
 }
 
 export function voicesForModel(voices: VoiceOption[], model: TtsModelId): VoiceOption[] {

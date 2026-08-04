@@ -43,6 +43,24 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_SARVAM = "sarvam";
 
     /**
+     * Engine stamped on a NEW agent.
+     *
+     * <p>TEMPORARILY Sarvam, not Rumik. An adversarial review of the Rumik port found
+     * four P0s that make it unfit for a live call, the worst two being: pipecat sends
+     * one socket message per sentence as the LLM streams, and Rumik's request/response
+     * socket CANCELS the in-flight request when the next one arrives — so a
+     * three-sentence reply plays ~85 ms of sentence 1, ~85 ms of sentence 2, then
+     * sentence 3 (probed live); and an idle Rumik socket closes cleanly at 60 s, which
+     * hits a pipecat receive loop that spins without yielding and starves the event
+     * loop for EVERY concurrent call on the box.
+     *
+     * <p>Rumik has never actually spoken on a live call, so nothing is regressed by
+     * waiting. Flip this to MODEL_RUMIK once those are fixed and Rumik has been heard
+     * on a real call — not before.
+     */
+    public static final String NEW_AGENT_DEFAULT = MODEL_SARVAM;
+
+    /**
      * Sarvam Bulbul v3 speakers (37, verified against docs.sarvam.ai 2026-07-16).
      * Genders per the voice bot's map.
      */

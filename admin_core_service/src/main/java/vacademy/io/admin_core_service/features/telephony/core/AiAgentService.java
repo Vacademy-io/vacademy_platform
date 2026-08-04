@@ -189,7 +189,7 @@ public class AiAgentService {
         if (requested == null || requested.isBlank()) {
             engine = agent.getTtsModel() != null && !agent.getTtsModel().isBlank()
                     ? TtsVoiceCatalog.normalizeModel(agent.getTtsModel())
-                    : TtsVoiceCatalog.MODEL_RUMIK;
+                    : TtsVoiceCatalog.NEW_AGENT_DEFAULT;
             if (engine == null) engine = TtsVoiceCatalog.MODEL_SARVAM; // unreadable stored value
         } else {
             engine = TtsVoiceCatalog.normalizeModel(requested);

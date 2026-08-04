@@ -29,7 +29,15 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
+                    -- AVG over chapter_pct WITHOUT coalescing the inner NULL to 0:
+                    -- chapter_slide_pct only yields a row for a chapter that has at
+                    -- least one learner-visible slide, so an empty chapter arrives as
+                    -- NULL and AVG skips it in both numerator and denominator. Wrapping
+                    -- it in COALESCE(...,0) first would count a chapter the learner
+                    -- cannot open as 0% and cap the module below 100% permanently.
+                    -- The per-chapter value below still coalesces to 0 -- an empty
+                    -- chapter is displayed as 0%, it just does not drag the module.
+                    'percentage_completed', COALESCE(AVG(chapter_slide_pct.chapter_pct), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
@@ -217,7 +225,15 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
+                    -- AVG over chapter_pct WITHOUT coalescing the inner NULL to 0:
+                    -- chapter_slide_pct only yields a row for a chapter that has at
+                    -- least one learner-visible slide, so an empty chapter arrives as
+                    -- NULL and AVG skips it in both numerator and denominator. Wrapping
+                    -- it in COALESCE(...,0) first would count a chapter the learner
+                    -- cannot open as 0% and cap the module below 100% permanently.
+                    -- The per-chapter value below still coalesces to 0 -- an empty
+                    -- chapter is displayed as 0%, it just does not drag the module.
+                    'percentage_completed', COALESCE(AVG(chapter_slide_pct.chapter_pct), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(

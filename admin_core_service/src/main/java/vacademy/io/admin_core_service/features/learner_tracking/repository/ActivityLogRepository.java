@@ -226,6 +226,26 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     WHERE mcm.module_id = :moduleId
                       AND cpm.status IN (:chapterStatusList)
                       AND c.status IN (:chapterStatusList)
+                      -- A chapter with no learner-visible slide can never produce a
+                      -- percentage: getChapterCompletionPercentage divides by a count
+                      -- of 0, returns NULL, and the cascade drops the write, so no
+                      -- CHAPTER row is ever stored. It would then land here via the
+                      -- LEFT JOIN as 0 and drag the module down forever -- a chapter
+                      -- the learner cannot even open counted as work they failed to
+                      -- do, capping the course below 100% and blocking certificates.
+                      -- Count a chapter only when it could actually produce a value.
+                      -- Slide statuses are pinned rather than parameterised because
+                      -- every caller passes exactly PUBLISHED + UNSYNC, matching
+                      -- getChapterCompletionPercentage's own denominator.
+                      AND EXISTS (
+                          SELECT 1
+                          FROM chapter_to_slides cts
+                          JOIN slide s ON s.id = cts.slide_id
+                          WHERE cts.chapter_id = c.id
+                            AND cts.status IN ('PUBLISHED', 'UNSYNC')
+                            AND s.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                                  'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+                      )
                 ) distinct_chapters
             LEFT JOIN (
                 SELECT DISTINCT ON (lo.source_id)

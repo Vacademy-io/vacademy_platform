@@ -146,9 +146,24 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- 2. MODULE = mean over the module's ACTIVE, batch-mapped chapters of the
---    stored chapter percentage (missing chapter row = 0).
---    Only modules above a chapter we actually changed.
+-- 2. MODULE = mean over the module's ACTIVE, batch-mapped chapters that
+--    contain at least one learner-visible slide (missing chapter row = 0).
+--
+--    Two sources feed this step:
+--      (a) modules above a chapter step 1 actually changed;
+--      (b) modules containing a chapter with NO learner-visible slides.
+--
+--    (b) is a second, independent defect fixed in the same change: such a
+--    chapter can never produce a percentage, so no CHAPTER row is ever
+--    written for it, and the old denominator still counted it -- scoring the
+--    learner 0 for content that does not exist and capping the course below
+--    100% permanently (blocking certificates). The exclusion below matches
+--    the corrected live query in
+--    ActivityLogRepository#getModuleCompletionPercentage.
+--
+--    These rows do not self-heal either: a learner who has finished the real
+--    content has no reason to revisit it, so nothing ever triggers a
+--    recompute.
 -- ---------------------------------------------------------------------------
 
 DROP TABLE IF EXISTS tmp_v423_module_changed;
@@ -157,6 +172,28 @@ WITH scope AS (
     SELECT DISTINCT cc.user_id, mcm.module_id
     FROM tmp_v423_chapter_changed cc
     JOIN module_chapter_mapping mcm ON mcm.chapter_id = cc.chapter_id
+    UNION
+    SELECT DISTINCT lo.user_id, lo.source_id AS module_id
+    FROM learner_operation lo
+    WHERE lo.source = 'MODULE'
+      AND lo.operation = 'PERCENTAGE_MODULE_COMPLETED'
+      AND EXISTS (
+          SELECT 1
+          FROM module_chapter_mapping mcm
+          JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN ('ACTIVE')
+          JOIN chapter_package_session_mapping cpsm
+               ON cpsm.chapter_id = c.id AND cpsm.status IN ('ACTIVE')
+          WHERE mcm.module_id = lo.source_id
+            AND NOT EXISTS (
+                SELECT 1
+                FROM chapter_to_slides cts
+                JOIN slide s ON s.id = cts.slide_id
+                WHERE cts.chapter_id = c.id
+                  AND cts.status IN ('PUBLISHED', 'UNSYNC')
+                  AND s.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                        'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+            )
+      )
 ),
 calc AS (
     SELECT sco.user_id,
@@ -174,6 +211,15 @@ calc AS (
         JOIN chapter_package_session_mapping cpsm
              ON cpsm.chapter_id = c.id AND cpsm.status IN ('ACTIVE')
         WHERE mcm.module_id = sco.module_id
+          AND EXISTS (
+              SELECT 1
+              FROM chapter_to_slides cts
+              JOIN slide s ON s.id = cts.slide_id
+              WHERE cts.chapter_id = c.id
+                AND cts.status IN ('PUBLISHED', 'UNSYNC')
+                AND s.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                      'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+          )
     ) dc ON true
     LEFT JOIN learner_operation ch
          ON ch.source = 'CHAPTER'

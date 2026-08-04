@@ -4,6 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
+import vacademy.io.admin_core_service.features.institute.entity.Template;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
 import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
@@ -14,6 +18,7 @@ import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendReque
 import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.HashMap;
 import java.util.List;
@@ -55,14 +60,29 @@ public class MentorshipNotificationService {
 
     public static final String SETTING_KEY = "MENTORSHIP_SETTING";
 
+    /** Global-default templates live under this pseudo institute (see V424 seed). */
+    private static final String DEFAULT_INSTITUTE_ID = "DEFAULT";
+    private static final String FALLBACK_THEME_COLOR = "#FF9800";
+    private static final String FALLBACK_SUPPORT_EMAIL = "support@vacademy.io";
+    private static final String FALLBACK_LEARNER_URL = "https://learner.vacademy.io";
+
     private final NotificationService notificationService;
     private final InstituteSettingService instituteSettingService;
     private final MentorRepository mentorRepository;
     private final AuthService authService;
+    private final InstituteRepository instituteRepository;
+    private final TemplateRepository templateRepository;
+    private final InstituteDomainRoutingRepository domainRoutingRepository;
 
-    /** Immutable code-default text for a trigger (used when the admin hasn't customised a field). */
+    /**
+     * Immutable code-default text for a trigger. {@code templateName} is the name of the DB
+     * email template (in the {@code templates} table) preferred over this inline body — resolved
+     * per-institute with a DEFAULT fallback (V424 seed); the inline body is only used when no
+     * template row exists at all.
+     */
     private record Defaults(String type, boolean emailDefault, String emailSubject, String emailBody,
-                            String alertTitle, String alertBody, String pushTitle, String pushBody) {}
+                            String alertTitle, String alertBody, String pushTitle, String pushBody,
+                            String templateName) {}
 
     private static final Defaults ASSIGNMENT_STUDENT = new Defaults(
             "MENTOR_ASSIGNED", true,
@@ -72,7 +92,8 @@ public class MentorshipNotificationService {
             "You have a new mentor",
             "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book a session or message them.",
             "You have a new mentor",
-            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.");
+            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.",
+            "Mentor Assigned - Student");
 
     private static final Defaults BOOKING = new Defaults(
             "MENTOR_BOOKING", false, // booking-page confirmation email already covers email
@@ -82,7 +103,8 @@ public class MentorshipNotificationService {
             "Mentor session booked",
             "Your session \"{{session_title}}\" is confirmed for {{session_datetime}}.",
             "Mentor session booked",
-            "Your session \"{{session_title}}\" is confirmed for {{session_datetime}}.");
+            "Your session \"{{session_title}}\" is confirmed for {{session_datetime}}.",
+            "Mentor Session Booked");
 
     private static final Defaults CANCELLATION = new Defaults(
             "MENTOR_BOOKING", true,
@@ -92,7 +114,8 @@ public class MentorshipNotificationService {
             "Mentor session cancelled",
             "Your session \"{{session_title}}\" was cancelled.",
             "Mentor session cancelled",
-            "Your session \"{{session_title}}\" was cancelled.");
+            "Your session \"{{session_title}}\" was cancelled.",
+            "Mentor Session Cancelled");
 
     // ---------------------------------------------------------------- triggers
 
@@ -176,9 +199,14 @@ public class MentorshipNotificationService {
                                   Map<String, String> vars, Defaults d) {
         Map<String, Object> em = channel(trigger, "email");
         if (channelEnabled(em, d.emailDefault()) && email != null && !email.isBlank()) {
-            sendEmail(instituteId, email, userId,
-                    applyPlaceholders(orDefault(str(em, "subject"), d.emailSubject()), vars),
-                    applyPlaceholders(orDefault(str(em, "body"), d.emailBody()), vars), d.type());
+            // Prefer the branded DB template (institute override -> DEFAULT seed); fall back to
+            // the admin's inline subject/body, then the code default.
+            if (!sendTemplatedEmail(instituteId, email, vars.getOrDefault("name", "there"),
+                    d.templateName(), vars)) {
+                sendEmail(instituteId, email, userId,
+                        applyPlaceholders(orDefault(str(em, "subject"), d.emailSubject()), vars),
+                        applyPlaceholders(orDefault(str(em, "body"), d.emailBody()), vars), d.type());
+            }
         }
         Map<String, Object> al = channel(trigger, "system_alert");
         if (channelEnabled(al, true) && userId != null) {
@@ -214,11 +242,100 @@ public class MentorshipNotificationService {
                         + "Open My Mentorship to view them.", vars);
         if (channelEnabled(channel(trigger, "email"), true)
                 && user != null && user.getEmail() != null && !user.getEmail().isBlank()) {
-            sendEmail(instituteId, user.getEmail(), userId, title,
-                    "<p>Hi " + applyPlaceholders("{{name}}", vars) + ",</p><p>" + body + "</p>", "MENTEE_ASSIGNED");
+            if (!sendTemplatedEmail(instituteId, user.getEmail(),
+                    vars.getOrDefault("name", nameOf(user, "there")), "New Mentee - Mentor", vars)) {
+                sendEmail(instituteId, user.getEmail(), userId, title,
+                        "<p>Hi " + applyPlaceholders("{{name}}", vars) + ",</p><p>" + body + "</p>", "MENTEE_ASSIGNED");
+            }
         }
         if (channelEnabled(channel(trigger, "system_alert"), true)) systemAlert(instituteId, userId, title, body);
         if (channelEnabled(channel(trigger, "push"), true)) push(instituteId, userId, title, body);
+    }
+
+    // ----------------------------------------------------------- DB templates
+
+    /**
+     * Send a branded HTML email from the DB template store. Resolves by
+     * (institute, name, EMAIL) with a DEFAULT fallback (V424 seed) and renders the
+     * subject/content with the mentorship vars + institute branding. Returns false when
+     * no template row exists so the caller can fall back to the inline body.
+     */
+    private boolean sendTemplatedEmail(String instituteId, String email, String recipientName,
+                                       String templateName, Map<String, String> vars) {
+        if (templateName == null || templateName.isBlank() || email == null || email.isBlank()) return false;
+        Template template = resolveTemplate(instituteId, templateName);
+        if (template == null) return false;
+        try {
+            InstituteContext ctx = loadInstituteContext(instituteId);
+            Map<String, String> v = new HashMap<>(vars);
+            v.put("recipient_name", recipientName != null && !recipientName.isBlank() ? recipientName : "there");
+            v.put("institute_name", ctx.name());
+            v.put("institute_theme_color", ctx.themeColor());
+            v.put("support_email", ctx.supportEmail());
+            v.put("cta_url", ctx.ctaUrl());
+            String subject = applyPlaceholders(template.getSubject(), v);
+            String body = applyPlaceholders(template.getContent(), v);
+            notificationService.sendHtmlEmailViaUnified(email, subject, body, instituteId,
+                    null, ctx.fromName(), "TRANSACTIONAL");
+            return true;
+        } catch (Exception e) {
+            log.warn("mentorship templated email failed ({}): {}", templateName, e.getMessage());
+            return false;
+        }
+    }
+
+    /** Institute's own EMAIL template row for this name, else the shared DEFAULT seed. */
+    private Template resolveTemplate(String instituteId, String templateName) {
+        try {
+            Optional<Template> institute =
+                    templateRepository.findByInstituteIdAndNameAndType(instituteId, templateName, "EMAIL");
+            if (institute.isPresent()) return institute.get();
+            return templateRepository.findByInstituteIdAndNameAndType(
+                    DEFAULT_INSTITUTE_ID, templateName, "EMAIL").orElse(null);
+        } catch (Exception e) {
+            log.warn("mentorship template lookup failed ({}): {}", templateName, e.getMessage());
+            return null;
+        }
+    }
+
+    private record InstituteContext(String name, String themeColor, String supportEmail,
+                                    String ctaUrl, String fromName) {}
+
+    /** Institute branding for email rendering: name, theme colour, learner CTA link. */
+    private InstituteContext loadInstituteContext(String instituteId) {
+        String name = "";
+        String themeColor = FALLBACK_THEME_COLOR;
+        String cta = FALLBACK_LEARNER_URL;
+        try {
+            Institute inst = instituteRepository.findById(instituteId).orElse(null);
+            if (inst != null) {
+                if (inst.getInstituteName() != null && !inst.getInstituteName().isBlank()) {
+                    name = inst.getInstituteName();
+                }
+                themeColor = normalizeThemeColor(inst.getInstituteThemeCode());
+            }
+        } catch (Exception ignore) {
+            // fall back to defaults
+        }
+        try {
+            cta = domainRoutingRepository.findByInstituteIdAndRole(instituteId, "LEARNER")
+                    .map(r -> r.getSubdomain())
+                    .filter(s -> s != null && s.contains("."))
+                    .map(s -> "https://" + s)
+                    .orElse(FALLBACK_LEARNER_URL);
+        } catch (Exception ignore) {
+            // fall back to the default learner URL
+        }
+        return new InstituteContext(name, themeColor, FALLBACK_SUPPORT_EMAIL, cta,
+                name.isBlank() ? null : name);
+    }
+
+    /** Accept a raw hex (with/without '#') or CSS keyword; blank -> fallback. Mirrors doubt emails. */
+    private static String normalizeThemeColor(String themeCode) {
+        if (themeCode == null || themeCode.trim().isEmpty()) return FALLBACK_THEME_COLOR;
+        String t = themeCode.trim();
+        if (t.matches("^[0-9A-Fa-f]{6}$")) return "#" + t;
+        return t;
     }
 
     // --------------------------------------------------------------- channels

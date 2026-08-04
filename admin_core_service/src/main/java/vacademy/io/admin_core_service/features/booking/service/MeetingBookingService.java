@@ -27,6 +27,7 @@ import vacademy.io.admin_core_service.features.live_session.service.Step2Service
 import vacademy.io.admin_core_service.features.mentorship.service.MentorshipNotificationService;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification_service.service.BrandedEmailService;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
 import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
@@ -80,6 +81,7 @@ public class MeetingBookingService {
     private final AuthService authService;
     private final NotificationService notificationService;
     private final MentorshipNotificationService mentorshipNotificationService;
+    private final BrandedEmailService brandedEmailService;
     private final PlatformTransactionManager transactionManager;
 
     public BookingInstanceDTO createBooking(MeetingBookingRequestDTO request, CustomUserDetails user) {
@@ -350,13 +352,43 @@ public class MeetingBookingService {
             }
             if (recipients.isEmpty()) return;
 
+            boolean pending = "PENDING".equals(instance.getStatus());
             String when = instance.getScheduledStartUtc().toInstant().atZone(zone)
                     .format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm"))
                     + " (" + zone.getId() + ")";
+            String statusLabel = pending ? "awaiting confirmation" : "confirmed";
+
+            // Prefer the branded DB template (institute override -> DEFAULT seed, V425), rendered
+            // per-recipient so the invitee AND the host each get a professional themed email.
+            if (brandedEmailService.hasEmailTemplate(instance.getInstituteId(), "Booking Confirmation")) {
+                String joinButton = "";
+                if (instance.getMeetLink() != null && !instance.getMeetLink().isBlank()) {
+                    joinButton = "<table cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 22px;\">"
+                            + "<tr><td style=\"border-radius:8px;background:{{institute_theme_color}};\">"
+                            + "<a href=\"" + instance.getMeetLink()
+                            + "\" style=\"display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;"
+                            + "color:#ffffff;text-decoration:none;border-radius:8px;\">Join meeting</a></td></tr></table>";
+                }
+                Map<String, String> vars = new HashMap<>();
+                vars.put("meeting_title", title);
+                vars.put("session_datetime", when);
+                vars.put("status_label", statusLabel);
+                vars.put("join_button", joinButton);
+                vars.put("meet_link", instance.getMeetLink() != null ? instance.getMeetLink() : "");
+                for (NotificationToUserDTO r : recipients) {
+                    String rName = r.getPlaceholders() != null
+                            ? r.getPlaceholders().getOrDefault("name", "there") : "there";
+                    brandedEmailService.sendBrandedEmail(instance.getInstituteId(), r.getChannelId(),
+                            rName, "Booking Confirmation", vars);
+                }
+                return;
+            }
+
+            // Fallback: plain inline body (only when no template row exists).
             StringBuilder body = new StringBuilder()
                     .append("<p>Hi {{name}},</p>")
                     .append("<p>Your meeting <b>").append(title).append("</b> is ")
-                    .append("PENDING".equals(instance.getStatus()) ? "awaiting confirmation" : "confirmed")
+                    .append(statusLabel)
                     .append(" for <b>").append(when).append("</b>.</p>");
             if (instance.getMeetLink() != null && !instance.getMeetLink().isBlank()) {
                 body.append("<p>Join link: <a href=\"").append(instance.getMeetLink()).append("\">")
@@ -364,7 +396,7 @@ public class MeetingBookingService {
             }
 
             NotificationDTO dto = new NotificationDTO();
-            dto.setSubject(("PENDING".equals(instance.getStatus()) ? "Meeting requested: " : "Meeting confirmed: ") + title);
+            dto.setSubject((pending ? "Meeting requested: " : "Meeting confirmed: ") + title);
             dto.setBody(body.toString());
             dto.setNotificationType("BOOKING_CONFIRMATION");
             dto.setSource(SOURCE_MEETING_BOOKING);

@@ -236,7 +236,13 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                       -- Count a chapter only when it could actually produce a value.
                       -- Slide statuses are pinned rather than parameterised because
                       -- every caller passes exactly PUBLISHED + UNSYNC, matching
-                      -- getChapterCompletionPercentage's own denominator.
+                      -- the denominator used by getChapterCompletionPercentage.
+                      -- NOTE: never write an apostrophe in a comment inside a
+                      -- @Query block. Spring Data scans the query for quoted
+                      -- ranges before JPA sees it and does not understand SQL
+                      -- comments, so a lone apostrophe opens a string literal
+                      -- that never closes and the repository bean fails to
+                      -- build -- taking the whole service down at startup.
                       AND EXISTS (
                           SELECT 1
                           FROM chapter_to_slides cts

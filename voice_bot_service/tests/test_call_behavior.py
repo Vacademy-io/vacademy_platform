@@ -1126,7 +1126,6 @@ def test_caller_words_cancel_a_pending_close():
 
 def test_build_tts_picks_rumik_by_default_and_sarvam_on_request(monkeypatch):
     class _S: pass
-    monkeypatch.setenv("TTS_MODEL", "rumik")
     monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
     pv.get_settings.cache_clear()
     try:
@@ -1184,3 +1183,59 @@ def test_rumik_implements_the_websocket_contract():
     only if these exact hooks exist."""
     for m in ("_connect_websocket", "_disconnect_websocket", "_receive_messages"):
         assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_agent_without_a_tts_model_stays_on_sarvam(monkeypatch):
+    """A billing-relevant switch must never happen by omission. Agents predating
+    the picker pay the Sarvam rate and approved a Sarvam voice."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_tts_model({}) == "sarvam"
+        assert b._agent_tts_model({"tts_model": "rumik"}) == "rumik"
+        assert b._agent_tts_model({"tts_model": " Rumik "}) == "rumik"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_voice_from_the_other_vendors_palette_is_dropped(monkeypatch):
+    """Voice names don't cross vendors: Sarvam's "priya" is a 400 on every Rumik
+    utterance, i.e. a mute call. Switching model without switching voice is THE
+    obvious mistake, so fall back to the provider default."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_voice({"tts_model": "rumik", "voice": "priya"}) is None
+        assert b._agent_voice({"tts_model": "rumik", "voice": "ira"}) == "ira"
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "ira"}) is None
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "priya"}) == "priya"
+        assert b._agent_voice({"voice": "shubh"}) == "shubh"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_male_voices_get_masculine_hindi_grammar():
+    """Hindi first-person verbs are gendered. A male voice saying "kar rahi hoon"
+    is the #1 immersion breaker, and Rumik's palette shares NO names with
+    Sarvam's — so every Rumik male preset must be in the table."""
+    for v in ("adam", "noah", "theo", "lucas"):
+        assert b._voice_gender(v) == "male", v
+    for v in ("ira", "emma", "mia", "sophia", "ava", "siya", "aisha", "zoya"):
+        assert b._voice_gender(v) == "female", v
+
+
+def test_grammar_follows_the_voice_we_actually_speak_with(monkeypatch):
+    """If the configured voice was dropped as cross-vendor, the grammar must match
+    the fallback voice, not the discarded name."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        # a Sarvam MALE name left behind on an agent switched to Rumik: we will
+        # speak with Rumik's female default, so grammar must be feminine.
+        a = {"tts_model": "rumik", "voice": "shubh"}
+        assert b._agent_voice(a) is None
+        assert b._voice_gender(b._agent_voice(a)
+                                    or b._default_voice_for(a)) == "female"
+    finally:
+        pv.get_settings.cache_clear()

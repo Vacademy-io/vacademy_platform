@@ -89,7 +89,13 @@ class Settings:
     # Per-agent selectable; this is the fallback when an agent has no preference.
     # "rumik" = Rumik Silk mulberry 1.5 (Rs 0.50/1k chars). "sarvam" = bulbul:v3
     # (Rs 3.00/1k) — 6x dearer and priced to the customer accordingly.
-    tts_model: str = field(default_factory=lambda: _env("TTS_MODEL", "rumik"))
+    # FALLBACK when an agent has no tts_model of its own — deliberately "sarvam",
+    # even though Rumik is the default for NEW agents. Absence of config means an
+    # agent predates the picker, and those institutes are billed at the Sarvam
+    # rate and have approved a Sarvam voice; moving them by omission would change
+    # both what they hear and what they pay. New agents get "rumik" stamped
+    # EXPLICITLY by admin_core, so the default never has to carry that decision.
+    tts_model: str = field(default_factory=lambda: _env("TTS_MODEL", "sarvam"))
     rumik_api_key: str = field(default_factory=lambda: _env("RUMIK_API_KEY"))
     rumik_voice: str = field(default_factory=lambda: _env("RUMIK_VOICE", "ira"))
 

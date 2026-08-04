@@ -17,6 +17,8 @@ import { Switch } from '@/components/ui/switch';
 import {
     FloppyDisk,
     ArrowCounterClockwise,
+    CaretDown,
+    CaretRight,
     CheckCircle,
     Warning,
     BracketsCurly,
@@ -771,11 +773,15 @@ function NodeConfigEditorCard({
     node,
     devMode,
     templates,
+    collapsed,
+    onToggleCollapsed,
 }: {
     workflowId: string;
     node: WorkflowRawNode;
     devMode: boolean;
     templates: WhatsAppTemplateInfo[];
+    collapsed: boolean;
+    onToggleCollapsed: () => void;
 }) {
     const queryClient = useQueryClient();
 
@@ -873,13 +879,36 @@ function NodeConfigEditorCard({
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white">
-            {/* Card header */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-3">
+            {/* Card header — click anywhere to collapse/expand */}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onToggleCollapsed}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onToggleCollapsed();
+                    }
+                }}
+                className={`flex cursor-pointer select-none flex-wrap items-center gap-2 px-4 py-3 ${
+                    collapsed ? '' : 'border-b border-neutral-100'
+                }`}
+            >
+                {collapsed ? (
+                    <CaretRight size={14} className="shrink-0 text-neutral-400" />
+                ) : (
+                    <CaretDown size={14} className="shrink-0 text-neutral-400" />
+                )}
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-500">
                     {node.node_order}
                 </span>
                 <span className="text-lg">{nodeMeta?.icon ?? '⚙️'}</span>
                 <span className="font-medium text-neutral-800">{node.node_name}</span>
+                {collapsed && isDirty && (
+                    <span className="rounded-full bg-warning-50 px-2 py-0.5 text-caption text-warning-600">
+                        unsaved
+                    </span>
+                )}
                 {devMode && (
                     <Badge variant="outline" className="text-[10px] font-medium text-neutral-600">
                         {nodeMeta?.label ?? node.node_type}
@@ -898,8 +927,8 @@ function NodeConfigEditorCard({
                 )}
             </div>
 
-            {/* Card body */}
-            <div className="space-y-4 p-4">
+            {/* Card body — hidden while collapsed (state and unsaved edits survive) */}
+            <div className={collapsed ? 'hidden' : 'space-y-4 p-4'}>
                 {/* Node metadata row */}
                 <div className={devMode ? 'grid grid-cols-1 gap-3 sm:grid-cols-3' : 'hidden'}>
                     <div>
@@ -1101,6 +1130,28 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
         setDevMode(next);
         localStorage.setItem('workflow-config-dev-mode', String(next));
     };
+    // Collapsed cards, by node id. Long workflows (a node per day) start folded
+    // so the page reads as an index; short ones stay open.
+    const [collapsedIds, setCollapsedIds] = useState<Set<string> | null>(null);
+    const nodeIds = useMemo(
+        () => (data?.nodes ?? []).map((n) => n.node_template_id),
+        [data]
+    );
+    const effectiveCollapsed = useMemo(() => {
+        if (collapsedIds) return collapsedIds;
+        return nodeIds.length > 5 ? new Set(nodeIds) : new Set<string>();
+    }, [collapsedIds, nodeIds]);
+    const toggleCollapsed = (id: string) =>
+        setCollapsedIds(() => {
+            const next = new Set(effectiveCollapsed);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    const allCollapsed = nodeIds.length > 0 && nodeIds.every((id) => effectiveCollapsed.has(id));
 
     if (isLoading) {
         return (
@@ -1159,6 +1210,16 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     variant="outline"
                     size="sm"
                     className="shrink-0 gap-1.5"
+                    onClick={() => setCollapsedIds(allCollapsed ? new Set<string>() : new Set(nodeIds))}
+                    title={allCollapsed ? 'Expand every step' : 'Collapse every step'}
+                >
+                    {allCollapsed ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                    {allCollapsed ? 'Expand all' : 'Collapse all'}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
                     onClick={toggleDevMode}
                 >
                     <BracketsCurly size={14} />
@@ -1173,6 +1234,8 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     node={node}
                     devMode={devMode}
                     templates={templates}
+                    collapsed={effectiveCollapsed.has(node.node_template_id)}
+                    onToggleCollapsed={() => toggleCollapsed(node.node_template_id)}
                 />
             ))}
         </div>

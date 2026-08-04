@@ -829,6 +829,36 @@ public class DynamicNotificationService {
     }
 
     /**
+     * Dispatch an event notification on one channel, if the institute (or the platform DEFAULT)
+     * has a config bound for it. Returns false when no config exists — that is the normal
+     * "this institute has not opted into this channel" case, not an error.
+     *
+     * <p>Lets a sender that owns its own primary channel (e.g. the payment-confirmation email,
+     * which attaches an invoice PDF) still fan out to the other channels through the standard
+     * unified path, getting WhatsApp phone normalisation, HTML→plain-text sanitisation and WATI
+     * contact-attribute syncing for free instead of reimplementing them.
+     */
+    public boolean sendEventNotification(
+            NotificationEventType eventType,
+            String instituteId,
+            NotificationTemplateType templateType,
+            UserDTO user,
+            NotificationTemplateVariables templateVars) {
+        try {
+            Optional<NotificationEventConfig> config = findEventConfig(eventType, instituteId, templateType);
+            if (config.isEmpty()) {
+                return false;
+            }
+            sendNotificationViaUnifiedApi(config.get(), instituteId, user, templateVars);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to send {} notification on {} for institute {}: {}",
+                    eventType, templateType, instituteId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
      * Institute-scoped config for an event/channel, falling back to the platform-wide
      * {@code DEFAULT} row — the same two-step lookup every event-driven notification here uses.
      *

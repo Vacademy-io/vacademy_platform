@@ -124,10 +124,56 @@ public class PaymentNotificatonService {
         }
 
         Institute institute = instituteService.findById(instituteId);
-        if (institute == null || userDTO.getEmail() == null)
+        if (institute == null)
             return false;
 
         if (!isPaymentSuccessful(paymentResponseDTO)) {
+            return false;
+        }
+
+        // Variables come from the declared NotificationTemplateVariables fields, mapped by
+        // SendUniqueLinkService: it emits both {{camelCase}} and {{snake_case}} for every field
+        // and overlays the template's own dynamic_parameters for anything left blank.
+        NotificationTemplateVariables templateVars = buildPaymentConfirmationVariables(
+                institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO,
+                invoiceNumber, courseName, paymentLog, invoicePdfBytes);
+
+        // Channels resolve independently: an institute that has bound only WhatsApp still gets
+        // its WhatsApp message even with no email config, and a WhatsApp failure never costs the
+        // learner the (PDF-carrying) email.
+        boolean emailSent = sendPaymentConfirmationEmail(instituteId, institute, userDTO,
+                paymentInitiationRequestDTO, invoicePdfBytes, invoiceNumber, templateVars);
+        boolean whatsappSent = sendPaymentConfirmationWhatsApp(instituteId, userDTO, templateVars);
+        return emailSent || whatsappSent;
+    }
+
+    /**
+     * WhatsApp leg. Fires only when the institute has explicitly bound a WHATSAPP config for
+     * PAYMENT_CONFIRMATION — deliberately no seeded DEFAULT, because a WhatsApp body must be a
+     * WATI/Meta-approved template registered against that institute's own WABA, so a
+     * platform-wide default would dispatch a template name the institute does not own.
+     */
+    private boolean sendPaymentConfirmationWhatsApp(
+            String instituteId, UserDTO userDTO, NotificationTemplateVariables templateVars) {
+        if (!StringUtils.hasText(userDTO.getMobileNumber())) {
+            return false;
+        }
+        return dynamicNotificationService.sendEventNotification(
+                NotificationEventType.PAYMENT_CONFIRMATION, instituteId,
+                NotificationTemplateType.WHATSAPP, userDTO, templateVars);
+    }
+
+    /** Email leg — renders the bound template and delivers it with the invoice PDF and copies. */
+    private boolean sendPaymentConfirmationEmail(
+            String instituteId,
+            Institute institute,
+            UserDTO userDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            byte[] invoicePdfBytes,
+            String invoiceNumber,
+            NotificationTemplateVariables templateVars) {
+
+        if (userDTO.getEmail() == null) {
             return false;
         }
 
@@ -140,12 +186,6 @@ public class PaymentNotificatonService {
             return false;
         }
 
-        // Variables come from the declared NotificationTemplateVariables fields, mapped by
-        // SendUniqueLinkService: it emits both {{camelCase}} and {{snake_case}} for every field
-        // and overlays the template's own dynamic_parameters for anything left blank.
-        NotificationTemplateVariables templateVars = buildPaymentConfirmationVariables(
-                institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO,
-                invoiceNumber, courseName, paymentLog, invoicePdfBytes);
         Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
         String emailBody = applyVariables(template.getContent(), variables);

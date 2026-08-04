@@ -17,4 +17,15 @@ public class NotificationConstant {
      * notification-service's {@code EmailCcResolver} matches these by exact string.
      */
     public static final String EVENT_TEAM_INVITE = "TEAM_INVITE";
+
+    /**
+     * Event name for the learner enrollment email ("Course Enrollment - <institute>"), sent from
+     * {@code AuthService.sendLearnerEnrollment*Email} for both new and existing learners.
+     *
+     * <p>This is the enrollment mail most institutes actually receive — admin-core's
+     * DynamicNotificationService LEARNER_ENROLL path only fires where an institute has bound a
+     * notification_event_config template. Both must stamp the SAME name so a single
+     * "Course enrollment" copy trigger covers whichever path an institute uses.
+     */
+    public static final String EVENT_LEARNER_ENROLL = "LEARNER_ENROLL";
 }

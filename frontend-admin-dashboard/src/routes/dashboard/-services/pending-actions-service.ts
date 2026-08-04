@@ -2,6 +2,8 @@ import { fetchPendingAdjustments } from '@/services/manage-finances';
 import { fetchSystemAlerts, stripHtml } from '@/services/notifications/system-alerts';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
 export type PendingActionType = 'OVERDUE_PAYMENT' | 'PENDING_APPROVAL' | 'UNREAD_ALERT';
 
@@ -26,17 +28,17 @@ const hoursSince = (iso: string | null | undefined): number => {
     return Math.max(0, Math.round((Date.now() - t) / HOURS));
 };
 
-const formatMoney = (n: number): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
-    }
-};
+/**
+ * Overdue-fee amounts have no currency of their own, and this runs outside React, so the
+ * institute's currency is read straight off the store rather than a hook. Hardcoding ₹ here
+ * mislabelled every non-Indian institute's pending actions.
+ */
+const formatMoney = (n: number): string =>
+    formatInstituteMoney(
+        n,
+        resolveInstituteCurrency(useInstituteDetailsStore.getState().instituteDetails),
+        { compact: false }
+    );
 
 const safeSettled = async <T>(p: Promise<T>): Promise<T | null> => {
     try {

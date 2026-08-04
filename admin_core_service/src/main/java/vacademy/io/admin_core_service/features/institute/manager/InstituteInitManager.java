@@ -125,6 +125,7 @@ public class InstituteInitManager {
                 dto.setId(institute.getId());
                 dto.setCity(institute.getCity());
                 dto.setCountry(institute.getCountry());
+                dto.setCurrency(institute.getCurrency());
                 dto.setState(institute.getState());
                 dto.setPinCode(institute.getPinCode());
                 dto.setAddress(institute.getAddress());

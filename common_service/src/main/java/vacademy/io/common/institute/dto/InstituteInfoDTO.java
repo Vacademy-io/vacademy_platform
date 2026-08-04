@@ -19,6 +19,13 @@ public class InstituteInfoDTO {
     private String instituteName;
     private String id;
     private String country;
+    /**
+     * ISO 4217 code for money this institute owns but that carries no currency of its own — fee
+     * dues, outstanding balances. Mirrors Institute.currency (a manual override); null means the
+     * client derives from {@link #country}, and shows no symbol if that is unset too. Payment rows
+     * carry their own currency and must not use this.
+     */
+    private String currency;
     private String state;
     private String city;
     private String address;

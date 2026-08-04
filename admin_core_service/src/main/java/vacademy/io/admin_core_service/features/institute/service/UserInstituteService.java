@@ -65,6 +65,7 @@ public class UserInstituteService {
         instituteInfoDTO.setId(institute.getId());
         instituteInfoDTO.setInstituteName(institute.getInstituteName());
         instituteInfoDTO.setCountry(institute.getCountry());
+        instituteInfoDTO.setCurrency(institute.getCurrency());
         instituteInfoDTO.setState(institute.getState());
         instituteInfoDTO.setCity(institute.getCity());
         instituteInfoDTO.setAddress(institute.getAddress());

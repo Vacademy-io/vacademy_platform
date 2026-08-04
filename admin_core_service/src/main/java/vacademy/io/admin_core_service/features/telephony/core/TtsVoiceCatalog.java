@@ -43,22 +43,25 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_SARVAM = "sarvam";
 
     /**
-     * Engine stamped on a NEW agent.
+     * Engine stamped on a NEW agent. Existing agents are untouched — V421 pinned all
+     * 17 of them to Sarvam, and they stay there until somebody changes them by hand.
      *
-     * <p>TEMPORARILY Sarvam, not Rumik. An adversarial review of the Rumik port found
-     * four P0s that make it unfit for a live call, the worst two being: pipecat sends
-     * one socket message per sentence as the LLM streams, and Rumik's request/response
-     * socket CANCELS the in-flight request when the next one arrives — so a
-     * three-sentence reply plays ~85 ms of sentence 1, ~85 ms of sentence 2, then
-     * sentence 3 (probed live); and an idle Rumik socket closes cleanly at 60 s, which
-     * hits a pipecat receive loop that spins without yielding and starves the event
-     * loop for EVERY concurrent call on the box.
+     * <p>Rumik, on the founder's go-ahead after hearing it. Cost is the reason:
+     * Rs 0.50/1k characters against Sarvam's Rs 3.00 on the line that is ~65% of an
+     * AI call's marginal cost.
      *
-     * <p>Rumik has never actually spoken on a live call, so nothing is regressed by
-     * waiting. Flip this to MODEL_RUMIK once those are fixed and Rumik has been heard
-     * on a real call — not before.
+     * <p>It was held at Sarvam for several hours while four P0s from an adversarial
+     * review were fixed — reply truncation from pipecat's one-message-per-sentence
+     * streaming against Rumik's request/response socket; an idle-socket close that
+     * starved the event loop for every concurrent call on the box; a barge-in cancel
+     * that never reached the wire; and a fault-detection layer that was silently
+     * unplugged. All four are fixed and proven by runtime traces against the live
+     * API rather than by tests, since the tests were green throughout.
+     *
+     * <p>STILL NOT PROVEN: no Rumik call has ever been placed over a real phone line.
+     * The first agent created after this ships is that call.
      */
-    public static final String NEW_AGENT_DEFAULT = MODEL_SARVAM;
+    public static final String NEW_AGENT_DEFAULT = MODEL_RUMIK;
 
     /**
      * Sarvam Bulbul v3 speakers (37, verified against docs.sarvam.ai 2026-07-16).

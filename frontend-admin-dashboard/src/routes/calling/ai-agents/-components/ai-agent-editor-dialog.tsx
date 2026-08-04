@@ -279,8 +279,10 @@ export function AiAgentEditorDialog({
                             }
                         />
                         <p className="text-caption text-neutral-500">
-                            0.5–2.0. Sarvam recommends 1.0–1.1 for sales calls; above 1.2 starts to
-                            sound rushed.
+                            0.5–2.0. 1.0–1.1 suits sales calls; above 1.2 starts to sound rushed.
+                            {ttsModel === 'rumik'
+                                ? ' Rumik has no numeric speed control, so this steers its delivery in words — the average pace lands where you set it, but individual sentences vary a little.'
+                                : ''}
                         </p>
                     </div>
                     <div className="space-y-1.5">

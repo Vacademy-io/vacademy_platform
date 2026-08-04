@@ -86,7 +86,10 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
  * preserve and gets the default engine.
  */
 export function resolveTtsModel(agent: { id?: string; ttsModel?: string }): TtsModelId {
-    return normalizeTtsModel(agent.ttsModel) ?? 'sarvam';
+    // A SAVED agent without the field is a stale cache, and the backend and bot
+    // both read a missing value as sarvam — so show that, not a cheerier guess.
+    // An unsaved draft has no history to preserve and gets the default engine.
+    return normalizeTtsModel(agent.ttsModel) ?? (agent.id ? 'sarvam' : 'rumik');
 }
 
 export function voicesForModel(voices: VoiceOption[], model: TtsModelId): VoiceOption[] {

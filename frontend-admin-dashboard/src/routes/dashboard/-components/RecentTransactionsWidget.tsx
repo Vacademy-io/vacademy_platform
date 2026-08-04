@@ -4,30 +4,37 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Receipt } from '@phosphor-icons/react';
 import { fetchPaymentLogs } from '@/services/payment-logs';
+import type { PaymentLogEntry } from '@/types/payment-logs';
+import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 
 interface RecentTransactionsWidgetProps {
     instituteId: string;
 }
 
-const formatINR = (n: number | null | undefined): string => {
-    if (!n && n !== 0) return '—';
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
-    }
+/**
+ * Each row is shown in the currency it was actually charged in — this list mixes institutes and
+ * plans, so a hardcoded ₹ printed genuine USD/AUD/GBP charges as rupees. See
+ * `resolveEntryCurrency` for why `payment_log.currency` alone isn't enough.
+ */
+const formatAmount = (entry: PaymentLogEntry): string => {
+    const amount = entry.payment_log?.payment_amount;
+    if (!amount && amount !== 0) return '—';
+    return formatMoney(amount, resolveEntryCurrency(entry), { maximumFractionDigits: 0 });
 };
 
-const formatDate = (iso: string | null | undefined): string => {
+/**
+ * `created_at` is a UTC instant, so `toLocaleString` renders it in the viewer's own zone — the same
+ * local clock the Manage Payments table shows. `hasTime` is false only for the `date` fallback,
+ * which is a DATE column at UTC midnight: it has no real time, and must be pinned to UTC or it
+ * renders as the previous day west of UTC.
+ */
+const formatDate = (iso: string | null | undefined, hasTime: boolean): string => {
     if (!iso) return '';
     try {
-        return new Date(iso).toLocaleDateString(undefined, {
+        return new Date(iso).toLocaleString(undefined, {
             month: 'short',
             day: 'numeric',
+            ...(hasTime ? { hour: 'numeric', minute: '2-digit' } : { timeZone: 'UTC' }),
         });
     } catch {
         return '';
@@ -137,16 +144,18 @@ export default function RecentTransactionsWidget({ instituteId }: RecentTransact
                                             </span>
                                             <span className="line-clamp-1 text-[11px] text-neutral-500">
                                                 {(log.vendor || 'Manual').replace(/_/g, ' ')}
-                                                {/* created_at is a real instant; `date` is a
-                                                    DATE column (UTC midnight) that renders as the
-                                                    previous day west of UTC. */}
-                                                {log.created_at || log.date
-                                                    ? ` · ${formatDate(log.created_at || log.date)}`
-                                                    : ''}
+                                                {/* created_at is a real instant and carries the
+                                                    payment's clock time; `date` is a DATE column
+                                                    (UTC midnight) with no usable time. */}
+                                                {log.created_at
+                                                    ? ` · ${formatDate(log.created_at, true)}`
+                                                    : log.date
+                                                      ? ` · ${formatDate(log.date, false)}`
+                                                      : ''}
                                             </span>
                                         </span>
                                         <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-900">
-                                            {formatINR(log.payment_amount)}
+                                            {formatAmount(entry)}
                                         </span>
                                         <span
                                             className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${statusTone(status)}`}

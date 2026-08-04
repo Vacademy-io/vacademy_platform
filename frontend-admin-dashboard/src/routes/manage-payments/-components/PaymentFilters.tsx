@@ -130,6 +130,21 @@ export function PaymentFilters({
         });
     };
 
+    /**
+     * Reading back is the half that was wrong: feeding the input `toISOString()` made it render
+     * the UTC clock, so picking "Today" showed a start of 18:30 the previous day, and typing
+     * 2:00 PM snapped the field to 08:30. Render the same instant as a local wall clock instead —
+     * the value posted to the API is untouched.
+     */
+    const toLocalInputValue = (iso: string): string => {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+            d.getHours()
+        )}:${pad(d.getMinutes())}`;
+    };
+
     const getQuickDateRange = (type: string) => {
         const now = new Date();
         const start = new Date();
@@ -165,6 +180,9 @@ export function PaymentFilters({
         onQuickFilterSelect(getQuickDateRange(type));
     };
 
+    // A datetime-local input both reads and writes a wall-clock string in the user's own zone,
+    // while startDate/endDate are stored (and sent to the API) as UTC instants. Writing is already
+    // correct — `new Date(value)` reads the string as local and .toISOString() converts to UTC.
     const handleDateChange = (setter: (date: string) => void, value: string) => {
         setActiveQuick('');
         setter(value ? new Date(value).toISOString() : '');
@@ -308,7 +326,7 @@ export function PaymentFilters({
                         <FilterField label="Start Date">
                             <Input
                                 type="datetime-local"
-                                value={startDate ? new Date(startDate).toISOString().slice(0, 16) : ''}
+                                value={startDate ? toLocalInputValue(startDate) : ''}
                                 onChange={(e) => handleDateChange(onStartDateChange, e.target.value)}
                                 className="h-9"
                             />
@@ -316,7 +334,7 @@ export function PaymentFilters({
                         <FilterField label="End Date">
                             <Input
                                 type="datetime-local"
-                                value={endDate ? new Date(endDate).toISOString().slice(0, 16) : ''}
+                                value={endDate ? toLocalInputValue(endDate) : ''}
                                 onChange={(e) => handleDateChange(onEndDateChange, e.target.value)}
                                 className="h-9"
                             />

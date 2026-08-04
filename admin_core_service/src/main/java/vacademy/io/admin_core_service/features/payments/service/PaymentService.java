@@ -149,7 +149,7 @@ public class PaymentService {
                                 request.getAmount(),
                                 enrollInvite.getVendor(),
                                 enrollInvite.getVendorId(),
-                                enrollInvite.getCurrency(),
+                                resolvePaymentCurrency(request, enrollInvite, userPlan),
                                 userPlan,
                                 request.getOrderId());
 
@@ -213,7 +213,7 @@ public class PaymentService {
                                 request.getAmount(),
                                 enrollInvite.getVendor(),
                                 enrollInvite.getVendorId(),
-                                enrollInvite.getCurrency(),
+                                resolvePaymentCurrency(request, enrollInvite, userPlan),
                                 userPlan,
                                 request.getOrderId());
                 if (!StringUtils.hasText(request.getOrderId())) {
@@ -271,7 +271,7 @@ public class PaymentService {
                                 request.getAmount(),
                                 enrollInvite.getVendor(),
                                 enrollInvite.getVendorId(),
-                                enrollInvite.getCurrency(),
+                                resolvePaymentCurrency(request, enrollInvite, userPlan),
                                 userPlan,
                                 request.getOrderId());
 
@@ -661,6 +661,31 @@ public class PaymentService {
                         throw new RuntimeException("User not found with ID: " + userId);
                 }
                 return users.get(0);
+        }
+
+        /**
+         * The currency the payment is actually taken in.
+         *
+         * {@code enroll_invite.currency} is optional in the admin invite payload and is persisted
+         * blank for a large share of invites, so copying it straight into
+         * {@code payment_log.currency} left the listing unable to tell an INR charge from a USD one
+         * (it rendered a ₹1,999 Razorpay order as "$1,999.00"). The initiation request carries the
+         * currency the gateway order is created with, so prefer it; fall back to the invite, then to
+         * the plan being paid for. Normalised to upper case — gateways receive it that way.
+         */
+        private String resolvePaymentCurrency(PaymentInitiationRequestDTO request, EnrollInvite enrollInvite,
+                        UserPlan userPlan) {
+                if (request != null && StringUtils.hasText(request.getCurrency())) {
+                        return request.getCurrency().trim().toUpperCase();
+                }
+                if (enrollInvite != null && StringUtils.hasText(enrollInvite.getCurrency())) {
+                        return enrollInvite.getCurrency().trim().toUpperCase();
+                }
+                if (userPlan != null && userPlan.getPaymentPlan() != null
+                                && StringUtils.hasText(userPlan.getPaymentPlan().getCurrency())) {
+                        return userPlan.getPaymentPlan().getCurrency().trim().toUpperCase();
+                }
+                return null;
         }
 
         /**

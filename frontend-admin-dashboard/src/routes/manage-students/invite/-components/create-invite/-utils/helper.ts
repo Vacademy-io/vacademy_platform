@@ -389,6 +389,16 @@ export function convertInviteData(
         };
     });
 
+    // enroll_invite.currency is copied onto every payment_log created from this link, and the
+    // payments listing reads it to pick the ₹/$/… symbol. Sending '' left those rows with no
+    // currency at all, so an INR charge could render as USD — take it from the plan being sold.
+    const inviteCurrency =
+        paymentPlans.find((option) => option.id === data.selectedPlan?.id)?.payment_plans?.[0]
+            ?.currency ||
+        data.selectedPlan?.currency ||
+        existingInviteDetails?.currency ||
+        '';
+
     const convertedData = {
         id: inviteId || '',
         name: data.name,
@@ -400,7 +410,7 @@ export function convertInviteData(
         institute_id: instituteId,
         vendor: existingInviteDetails?.vendor || instituteVendor?.vendor || 'STRIPE',
         vendor_id: existingInviteDetails?.vendor_id || instituteVendor?.vendor_id || 'STRIPE',
-        currency: '',
+        currency: inviteCurrency,
         tag: '',
         is_bundled: isBundle,
         learner_access_days:

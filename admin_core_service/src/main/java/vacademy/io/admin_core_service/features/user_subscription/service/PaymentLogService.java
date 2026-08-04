@@ -938,10 +938,29 @@ public class PaymentLogService {
         }
     }
 
+    /**
+     * The zone the per-day series is bucketed in. Interpolated straight into a native query, so an
+     * unknown value would surface as a Postgres error rather than a bad chart — anything ZoneId
+     * cannot parse is rejected here and falls back to UTC (the pre-existing behaviour).
+     */
+    private String resolveDayBucketZone(String requestedZone) {
+        if (!StringUtils.hasText(requestedZone)) {
+            return "UTC";
+        }
+        try {
+            return java.time.ZoneId.of(requestedZone.trim()).getId();
+        } catch (java.time.DateTimeException e) {
+            log.warn("Ignoring unrecognised collection-summary time zone '{}'; bucketing by UTC",
+                    requestedZone);
+            return "UTC";
+        }
+    }
+
     @Transactional(readOnly = true)
     /**
      * Aggregated PAID collection for an institute (optionally one sub-org) over a
-     * UTC date window. Returns the grand total + a per-day series for charting.
+     * UTC date window. Returns the grand total + a per-day series for charting;
+     * the days are cut in request.timeZone (default UTC).
      * Omitting the dates yields the all-time total (epoch -> now).
      */
     public CollectionSummaryResponseDTO getCollectionSummary(CollectionSummaryRequestDTO request) {
@@ -958,7 +977,8 @@ public class PaymentLogService {
                 noSubOrg ? "__none__" : request.getSubOrgId(),
                 noSubOrg,
                 startDate,
-                endDate);
+                endDate,
+                resolveDayBucketZone(request.getTimeZone()));
 
         double total = 0d;
         long count = 0L;

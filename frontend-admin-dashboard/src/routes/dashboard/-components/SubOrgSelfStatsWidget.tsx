@@ -15,6 +15,7 @@ import { getSubOrgFinanceDetail } from '@/routes/manage-custom-teams/-services/c
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getValidSelectedSubOrgId, getFacultyAccessData } from '@/lib/auth/facultyAccessUtils';
 import { fetchCollectionSummary } from '../-services/collection-summary-service';
+import { isRealCurrency } from '@/utils/payment-currency';
 
 interface StatVisual {
     Icon: Icon;
@@ -31,18 +32,34 @@ interface Stat {
     visual: StatVisual;
 }
 
-const inr = (n: number): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-            notation: n >= 100000 ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
+/**
+ * `code` empty (or unrecognised) renders a bare number — the collection API is the only source
+ * here that knows a currency, and guessing ₹ mislabels a sub-org that collects in USD/GBP.
+ * Locale stays en-IN so compact notation reads as L/Cr.
+ */
+const money = (n: number, code?: string | null): string => {
+    const notation = n >= 100000 ? 'compact' : 'standard';
+    const currency = code?.trim().toUpperCase() || '';
+    if (isRealCurrency(currency)) {
+        try {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency,
+                maximumFractionDigits: 0,
+                notation,
+            }).format(n);
+        } catch {
+            /* fall through to the plain-number form below */
+        }
     }
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0, notation }).format(n);
 };
+
+/**
+ * Outstanding fees come from the sub-org finance API, which carries no currency at all, so this
+ * stays on the platform's INR default. Collected uses the collection summary's real currency.
+ */
+const inr = (n: number): string => money(n, 'INR');
 
 const nfmt = (n: number) => n.toLocaleString('en-IN');
 
@@ -134,7 +151,7 @@ export default function SubOrgSelfStatsWidget() {
         {
             key: 'collected',
             label: 'Collected',
-            value: inr(collected),
+            value: money(collected, collection?.currency),
             subtitle: 'Fees received',
             visual: {
                 Icon: Coins,

@@ -296,9 +296,38 @@ const InvoicesList = ({
                                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
                                             <span>{formatDate(inv.due_date || inv.invoice_date)}</span>
                                             <span aria-hidden>·</span>
+                                            {/* Discounted invoice: show gross struck through so the
+                                                coupon's effect is visible next to the charged amount. */}
+                                            {(inv.discount_amount ?? 0) > 0 && (
+                                                <span className="text-neutral-400 line-through">
+                                                    {formatCurrency(
+                                                        (inv.total_amount ?? 0) + (inv.discount_amount ?? 0),
+                                                        inv.currency
+                                                    )}
+                                                </span>
+                                            )}
                                             <span className="font-medium text-neutral-700">
                                                 {formatCurrency(inv.total_amount, inv.currency)}
                                             </span>
+                                            {(inv.discount_amount ?? 0) > 0 &&
+                                                (() => {
+                                                    const couponItem = inv.line_items?.find(
+                                                        (li) =>
+                                                            li.item_type?.includes('COUPON') ||
+                                                            li.item_type?.includes('DISCOUNT') ||
+                                                            li.item_type?.includes('REFERRAL')
+                                                    );
+                                                    const label = couponItem?.description || 'Discount';
+                                                    return (
+                                                        <span
+                                                            className="inline-flex shrink-0 items-center rounded border border-success-200 bg-success-50 px-1.5 py-0.5 text-caption font-medium text-success-700"
+                                                            title={`${label}: ${formatCurrency(inv.discount_amount, inv.currency)} off`}
+                                                        >
+                                                            {label} −
+                                                            {formatCurrency(inv.discount_amount, inv.currency)}
+                                                        </span>
+                                                    );
+                                                })()}
                                             {inv.source && (() => {
                                                 const srcMeta: Record<string, { label: string; cls: string }> = {
                                                     ADMIN_MANUAL: { label: 'Admin Invoice', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
@@ -448,6 +477,14 @@ const TransactionHistory = ({
                     };
                     const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
                     const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    // Discounted accrual: backend sends the list price (gross_amount)
+                    // alongside the net amount — render it struck through so the
+                    // coupon's effect is visible on the transaction line itself.
+                    const gross = Number(entry.gross_amount || 0);
+                    const grossStr =
+                        gross > Number(entry.amount || 0)
+                            ? `${sym}${gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                            : null;
                     return (
                         <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-neutral-50">
                             <span className="mt-0.5 shrink-0">
@@ -472,8 +509,15 @@ const TransactionHistory = ({
                                     {entry.source_type && <> · {entry.source_type.replace(/_/g, ' ')}</>}
                                 </p>
                             </div>
-                            <span className={`shrink-0 text-sm font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
-                                {meta.isCredit ? '+' : '-'}{amtStr}
+                            <span className="shrink-0 text-right">
+                                {grossStr && (
+                                    <span className="mr-1.5 text-xs tabular-nums text-neutral-400 line-through">
+                                        {grossStr}
+                                    </span>
+                                )}
+                                <span className={`text-sm font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                    {meta.isCredit ? '+' : '-'}{amtStr}
+                                </span>
                             </span>
                         </li>
                     );

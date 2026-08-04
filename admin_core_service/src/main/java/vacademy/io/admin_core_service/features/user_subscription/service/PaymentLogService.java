@@ -480,10 +480,10 @@ public class PaymentLogService {
             throw new RuntimeException("Payment log not found with ID/Order: " + orderId);
         }
 
-        // Capture which logs are ALREADY in the target status before we touch them, so
-        // the post-payment side effects (Pass 2) run exactly once. Both payment.captured
-        // and order.paid deliver a PAID update for the same order; without this the second
-        // one would re-run invoicing, enrollment ops and the PAYMENT_SUCCESS workflow.
+        // Logs whose side effects must be skipped in Pass 2: either they were already in
+        // the target status when we read them (sequential duplicate event), or the atomic
+        // conditional update below returned 0 rows (a concurrent event / another replica
+        // won the claim, or a non-PAID event arrived after the log was already PAID).
         Set<String> alreadyInTargetStatus = new HashSet<>();
         for (PaymentLog pLog : allLogsToUpdate) {
             if (paymentStatus.equals(pLog.getPaymentStatus())) {
@@ -491,7 +491,19 @@ public class PaymentLogService {
             }
         }
 
+        boolean targetIsPaid = PaymentStatusEnum.PAID.name().equals(paymentStatus);
+
         // --- Pass 1: Update status of ALL found logs (Parent + Children) ---
+        // Both updates are single-statement conditional UPDATEs, atomic at the DB row
+        // level, which gives two guarantees a read-then-save could not:
+        //  1. Exactly ONE of Razorpay's sibling PAID events (payment.captured vs
+        //     order.paid, possibly on different replicas) claims the log and runs the
+        //     post-payment side effects.
+        //  2. Payment status is monotonic — a late payment.authorized/payment.failed
+        //     can never downgrade a log that is already PAID (the root cause of paid
+        //     enrollments displaying as PAYMENT_PENDING).
+        // The PAID claim also stamps status=SUCCESS, which the ledger credit recording
+        // in applyOperationsOnFirstPayment filters on.
         log.info("Starting status update for {} total logs (Parent + Children) for ID/Order {}", allLogsToUpdate.size(),
                 orderId);
         for (PaymentLog paymentLog : allLogsToUpdate) {
@@ -502,8 +514,27 @@ public class PaymentLogService {
                         paymentLog.getVendor(),
                         paymentStatus);
 
-                paymentLog.setPaymentStatus(paymentStatus);
-                paymentLogRepository.saveAndFlush(paymentLog); // Flush immediately to ensure DB update
+                int updated;
+                if (targetIsPaid) {
+                    updated = paymentLogRepository.markPaidIfNotAlready(paymentLog.getId(),
+                            PaymentStatusEnum.PAID.name(), PaymentLogStatusEnum.SUCCESS.name());
+                    // Keep the managed entity consistent with what the bulk update wrote,
+                    // so Pass 2 (and any later query resolving to this first-level-cache
+                    // instance, e.g. the ledger credit lookup) sees the PAID/SUCCESS state.
+                    paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
+                    paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
+                } else {
+                    updated = paymentLogRepository.updatePaymentStatusIfNotPaid(paymentLog.getId(),
+                            paymentStatus, PaymentStatusEnum.PAID.name());
+                    if (updated > 0) {
+                        paymentLog.setPaymentStatus(paymentStatus);
+                    }
+                }
+                if (updated == 0) {
+                    log.info("Log {} not transitioned to {} (already PAID or claimed elsewhere); "
+                            + "skipping its side effects.", paymentLog.getId(), paymentStatus);
+                    alreadyInTargetStatus.add(paymentLog.getId());
+                }
             } catch (Exception e) {
                 log.error("Failed to update status for log {}: {}. Continuing with remaining logs.",
                         paymentLog.getId(), e.getMessage());

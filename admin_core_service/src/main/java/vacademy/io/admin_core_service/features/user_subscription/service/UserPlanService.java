@@ -347,17 +347,47 @@ public class UserPlanService {
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
 
-        // Ledger: record obligation when payment is required
+        // Ledger: record obligation when payment is required. Accrue the amount that
+        // will actually be charged (the payment-initiation amount, i.e. plan price net
+        // of any coupon discount) — the same figure the gateway order and payment log
+        // carry — not the plan's list price. Accruing the list price inflated Due by
+        // the coupon amount on every discounted enrollment.
         if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
                 && paymentPlan != null && paymentPlan.getActualPrice() > 0
                 && enrollInvite != null && enrollInvite.getInstituteId() != null) {
-            userAccountLedgerService.recordDebitAccrual(
-                    userId, enrollInvite.getInstituteId(),
-                    java.math.BigDecimal.valueOf(paymentPlan.getActualPrice()),
-                    paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR",
-                    null,
-                    "USER_PLAN", saved.getId(),
-                    null, "Plan enrollment payment required");
+            double accrualAmount = paymentPlan.getActualPrice();
+            if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getAmount() != null
+                    && paymentInitiationRequestDTO.getAmount() >= 0) {
+                accrualAmount = paymentInitiationRequestDTO.getAmount();
+            }
+            if (accrualAmount > 0) {
+                // Discounted enrollment: carry the pricing breakdown on the ledger row
+                // (gross list price + discount, amount = net) so the side-view
+                // Transaction History can render "gross struck through → net", and name
+                // the coupon in the remark.
+                double listPrice = paymentPlan.getActualPrice();
+                String accrualRemark = "Plan enrollment payment required";
+                java.math.BigDecimal grossAmount = null;
+                java.math.BigDecimal discountAmount = null;
+                if (accrualAmount < listPrice) {
+                    grossAmount = java.math.BigDecimal.valueOf(listPrice);
+                    discountAmount = java.math.BigDecimal.valueOf(listPrice - accrualAmount);
+                    String discountLabel = appliedCouponDiscount != null
+                            && StringUtils.hasText(appliedCouponDiscount.getName())
+                                    ? "coupon " + appliedCouponDiscount.getName()
+                                    : "discount";
+                    accrualRemark = String.format(
+                            "Plan enrollment payment required (%s applied)", discountLabel);
+                }
+                userAccountLedgerService.recordDebitAccrual(
+                        userId, enrollInvite.getInstituteId(),
+                        java.math.BigDecimal.valueOf(accrualAmount),
+                        paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR",
+                        null,
+                        "USER_PLAN", saved.getId(),
+                        null, accrualRemark,
+                        grossAmount, discountAmount);
+            }
         }
 
         // Autopay (centralized for ALL enrollment entry points): SUBSCRIPTION plans
@@ -518,8 +548,11 @@ public class UserPlanService {
             // confirmation
             terminateActiveSessionsAfterPayment(userPlan.getUserId(), enrollInvite.getInstituteId(), packageSessionIds);
 
+            // Pass the plan the payment landed on so the ACTIVE mapping references THIS
+            // plan — not the plan id of whatever INVITED row is being shifted (which,
+            // after a failed-then-retried checkout, is the abandoned first plan).
             learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
-                    userPlan.getUserId(), enrollInvite.getId());
+                    userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
 
             // Decrement inventory (available slots) for each enrolled package session
             for (String psId : packageSessionIds) {
@@ -550,11 +583,17 @@ public class UserPlanService {
                         userPlan.getId(), e.getMessage());
             }
 
-            // Ledger: credit payment for gateway-confirmed enrollment
+            // Ledger: credit payment for gateway-confirmed enrollment. Match on either
+            // signal — the webhook path historically only stamped payment_status=PAID
+            // (status stayed ACTIVE/INITIATED), so a SUCCESS-only filter never matched
+            // and gateway payments accrued debits with no credit ever recorded
+            // (panel showed Paid ₹0 / Due growing forever).
             try {
                 paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
                         .stream()
-                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus()))
+                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus())
+                                || vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name()
+                                        .equalsIgnoreCase(pl.getPaymentStatus()))
                         .findFirst()
                         .ifPresent(pl -> {
                             if (pl.getPaymentAmount() != null && pl.getPaymentAmount() > 0) {

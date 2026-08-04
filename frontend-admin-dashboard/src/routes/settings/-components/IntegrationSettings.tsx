@@ -35,6 +35,7 @@ import {
     getSessionPages,
     getFormFields,
     listPageForms,
+    resolvePageById,
     saveMetaConnector,
     saveGoogleConnector,
     listConnectors,
@@ -767,6 +768,10 @@ function AddMetaForm({
 }) {
     const instituteId = getCurrentInstituteId() ?? '';
     const [selectedPageId, setSelectedPageId] = useState('');
+    // Pages resolved by ID (fallback when /me/accounts doesn't enumerate a
+    // business-owned Page granted via Login for Business).
+    const [manualPages, setManualPages] = useState<MetaPage[]>([]);
+    const [manualPageId, setManualPageId] = useState('');
     const [formId, setFormId] = useState('');
     const [audienceId, setAudienceId] = useState('');
     const [sourceType, setSourceType] = useState<'FACEBOOK_ADS' | 'INSTAGRAM_ADS'>('FACEBOOK_ADS');
@@ -917,7 +922,35 @@ function AddMetaForm({
         },
     });
 
-    const isAuthorized = !!sessionKey && !!pages && pages.length > 0;
+    // Resolve a Page by ID when it isn't auto-listed (business-owned Login-for-Business Pages).
+    const { mutate: addPageById, isPending: resolvingPage } = useMutation({
+        mutationFn: (pid: string) => resolvePageById(sessionKey, pid),
+        onSuccess: (page) => {
+            setManualPages((prev) => [...prev.filter((p) => p.id !== page.id), page]);
+            setSelectedPageId(page.id);
+            setManualPageId('');
+            toast.success(`Added Page "${page.name}"`);
+        },
+        onError: (err: unknown) => {
+            if (isSessionExpiredError(err)) {
+                setSessionKey('');
+                toast.error('Your Meta session expired. Please reconnect Meta.');
+                return;
+            }
+            const msg = (err as { response?: { data?: { message?: string } } })?.response?.data
+                ?.message;
+            toast.error(msg ?? 'Could not add that Page. Double-check the Page ID.');
+        },
+    });
+
+    // The session is usable once the /pages call resolves — even if it returns 0 pages.
+    // Business-owned Pages granted via Login for Business don't enumerate; the admin
+    // adds them by ID below.
+    const isAuthorized = !!sessionKey && Array.isArray(pages);
+    const effectivePages: MetaPage[] = [
+        ...(pages ?? []),
+        ...manualPages.filter((mp) => !(pages ?? []).some((p) => p.id === mp.id)),
+    ];
 
     return (
         <div className="space-y-3 rounded-lg border bg-white p-4">
@@ -965,7 +998,7 @@ function AddMetaForm({
                                 onChange={(e) => setSelectedPageId(e.target.value)}
                             >
                                 <option value="">Select a page...</option>
-                                {pages.map((p: MetaPage) => (
+                                {effectivePages.map((p: MetaPage) => (
                                     <option key={p.id} value={p.id}>
                                         {p.name}
                                         {p.canReceiveLeads === false
@@ -975,7 +1008,7 @@ function AddMetaForm({
                                 ))}
                             </select>
                             {(() => {
-                                const sel = pages?.find(
+                                const sel = effectivePages.find(
                                     (p: MetaPage) => p.id === selectedPageId
                                 );
                                 return sel?.warning ? (
@@ -988,6 +1021,31 @@ function AddMetaForm({
                                     </div>
                                 ) : null;
                             })()}
+                            {/* Fallback: business-owned Pages granted via Login for Business
+                                don't auto-list — let the admin add one by its Page ID. */}
+                            <div className="mt-2 rounded-md border border-dashed border-neutral-200 bg-neutral-50 p-2">
+                                <p className="text-caption text-neutral-500">
+                                    {effectivePages.length === 0
+                                        ? "Your Page isn't listed. Paste its Page ID (shown in the Facebook connect dialog, or Page Settings → About)."
+                                        : 'Page not listed? Add it by ID.'}
+                                </p>
+                                <div className="mt-2 flex gap-2">
+                                    <Input
+                                        value={manualPageId}
+                                        onChange={(e) => setManualPageId(e.target.value)}
+                                        placeholder="e.g. 336149566246129"
+                                        className="text-sm"
+                                    />
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => addPageById(manualPageId.trim())}
+                                        disable={!manualPageId.trim() || resolvingPage}
+                                    >
+                                        {resolvingPage ? 'Adding...' : 'Add Page'}
+                                    </MyButton>
+                                </div>
+                            </div>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-xs">Lead Gen Form</Label>

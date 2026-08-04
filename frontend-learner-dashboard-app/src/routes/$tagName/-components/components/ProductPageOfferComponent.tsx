@@ -8,6 +8,7 @@ import {
   CaretRight,
   Clock,
   MagnifyingGlass,
+  X,
 } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
@@ -723,8 +724,18 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           onChange={(e) => { setQuery(e.target.value); setPage(1); }}
           placeholder="Search courses"
           aria-label="Search courses"
-          className="catalogue-input w-full pl-9"
+          className={`catalogue-input catalogue-input-icon-start w-full ${query ? "catalogue-input-icon-end" : ""}`}
         />
+        {query && (
+          <button
+            type="button"
+            onClick={() => { setQuery(""); setPage(1); }}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-catalogue-text-muted transition-colors hover:bg-catalogue-interactive-hover hover:text-catalogue-text-primary"
+          >
+            <X className="size-3.5" weight="bold" aria-hidden="true" />
+          </button>
+        )}
       </div>
       <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
         {filtered.length === 0

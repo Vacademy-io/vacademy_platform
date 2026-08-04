@@ -1068,15 +1068,25 @@ function AddMetaForm({
                                     ))}
                                 </select>
                             ) : (
-                                <Input
-                                    placeholder={
-                                        selectedPageId
-                                            ? 'No forms found — enter ID manually'
-                                            : 'Select a page first'
-                                    }
-                                    value={formId}
-                                    onChange={(e) => selectForm(e.target.value)}
-                                />
+                                <>
+                                    <Input
+                                        placeholder={
+                                            selectedPageId
+                                                ? 'Paste your Lead Form ID'
+                                                : 'Select a page first'
+                                        }
+                                        value={formId}
+                                        onChange={(e) => selectForm(e.target.value)}
+                                    />
+                                    {selectedPageId && (
+                                        <p className="mt-1 text-caption text-neutral-500">
+                                            Can&apos;t auto-list this Page&apos;s forms. Paste the
+                                            Lead Form ID — find it in Meta Business Suite → All tools
+                                            → Instant Forms (or your ad&apos;s lead form). Lead
+                                            capture still works once mapped.
+                                        </p>
+                                    )}
+                                </>
                             )}
                         </div>
                         <div className="space-y-1">

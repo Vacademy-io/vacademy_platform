@@ -3,6 +3,7 @@
  * AI Calling card exposes, laid out as a focused full-height dialog so the
  * prompt work has room to breathe.
  */
+import type { TtsModelId } from '@/routes/calling/ai-agents/-services/tts-catalog';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -28,6 +29,11 @@ import {
     DEFAULT_SAMPLE_TEXT,
     EXPRESSIVENESS_OPTIONS,
     FALLBACK_VOICES,
+    TTS_MODELS,
+    resolveTtsModel,
+    voicesForModel,
+    patchForModelChange,
+
     fetchVoices,
     saveAgent,
     voicePreviewUrl,
@@ -60,7 +66,11 @@ export function AiAgentEditorDialog({
         queryFn: fetchVoices,
         staleTime: 24 * 60 * 60 * 1000,
     });
-    const voices = voicesQuery.data ?? FALLBACK_VOICES;
+    const allVoices = voicesQuery.data ?? FALLBACK_VOICES;
+    // The engine decides the palette: the two share no voice names, so showing the
+    // full list would let someone pick a voice that mutes every call.
+    const ttsModel = draft ? resolveTtsModel(draft) : 'rumik';
+    const voices = voicesForModel(allVoices, ttsModel);
 
     const bookingPagesQuery = useQuery({
         queryKey: ['ai-agent-booking-pages', instituteId],
@@ -203,6 +213,31 @@ export function AiAgentEditorDialog({
                             placeholder="hinglish | hi | en"
                             onChange={(e) => patch({ language: e.target.value })}
                         />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>Voice engine</Label>
+                        <Select
+                            value={ttsModel}
+                            onValueChange={(v) =>
+                                patch(
+                                    patchForModelChange(v as TtsModelId, draft.voice, allVoices)
+                                )
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {TTS_MODELS.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-caption text-neutral-500">
+                            {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
+                        </p>
                     </div>
                     <div className="space-y-1.5">
                         <Label>Voice</Label>

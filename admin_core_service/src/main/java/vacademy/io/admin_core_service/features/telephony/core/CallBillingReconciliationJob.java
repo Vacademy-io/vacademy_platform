@@ -78,7 +78,7 @@ public class CallBillingReconciliationJob {
         // safe dedup key exists; the hook already warned about them once).
         List<Object[]> rows = entityManager.createNativeQuery(
                 "SELECT id, institute_id, provider, direction, duration_seconds, "
-                + "call_uuid, correlation_id, call_log_id "
+                + "call_uuid, correlation_id, call_log_id, campaign_id "
                 + "FROM ai_call_result "
                 + "WHERE provider IN ('VACADEMY_AI','AAVTAAR') "
                 + "AND processing_status = 'PROCESSED' "
@@ -97,8 +97,13 @@ public class CallBillingReconciliationJob {
                     (String) r[2], (String) r[5], (String) r[6], (String) r[7]);
             if (key == null) continue; // defensive — SQL already filters these out
             int secs = r[4] == null ? 60 : ((Number) r[4]).intValue();
+            // r[8] = campaign_id = the ai_agent id; selects the TTS engine and so the
+            // price (V421). The sweeper MUST pass it too — otherwise a swept row bills
+            // at the base rate while the same call billed live would carry the Sarvam
+            // surcharge, and which price a customer paid would depend on whether the
+            // webhook happened to land.
             billingService.billAiLeg(key, (String) r[0], (String) r[1], (String) r[2],
-                    (String) r[3], secs);
+                    (String) r[3], secs, (String) r[8]);
         }
     }
 }

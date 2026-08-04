@@ -16,6 +16,7 @@ from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 
 from .config import get_settings
 
+import asyncio
 import logging
 import re
 
@@ -657,6 +658,72 @@ class ResilientSarvamTTSService(SarvamTTSService):
 
 
 # ── Rumik Silk TTS ───────────────────────────────────────────────────────────
+
+async def rumik_synthesize_wav(text: str, voice: str, api_key: str,
+                               session=None, model: str = "mulberry") -> bytes:
+    """One-shot Rumik synthesis -> WAV bytes. For the admin voice tester.
+
+    Deliberately NOT reusing RumikTTSService: that is a pipecat pipeline component
+    whose output goes to frames and whose lifecycle assumes a running call. A
+    preview needs bytes, and giving it its own short path keeps a preview bug from
+    ever touching live-call code.
+
+    Returns b"" on any failure — the caller decides the HTTP status. Never raises,
+    because a public preview endpoint must not 500 on a vendor hiccup.
+    """
+    import aiohttp
+    import io
+    import json as _json
+    import wave
+    own = session is None
+    if own:
+        session = aiohttp.ClientSession()
+    try:
+        async with session.post(
+                RumikTTSService.MINT_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "text": text},
+                timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                logger.warning("rumik preview: mint %s: %s", resp.status,
+                               (await resp.text())[:200])
+                return b""
+            mint = await resp.json()
+        pcm = bytearray()
+        async with session.ws_connect(f'{mint["ws_url"]}?token={mint["token"]}',
+                                      timeout=aiohttp.ClientTimeout(total=20)) as ws:
+            await ws.send_json({"text": text, "speaker": (voice or "ira").strip().lower()})
+            while True:
+                msg = await asyncio.wait_for(ws.receive(), timeout=25)
+                if msg.type == aiohttp.WSMsgType.BINARY:
+                    pcm += msg.data
+                elif msg.type == aiohttp.WSMsgType.TEXT:
+                    j = _json.loads(msg.data)
+                    if j.get("type") in ("done", "cancelled"):
+                        break
+                    if j.get("type") == "error":
+                        logger.warning("rumik preview: %s", str(j)[:200])
+                        return b""
+                else:
+                    break
+        if not pcm:
+            return b""
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            # 24 kHz is Rumik's only output rate; the WAV header must say so or the
+            # browser plays it at the wrong speed.
+            w.setframerate(24000)
+            w.writeframes(bytes(pcm))
+        return buf.getvalue()
+    except Exception:
+        logger.exception("rumik preview failed")
+        return b""
+    finally:
+        if own:
+            await session.close()
+
 
 class RumikTTSService(InterruptibleTTSService):
     """Rumik Silk (mulberry 1.5) streaming TTS.

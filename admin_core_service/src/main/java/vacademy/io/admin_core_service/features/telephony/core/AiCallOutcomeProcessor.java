@@ -295,17 +295,20 @@ public class AiCallOutcomeProcessor {
                 final String billDirection = existing != null && existing.getDirection() != null
                         ? existing.getDirection() : r.getDirection();
                 final int billSecs = r.getDurationSeconds() == null ? 60 : r.getDurationSeconds();
+                // campaign_id IS the ai_agent id for VACADEMY_AI calls — it selects the
+                // TTS engine, and therefore the per-minute price (V421).
+                final String billAgentId = r.getCampaignId();
                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
                             billingService.billAiLeg(key, billResultId, billInstitute,
-                                    billProvider, billDirection, billSecs);
+                                    billProvider, billDirection, billSecs, billAgentId);
                         }
                     });
                 } else {
                     billingService.billAiLeg(key, billResultId, billInstitute,
-                            billProvider, billDirection, billSecs);
+                            billProvider, billDirection, billSecs, billAgentId);
                 }
             }
         }

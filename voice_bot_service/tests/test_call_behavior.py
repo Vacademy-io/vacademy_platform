@@ -1200,9 +1200,11 @@ def test_agent_without_a_tts_model_stays_on_sarvam(monkeypatch):
 
 
 def test_voice_from_the_other_vendors_palette_is_dropped(monkeypatch):
-    """Voice names don't cross vendors: Sarvam's "priya" is a 400 on every Rumik
-    utterance, i.e. a mute call. Switching model without switching voice is THE
-    obvious mistake, so fall back to the provider default."""
+    """Voice names don't cross vendors, and the failure is asymmetric (both probed
+    live): Sarvam 400s on an unknown speaker (no audio at all), while Rumik quietly
+    substitutes its default voice — so the caller hears a voice nobody picked, with
+    Hindi grammar conjugated for the configured one. Neither is acceptable, so drop
+    the name and use the provider default."""
     monkeypatch.delenv("TTS_MODEL", raising=False)
     pv.get_settings.cache_clear()
     try:

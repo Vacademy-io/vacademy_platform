@@ -597,10 +597,20 @@ def _agent_tts_model(agent) -> str:
 def _agent_voice(agent):
     """The configured voice, dropped if it belongs to the other vendor's palette.
 
-    Voice names do not cross vendors: sending Sarvam's "priya" to Rumik (or
-    "ira" to Sarvam) is a 400 on every utterance, i.e. a mute call. Switching
-    the model without also switching the voice is the obvious mistake, so fall
-    back to the provider default instead of trusting the stale name.
+    Voice names do not cross vendors, and the two engines fail DIFFERENTLY when you
+    send the wrong one (both probed against the live APIs):
+
+      * Sarvam REJECTS an unknown speaker outright ("Speaker 'x' is not compatible
+        with model bulbul:v3", HTTP 400) — so a Rumik name on a Sarvam agent means
+        no audio at all.
+      * Rumik SILENTLY SUBSTITUTES its default voice. It returned 184 KB of clean
+        audio for "priya". So the call is not mute — it is worse in a quieter way:
+        the caller hears a voice nobody chose, and because the LLM's Hindi verb
+        gender was conjugated for the CONFIGURED voice, a male-configured agent can
+        end up speaking masculine Hindi in a female voice.
+
+    Either way the stored name is not usable, so fall back to the provider default,
+    which at least keeps voice and grammar consistent with each other.
     """
     voice = (agent.get("voice") or "").strip()
     if not voice:

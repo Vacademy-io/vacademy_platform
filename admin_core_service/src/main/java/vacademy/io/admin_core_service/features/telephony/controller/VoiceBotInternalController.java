@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.telephony.controller;
 
+import vacademy.io.admin_core_service.features.telephony.core.TtsVoiceCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -203,6 +204,13 @@ public class VoiceBotInternalController {
         // global TTS_PACE / Sarvam model default.
         if (a.getPace() != null) base.put("pace", a.getPace());
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
+        // V421 — snake_case ON PURPOSE: the bot reads agent.get("tts_model"). The
+        // neighbours here are camelCase, so this looks like a typo and is not.
+        // Always emitted (never conditional on non-null) because the bot's own
+        // fallback for a MISSING key is "sarvam", and an agent stamped 'rumik' whose
+        // key we dropped would be served Sarvam while billed for Rumik.
+        base.put("tts_model", a.getTtsModel() != null && !a.getTtsModel().isBlank()
+                ? a.getTtsModel() : TtsVoiceCatalog.MODEL_SARVAM);
         return base;
     }
 
@@ -223,6 +231,11 @@ public class VoiceBotInternalController {
         agent.put("name", "Vacademy Agent");
         agent.put("language", "hinglish");
         agent.put("voice", "priya");
+        // The built-in persona stays on Sarvam. It is the fallback when an institute
+        // has configured no agent at all, so there is no agent row to price against;
+        // billing resolves an unresolvable agent to 'sarvam' too, and the two must
+        // agree or the fallback persona would be served one engine and billed another.
+        agent.put("tts_model", TtsVoiceCatalog.MODEL_SARVAM);
         agent.put("openingLine",
                 "Namaste! Main " + instituteName + " se baat kar rahi hoon. Kya aapke paas do minute hain?");
         agent.put("systemPrompt",

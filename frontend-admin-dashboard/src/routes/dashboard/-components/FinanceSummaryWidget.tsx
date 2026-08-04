@@ -11,19 +11,8 @@ import {
     type Icon,
 } from '@phosphor-icons/react';
 import { fetchPendingAdjustments, getPendingAdjustmentsQueryKey } from '@/services/manage-finances';
-
-const formatINR = (n: number, compact = false): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-            notation: compact ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
-    }
-};
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
 interface Tile {
     label: string;
@@ -41,6 +30,8 @@ export default function FinanceSummaryWidget() {
         staleTime: 60_000,
         retry: false,
     });
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const currency = resolveInstituteCurrency(instituteDetails);
 
     if (isError) return null;
 
@@ -58,7 +49,7 @@ export default function FinanceSummaryWidget() {
             valueNode: isLoading ? (
                 <Skeleton className="h-5 w-16" />
             ) : (
-                formatINR(outstanding, true)
+                formatInstituteMoney(outstanding, currency, { compact: true })
             ),
         },
         {

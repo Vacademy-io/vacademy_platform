@@ -7,7 +7,7 @@ import {
     Users,
     BookOpen,
     UsersThree,
-    CurrencyInr,
+    Money,
     WarningCircle,
     VideoCamera,
     type Icon,
@@ -17,6 +17,8 @@ import {
     type DashboardKpi,
     type KpiBreakdownTone,
 } from '../-services/dashboard-kpis-service';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
 interface KpiBandProps {
     instituteId: string;
@@ -52,7 +54,8 @@ const VISUALS: Record<string, KpiVisual> = {
         cardBg: 'bg-gradient-to-br from-emerald-50/60 to-white',
     },
     outstandingFees: {
-        Icon: CurrencyInr,
+        // Currency-neutral: the institute's dues may be in any currency (see resolveInstituteCurrency).
+        Icon: Money,
         iconBg: 'bg-amber-100',
         iconColor: 'text-amber-600',
         cardBg: 'bg-gradient-to-br from-amber-50/60 to-white',
@@ -87,18 +90,15 @@ const BREAKDOWN_TONE: Record<KpiBreakdownTone, string> = {
     danger: 'bg-danger-50 text-danger-600',
 };
 
-const formatValue = (k: DashboardKpi): string => {
+/**
+ * `currency` is the institute's resolved code, '' when it cannot be determined. Outstanding fees
+ * come from the fee ledger, which stores no currency, so this used to be hardcoded to INR — a UAE
+ * institute's dues card read "₹0". An unresolvable institute now shows a bare number instead of a
+ * wrong symbol. Locale stays en-IN so compact notation reads as L/Cr.
+ */
+const formatValue = (k: DashboardKpi, currency: string): string => {
     if (k.format === 'currency') {
-        try {
-            return new Intl.NumberFormat('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                maximumFractionDigits: 0,
-                notation: k.value >= 100000 ? 'compact' : 'standard',
-            }).format(k.value);
-        } catch {
-            return `₹${k.value.toLocaleString('en-IN')}`;
-        }
+        return formatInstituteMoney(k.value, currency);
     }
     if (k.format === 'percent') {
         return `${k.value}%`;
@@ -119,6 +119,8 @@ const formatValue = (k: DashboardKpi): string => {
 export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     const navigate = useNavigate();
     const { data, isLoading, isError } = useQuery(getDashboardKpisQuery({ instituteId, roles }));
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const currency = resolveInstituteCurrency(instituteDetails);
 
     if (isError) return null;
     if (!isLoading && (!data || data.length === 0)) return null;
@@ -185,7 +187,7 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
                             </div>
                             <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                                 <span className="text-2xl font-semibold tabular-nums text-neutral-900">
-                                    {formatValue(k)}
+                                    {formatValue(k, currency)}
                                 </span>
                             </div>
                             {!!k.breakdown?.length && (

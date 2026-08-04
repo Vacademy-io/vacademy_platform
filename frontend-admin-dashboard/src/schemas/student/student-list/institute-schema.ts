@@ -102,6 +102,8 @@ const InstituteSchema = z.object({
     institute_name: z.string().optional(),
     id: z.string().optional(),
     country: z.string().optional(),
+    /** ISO 4217 override for fee/dues amounts, which carry no currency of their own. */
+    currency: z.string().nullable().optional(),
     state: z.string().optional(),
     city: z.string().optional(),
     address: z.string().optional(),

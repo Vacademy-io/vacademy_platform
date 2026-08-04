@@ -608,9 +608,9 @@ public class PaymentLogService {
                         instituteId,
                         /* sendEmail */ !attachInvoiceToConfirmation);
                 if (invoiceResult != null) {
-                    // The invoice NUMBER is wanted regardless of placement — the confirmation email
-                    // prints it as the receipt number even when the PDF itself rides on a separate
-                    // invoice email. Only the PDF bytes and the dedup signal are placement-specific.
+                    // The invoice NUMBER is wanted regardless of placement — the confirmation mail
+                    // prints it as the receipt number even when the PDF rides on a separate invoice
+                    // email. Only the PDF bytes and the dedup signal are placement-specific.
                     invoiceNumber = invoiceResult.getInvoice() != null
                             ? invoiceResult.getInvoice().getInvoiceNumber()
                             : null;

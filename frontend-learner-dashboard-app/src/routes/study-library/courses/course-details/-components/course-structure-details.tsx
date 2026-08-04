@@ -225,11 +225,27 @@ export const CourseStructureDetails = ({
   const calculateModuleProgress = (moduleChapters: Chapter[]): number => {
     if (!moduleChapters || moduleChapters.length === 0) return 0;
 
-    const totalProgress = moduleChapters.reduce((sum, chapter) => {
+    // A chapter we have loaded and found to be empty is excluded from the
+    // average entirely. There is nothing in it for the learner to open, so
+    // counting it as 0% would cap the module below 100% forever and block the
+    // course certificate. Mirrors the backend, which now excludes chapters
+    // with no learner-visible slides from the module denominator
+    // (ActivityLogRepository#getModuleCompletionPercentage).
+    //
+    // Chapters we have NOT loaded yet stay in the denominator: absent slides
+    // mean "unknown", not "empty", and dropping them would make the module
+    // percentage jump around as the learner expands the tree.
+    const countedChapters = moduleChapters.filter((chapter) => {
+      const slides = slidesMap[chapter.id];
+      return slides === undefined || slides.length > 0;
+    });
+    if (countedChapters.length === 0) return 0;
+
+    const totalProgress = countedChapters.reduce((sum, chapter) => {
       return sum + calculateChapterProgress(chapter.id);
     }, 0);
 
-    return Math.round(totalProgress / moduleChapters.length);
+    return Math.round(totalProgress / countedChapters.length);
   };
 
   // Helper: subject progress = mean of its MODULE percentages.

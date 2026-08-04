@@ -1403,3 +1403,41 @@ def test_rumik_stamps_generate_on_send_not_on_done():
 
 class _DummyInterruption:
     pass
+
+
+def test_rumik_pace_ladder_is_monotonic_and_covers_the_range():
+    """Rumik has no numeric speed control — only prose steering, measured live.
+    The ladder must be monotonic, or a higher pace could produce slower speech."""
+    f = pv.rumik_pace_description
+    # Distinct instruction per band, fastest at the top.
+    fast, rapid, quick, brisk = f(1.4), f(1.1), f(1.0), f(0.9)
+    assert len({fast, rapid, quick, brisk}) == 4, "bands must not collapse"
+    assert f(1.2) == fast, "everything above the top threshold gets the top grade"
+    assert f(0.8) is None, "near-natural pace sends no instruction at all"
+    assert "slow" in f(0.6), "below the floor must explicitly ask for slow"
+    assert f(None) is None, "no pace configured = no steering"
+
+
+def test_rumik_pace_ladder_avoids_the_wording_that_did_nothing():
+    """Measured: 'brisk, upbeat' moved the rate 1% — indistinguishable from no
+    instruction. Only assertive wording ('no pauses') moved it, because the model
+    is modulating PAUSES, not words per second. The fast grades must say so."""
+    for pace in (1.05, 1.15, 1.4):
+        assert "pause" in pv.rumik_pace_description(pace), \
+            f"pace {pace} needs pause-suppressing wording to have any effect"
+
+
+def test_rumik_gets_the_agent_pace_at_all(monkeypatch):
+    """It previously got NO pace: build_tts dropped the agent's value on this path
+    entirely, so the field an admin sets did nothing on Rumik calls."""
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        fast = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=1.4)
+        slow = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=0.6)
+        assert fast._description != slow._description, "pace must reach the service"
+        assert "slow" in slow._description
+    finally:
+        pv.get_settings.cache_clear()

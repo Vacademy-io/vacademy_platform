@@ -342,6 +342,10 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
         if not s.rumik_api_key:
             logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul:v3")
         else:
+            # The agent's pace was previously DROPPED on this path — Rumik took no
+            # pace at all while production Sarvam runs at TTS_PACE 1.1, which is
+            # most of why Rumik sounded slow next to it.
+            eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
             return RumikTTSService(
                 api_key=s.rumik_api_key,
                 # Rumik emits 24 kHz ONLY; the output transport resamples to the
@@ -349,6 +353,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
                 sample_rate=24000,
                 voice=(voice or s.rumik_voice).strip() or "ira",
                 model="mulberry",
+                description=rumik_pace_description(eff_pace),
             )
     eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
     kwargs = {"pace": eff_pace, "enable_preprocessing": True}
@@ -658,6 +663,60 @@ class ResilientSarvamTTSService(SarvamTTSService):
 
 
 # ── Rumik Silk TTS ───────────────────────────────────────────────────────────
+
+# Rumik has NO numeric speed control. Probed live: speed / pace / rate /
+# speaking_rate / speech_rate / tempo / length_scale all move duration by <=4%,
+# i.e. inside the vendor's own +-5% per-request variance — they are silently
+# ignored. What DOES work is the natural-language `description`, and strongly:
+# "speaks very slowly and calmly" ran +44% long, so the mechanism is real.
+#
+# Measured means over 3 runs each (115-char Hinglish line, speaker ira):
+#     (none)                                        14.7 chars/s
+#     "brisk, upbeat conversational pace"           14.8   <- mild prose does NOTHING
+#     "quickly and briskly, energetic"              16.1
+#     "rapidly with urgency, no pauses"             17.6
+#     "extremely fast, rushed, clipped, no pauses"  19.9
+#
+# READ THIS BEFORE "CORRECTING" THE MAPPING BELOW. The phrase is not a translation
+# of the admin's pace value — it is the instruction that gets Rumik to a rate in
+# the neighbourhood of what pace means on Sarvam, and the ladder is deliberately
+# a notch aggressive from there. Verified rates on the same 115-char line:
+#     Sarvam bulbul:v3  pace 1.0 -> 12.8 chars/s, pace 1.1 -> 16.1, pace 1.5 -> 22.0
+#     Rumik unsteered   -> ~15.1;  "quick" -> ~16.2;  "rapid" -> ~18.8
+# (Sarvam's pace IS a speed multiplier — probed, higher is faster. And omitting
+# pace is NOT the same as pace=1.0: the API's own default sits near 1.08.)
+#
+# So Rumik unsteered is only ~6% slower than the Sarvam settings we ship, which is
+# NOT enough to explain a listener calling it "very slow". The perceived slowness
+# is prosody — Mulberry's inter-word and sentence pauses and its more deliberate
+# delivery — not characters per second. That is also why mild prose ("brisk")
+# moves nothing while assertive prose ("no pauses at all") moves a lot: the phrase
+# is acting on the pauses. Hence the ladder targets a bit faster than Sarvam
+# parity at any given pace value; it was tuned against the complaint, not against
+# a spreadsheet.
+#
+# CAVEAT, unresolved: per-request spread was 9.5-22.2%, so the MEAN is
+# controllable but an individual utterance is not. Pace will vary audibly between
+# sentences in a way Sarvam's numeric pace does not.
+_RUMIK_PACE_STYLES = (
+    (1.15, "speaks extremely fast, rushed and hurried, clipped delivery, no pauses at all"),
+    (1.05, "speaks rapidly with urgency, fast and energetic, no pauses"),
+    (0.95, "speaks quickly and briskly, energetic and upbeat"),
+    (0.85, "speaks at a brisk, upbeat conversational pace"),
+    (0.75, None),   # Rumik's natural rate
+)
+_RUMIK_SLOW_STYLE = "speaks slowly and calmly, unhurried, with deliberate pauses"
+
+
+def rumik_pace_description(pace):
+    """Prose that makes Rumik speak at the rate `pace` means on Sarvam."""
+    if pace is None:
+        return None
+    for threshold, phrase in _RUMIK_PACE_STYLES:
+        if pace >= threshold:
+            return phrase
+    return _RUMIK_SLOW_STYLE
+
 
 async def rumik_synthesize_wav(text: str, voice: str, api_key: str,
                                session=None, model: str = "mulberry") -> bytes:

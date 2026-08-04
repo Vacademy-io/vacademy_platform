@@ -14,6 +14,9 @@ import time
 
 import pytest
 
+import inspect
+import json as _json
+
 import app.bot as b
 import app.providers as pv
 
@@ -1163,13 +1166,6 @@ def test_rumik_started_flag_is_initialised():
     assert "self._started = False" in src
 
 
-def test_rumik_cancels_instead_of_closing_the_socket():
-    """The whole reason to prefer Rumik. Sarvam has no cancel, so barge-in there
-    means closing the socket — the root of 13 stalls in 220 calls."""
-    src = inspect.getsource(pv.RumikTTSService._handle_interruption)
-    assert '{"type": "cancel"}' in src or "'type': 'cancel'" in src
-    assert "_disconnect" not in src, "barge-in must NOT tear down the connection"
-
 
 def test_rumik_skips_letterless_and_records_credits():
     run = inspect.getsource(pv.RumikTTSService.run_tts)
@@ -1241,3 +1237,169 @@ def test_grammar_follows_the_voice_we_actually_speak_with(monkeypatch):
                                     or b._default_voice_for(a)) == "female"
     finally:
         pv.get_settings.cache_clear()
+
+
+# ── Rumik: the four P0s an adversarial review found, as BEHAVIOURAL tests ─────
+#
+# The test these replace asserted `"_disconnect" not in inspect.getsource(...)` of
+# the override — and passed precisely because the teardown lived in the PARENT
+# class. Grepping source proves what the code says, not what it does. Everything
+# below drives the real methods against a fake socket.
+
+class _FakeSock:
+    """Minimal stand-in for a websockets client connection."""
+
+    def __init__(self, inbound=None):
+        from websockets.protocol import State
+        self.sent = []
+        self.state = State.OPEN
+        self.closed = False
+        self._inbound = list(inbound or [])
+
+    async def send(self, msg):
+        self.sent.append(_json.loads(msg) if msg.startswith("{") else msg)
+
+    async def close(self):
+        from websockets.protocol import State
+        self.closed = True
+        self.state = State.CLOSED
+
+    async def ping(self):
+        return True
+
+    def __aiter__(self):
+        async def gen():
+            for m in self._inbound:
+                yield m
+        return gen()
+
+
+def _rumik_stub(inbound=None):
+    """A RumikTTSService with pipecat's I/O stubbed, ready to drive directly."""
+    svc = pv.RumikTTSService(api_key="rk_test", voice="ira", sample_rate=24000)
+    svc._websocket = _FakeSock(inbound)
+    svc._sample_rate = 24000
+    pushed = []
+
+    async def push(frame, *a, **k):
+        pushed.append(type(frame).__name__)
+    svc.push_frame = push
+    for m in ("stop_ttfb_metrics", "start_ttfb_metrics", "start_tts_usage_metrics",
+              "stop_all_metrics"):
+        setattr(svc, m, lambda *a, **k: asyncio.sleep(0))
+    return svc, pushed
+
+
+@pytest.mark.asyncio
+async def test_rumik_barge_in_cancels_and_keeps_the_socket():
+    """The whole reason to prefer Rumik. Sarvam has no cancel, so barge-in there
+    closes the socket — the root of 13 stalls in 220 calls. This must send one
+    cancel frame and NOT tear the connection down."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = True
+    torn = []
+    svc._disconnect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+    svc._connect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [{"type": "cancel"}], svc._websocket.sent
+    assert not svc._websocket.closed, "barge-in must not close the socket"
+    assert not torn, "must not call the base class's disconnect/reconnect"
+    assert svc._cancels_sent == 1
+
+
+@pytest.mark.asyncio
+async def test_rumik_leaves_the_quiet_window_reply_alone():
+    """pipecat pushes an InterruptionFrame on EVERY VAD onset while the bot is
+    quiet. Our own measurement: 60 of 63 such pre-playout kills went on to play
+    anyway. Cancelling there turns a cough into a lost answer."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = False
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [], "must not cancel while the bot is silent"
+    assert svc._request_active, "the in-flight reply must survive to play"
+
+
+@pytest.mark.asyncio
+async def test_rumik_raises_when_the_peer_closes():
+    """websockets' __aiter__ swallows ConnectionClosedOK, so returning quietly makes
+    pipecat's `while True: await _receive_messages()` spin without ever yielding —
+    starving the event loop for EVERY concurrent call on the box, not just this
+    one. Raising routes into the base's reconnect-with-backoff instead."""
+    svc, _ = _rumik_stub(inbound=[])
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_does_not_raise_on_our_own_teardown():
+    """...but an intentional close at end of call must NOT trigger a reconnect."""
+    svc, _ = _rumik_stub(inbound=[])
+    svc._closing = True
+    await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_ends_the_turn_only_after_the_LAST_sentence():
+    """Rumik's socket is request/response and cancels the in-flight request when the
+    next arrives, so sends are serialised. The turn must end when no sentence is
+    still outstanding — gating on queue emptiness ended it while the last sentence
+    was unsent, and 71% of a three-sentence reply reached the caller."""
+    done = _json.dumps({"type": "done", "duration_s": 1.0, "credits_used": 0})
+    svc, pushed = _rumik_stub(inbound=[done, done, done])
+    svc._started = True
+    svc._pending_sends = 3          # three sentences enqueued for one reply
+
+    # The fake stream ending IS a peer close, so the ConnectionError from the
+    # previous test's behaviour is correct here too — consume it and assert on what
+    # happened while the three terminal frames were being processed.
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+    assert pushed.count("TTSStoppedFrame") == 1, \
+        f"one Stopped per REPLY, not per sentence: {pushed}"
+    assert svc._pending_sends == 0, "a leaked counter means the turn never ends"
+
+
+@pytest.mark.asyncio
+async def test_rumik_pending_count_cannot_leak_on_abandon():
+    """A stuck positive count means TTSStoppedFrame never fires and the pipeline
+    believes the bot is speaking for the rest of the call."""
+    svc, _ = _rumik_stub()
+    svc._pending_sends = 3
+    svc._bot_speaking = True
+    svc._request_active = True
+    for _ in range(3):
+        svc._send_queue.put_nowait("x")
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._pending_sends == 0
+    assert svc._send_queue.empty()
+
+
+def test_rumik_implements_the_hooks_bot_py_duck_types_on():
+    """bot.py wires stall detection through hasattr(). Missing hooks skip SILENTLY,
+    which unplugged stall recovery, TTS_WEDGE and REPLY_UNPLAYED on every Rumik
+    call — on the provider whose justification was fixing stalls."""
+    for m in ("set_diagnostics", "set_generate_callback", "set_credits_callback",
+              "_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_rumik_stamps_generate_on_send_not_on_done():
+    """A stamp that lands after the audio makes the stall condition unreachable by
+    construction — the masking failure mode with extra steps."""
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "_on_generate" in run, "generate stamp must happen in run_tts (on send)"
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "_on_generate" not in recv, "must NOT stamp from the receive path"
+
+
+class _DummyInterruption:
+    pass

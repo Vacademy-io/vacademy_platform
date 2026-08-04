@@ -101,6 +101,11 @@ class CallDiagnostics:
     idle_hangup: bool = False
     cap_farewell: bool = False
     barge_ins: int = 0
+    # Cancels actually put on the wire, against barge-ins seen. The first Rumik
+    # implementation never sent one (the base class tore the socket down first) and
+    # nothing revealed it — so the count is the signal that the primary reason for
+    # choosing this vendor is really happening.
+    barge_in_cancels: int = 0
     # None = NOT MEASURED (never 0-by-default — see module docstring).
     answers_deleted: Optional[int] = None
     answers_deleted_samples: List[str] = field(default_factory=list)
@@ -382,6 +387,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "turnTaking": {
                 "userTurns": d.user_turns, "botTurns": d.bot_turns,
                 "bargeIns": d.barge_ins,
+                "bargeInCancels": d.barge_in_cancels,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
                 "nudges": d.nudges,

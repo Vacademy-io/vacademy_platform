@@ -56,7 +56,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
     // Submission-tab rows don't carry `username`; fall back to the credentials
     // API (which returns it) so the field isn't stuck on "N/A".
     const username =
-        (renamed?.userId === userId ? renamed.username : '') ||
+        (renamed && renamed.userId === userId ? renamed.username : '') ||
         selectedStudent?.username ||
         credentials?.username ||
         '';

@@ -22,7 +22,7 @@ interface TemplateEditorEmailProps {
     templateId: string | null; // null for create, string for edit
     // Preselects the template category when creating (e.g. INVOICE / INVOICE_EMAIL
     // when launched from Invoice Settings). Ignored when editing an existing template.
-    initialType?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+    initialType?: MessageTemplate['type'];
 }
 
 export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templateId, initialType }) => {
@@ -144,7 +144,9 @@ export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templa
                     onSave={handleSave}
                     isSaving={isSaving}
                     initialTemplateType={
-                        initialType === 'INVOICE' || initialType === 'INVOICE_EMAIL'
+                        initialType === 'INVOICE' ||
+                        initialType === 'INVOICE_EMAIL' ||
+                        initialType === 'PAYMENT_CONFIRMATION'
                             ? initialType
                             : undefined
                     }

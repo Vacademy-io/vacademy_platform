@@ -85,6 +85,9 @@ public class StudentRegistrationManager {
     @Autowired
     private InstituteRepository instituteRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute_learner.service.EnrollmentCredentialPolicyService enrollmentCredentialPolicyService;
+
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
     }
@@ -161,8 +164,22 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails()
                 .setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
+        // Was hardcoded true, which made this the one enrollment path no institute setting
+        // could silence — institutes running their own LEARNER_BATCH_ENROLLMENT welcome mail
+        // got two emails per learner, both carrying the password.
+        //
+        // Only honour the institute's opt-out when the caller is enrolling as ACTIVE, because
+        // that is the only case where addStudentToInstitute fires the enrollment workflow that
+        // sends the institute's own mail instead. Non-ACTIVE adds (the invite-response flow
+        // registers learners as INVITED) fire no workflow, so suppressing here would leave the
+        // learner with no credentials at all.
+        String instituteId = instituteStudentDTO.getInstituteStudentDetails().getInstituteId();
+        boolean enrollmentWorkflowWillFire = LearnerSessionStatusEnum.ACTIVE.name()
+                .equalsIgnoreCase(instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus());
+        boolean sendCredentials = !enrollmentWorkflowWillFire
+                || enrollmentCredentialPolicyService.shouldSendCredentialEmail(instituteId);
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(),
-                instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
+                instituteId, sendCredentials);
         instituteStudentDTO.getUserDetails().setId(createdUser.getId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }

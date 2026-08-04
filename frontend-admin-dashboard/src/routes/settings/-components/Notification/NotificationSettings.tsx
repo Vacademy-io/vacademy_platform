@@ -1402,6 +1402,17 @@ function ChatSection({
  * a matching `source` — deliberately NOT every value of the backend NotificationEventType enum,
  * several of which have no send-site and would render controls that do nothing.
  */
+// Rejects entries that would silently fail at send time: the backend parses copy addresses with
+// InternetAddress.parse and, on failure, drops the copies and sends anyway — so a typo here would
+// otherwise look configured while never delivering.
+const CC_EMAIL_PLACEHOLDER = 'name@example.com — press Enter to add';
+
+function validateCcEmail(candidate: string): string | null {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)
+        ? null
+        : `"${candidate}" is not a valid email address.`;
+}
+
 function EmailCcSection({
     value,
     onChange,
@@ -1416,6 +1427,19 @@ function EmailCcSection({
             triggers: { ...value.triggers, [key]: { ...current, ...patch } },
         });
     };
+
+    // A config can be switched on yet still deliver nothing — no email selected, or none of the
+    // selected ones has an address. Both look configured and fail silently, so say so here.
+    const enabledTriggers = EMAIL_CC_TRIGGERS.filter((t) => value.triggers[t.key]?.enabled);
+    const hasAnyAddress =
+        value.global_cc.length > 0 ||
+        enabledTriggers.some((t) => (value.triggers[t.key]?.cc?.length ?? 0) > 0);
+    const inactiveReason =
+        enabledTriggers.length === 0
+            ? 'No emails are selected below, so no copies will be sent.'
+            : !hasAnyAddress
+              ? 'No addresses have been added, so no copies will be sent. Type an address and press Enter to add it.'
+              : null;
 
     return (
         <Card className="rounded-lg border-gray-200">
@@ -1436,6 +1460,15 @@ function EmailCcSection({
 
                 {value.enabled && (
                     <>
+                        {inactiveReason && (
+                            <Alert variant="destructive">
+                                <Warning className="size-4" />
+                                <AlertDescription className="text-xs">
+                                    {inactiveReason}
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
                         <div className="rounded-md border p-3">
                             <Label>Copy type</Label>
                             <div className="mt-1 text-xs text-muted-foreground">
@@ -1467,7 +1500,8 @@ function EmailCcSection({
                             <StringListEditor
                                 value={value.global_cc}
                                 onChange={(global_cc) => onChange({ ...value, global_cc })}
-                                placeholder="name@example.com"
+                                placeholder={CC_EMAIL_PLACEHOLDER}
+                                validate={validateCcEmail}
                             />
                         </div>
 
@@ -1505,7 +1539,8 @@ function EmailCcSection({
                                                     onChange={(cc) =>
                                                         setTrigger(trigger.key, { cc })
                                                     }
-                                                    placeholder="name@example.com"
+                                                    placeholder={CC_EMAIL_PLACEHOLDER}
+                                                    validate={validateCcEmail}
                                                 />
                                             </div>
                                         )}
@@ -1532,16 +1567,30 @@ function StringListEditor({
     value,
     onChange,
     placeholder,
+    validate,
 }: {
     value: string[];
     onChange: (items: string[]) => void;
     placeholder?: string;
+    /** Return an error message to reject the entry, or null to accept it. */
+    validate?: (item: string) => string | null;
 }) {
     const [input, setInput] = useState('');
     const addItem = () => {
         const v = input.trim();
         if (!v) return;
-        if (value.includes(v)) return;
+        // Clear on duplicate too — leaving the text behind makes it look unsaved.
+        if (value.includes(v)) {
+            setInput('');
+            return;
+        }
+        if (validate) {
+            const error = validate(v);
+            if (error) {
+                toast.error(error);
+                return;
+            }
+        }
         onChange([...value, v]);
         setInput('');
     };
@@ -1568,6 +1617,10 @@ function StringListEditor({
                         addItem();
                     }
                 }}
+                // Commit on blur as well as Enter. Without this, typing a value and clicking
+                // Save discards it silently — the field looks filled in, but an empty list is
+                // what gets persisted.
+                onBlur={addItem}
                 placeholder={placeholder ?? 'Add and press Enter'}
             />
         </div>

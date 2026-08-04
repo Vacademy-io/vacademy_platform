@@ -1343,6 +1343,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     for _svc in (stt, tts):
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)
+    # Vendor cost, recorded from the vendor's own terminal frame. tts_vendor is
+    # stamped unconditionally (both providers) so the panel always shows WHICH
+    # engine spoke — that is the first question when a call sounds wrong.
+    diag.tts_vendor = getattr(tts, "model_name", "") or type(tts).__name__
+    if hasattr(tts, "set_credits_callback"):
+        tts.set_credits_callback(
+            lambda credits, secs, chars=0: diag.note_tts_spend(credits, secs, chars))
     if hasattr(tts, "set_generate_callback"):
         def _stamp_generate():
             # Only stamp while the bot is QUIET: a clause generated mid-playout is

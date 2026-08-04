@@ -712,6 +712,7 @@ class RumikTTSService(InterruptibleTTSService):
         # the health panel can report ACTUAL vendor spend per call instead of
         # inferring it from character counts.
         self._on_credits = None
+        self._pending_chars = 0
         self.set_model_name(f"silk-{model}")
         self.set_voice(voice)
 
@@ -794,7 +795,8 @@ class RumikTTSService(InterruptibleTTSService):
                     try:
                         if self._on_credits is not None:
                             self._on_credits(float(j.get("credits_used") or 0.0),
-                                             float(j.get("duration_s") or 0.0))
+                                             float(j.get("duration_s") or 0.0),
+                                             self._pending_chars)
                     except Exception:
                         pass
                     await self.push_frame(TTSStoppedFrame())
@@ -850,6 +852,10 @@ class RumikTTSService(InterruptibleTTSService):
                 await self.start_ttfb_metrics()
                 yield TTSStartedFrame()
                 self._started = True
+            # Chars are OUR side of the cost equation (Rs 0.50/1k). Recorded per
+            # request so the panel can cross-check the vendor's meter against
+            # what we actually sent, instead of trusting either alone.
+            self._pending_chars = len(text or "")
             payload = {"text": text, "speaker": self._voice}
             if self._description:
                 payload["description"] = self._description

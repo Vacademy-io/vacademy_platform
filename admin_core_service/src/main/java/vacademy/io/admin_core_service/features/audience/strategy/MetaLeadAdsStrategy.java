@@ -94,6 +94,16 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     @Value("${meta.login.config.id:}")
     private String loginConfigId;
 
+    /**
+     * Master switch for the config-based Login-for-Business (Path 2) flow. When
+     * false, the classic scope-based OAuth (Path 1) is used even if a config id is
+     * present — so we can keep {@code META_LOGIN_CONFIG_ID} stored while temporarily
+     * reverting to Path 1 (e.g. while pages_manage_ads App Review is pending), then
+     * flip back to Path 2 by setting it true again. Default true.
+     */
+    @Value("${meta.login.config.enabled:true}")
+    private boolean loginConfigEnabled;
+
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
     private final TokenEncryptionService tokenEncryptionService;
@@ -359,7 +369,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
                     + "&redirect_uri=" + URLEncoder.encode(uri, StandardCharsets.UTF_8)
                     + "&state=" + URLEncoder.encode(stateToken, StandardCharsets.UTF_8)
                     + "&response_type=code";
-            if (loginConfigId != null && !loginConfigId.isBlank()) {
+            if (loginConfigEnabled && loginConfigId != null && !loginConfigId.isBlank()) {
                 // Facebook Login for Business: the Configuration defines the requested
                 // permissions and the Page-asset selection. config_id makes Meta return
                 // the selected Pages as asset-scoped grants (readable from the token's
@@ -390,7 +400,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
             // long-lived and do NOT support the fb_exchange_token upgrade — it 4xxs.
             // In config-based mode, fall back to the initial token; in the classic scope
             // flow a long-lived failure is a genuine error, so rethrow there.
-            if (loginConfigId == null || loginConfigId.isBlank()) throw e;
+            if (!loginConfigEnabled || loginConfigId == null || loginConfigId.isBlank()) throw e;
             log.warn("Long-lived exchange failed with config_id set (system-user token?); "
                     + "using the initial token: {}", e.getMessage());
             return OAuthTokenResult.builder()

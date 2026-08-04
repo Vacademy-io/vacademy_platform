@@ -14,6 +14,17 @@ name: Deploy Voice Bot Service
 #      the AWS/kubeconfig secrets already exist.
 #   4. On admin_core: set VOICE_BOT_BASE_URL=https://backend-stage.vacademy.io/voice-bot-service
 
+# Two pushes in quick succession used to race: on 2026-08-03 the older run died on
+# a docker name conflict while the NEWER run reported SUCCESS after recreating the
+# container with the OLDER run's image — a green tick on a deploy that shipped the
+# wrong commit, which is the worst possible failure mode for a deploy signal.
+# Serialise instead, and let the newer commit win: cancel-in-progress is safe here
+# because every run is a full build-and-roll of a single mutable target, so an
+# abandoned earlier run has nothing we need.
+concurrency:
+  group: deploy-voice-bot-service
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
     inputs:

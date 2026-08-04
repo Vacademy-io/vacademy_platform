@@ -10,6 +10,7 @@ from __future__ import annotations
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.services.tts_service import InterruptibleTTSService
 
 from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 
@@ -320,6 +321,7 @@ def build_llm():
 
 
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
+              tts_model: str | None = None,
               pace: float | None = None, temperature: float | None = None):
     """`aiohttp_session` is REQUIRED by SarvamTTSService (keyword-only, no
     default) — the FastAPI lifespan owns one shared session (see main.py).
@@ -330,6 +332,23 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
     stored value can't 400 the TTS mid-call. (InputParams DOES carry temperature
     on pipecat 0.0.95 — verified against the installed package.)"""
     s = get_settings()
+    # TTS PROVIDER SWITCH. Per-agent, defaulting to the env. "rumik" is the
+    # default going forward: Rs 0.50/1k chars against Sarvam's Rs 3.00 on the line
+    # that is 65% of per-call cost, with a real cancel primitive so barge-in does
+    # not require closing (and wedging) the socket.
+    model = (tts_model or s.tts_model or "").strip().lower()
+    if model.startswith("rumik") or model.startswith("silk"):
+        if not s.rumik_api_key:
+            logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul:v3")
+        else:
+            return RumikTTSService(
+                api_key=s.rumik_api_key,
+                # Rumik emits 24 kHz ONLY; the output transport resamples to the
+                # 8 kHz Plivo leg.
+                sample_rate=24000,
+                voice=(voice or s.rumik_voice).strip() or "ira",
+                model="mulberry",
+            )
     eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
     kwargs = {"pace": eff_pace, "enable_preprocessing": True}
     if temperature is not None:
@@ -635,3 +654,210 @@ class ResilientSarvamTTSService(SarvamTTSService):
     async def _disconnect(self):
         async with self._conn_lock:
             await super()._disconnect()
+
+
+# ── Rumik Silk TTS ───────────────────────────────────────────────────────────
+
+class RumikTTSService(InterruptibleTTSService):
+    """Rumik Silk (mulberry 1.5) streaming TTS.
+
+    pipecat 0.0.95 has no Rumik service, so this is hand-written to the
+    WebsocketService contract: implement _connect_websocket /
+    _disconnect_websocket / _receive_messages and the base gives us connection
+    verification (ping) and reconnection-with-backoff for free. It therefore uses
+    the `websockets` library, NOT aiohttp — the base calls .ping() and inspects
+    .state, which only the former exposes.
+
+    Why Rumik — measured against the live API from the box, not claimed:
+      * Rs 0.50 / 1k characters vs Sarvam bulbul:v3's Rs 3.00. TTS is 65% of our
+        per-call cost, so this is a 6x cut on the dominant line.
+      * TTFB 0.295s end to end (server reported ttfa_ms 112.5), against Sarvam's
+        0.20s median but 4.5s p95.
+      * A REAL cancel: {"type":"cancel"} is honoured AND THE SOCKET STAYS OPEN
+        (verified live). Sarvam has no cancel, which is why barge-in there means
+        closing the socket — the root of 13 stalls across 220 calls. Here an
+        interruption costs one JSON frame and the next utterance reuses the
+        same connection.
+
+    Protocol, verified live:
+      mint  POST https://silk-api.rumik.ai/v1/tts/ws-connect  (Bearer key,
+            body {"model":"mulberry","text":...}) -> {ws_url, token, expires_in}
+      conn  wss://silk-api.rumik.ai/ws/tts?token=<token>
+      send  {"text":..., "speaker":"ira"}
+      recv  binary PCM int16 LE @ 24 kHz mono, then
+            {"type":"done", credits_used, duration_s, ttfa_ms, ...}
+      stop  {"type":"cancel"} -> {"type":"cancelled","reason":"cancel"}
+
+    24 kHz is the ONLY output format (no 8 kHz, no mu-law), so we declare 24 kHz
+    and let pipecat's output transport resample onto the 8 kHz Plivo leg.
+    """
+
+    MINT_URL = "https://silk-api.rumik.ai/v1/tts/ws-connect"
+
+    def __init__(self, *, api_key: str, voice: str = "ira",
+                 model: str = "mulberry", sample_rate: int = 24000,
+                 description: str | None = None, **kwargs):
+        super().__init__(sample_rate=sample_rate, **kwargs)
+        self._api_key = api_key
+        self._voice = voice
+        self._model = model
+        self._description = description
+        self._receive_task = None
+        self._request_active = False
+        # Initialised HERE, not left to TTSService.start(): run_tts reads it, and
+        # if the attribute is missing the FIRST utterance of every call dies with
+        # AttributeError (caught by the e2e; a connect-only probe cannot see it).
+        self._started = False
+        # Rumik's own meter, echoed on the terminal frame — bot.py records it so
+        # the health panel can report ACTUAL vendor spend per call instead of
+        # inferring it from character counts.
+        self._on_credits = None
+        self.set_model_name(f"silk-{model}")
+        self.set_voice(voice)
+
+    def set_credits_callback(self, cb):
+        self._on_credits = cb
+
+    def can_generate_metrics(self) -> bool:
+        return True
+
+    # ── lifecycle ──
+    async def start(self, frame):
+        await super().start(frame)
+        await self._connect()
+
+    async def stop(self, frame):
+        await super().stop(frame)
+        await self._disconnect()
+
+    async def cancel(self, frame):
+        await super().cancel(frame)
+        await self._disconnect()
+
+    async def _connect(self):
+        await self._connect_websocket()
+        if self._websocket and not self._receive_task:
+            self._receive_task = self.create_task(
+                self._receive_task_handler(self._report_error))
+
+    async def _disconnect(self):
+        if self._receive_task:
+            await self.cancel_task(self._receive_task, timeout=2.0)
+            self._receive_task = None
+        await self._disconnect_websocket()
+
+    # ── WebsocketService contract ──
+    async def _connect_websocket(self):
+        from websockets.asyncio.client import connect as websocket_connect
+        from websockets.protocol import State
+        try:
+            if self._websocket and self._websocket.state is State.OPEN:
+                return
+            mint = await self._mint()
+            self._websocket = await websocket_connect(
+                f"{mint['ws_url']}?token={mint['token']}")
+            logger.info("rumik: connected (%s voice=%s)", self.model_name, self._voice)
+        except Exception as e:
+            logger.error("rumik: connect failed: %s", e)
+            self._websocket = None
+
+    async def _disconnect_websocket(self):
+        try:
+            await self.stop_all_metrics()
+            if self._websocket:
+                await self._websocket.close()
+        except Exception as e:
+            logger.warning("rumik: close failed: %s", e)
+        finally:
+            self._started = False
+            self._request_active = False
+            self._websocket = None
+
+    async def _receive_messages(self):
+        """Binary -> audio frames; the terminal frame ends the turn."""
+        import json as _json
+        from pipecat.frames.frames import TTSAudioRawFrame, TTSStoppedFrame
+        async for message in self._websocket:
+            if isinstance(message, (bytes, bytearray)):
+                await self.stop_ttfb_metrics()
+                await self.push_frame(TTSAudioRawFrame(bytes(message), self.sample_rate, 1))
+                continue
+            try:
+                j = _json.loads(message)
+            except Exception:
+                continue
+            kind = j.get("type")
+            if kind in ("done", "cancelled"):
+                self._request_active = False
+                self._started = False
+                if kind == "done":
+                    try:
+                        if self._on_credits is not None:
+                            self._on_credits(float(j.get("credits_used") or 0.0),
+                                             float(j.get("duration_s") or 0.0))
+                    except Exception:
+                        pass
+                    await self.push_frame(TTSStoppedFrame())
+            elif kind == "error":
+                logger.error("rumik: %s", str(j)[:200])
+                self._request_active = False
+
+    async def _mint(self):
+        """One-shot session token. Separate HTTP call, so it is the one place a
+        network hiccup can delay first audio — kept tight at 10s."""
+        import aiohttp
+        async with aiohttp.ClientSession() as sess:
+            async with sess.post(
+                    self.MINT_URL,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json={"model": self._model, "text": "warmup"},
+                    timeout=aiohttp.ClientTimeout(total=10)) as r:
+                if r.status != 200:
+                    raise RuntimeError(f"rumik mint {r.status}: {(await r.text())[:200]}")
+                return await r.json()
+
+    # ── barge-in ──
+    async def _handle_interruption(self, frame, direction):
+        await super()._handle_interruption(frame, direction)
+        # One JSON frame, connection preserved. This is the entire reason to
+        # prefer Rumik: no reconnect on barge-in, so no wedge.
+        from websockets.protocol import State
+        if (self._request_active and self._websocket
+                and self._websocket.state is State.OPEN):
+            try:
+                import json as _json
+                await self._websocket.send(_json.dumps({"type": "cancel"}))
+            except Exception as e:
+                logger.warning("rumik: cancel failed: %s", e)
+        self._request_active = False
+
+    # ── synthesis ──
+    async def run_tts(self, text: str):
+        import json as _json
+        from pipecat.frames.frames import ErrorFrame, TTSStartedFrame
+        from websockets.protocol import State
+        # Letterless input is not speech; same guard as Sarvam (has_word_char).
+        if not has_word_char(text):
+            logger.info("rumik: skipping letterless chunk %r", (text or "")[:40])
+            return
+        try:
+            if not self._websocket or self._websocket.state is not State.OPEN:
+                await self._connect()
+            if not self._websocket:
+                yield ErrorFrame(error="rumik: no connection")
+                return
+            if not self._started:
+                await self.start_ttfb_metrics()
+                yield TTSStartedFrame()
+                self._started = True
+            payload = {"text": text, "speaker": self._voice}
+            if self._description:
+                payload["description"] = self._description
+            self._request_active = True
+            await self._websocket.send(_json.dumps(payload))
+            await self.start_tts_usage_metrics(text)
+        except Exception as e:
+            logger.error("rumik run_tts failed: %s", e)
+            self._request_active = False
+            yield ErrorFrame(error=f"rumik error: {e}")
+            await self._disconnect()

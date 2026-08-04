@@ -85,6 +85,14 @@ class Settings:
     # Sarvam to finalize sooner. Env-off if it starts clipping slow speakers.
     sarvam_stt_high_vad: bool = field(
         default_factory=lambda: _env("SARVAM_STT_HIGH_VAD", "true").lower() == "true")
+    # ── TTS provider ────────────────────────────────────────────────────────
+    # Per-agent selectable; this is the fallback when an agent has no preference.
+    # "rumik" = Rumik Silk mulberry 1.5 (Rs 0.50/1k chars). "sarvam" = bulbul:v3
+    # (Rs 3.00/1k) — 6x dearer and priced to the customer accordingly.
+    tts_model: str = field(default_factory=lambda: _env("TTS_MODEL", "rumik"))
+    rumik_api_key: str = field(default_factory=lambda: _env("RUMIK_API_KEY"))
+    rumik_voice: str = field(default_factory=lambda: _env("RUMIK_VOICE", "ira"))
+
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
     # Server-side chars Sarvam buffers before synthesizing the first audio (default 50).

@@ -1120,3 +1120,67 @@ def test_caller_words_cancel_a_pending_close():
     on_tr = on_tr[:on_tr.index("transcript = TranscriptCollector")]
     assert 'flags["end_pending_since"] = 0.0' in on_tr
     assert "outcome.end_requested = False" in on_tr
+
+
+# ── Rumik Silk TTS (default provider) ────────────────────────────────────────
+
+def test_build_tts_picks_rumik_by_default_and_sarvam_on_request(monkeypatch):
+    class _S: pass
+    monkeypatch.setenv("TTS_MODEL", "rumik")
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        r = pv.build_tts(8000, voice="ira", aiohttp_session=None, tts_model="rumik")
+        assert type(r).__name__ == "RumikTTSService"
+        # 24 kHz is Rumik's ONLY output. pipecat resolves
+        # _sample_rate = _init_sample_rate or transport rate, so declaring 24k
+        # makes the OUTPUT TRANSPORT resample to the 8k Plivo leg. Declaring 8k
+        # would play 24k audio at 8k = chipmunk speech.
+        assert r._init_sample_rate == 24000
+        s = pv.build_tts(8000, voice="shubh", aiohttp_session=None, tts_model="sarvam")
+        assert type(s).__name__ == "ResilientSarvamTTSService"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_falls_back_to_sarvam_without_a_key(monkeypatch):
+    """Never leave a call mute because a key is missing."""
+    monkeypatch.setenv("TTS_MODEL", "rumik")
+    monkeypatch.delenv("RUMIK_API_KEY", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        t = pv.build_tts(8000, aiohttp_session=None, tts_model="rumik")
+        assert type(t).__name__ == "ResilientSarvamTTSService"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_started_flag_is_initialised():
+    """run_tts reads _started. TTSService.start() creates it, but our first
+    utterance can reach run_tts before that — a live e2e caught the FIRST
+    utterance of every call dying with AttributeError."""
+    svc = pv.RumikTTSService.__new__(pv.RumikTTSService)
+    src = inspect.getsource(pv.RumikTTSService.__init__)
+    assert "self._started = False" in src
+
+
+def test_rumik_cancels_instead_of_closing_the_socket():
+    """The whole reason to prefer Rumik. Sarvam has no cancel, so barge-in there
+    means closing the socket — the root of 13 stalls in 220 calls."""
+    src = inspect.getsource(pv.RumikTTSService._handle_interruption)
+    assert '{"type": "cancel"}' in src or "'type': 'cancel'" in src
+    assert "_disconnect" not in src, "barge-in must NOT tear down the connection"
+
+
+def test_rumik_skips_letterless_and_records_credits():
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "has_word_char(text)" in run
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "credits_used" in recv, "the vendor's own meter is the honest cost signal"
+
+
+def test_rumik_implements_the_websocket_contract():
+    """WebsocketService gives connection verification + reconnect-with-backoff
+    only if these exact hooks exist."""
+    for m in ("_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"

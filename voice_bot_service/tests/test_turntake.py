@@ -25,8 +25,10 @@ def cfg(**over):
 # ── classifier: ABSORB rows (the live ANSWER_DELETED samples must all pass) ──
 
 def test_absorbs_live_deleted_backchannels():
-    # Straight from prod diagnostics answersDeletedSamples (2026-08-04/05 calls).
-    for t in ("हाँ।", "अच्छा।", "बोलिए।", "जी हाँ", "ठीक है।", "हांजी"):
+    # Straight from prod diagnostics answersDeletedSamples (2026-08-04/05 calls,
+    # incl. the founder's own 8e1e00ad test call).
+    for t in ("हाँ।", "अच्छा।", "बोलिए।", "जी हाँ", "ठीक है।", "हांजी",
+              "अच्छा बढ़िया है।", "बहुत बढ़िया।"):
         assert mid_reply_action(t) == ABSORB, t
 
 
@@ -42,8 +44,8 @@ def test_absorbs_empty_text():
 
 
 def test_extra_backchannels_param():
-    assert mid_reply_action("badhiya") == INTERRUPT
-    assert mid_reply_action("badhiya", extra_backchannels=frozenset({"badhiya"})) == ABSORB
+    assert mid_reply_action("zabardast") == INTERRUPT
+    assert mid_reply_action("zabardast", extra_backchannels=frozenset({"zabardast"})) == ABSORB
 
 
 # ── classifier: INTERRUPT rows ──

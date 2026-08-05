@@ -653,8 +653,14 @@ async def ws_endpoint(websocket: WebSocket):
                 add_wav_header=False,
                 # stop_secs below the 0.8 default: how much silence ends the caller's
                 # turn — the single biggest chunk of perceived response latency.
+                # min_volume/confidence below pipecat defaults (0.6/0.7): those are
+                # webrtc-headset numbers, and on live call 8e1e00ad the volume gate
+                # made the VAD stone-deaf to the caller (see config.vad_min_volume).
                 vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(stop_secs=s.vad_stop_secs)
+                    params=VADParams(stop_secs=s.vad_stop_secs,
+                                     min_volume=s.vad_min_volume,
+                                     confidence=s.vad_confidence,
+                                     start_secs=s.vad_start_secs)
                 ),
                 serializer=serializer,
             ),

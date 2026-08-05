@@ -170,6 +170,18 @@ class Settings:
     # decide the caller finished; too low clips slow speakers mid-sentence.
     # agg_timeout_secs = extra wait for a late-arriving final transcript.
     vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
+    # Silero gates on RMS volume BEFORE the model runs, default 0.6 — tuned for
+    # headset/webrtc audio. On the founder's 2026-08-05 call (8e1e00ad) that gate
+    # never passed for the CALLER's own voice (the loud call-screening robot DID
+    # pass): zero VAD onsets during bot speech → the duck never engaged, the bot
+    # talked through every interruption, and pipecat's emulated-VAD path deleted
+    # the caller's words. 8 kHz telephony speech is simply quieter than 0.6.
+    vad_min_volume: float = field(
+        default_factory=lambda: float(_env("VAD_MIN_VOLUME", "0.35")))
+    vad_confidence: float = field(
+        default_factory=lambda: float(_env("VAD_CONFIDENCE", "0.6")))
+    vad_start_secs: float = field(
+        default_factory=lambda: float(_env("VAD_START_SECS", "0.2")))
     # Measured on live calls (48h, 141 turns): Sarvam's STT final trails local VAD stop in
     # 85% of turns, so this timeout is PURE additive delay on top of an already-final
     # transcript. 0.08 keeps a small merge window for split finals; saves ~0.12s/turn.

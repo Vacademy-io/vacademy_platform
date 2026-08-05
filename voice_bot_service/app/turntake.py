@@ -40,11 +40,13 @@ _BACKCHANNEL_WORDS = frozenset({
     # Devanagari
     "हाँ", "हां", "हा", "हूँ", "हूं", "हम", "हम्म", "जी", "हाँजी", "हांजी",
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
+    "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",
     # Romanized Hindi / Hinglish
     "haan", "haa", "han", "ha", "hn", "hm", "hmm", "hmmm", "mm", "mhm", "mhmm",
     "ji", "jee", "jii", "achha", "accha", "acha", "achcha", "thik", "theek",
-    "hai", "sahi", "bilkul", "boliye", "bolo", "bataiye", "batao",
+    "hai", "sahi", "bilkul", "badhiya", "badiya", "bahut", "boliye", "bolo",
+    "bataiye", "batao",
     "sir", "sar", "madam", "mam", "maam", "bhaiya",
     # English
     "ok", "okay", "okey", "kk", "yes", "yeah", "yah", "ya", "yup", "yep",

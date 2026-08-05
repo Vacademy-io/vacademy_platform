@@ -118,18 +118,24 @@ class TranscriptCollector(FrameProcessor):
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
                  fillers_armed=None, bot_stopped_t=None, duck=None,
-                 on_absorb=None, backchannel_extra=frozenset()):
+                 on_absorb=None, backchannel_extra=frozenset(),
+                 gate_enabled=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
         self._on_transcript = on_transcript or (lambda backchannel=False: None)
-        # Duck path (see DuckGate): while a reply is held, THIS processor is the
-        # decision point — it sits before aggregators.user(), so an absorbed
-        # backchannel never reaches the aggregator that would delete it or run
-        # the LLM on it.
+        # Turn-gate (see DuckGate): for ANY final that lands mid-reply, THIS
+        # processor is the decision point — it sits before aggregators.user(),
+        # so an absorbed backchannel never reaches the aggregator that would
+        # delete it or run the LLM on it. Deliberately NOT gated on a duck
+        # having happened: on live call 8e1e00ad Silero's volume gate missed the
+        # caller entirely (no VAD onset → no duck), STT still transcribed them,
+        # and pipecat's emulated path deleted the words while the bot talked on.
+        # The words themselves are the trigger of last resort.
         self._duck = duck
+        self._gate_enabled = gate_enabled or (lambda: duck is not None)
 
         async def _noop_absorb(text):
             return None
@@ -190,43 +196,55 @@ class TranscriptCollector(FrameProcessor):
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._on_activity(user=True)
-            if ducked:
+            # Mid-reply = a reply is audibly playing, OR held by a duck. NOT
+            # "ducked" by itself: ducked with nothing held and the bot quiet
+            # means the reply ENDED during the hold — a backchannel then is an
+            # answer to its closing question, not an interruption. When the VAD
+            # missed the onset (no duck — the 8e1e00ad failure mode) the bot is
+            # still speaking, so is_bot_speaking() carries the trigger.
+            mid_reply = self._gate_enabled() and (
+                self._is_bot_speaking()
+                or (self._duck is not None and self._duck.has_pending_audio()))
+            if mid_reply:
                 if text.startswith("["):
-                    # Synthetic noise cue while a reply is held: just resume —
-                    # there is nothing to answer and nothing worth interrupting.
+                    # Synthetic noise cue mid-reply: nothing to answer, nothing
+                    # worth interrupting — release any hold and move on.
                     self._on_transcript(backchannel=True)
                     await self._on_absorb(None)
                     return
-                mid_reply = self._is_bot_speaking() or self._duck.has_pending_audio()
-                if mid_reply and mid_reply_action(
+                if mid_reply_action(
                         text, extra_backchannels=self._backchannel_extra) == ABSORB:
                     # "Absorb but never lose" (founder decision 2026-08-05): the
-                    # reply resumes mid-sentence AND the ack still reaches the
-                    # LLM context — run_llm omitted, so no generation. The
-                    # aggregator never sees this turn, so pipecat's min-words
-                    # path cannot delete it (the ANSWER_DELETED mechanism).
+                    # reply continues (resumes if held) AND the ack still reaches
+                    # the LLM context — run_llm omitted, so no generation. The
+                    # aggregator never sees this turn, so pipecat's min-words and
+                    # emulated-VAD paths cannot delete it (ANSWER_DELETED).
                     self._on_transcript(backchannel=True)
-                    logger.info("duck: absorbed backchannel %r — reply continues",
-                                text[:30])
+                    logger.info("turn-gate: absorbed backchannel %r — reply "
+                                "continues (ducked=%s)", text[:30], ducked)
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
                     return
                 self._on_transcript()
-                if mid_reply:
-                    # Real barge-in. The line is ALREADY silent (ducked at VAD
-                    # onset) — this makes it formal: cancels the in-flight
-                    # generation, drops the held tail in DuckGate, clears
-                    # Plivo's buffer, resets the aggregator. The transcript is
-                    # then forwarded below as a fresh, normal turn.
-                    logger.info("duck: real barge-in %r — interrupting reply",
-                                text[:40])
-                    await self.push_interruption_task_frame_and_wait()
-                else:
-                    # The reply finished while we were ducked (nothing held,
-                    # bot quiet): this is just a normal turn — release the
-                    # duck flag and let the aggregator answer it.
-                    await self._on_absorb(None)
+                # Real barge-in. If ducked, the line is already silent and this
+                # makes it formal; if the VAD missed the onset the bot is STILL
+                # TALKING and this is what finally stops it — late beats never.
+                # Cancels the in-flight generation, drops any held tail in
+                # DuckGate, clears Plivo's buffer, resets the aggregator, and
+                # commits the played part of the reply to the LLM context (the
+                # aggregator pushes its aggregation on InterruptionFrame — which
+                # also prevents the verbatim re-opening seen on 8e1e00ad). The
+                # transcript is then forwarded below as a fresh, normal turn.
+                logger.info("turn-gate: real barge-in %r — interrupting reply "
+                            "(ducked=%s)", text[:40], ducked)
+                await self.push_interruption_task_frame_and_wait()
+            elif ducked:
+                # The reply finished while we were ducked (nothing held, bot
+                # quiet): this is just a normal turn — release the duck flag
+                # and let the aggregator answer it.
+                self._on_transcript()
+                await self._on_absorb(None)
             else:
                 self._on_transcript()
             # Filler only when the bot is quiet AND has spoken once already — a
@@ -1585,7 +1603,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      fillers_armed=lambda: flags["bot_spoke_once"],
                                      bot_stopped_t=lambda: flags["bot_stopped_t"],
                                      duck=duck, on_absorb=_absorb,
-                                     backchannel_extra=settings.backchannel_extra)
+                                     backchannel_extra=settings.backchannel_extra,
+                                     gate_enabled=lambda: settings.duck_enabled)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,

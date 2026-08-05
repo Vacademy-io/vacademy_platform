@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.util.SuperAdminAuthUtil;
+import vacademy.io.community_service.feature.support.client.SupportAuthClient;
 import vacademy.io.community_service.feature.support.dto.*;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.service.SupportConfigService;
@@ -32,6 +33,8 @@ public class SupportSuperAdminController {
     private SupportEngineerService engineerService;
     @Autowired
     private SupportConfigService configService;
+    @Autowired
+    private SupportAuthClient authClient;
 
     // ---- catalogue ---------------------------------------------------------------
 
@@ -84,6 +87,19 @@ public class SupportSuperAdminController {
         return ResponseEntity.ok(ticketService.search(
                 institutes, status, engineerId, unassigned, search,
                 createdFrom, createdTo, overdue, pageable));
+    }
+
+    /**
+     * The institute's own admin users, for the "Reported by" picker when logging a ticket on
+     * their behalf. Picking a real person is what lets reply notifications reach someone: a
+     * ticket with no institute-side contact notifies nobody.
+     */
+    @GetMapping("/institutes/{instituteId}/contacts")
+    public ResponseEntity<List<SupportRecipientDto>> instituteContacts(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String instituteId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(authClient.findByInstituteAndRole(instituteId, "ADMIN"));
     }
 
     @GetMapping("/tickets/counts")

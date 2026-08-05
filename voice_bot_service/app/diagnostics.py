@@ -109,6 +109,12 @@ class CallDiagnostics:
     # None = NOT MEASURED (never 0-by-default — see module docstring).
     answers_deleted: Optional[int] = None
     answers_deleted_samples: List[str] = field(default_factory=list)
+    # Ducking (instant barge-in hold). ducks = holds begun; absorbs = holds that
+    # turned out to be backchannels and resumed mid-sentence; timeout_resumes =
+    # voiced-but-wordless holds the watchdog released.
+    ducks: int = 0
+    duck_absorbs: int = 0
+    duck_timeout_resumes: int = 0
 
     # ── caller/agent shape (feeds the machine heuristic) ──
     user_turns: int = 0
@@ -388,6 +394,9 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "userTurns": d.user_turns, "botTurns": d.bot_turns,
                 "bargeIns": d.barge_ins,
                 "bargeInCancels": d.barge_in_cancels,
+                "ducks": d.ducks,
+                "duckAbsorbs": d.duck_absorbs,
+                "duckTimeoutResumes": d.duck_timeout_resumes,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
                 "nudges": d.nudges,

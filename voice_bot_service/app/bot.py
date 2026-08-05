@@ -25,6 +25,7 @@ import logging
 import random
 import re
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
@@ -33,6 +34,7 @@ from typing import Any, Dict, List, Optional
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    EndFrame,
     Frame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
@@ -40,7 +42,10 @@ from pipecat.frames.frames import (
     LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
+    TTSAudioRawFrame,
     TTSSpeakFrame,
+    TTSStartedFrame,
+    TTSStoppedFrame,
     TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
@@ -61,10 +66,11 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
-                        HEARING_FAILED, ARM_STOP)
+                        HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
+from .turntake import mid_reply_action, ABSORB
 
 logger = logging.getLogger(__name__)
 
@@ -111,13 +117,25 @@ class TranscriptCollector(FrameProcessor):
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
-                 fillers_armed=None, bot_stopped_t=None):
+                 fillers_armed=None, bot_stopped_t=None, duck=None,
+                 on_absorb=None, backchannel_extra=frozenset()):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
-        self._on_transcript = on_transcript or (lambda: None)
+        self._on_transcript = on_transcript or (lambda backchannel=False: None)
+        # Duck path (see DuckGate): while a reply is held, THIS processor is the
+        # decision point — it sits before aggregators.user(), so an absorbed
+        # backchannel never reaches the aggregator that would delete it or run
+        # the LLM on it.
+        self._duck = duck
+
+        async def _noop_absorb(text):
+            return None
+
+        self._on_absorb = on_absorb or _noop_absorb
+        self._backchannel_extra = frozenset(backchannel_extra)
         # Fillers only AFTER the bot has completed its first real utterance: during
         # the setup dead-air callers say "hello? hello?" and a filler was the FIRST
         # thing they ever heard ("starts with Hmm" — live complaint).
@@ -154,6 +172,7 @@ class TranscriptCollector(FrameProcessor):
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
+            ducked = self._duck is not None and self._duck.is_ducked()
             if (text.casefold() == self._last_text and now - self._last_text_t < 4.0
                     and self._bot_stopped_t() < self._last_text_t):
                 logger.info("transcript dedupe: dropping repeat %r", text[:30])
@@ -162,16 +181,59 @@ class TranscriptCollector(FrameProcessor):
                 # can't treat a heard-and-dropped repeat as a swallowed utterance
                 # and apologise "I couldn't hear you" (deep-review A1).
                 self._on_transcript()
+                if ducked:
+                    # A dropped repeat must still release the held reply, or the
+                    # duck sits until the watchdog timeout for no reason.
+                    await self._on_absorb(None)
                 return
             self._last_text = text.casefold()
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._on_activity(user=True)
-            self._on_transcript()
+            if ducked:
+                if text.startswith("["):
+                    # Synthetic noise cue while a reply is held: just resume —
+                    # there is nothing to answer and nothing worth interrupting.
+                    self._on_transcript(backchannel=True)
+                    await self._on_absorb(None)
+                    return
+                mid_reply = self._is_bot_speaking() or self._duck.has_pending_audio()
+                if mid_reply and mid_reply_action(
+                        text, extra_backchannels=self._backchannel_extra) == ABSORB:
+                    # "Absorb but never lose" (founder decision 2026-08-05): the
+                    # reply resumes mid-sentence AND the ack still reaches the
+                    # LLM context — run_llm omitted, so no generation. The
+                    # aggregator never sees this turn, so pipecat's min-words
+                    # path cannot delete it (the ANSWER_DELETED mechanism).
+                    self._on_transcript(backchannel=True)
+                    logger.info("duck: absorbed backchannel %r — reply continues",
+                                text[:30])
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": text}]), direction)
+                    await self._on_absorb(text)
+                    return
+                self._on_transcript()
+                if mid_reply:
+                    # Real barge-in. The line is ALREADY silent (ducked at VAD
+                    # onset) — this makes it formal: cancels the in-flight
+                    # generation, drops the held tail in DuckGate, clears
+                    # Plivo's buffer, resets the aggregator. The transcript is
+                    # then forwarded below as a fresh, normal turn.
+                    logger.info("duck: real barge-in %r — interrupting reply",
+                                text[:40])
+                    await self.push_interruption_task_frame_and_wait()
+                else:
+                    # The reply finished while we were ducked (nothing held,
+                    # bot quiet): this is just a normal turn — release the
+                    # duck flag and let the aggregator answer it.
+                    await self._on_absorb(None)
+            else:
+                self._on_transcript()
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
             if (self._filler_phrases and not self._is_bot_speaking()
+                    and not (self._duck is not None and self._duck.is_ducked())
                     and self._fillers_armed()
                     and not text.startswith("[")     # synthetic cue, not real speech
                     and random.random() < self._filler_probability):
@@ -204,6 +266,106 @@ class PlayedTranscriptRecorder(FrameProcessor):
             else:
                 t.append({"role": "assistant", "text": frame.text.strip()})
         await self.push_frame(frame, direction)
+
+
+class DuckGate(FrameProcessor):
+    """Between TTS and transport.output(): instant-stop barge-in ("ducking").
+
+    THE PROBLEM (founder, 2026-08-05: "when the human talks the bot takes ages
+    to stop"): with interruption_strategies set, pipecat 0.0.95 defers ALL
+    interruption handling to the user aggregator, which only decides after the
+    caller's turn fully ENDS — utterance + VAD stop + STT final + aggregation
+    wait ≈ 2.5-4s of the bot talking over the caller. And a turn under the word
+    minimum is silently discarded (ANSWER_DELETED on 67% of calls).
+
+    THE FIX: the moment the caller audibly starts speaking over a reply
+    (UserStartedSpeakingFrame is a SystemFrame — it jumps every queue), this
+    gate HOLDS the reply's frames instead of forwarding them to the transport.
+    The transport paces audio in real time (write_audio_frame emulates an audio
+    device), so holding here silences the line within one Plivo jitter buffer
+    (~200-300ms). Then TranscriptCollector decides on the caller's words:
+    backchannel → resume() (the reply continues mid-sentence, nothing lost);
+    real speech → a formal InterruptionFrame arrives here and drops the held
+    tail (the caller already heard silence, not talk-over). A voiced sound with
+    no words at all (cough) is resumed by the watchdog's DUCK_RESUME.
+
+    Holds LLMFullResponseStart/End and TTSStarted/Stopped ALONGSIDE audio and
+    text deliberately: the assistant aggregator downstream brackets its context
+    commit on those frames, and letting an End overtake its held text would
+    commit an empty assistant turn (the A2 repeat class all over again).
+    """
+
+    _HOLDABLE = (TTSAudioRawFrame, TTSTextFrame, TTSStartedFrame, TTSStoppedFrame,
+                 LLMFullResponseStartFrame, LLMFullResponseEndFrame)
+
+    def __init__(self, enabled, is_bot_speaking, on_duck, on_unduck, diag):
+        super().__init__()
+        self._enabled = enabled
+        self._is_bot_speaking = is_bot_speaking
+        self._on_duck = on_duck
+        self._on_unduck = on_unduck
+        self._diag = diag
+        self._held: deque = deque()
+        self._ducked = False
+        # Bumped on every duck/interrupt so a resume() that lost the race to a
+        # NEW duck (system frames run out-of-band) stops flushing and stays held.
+        self._gen = 0
+
+    def is_ducked(self) -> bool:
+        return self._ducked
+
+    def has_pending_audio(self) -> bool:
+        return bool(self._held)
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            # The reply is formally dead — the held tail must never play.
+            if self._held or self._ducked:
+                logger.info("duck: interruption — dropping %d held frame(s)",
+                            len(self._held))
+            self._held.clear()
+            self._gen += 1
+            if self._ducked:
+                self._ducked = False
+                self._on_unduck()
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, UserStartedSpeakingFrame):
+            if (self._enabled() and not self._ducked
+                    and (self._is_bot_speaking() or self._held)):
+                self._ducked = True
+                self._gen += 1
+                self._diag.bump("ducks")
+                self._on_duck()
+                logger.info("duck: caller speaking over reply — holding bot audio")
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, EndFrame) and (self._ducked or self._held):
+            # A graceful stop is draining the pipeline; a held farewell must
+            # play BEFORE the line closes, not be leapfrogged by the EndFrame.
+            await self.resume("end_frame")
+            await self.push_frame(frame, direction)
+            return
+        if (self._ducked and direction == FrameDirection.DOWNSTREAM
+                and isinstance(frame, self._HOLDABLE)):
+            self._held.append(frame)
+            return
+        await self.push_frame(frame, direction)
+
+    async def resume(self, reason: str = ""):
+        """Release the held reply, in order. Safe to call when not ducked."""
+        if not self._ducked and not self._held:
+            return
+        gen = self._gen
+        n = 0
+        while self._held and self._gen == gen:
+            await self.push_frame(self._held.popleft(), FrameDirection.DOWNSTREAM)
+            n += 1
+        if self._gen == gen and self._ducked:
+            self._ducked = False
+            self._on_unduck()
+        logger.info("duck: resumed (%s) — released %d held frame(s)", reason, n)
 
 
 class TtfbObserver:
@@ -1379,12 +1541,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
     )
 
-    def on_transcript():
+    def on_transcript(backchannel: bool = False):
         flags["transcript_t"] = time.time()
         # The caller re-engaged after our goodbye — do NOT hang up on them. Live
         # ee8e2168: "Yes, I can" arrived after the farewell and the line still
-        # dropped mid-question, losing a demo booking.
-        if flags["end_pending_since"] != 0.0:
+        # dropped mid-question, losing a demo booking. An ABSORBED backchannel
+        # ("theek hai" spoken over the goodbye) is the opposite — acceptance —
+        # and must not cancel the close.
+        if not backchannel and flags["end_pending_since"] != 0.0:
             flags["end_pending_since"] = 0.0
             outcome.end_requested = False
             logger.info("sentinel: caller re-engaged after farewell — call continues corr=%s", corr)
@@ -1392,7 +1556,26 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["deaf_streak"] = 0
         # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
         flags["orphan_used"] = False
-        flags["nudged"] = False
+        if not backchannel:
+            flags["nudged"] = False
+
+    # Instant barge-in ducking (see DuckGate). Constructed BEFORE
+    # TranscriptCollector — the collector is the with-words decision point and
+    # needs the gate's held/ducked state.
+    def _on_duck():
+        flags["ducked_since"] = time.time()
+
+    def _on_unduck():
+        flags["ducked_since"] = 0.0
+
+    duck = DuckGate(enabled=lambda: settings.duck_enabled,
+                    is_bot_speaking=lambda: flags["bot_speaking"],
+                    on_duck=_on_duck, on_unduck=_on_unduck, diag=diag)
+
+    async def _absorb(text):
+        if text is not None:
+            diag.bump("duck_absorbs")
+        await duck.resume("backchannel" if text is not None else "no_content")
 
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
@@ -1400,7 +1583,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      filler_phrases=eng_fillers if eng else None,
                                      on_transcript=on_transcript,
                                      fillers_armed=lambda: flags["bot_spoke_once"],
-                                     bot_stopped_t=lambda: flags["bot_stopped_t"])
+                                     bot_stopped_t=lambda: flags["bot_stopped_t"],
+                                     duck=duck, on_absorb=_absorb,
+                                     backchannel_extra=settings.backchannel_extra)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
@@ -1414,6 +1599,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         llm,
         sentinel,
         tts,
+        duck,
         transport.output(),
         played_transcript,
         aggregators.assistant(),
@@ -1598,6 +1784,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             unplayed_confirm_secs=settings.unplayed_confirm_secs,
             end_grace_secs=settings.end_grace_secs,
             max_deaf_streak=settings.max_deaf_streak,
+            duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
+            duck_max_hold_secs=settings.duck_max_hold_secs,
         )
         repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
                        "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
@@ -1630,10 +1818,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # A barge-in DRAINS queued frames including the EndFrame (A7).
                 await task.stop_when_done()
                 continue
+            if d.kind == DUCK_RESUME:
+                diag.bump("duck_timeout_resumes")
+                logger.info("duck: voiced but wordless for %.1fs — resuming reply corr=%s",
+                            d.detail, corr)
+                await duck.resume("watchdog_timeout")
+                continue
             if d.kind == CAP_FAREWELL:
                 diag.cap_farewell = True
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
+                # The cap can fire mid-duck (it is a spend bound): release any
+                # held tail first so the farewell doesn't queue behind a hold.
+                await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue

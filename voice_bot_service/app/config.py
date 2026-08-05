@@ -223,6 +223,29 @@ class Settings:
     stall_recovery_enabled: bool = field(
         default_factory=lambda: _env("STALL_RECOVERY_ENABLED", "true").lower() == "true")
 
+    # ── Barge-in ducking (founder decision 2026-08-05: "absorb but never lose")
+    # When the caller starts speaking over a reply, DuckGate holds the bot's
+    # audio ~instantly instead of talking over them for the 2.5-4s the old
+    # min-words strategy needed (caller utterance + VAD stop + STT final).
+    # A backchannel ("haan", "theek hai") resumes the reply and is appended to
+    # the LLM context without a generation; anything else commits a real
+    # interruption. false = exact pre-duck behavior (rollback, no deploy).
+    duck_enabled: bool = field(
+        default_factory=lambda: _env("DUCK_ENABLED", "true").lower() == "true")
+    # VAD heard a sound but STT produced no words (cough, horn): resume the held
+    # reply this long after the sound ended.
+    duck_no_words_resume_secs: float = field(
+        default_factory=lambda: float(_env("DUCK_NO_WORDS_RESUME_SECS", "2.0")))
+    # Absolute ceiling on one hold — a lost transcript must never mute the bot.
+    duck_max_hold_secs: float = field(
+        default_factory=lambda: float(_env("DUCK_MAX_HOLD_SECS", "12.0")))
+    # Extra absorb-list words (comma-separated) on top of turntake.py's list —
+    # per-deployment tuning without a rebuild.
+    backchannel_extra: tuple = field(
+        default_factory=lambda: tuple(
+            w.strip().casefold() for w in _env("BACKCHANNEL_EXTRA", "").split(",")
+            if w.strip()))
+
     # ── Watchdog thresholds ──────────────────────────────────────────────────
     # Every WatchdogConfig field is env-overridable. These ran on dataclass
     # defaults with NO knob, so tuning turn-taking on a service calling real

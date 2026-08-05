@@ -67,7 +67,25 @@ interface WorkflowsWithSchedulesResponse {
     first: boolean;
 }
 
-export const fetchActiveWorkflows = async (instituteId: string): Promise<Workflow[]> => {
+/** Workflow lifecycle statuses. A workflow only fires when it is ACTIVE. */
+export const WORKFLOW_STATUSES = ['ACTIVE', 'DRAFT', 'INACTIVE'] as const;
+export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
+
+export const fetchWorkflows = async (
+    instituteId: string,
+    statuses: readonly WorkflowStatus[] = ['ACTIVE']
+): Promise<Workflow[]> => {
+    // Anything not listed here is invisible to the caller — the backend filters on
+    // workflow.status, so omitting DRAFT is why "Save Draft" workflows used to disappear.
+    const workflowStatuses = statuses.length > 0 ? [...statuses] : [...WORKFLOW_STATUSES];
+    // schedule_statuses / trigger_statuses gate the LEFT JOINs. Constraining them to ACTIVE
+    // makes sense when we're only showing live workflows, but a DRAFT workflow's schedule or
+    // trigger rows are usually non-ACTIVE too — keeping the filter would join them to null
+    // and the card would claim "No schedule added" / "No trigger details". So drop the
+    // filter (backend reads an absent list as "no constraint") whenever we ask for more
+    // than just ACTIVE.
+    const activeOnly = workflowStatuses.length === 1 && workflowStatuses[0] === 'ACTIVE';
+
     // Use new POST endpoint that returns workflows along with schedules (paginated)
     const response = await authenticatedAxiosInstance<WorkflowsWithSchedulesResponse>({
         method: 'POST',
@@ -78,8 +96,8 @@ export const fetchActiveWorkflows = async (instituteId: string): Promise<Workflo
         },
         data: {
             institute_id: instituteId,
-            workflow_statuses: ['ACTIVE'],
-            schedule_statuses: ['ACTIVE'],
+            workflow_statuses: workflowStatuses,
+            ...(activeOnly ? { schedule_statuses: ['ACTIVE'] } : {}),
         },
     });
 
@@ -161,13 +179,39 @@ export const fetchActiveWorkflows = async (instituteId: string): Promise<Workflo
     return Object.values(workflowIdToWorkflow);
 };
 
-export const getActiveWorkflowsQuery = (instituteId: string) =>
+/**
+ * Shared cache-key prefix for every workflow-list query, whatever statuses it asks for.
+ * Callers that save/delete a workflow invalidate on this prefix alone, so each status
+ * variant must hang off it — TanStack matches query keys by prefix.
+ */
+export const WORKFLOWS_WITH_SCHEDULES_QUERY_KEY = 'GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES';
+
+/**
+ * Workflows in the given lifecycle statuses — for management surfaces (the list page and the
+ * detail page) that must be able to reach DRAFT and INACTIVE workflows, not just live ones.
+ */
+export const getWorkflowsByStatusQuery = (
+    instituteId: string,
+    statuses: readonly WorkflowStatus[]
+) =>
     queryOptions({
-        queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES', instituteId],
-        queryFn: () => fetchActiveWorkflows(instituteId),
+        queryKey: [
+            WORKFLOWS_WITH_SCHEDULES_QUERY_KEY,
+            instituteId,
+            [...statuses].sort().join(','),
+        ],
+        queryFn: () => fetchWorkflows(instituteId, statuses),
         staleTime: 300000, // 5 minutes
         enabled: !!instituteId,
     });
+
+/**
+ * ACTIVE workflows only — for pickers that link a workflow to an audience, batch or
+ * enrollment, where offering a DRAFT would silently do nothing (a DRAFT workflow's triggers
+ * are skipped by findSpecificTriggers/findGlobalTriggers, which require workflow.status='ACTIVE').
+ */
+export const getActiveWorkflowsQuery = (instituteId: string) =>
+    getWorkflowsByStatusQuery(instituteId, ['ACTIVE']);
 
 export const fetchWorkflowDiagram = async (workflowId: string): Promise<AutomationDiagram> => {
     const response = await authenticatedAxiosInstance<AutomationDiagram>({

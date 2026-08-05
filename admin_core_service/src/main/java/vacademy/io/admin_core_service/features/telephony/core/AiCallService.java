@@ -131,7 +131,31 @@ public class AiCallService {
         }
     }
 
+    /**
+     * Automated entry point (workflow node, bulk campaign, scheduler). All three
+     * throttles apply: already-assigned, daily cap, and the near-simultaneous dedup.
+     */
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
+        return placeCall(req, counsellorUserId, false);
+    }
+
+    /**
+     * @param humanInitiated a person pressed "Call" and is waiting for a phone to ring.
+     *        Set ONLY by the manual controller — server-side, never from the request body.
+     *
+     *        <p>When true, the three SILENT skips below are bypassed: already-assigned,
+     *        daily cap, and the 30s duplicate window. Every one of them returns HTTP 200
+     *        with dispatched=false and dials nothing, so an explicit human request
+     *        vanished with no phone call and no error — a counsellor's own leads are all
+     *        assigned, so the first guard refused her every single time.
+     *
+     *        <p>The governing rule: these throttles exist to bound AUTOMATION, which can
+     *        loop, re-enter and fan out. A human clicking a button does none of that, and
+     *        must never be silently refused. Credit exhaustion still blocks both paths —
+     *        that one throws a visible error rather than pretending to dial.
+     */
+    public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId,
+                                       boolean humanInitiated) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required.");
         }
@@ -218,12 +242,16 @@ public class AiCallService {
         // lead-specific; non-lead subjects (e.g. student feedback) have their eligibility
         // decided by the caller/scheduler.
         if (isLead && leadAlreadyAssigned(userId, req.getInstituteId())) {
-            log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
-            return AiCallResponseDTO.builder()
-                    .status("SKIPPED_ASSIGNED")
-                    .dispatched(false)
-                    .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
-                    .build();
+            if (!humanInitiated) {
+                log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_ASSIGNED")
+                        .dispatched(false)
+                        .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
+                        .build();
+            }
+            log.info("AI call: lead {} is already assigned, but {} asked for the call explicitly — dialing",
+                    userId, counsellorUserId);
         }
 
         // Daily spend guardrail: bound the WHOLE institute's AI dials on this provider
@@ -231,7 +259,12 @@ public class AiCallService {
         // click) funnels through here, so this one check covers all three. Real calls
         // only — MOCK never leaves the box. Per-institute setting wins; else the
         // server-wide default. Returns a distinct skip status the campaign loop can log.
-        if (!mock) {
+        //
+        // Skipped for a human-initiated call: the cap is there to stop AUTOMATION running
+        // up an unbounded bill, and one person clicking one button cannot. Silently
+        // refusing that click — after automation had already eaten the day's cap — is the
+        // failure mode this whole guard set kept producing.
+        if (!mock && !humanInitiated) {
             int cap = settings.getMaxCallsPerDay() > 0 ? settings.getMaxCallsPerDay() : globalMaxCallsPerDay;
             if (cap > 0) {
                 java.sql.Timestamp since = java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(24)));
@@ -259,7 +292,11 @@ public class AiCallService {
         synchronized (lockFor(dedupKey)) {
             java.sql.Timestamp since = java.sql.Timestamp.from(
                     Instant.now().minusSeconds(Math.max(1, dedupWindowSec)));
-            if (callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
+            // Human-initiated calls are never de-duped: the window exists to collapse an
+            // ACCIDENTAL double dispatch from automation, and a person clicking twice is
+            // asking for a second call, not repeating themselves by mistake.
+            if (!humanInitiated
+                    && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);
                 return AiCallResponseDTO.builder()

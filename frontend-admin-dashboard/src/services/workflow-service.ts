@@ -544,6 +544,88 @@ export function getActionTypesQuery() {
     });
 }
 
+/** Row shape returned by notification-service's whatsapp-templates/list. */
+type WhatsAppTemplateRow = {
+    id?: string;
+    name: string;
+    bodyText?: string;
+    status?: string;
+    bodyVariableNames?: string[];
+    bodySampleValues?: string[];
+};
+
+function toTemplateItem(t: WhatsAppTemplateRow): TemplateItem {
+    const names = Array.isArray(t.bodyVariableNames) ? t.bodyVariableNames : [];
+    const samples = Array.isArray(t.bodySampleValues) ? t.bodySampleValues : [];
+    const placeholders: string[] = Array.from(
+        (t.bodyText ?? '').matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)
+    ).map((m) => m[1] ?? '');
+    const keys = placeholders.length
+        ? placeholders
+        : names.length
+            ? names
+            : samples.map((_, i) => `${i + 1}`);
+    const dynamicParams: Record<string, string> = {};
+    keys.forEach((k, i) => {
+        dynamicParams[k] = names[i] ?? samples[i] ?? k;
+    });
+    return {
+        id: t.id ?? t.name,
+        name: t.name,
+        content: t.bodyText,
+        status: t.status ?? 'APPROVED',
+        type: 'WHATSAPP',
+        dynamic_parameters: Object.keys(dynamicParams).length
+            ? JSON.stringify(dynamicParams)
+            : undefined,
+    };
+}
+
+/**
+ * WhatsApp templates for this institute. `approvedOnly` is right for pickers —
+ * you can only send on an approved template — but wrong for message previews:
+ * a template that is still in review (or was created straight in Meta and only
+ * just synced) has a perfectly good body worth showing the admin.
+ */
+export async function fetchWhatsAppTemplates(
+    instituteId: string,
+    { approvedOnly }: { approvedOnly: boolean }
+): Promise<TemplateItem[]> {
+    const response = await authenticatedAxiosInstance.get(`${WHATSAPP_TEMPLATE_BASE}/list`, {
+        params: { instituteId },
+    });
+    const list: WhatsAppTemplateRow[] = Array.isArray(response.data) ? response.data : [];
+    const rows = approvedOnly
+        ? list.filter((t) => (t.status ?? '').toUpperCase() === 'APPROVED')
+        : list;
+    return rows.map(toTemplateItem);
+}
+
+/**
+ * Pull the institute's templates down from Meta into notification-service.
+ * Templates authored directly in Meta Business Manager are otherwise unknown
+ * here — messages still send by name, but nothing can render their body.
+ * Returns how many templates were synced.
+ */
+export async function syncWhatsAppTemplatesFromMeta(instituteId: string): Promise<number> {
+    const response = await authenticatedAxiosInstance.post(
+        `${WHATSAPP_TEMPLATE_BASE}/sync`,
+        null,
+        { params: { instituteId } }
+    );
+    return Number(response.data?.synced ?? 0);
+}
+
+/** Templates for read-only preview — includes ones still awaiting Meta approval. */
+export function getWhatsAppTemplatesForPreviewQuery(instituteId: string) {
+    return queryOptions({
+        queryKey: ['WHATSAPP_TEMPLATES_PREVIEW', instituteId],
+        queryFn: () => fetchWhatsAppTemplates(instituteId, { approvedOnly: false }),
+        staleTime: 300_000,
+        enabled: !!instituteId,
+    });
+}
+
 export async function fetchTemplatesByType(instituteId: string, type: string): Promise<TemplateItem[]> {
     // WhatsApp templates live in notification-service (whatsapp-templates/list).
     // admin-core-service template endpoint is for legacy email/in-app templates and returns
@@ -552,45 +634,7 @@ export async function fetchTemplatesByType(instituteId: string, type: string): P
     // query in node-config-panel falls through to the legacy endpoint and returns [],
     // avoiding duplicate template entries in the dropdown.
     if (type === 'WHATSAPP') {
-        const response = await authenticatedAxiosInstance.get(`${WHATSAPP_TEMPLATE_BASE}/list`, {
-            params: { instituteId },
-        });
-        const list = Array.isArray(response.data) ? response.data : [];
-        return list
-            .filter((t: { status?: string }) => (t.status ?? '').toUpperCase() === 'APPROVED')
-            .map((t: {
-                id?: string;
-                name: string;
-                bodyText?: string;
-                status?: string;
-                bodyVariableNames?: string[];
-                bodySampleValues?: string[];
-            }): TemplateItem => {
-                const names = Array.isArray(t.bodyVariableNames) ? t.bodyVariableNames : [];
-                const samples = Array.isArray(t.bodySampleValues) ? t.bodySampleValues : [];
-                const placeholders: string[] = Array.from(
-                    (t.bodyText ?? '').matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)
-                ).map((m) => m[1] ?? '');
-                const keys = placeholders.length
-                    ? placeholders
-                    : names.length
-                        ? names
-                        : samples.map((_, i) => `${i + 1}`);
-                const dynamicParams: Record<string, string> = {};
-                keys.forEach((k, i) => {
-                    dynamicParams[k] = names[i] ?? samples[i] ?? k;
-                });
-                return {
-                    id: t.id ?? t.name,
-                    name: t.name,
-                    content: t.bodyText,
-                    status: t.status ?? 'APPROVED',
-                    type: 'WHATSAPP',
-                    dynamic_parameters: Object.keys(dynamicParams).length
-                        ? JSON.stringify(dynamicParams)
-                        : undefined,
-                };
-            });
+        return fetchWhatsAppTemplates(instituteId, { approvedOnly: true });
     }
     const response = await authenticatedAxiosInstance.get(
         `${BASE_URL}/admin-core-service/institute/template/v1/institute/${instituteId}/type/${type}`

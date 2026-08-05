@@ -150,14 +150,7 @@ public class GetSessionByIdService {
             dto.setDefaultClassLinkType(first.getDefaultClassLinkType());
             dto.setLinkType(first.getLinkType());
 
-            if (first.getLearnerButtonConfig() != null) {
-                try {
-                    dto.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper().readValue(
-                            first.getLearnerButtonConfig(), GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class));
-                } catch (Exception e) {
-                    System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
-                }
-            }
+            dto.setLearnerButtonConfig(deserializeLearnerButtonConfig(first.getLearnerButtonConfig()));
 
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
@@ -376,12 +369,16 @@ public class GetSessionByIdService {
         return scheduleRepository.findEarliestScheduleIdBySessionId(sessionId);
     }
 
-    private GetSessionByIdResponseDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(String json) {
-        if (json == null)
+    /**
+     * Untyped on purpose — the column holds either a single button object or a
+     * list of them, and binding to the single-object DTO dropped every
+     * multi-button session's config.
+     */
+    private Object deserializeLearnerButtonConfig(String json) {
+        if (json == null || json.isBlank())
             return null;
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
-                    GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class);
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Object.class);
         } catch (Exception e) {
             System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
             return null;

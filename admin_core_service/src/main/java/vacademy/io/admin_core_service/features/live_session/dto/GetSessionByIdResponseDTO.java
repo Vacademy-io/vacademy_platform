@@ -25,7 +25,8 @@ public class GetSessionByIdResponseDTO {
     private String defaultClassLink;
     private String defaultClassName;
     private String defaultClassLinkType;
-    private LearnerButtonConfigDTO learnerButtonConfig;
+    // Single object or list of objects — see LiveSessionStep1RequestDTO#learnerButtonConfig.
+    private Object learnerButtonConfig;
     private LocalDateTime startTime;
     private LocalDateTime lastEntryTime;
     private String linkType;
@@ -59,7 +60,7 @@ public class GetSessionByIdResponseDTO {
         private String link;
         private String defaultClassLink;
         private String defaultClassName;
-        private LearnerButtonConfigDTO learnerButtonConfig;
+        private Object learnerButtonConfig;
         private LocalDate meetingDate;
         private String timezone;
         private Boolean dailyAttendance;

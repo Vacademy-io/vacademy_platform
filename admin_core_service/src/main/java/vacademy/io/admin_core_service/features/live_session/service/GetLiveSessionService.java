@@ -582,13 +582,16 @@ public class GetLiveSessionService {
         }
     }
 
-        private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(
-                        String json) {
-                if (json == null)
+        /**
+         * Deserialized untyped: the column holds either a single button object or a
+         * list of them. Binding to the single-object DTO made every multi-button
+         * session fall into the catch block and silently return no buttons at all.
+         */
+        private Object deserializeLearnerButtonConfig(String json) {
+                if (json == null || json.isBlank())
                         return null;
                 try {
-                        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
-                                        vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO.class);
+                        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Object.class);
                 } catch (Exception e) {
                         System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
                         return null;

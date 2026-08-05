@@ -507,6 +507,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'recent-leads',
             },
             {
+                subItem: 'Lead Board',
+                subItemLink: '/audience-manager/lead-board',
+                subItemId: 'lead-board',
+            },
+            {
                 subItem: 'Follow-ups',
                 subItemLink: '/audience-manager/follow-ups',
                 subItemId: 'follow-ups',

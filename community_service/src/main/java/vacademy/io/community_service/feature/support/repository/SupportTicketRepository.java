@@ -45,6 +45,13 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
      *
      * <p>Ordering is supplied by the {@link Pageable}, never hard-coded here — see
      * {@code SupportTicketService.buildPageable} for the whitelist of sortable columns.
+     *
+     * <p>The date bounds are gated by {@code hasCreatedFrom}/{@code hasCreatedTo} for the same
+     * reason as the institute filter, and NOT by a null check. Binding a null {@code Date} sends an
+     * untyped NULL, and Postgres then rejects the whole statement with "could not determine data
+     * type of parameter" — it cannot infer a type for a bare parameter in {@code ? IS NULL}. The
+     * string/enum filters above get away with it because the driver tags those binds as varchar.
+     * Callers MUST pass a non-null sentinel date when the flag is false; the OR makes it unreachable.
      */
     @Query("SELECT t FROM SupportTicket t WHERE "
             + "(:hasInstitutes = false OR t.instituteId IN :instituteIds) AND "
@@ -52,8 +59,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
             + "(:unassigned = false OR t.assignedEngineerId IS NULL) AND "
             + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!') AND "
-            + "(:createdFrom IS NULL OR t.createdAt >= :createdFrom) AND "
-            + "(:createdTo IS NULL OR t.createdAt <= :createdTo) AND "
+            + "(:hasCreatedFrom = false OR t.createdAt >= :createdFrom) AND "
+            + "(:hasCreatedTo = false OR t.createdAt <= :createdTo) AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
             + "    AND t.firstResponseDueAt < :now "
             + "    AND t.status NOT IN (vacademy.io.community_service.feature.support.enums.TicketStatus.RESOLVED, "
@@ -65,9 +72,11 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
                                       @Param("unassigned") boolean unassigned,
                                       /** Pre-lowercased, wildcard-escaped and %-wrapped by the service. */
                                       @Param("search") String search,
-                                      /** Inclusive lower bound on created_at; null disables the filter. */
+                                      @Param("hasCreatedFrom") boolean hasCreatedFrom,
+                                      /** Inclusive lower bound on created_at; never null (see above). */
                                       @Param("createdFrom") Date createdFrom,
-                                      /** Inclusive upper bound on created_at; null disables the filter. */
+                                      @Param("hasCreatedTo") boolean hasCreatedTo,
+                                      /** Inclusive upper bound on created_at; never null (see above). */
                                       @Param("createdTo") Date createdTo,
                                       @Param("onlyOverdue") boolean onlyOverdue,
                                       @Param("now") Date now,

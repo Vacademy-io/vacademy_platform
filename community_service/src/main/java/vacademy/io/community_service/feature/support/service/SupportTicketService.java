@@ -58,6 +58,8 @@ public class SupportTicketService {
     private static final int MAX_CONTEXT_JSON_LEN = 16384;
     private static final TypeReference<List<AttachmentDto>> ATTACHMENT_LIST = new TypeReference<>() {
     };
+    /** Stand-in for a disabled date bound — the query's boolean flag makes it unreachable. */
+    private static final Date DATE_SENTINEL = new Date(0L);
 
     @Autowired
     private SupportTicketRepository ticketRepository;
@@ -364,8 +366,12 @@ public class SupportTicketService {
                 (unassigned || !StringUtils.hasText(engineerId)) ? null : engineerId,
                 unassigned,
                 likeParam(searchTerm),
-                from,
-                to,
+                // Never bind a null Date: an untyped NULL bind makes Postgres reject the statement.
+                // The sentinel is unreachable when its flag is false.
+                from != null,
+                from != null ? from : DATE_SENTINEL,
+                to != null,
+                to != null ? to : DATE_SENTINEL,
                 onlyOverdue,
                 new Date(),
                 pageable);

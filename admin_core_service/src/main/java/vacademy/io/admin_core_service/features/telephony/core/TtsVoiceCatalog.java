@@ -74,9 +74,13 @@ public final class TtsVoiceCatalog {
      * Engine stamped on a NEW agent. Existing agents are untouched — V421 pinned all
      * 17 of them to Sarvam, and they stay there until somebody changes them by hand.
      *
-     * <p>Rumik, on the founder's go-ahead after hearing it. Cost is the reason:
-     * Rs 0.50/1k characters against Sarvam's Rs 3.00 on the line that is ~65% of an
-     * AI call's marginal cost.
+     * <p>Google Chirp3-HD as of 2026-08-05, replacing Rumik. Rumik was chosen for
+     * cost (Rs 0.50/1k characters against Sarvam's Rs 3.00) but lost the argument on
+     * the phone: it garbled core Hindi, and a live caller asked what "प्रतिलत" meant
+     * when the model had written "प्रतिशत". Chirp3-HD was picked BY EAR over every
+     * other engine AND is cheaper per call-minute than Sarvam (~Rs 2.06 vs Rs 2.34
+     * at our measured 779 characters per call-minute), with ~1,280 free minutes a
+     * month. Rumik stays selectable for anyone who wants the floor price.
      *
      * <p>It was held at Sarvam for several hours while four P0s from an adversarial
      * review were fixed — reply truncation from pipecat's one-message-per-sentence
@@ -89,7 +93,7 @@ public final class TtsVoiceCatalog {
      * <p>STILL NOT PROVEN: no Rumik call has ever been placed over a real phone line.
      * The first agent created after this ships is that call.
      */
-    public static final String NEW_AGENT_DEFAULT = MODEL_RUMIK;
+    public static final String NEW_AGENT_DEFAULT = MODEL_GOOGLE;
 
     /**
      * Sarvam Bulbul v3 speakers (37, verified against docs.sarvam.ai 2026-07-16).

@@ -1261,3 +1261,68 @@ def test_rumik_run_tts_accepts_the_context_id_pipecat_passes():
     import inspect
     params = list(inspect.signature(pv.RumikTTSService.run_tts).parameters)
     assert params[:3] == ["self", "text", "context_id"], params
+
+
+# ── 4-engine TTS routing (google + smallest added 2026-08-05) ────────────────
+
+def test_engine_detection_covers_every_stored_form():
+    """tts_model values come from the DB and the UI, so accept the variants both
+    can produce — a mis-detected engine sends a voice to the wrong vendor, which
+    is either a hard 400 or (worse) a silent voice substitution."""
+    cases = {
+        "google": "google", "GOOGLE": "google", "chirp3-hd": "google",
+        "smallest": "smallest", "lightning_v3.1": "smallest",
+        "smallest:v3.1_pro": "smallest",
+        "rumik": "rumik", "silk-mulberry": "rumik",
+        "sarvam": "sarvam", "": "sarvam", "bulbul:v3": "sarvam",
+    }
+    for stored, want in cases.items():
+        assert b._engine_of(stored) == want, (stored, b._engine_of(stored))
+
+
+def test_male_voices_include_every_engine_or_hindi_grammar_breaks():
+    """_MALE_VOICES is the ONLY thing that makes the LLM write masculine Hindi
+    verb endings. A male voice missing here speaks "kar rahi hoon" — the #1
+    immersion complaint from live calls."""
+    for v in ("hi-IN-Chirp3-HD-Achird", "hi-IN-Neural2-B", "devansh", "mandar",
+              "shubh", "lucas"):
+        assert b._voice_gender(v) == "male", v
+    for v in ("hi-IN-Chirp3-HD-Achernar", "hi-IN-Neural2-A", "manasi", "priya", "ira"):
+        assert b._voice_gender(v) == "female", v
+
+
+def test_voice_palettes_do_not_leak_across_engines():
+    """Each engine fails differently on a foreign voice (Sarvam 400s, Rumik
+    silently substitutes, Smallest rejects cross-MODEL voices), so a foreign name
+    must resolve to None and let the provider default take over."""
+    assert b._agent_voice({"tts_model": "google", "voice": "hi-IN-Chirp3-HD-Achird"}) \
+        == "hi-IN-Chirp3-HD-Achird"
+    assert b._agent_voice({"tts_model": "google", "voice": "shubh"}) is None
+    assert b._agent_voice({"tts_model": "google", "voice": "devansh"}) is None
+    assert b._agent_voice({"tts_model": "smallest", "voice": "devansh"}) == "devansh"
+    assert b._agent_voice({"tts_model": "smallest", "voice": "ira"}) is None
+    assert b._agent_voice({"tts_model": "sarvam", "voice": "hi-IN-Neural2-B"}) is None
+    assert b._agent_voice({"tts_model": "sarvam", "voice": "shubh"}) == "shubh"
+
+
+def test_engine_defaults_are_real_voices_in_their_own_palette():
+    """A default outside its own palette would be dropped by _agent_voice and
+    silently replaced by the vendor's default — the exact class of bug that made
+    a male-configured agent speak in a female voice."""
+    assert b._default_voice_for({"tts_model": "google"}).lower() in b.GOOGLE_VOICES
+    assert b._default_voice_for({"tts_model": "smallest"}).lower() in b.SMALLEST_VOICES
+    assert b._default_voice_for({"tts_model": "rumik"}).lower() in b.RUMIK_VOICES
+    assert b._default_voice_for({"tts_model": "sarvam"}) == "priya"
+
+
+def test_new_engines_fall_back_to_sarvam_instead_of_going_mute():
+    """Missing creds/keys are a per-deployment reality. A misconfig must degrade
+    to a working call in another voice — never the mute call that the pipecat 1.4
+    signature drift already cost us once."""
+    import inspect
+    src = inspect.getsource(pv.build_tts)
+    google_branch = src[src.index('startswith("google")'):src.index('startswith("smallest")')]
+    assert "except Exception" in google_branch
+    assert "falling back to Sarvam" in google_branch
+    smallest_branch = src[src.index('startswith("smallest")'):src.index('startswith("rumik")')]
+    assert "except Exception" in smallest_branch

@@ -17,6 +17,7 @@ import base64
 import contextlib
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -273,6 +274,110 @@ async def tts(
     return _serve_mp3(path)
 
 
+def _cache_write(path: str, data: bytes) -> bool:
+    """Atomic cache write; False means "serve inline instead" (never 500)."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        logger.exception("preview: cache write failed")
+        return False
+
+
+def _google_tts_mp3(text: str, voice: str, pace: float) -> bytes:
+    """One-shot Google Cloud TTS -> MP3. Blocking client, so callers push it to a
+    thread. Deliberately NOT reusing the pipecat service: that is a pipeline
+    component whose lifecycle assumes a live call.
+
+    44.1 kHz on purpose: Plivo only plays MPEG-1 layer III, and 8 kHz forces
+    MPEG-2.5 which it renders as SILENCE (the same trap the IVR /tts route hit)."""
+    s = get_settings()
+    try:
+        from google.cloud import texttospeech
+        from google.oauth2 import service_account
+        raw = s.vertex_credentials_json.strip()
+        if raw:
+            creds = service_account.Credentials.from_service_account_info(json.loads(raw))
+        else:
+            creds = service_account.Credentials.from_service_account_file(
+                s.vertex_credentials_path.strip() or "/etc/vertex-sa.json")
+        client = texttospeech.TextToSpeechClient(credentials=creds)
+        name = (voice or s.google_tts_voice).strip() or s.google_tts_voice
+        # "hi-IN-Chirp3-HD-Achird" -> language "hi-IN"
+        lang_code = "-".join(name.split("-")[:2]) if name.count("-") >= 2 else s.google_tts_language
+        resp = client.synthesize_speech(
+            input=texttospeech.SynthesisInput(text=text),
+            voice=texttospeech.VoiceSelectionParams(language_code=lang_code, name=name),
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                sample_rate_hertz=44100,
+                speaking_rate=max(0.25, min(4.0, pace)),
+            ),
+        )
+        return resp.audio_content or b""
+    except Exception:
+        logger.exception("preview: google tts failed voice=%s", voice)
+        return b""
+
+
+async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> bytes:
+    """One-shot Smallest.ai Lightning synthesis over its websocket -> WAV bytes.
+
+    Protocol probe-verified 2026-08-05: one JSON message with flush=True returns
+    base64 PCM chunks in `data.audio`, terminated by status="complete"."""
+    import base64
+    import io
+    import wave
+    s = get_settings()
+    try:
+        import websockets
+    except ImportError:
+        logger.error("preview: websockets missing for smallest")
+        return b""
+    pcm = bytearray()
+    try:
+        async with websockets.connect(
+                "wss://api.smallest.ai/waves/v1/tts/live",
+                additional_headers={"Authorization": f"Bearer {s.smallest_api_key}"},
+                open_timeout=15) as ws:
+            await ws.send(json.dumps({
+                "text": text, "voice_id": (voice or s.smallest_voice).strip(),
+                "model": model, "language": "hi",
+                "sample_rate": s.smallest_sample_rate, "output_format": "pcm",
+                "speed": max(0.5, min(2.0, pace)), "continue": False, "flush": True,
+            }))
+            while True:
+                msg = await asyncio.wait_for(ws.recv(), timeout=20)
+                if isinstance(msg, (bytes, bytearray)):
+                    pcm += msg
+                    continue
+                ev = json.loads(msg)
+                chunk = (ev.get("data") or {}).get("audio")
+                if chunk:
+                    pcm += base64.b64decode(chunk)
+                status = ev.get("status")
+                if status in ("complete", "error"):
+                    if status == "error":
+                        logger.warning("preview: smallest error %s", str(ev)[:200])
+                    break
+    except Exception:
+        logger.exception("preview: smallest tts failed voice=%s model=%s", voice, model)
+        return b""
+    if not pcm:
+        return b""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(s.smallest_sample_rate)
+        w.writeframes(bytes(pcm))
+    return buf.getvalue()
+
+
 @router.get("/preview.mp3")
 async def preview(
     text: str = Query(..., max_length=300),
@@ -296,6 +401,49 @@ async def preview(
     # name, Sarvam 400s and the tester just fails) — an audition that lies about
     # what ships is worse than no audition.
     engine = (model or "").strip().lower()
+
+    if engine.startswith("google") or engine.startswith("chirp"):
+        # Google Cloud TTS audition. Chirp3-HD is the founder's pick; the voice
+        # name IS locale-prefixed (hi-IN-Chirp3-HD-Achird), so no language param
+        # is needed and a wrong-vendor name fails loudly instead of substituting.
+        key = hashlib.sha1(
+            f"pv|google|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
+        if not os.path.exists(path):
+            audio = await asyncio.to_thread(_google_tts_mp3, text, voice, pace)
+            if not audio:
+                return Response(status_code=502)
+            if not _cache_write(path, audio):
+                return Response(content=audio, media_type="audio/mpeg")
+            await _evict_tts_cache_async()
+        return _serve_mp3(path)
+
+    if engine.startswith("smallest") or engine.startswith("lightning"):
+        # Smallest.ai Lightning audition. Its palettes are PER-MODEL and the API
+        # hard-rejects a cross-model voice, so pass the model through: an admin
+        # auditioning a _pro voice must hit _pro, or the preview lies.
+        if not s.smallest_api_key:
+            logger.warning("preview: smallest requested but SMALLEST_API_KEY unset")
+            return Response(status_code=503)
+        sm_model = s.smallest_model
+        if ":" in engine:
+            cand = engine.split(":", 1)[1].strip()
+            if cand:
+                sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+        key = hashlib.sha1(
+            f"pv|{sm_model}|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+        # Lightning streams raw PCM over its websocket; wrap as WAV (same reason
+        # as the Rumik path — no mp3 encoder in this image).
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            raw = await _smallest_tts_wav(text, voice, sm_model, pace)
+            if not raw:
+                return Response(status_code=502)
+            if not _cache_write(path, raw):
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
+
     is_rumik = engine.startswith("rumik") or engine.startswith("silk") \
         or engine.startswith("mulberry")
     if is_rumik:

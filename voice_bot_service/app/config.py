@@ -125,6 +125,42 @@ class Settings:
     # EXPLICITLY by admin_core, so the default never has to carry that decision.
     tts_model: str = field(default_factory=lambda: _env("TTS_MODEL", "sarvam"))
     rumik_api_key: str = field(default_factory=lambda: _env("RUMIK_API_KEY"))
+    # ── Google Cloud TTS (3rd engine, added 2026-08-05) ─────────────────────
+    # Founder picked Chirp3-HD by ear over Sarvam, Rumik and Google's other
+    # tiers. Economics measured from OUR OWN calls (779 chars per call-minute,
+    # 13 prod calls): Chirp3-HD $30/1M chars = Rs 2.06/call-min vs Sarvam's
+    # Rs 2.34 — CHEAPER than what we ship today, plus 1M chars/month free
+    # (~1,280 call-minutes). Neural2/WaveNet ($16/1M = Rs 1.10) are the
+    # fallback tiers if Chirp3-HD ever bites at scale.
+    # Auth reuses the Vertex service account (VERTEX_CREDENTIALS_*) — no new
+    # vendor, no new secret.
+    google_tts_voice: str = field(
+        default_factory=lambda: _env("GOOGLE_TTS_VOICE", "hi-IN-Chirp3-HD-Achird"))
+    google_tts_language: str = field(
+        default_factory=lambda: _env("GOOGLE_TTS_LANGUAGE", "hi-IN"))
+    # 1.0 = native. Chirp3-HD is already brisk; 1.05 matches our Sarvam pace 1.1
+    # without clipping consonants.
+    google_tts_speaking_rate: float = field(
+        default_factory=lambda: float(_env("GOOGLE_TTS_SPEAKING_RATE", "1.05")))
+    # Chirp3-HD streams 24 kHz; the output transport resamples to the 8 kHz leg.
+    google_tts_sample_rate: int = field(
+        default_factory=lambda: int(_env("GOOGLE_TTS_SAMPLE_RATE", "24000")))
+
+    # ── Smallest.ai Lightning (4th engine, added 2026-08-05) ────────────────
+    # Indian-language specialist; 146 of its 234 lightning_v3.1 voices are
+    # Hindi-capable. Key is env-only (NEVER in code): the one pasted in chat on
+    # 2026-08-05 must be treated as compromised and rotated.
+    smallest_api_key: str = field(default_factory=lambda: _env("SMALLEST_API_KEY"))
+    # lightning_v3.1 | lightning_v3.1_pro. NOTE the palettes DIFFER per model —
+    # the API rejects a cross-model voice outright ("Voice 'devansh' is not
+    # available on the lightning_v3.1_pro model"), which means a mute call.
+    smallest_model: str = field(
+        default_factory=lambda: _env("SMALLEST_MODEL", "lightning_v3.1"))
+    smallest_voice: str = field(
+        default_factory=lambda: _env("SMALLEST_VOICE", "devansh"))
+    # Lightning emits 24 kHz; transport resamples to 8 kHz for Plivo.
+    smallest_sample_rate: int = field(
+        default_factory=lambda: int(_env("SMALLEST_SAMPLE_RATE", "24000")))
     rumik_voice: str = field(default_factory=lambda: _env("RUMIK_VOICE", "ira"))
 
     # Deterministic Devanagari→Latin term fixes applied to text entering Rumik.

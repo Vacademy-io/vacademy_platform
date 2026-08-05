@@ -239,6 +239,59 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     s = get_settings()
     model = (tts_model or s.tts_model or "").strip().lower()
     eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
+
+    if model.startswith("google") or model.startswith("chirp"):
+        # Google Cloud TTS — founder's pick by ear (Chirp3-HD), and measured
+        # CHEAPER per call-minute than Sarvam (Rs 2.06 vs 2.34) with 1M
+        # chars/month free. Auth reuses the Vertex service account: no new
+        # vendor, no new secret, no new failure mode to learn.
+        #
+        # FALL THROUGH to Sarvam on ANY construction failure (missing creds is
+        # the likely one — VERTEX_CREDENTIALS_* is per-deployment). A misconfig
+        # must degrade to a working call in a different voice, never to the mute
+        # call that the 1.4 signature drift already cost us once.
+        try:
+            from pipecat.services.google.tts import GoogleTTSService
+            creds = s.vertex_credentials_json.strip() or None
+            voice_id = (voice or s.google_tts_voice).strip() or s.google_tts_voice
+            # Chirp3-HD ignores speaking_rate on some tiers but never errors on
+            # it; Neural2/WaveNet honour it. Pass it either way (probe-verified).
+            return GoogleTTSService(
+                credentials=creds,
+                credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
+                voice_id=voice_id,
+                sample_rate=s.google_tts_sample_rate,
+                params=GoogleTTSService.InputParams(
+                    language=_google_language(s.google_tts_language),
+                    speaking_rate=_clamp(
+                        eff_pace if pace is not None else s.google_tts_speaking_rate,
+                        0.25, 4.0),
+                ),
+            )
+        except Exception:
+            logger.exception("tts: google TTS unavailable (creds?) — "
+                             "falling back to Sarvam bulbul")
+
+    if model.startswith("smallest") or model.startswith("lightning"):
+        # Smallest.ai Lightning — Indian-language specialist, native pipecat
+        # websocket service (so barge-in cancel comes for free).
+        from pipecat.services.smallest.tts import SmallestTTSService
+        if not s.smallest_api_key:
+            logger.error("tts: SMALLEST_API_KEY unset — falling back to Sarvam bulbul")
+        else:
+            sm_model = s.smallest_model
+            # An explicit "smallest:<model>" wins over the env default, so one
+            # agent can run pro while others run standard.
+            if ":" in model:
+                cand = model.split(":", 1)[1].strip()
+                if cand:
+                    sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+            sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
+            try:
+                return _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
+                                       _clamp(eff_pace, 0.5, 2.0))
+            except Exception:
+                logger.exception("tts: smallest unavailable — falling back to Sarvam")
     if model.startswith("rumik") or model.startswith("silk"):
         if not s.rumik_api_key:
             logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul")
@@ -266,6 +319,40 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         sample_rate=sample_rate,
         params=SarvamTTSService.InputParams(**kwargs),
     )
+
+
+def _build_smallest(cls, s, model: str, voice: str, speed: float):
+    """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
+    try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
+    which only responds to prose), and its voice palettes are per-model — the API
+    hard-rejects a cross-model voice, which is a mute call."""
+    return cls(
+        api_key=s.smallest_api_key,
+        sample_rate=s.smallest_sample_rate,
+        settings=cls.Settings(model=model, voice=voice,
+                              language=_smallest_language(), speed=speed),
+    )
+
+
+def _google_language(tag: str):
+    """BCP-47 tag → pipecat Language for Google TTS; None = let Google infer from
+    the voice name (every hi-IN voice is locale-prefixed, so that is safe)."""
+    try:
+        from pipecat.transcriptions.language import Language
+        return Language(tag)
+    except Exception:
+        logger.warning("tts: unknown google language tag %r — inferring from voice", tag)
+        return None
+
+
+def _smallest_language():
+    """Lightning takes a language string; Hindi voices code-switch into English
+    natively, so hi is right for Hinglish agents too."""
+    try:
+        from pipecat.transcriptions.language import Language
+        return Language.HI
+    except Exception:
+        return None
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:

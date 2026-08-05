@@ -761,6 +761,9 @@ _MALE_VOICES = {
     # Rumik agent on "adam" would otherwise say "kar rahi hoon" in a male voice.
     "lucas", "noah", "theo", "adam",
 }
+# Google + Smallest male voices are UNIONED into this set right after their
+# palettes are defined below — same reason as the Rumik note above: this set is
+# the ONLY thing that makes the LLM write masculine Hindi verb endings.
 
 # Rumik Mulberry 1.5 female presets, kept explicit rather than inferred from the
 # male set's complement — _voice_gender defaults unknown names to female, so an
@@ -772,10 +775,75 @@ _RUMIK_FEMALE_VOICES = {
 _RUMIK_MALE_VOICES = {"lucas", "noah", "theo", "adam"}
 RUMIK_VOICES = _RUMIK_FEMALE_VOICES | _RUMIK_MALE_VOICES
 
+# ── Google Cloud TTS (hi-IN) ────────────────────────────────────────────────
+# Curated from the live list_voices API (46 hi-IN voices; 30 Chirp3-HD). Kept to
+# a shortlist so the Python palette and Java TtsVoiceCatalog can stay in
+# agreement — a mismatch there is what silently substitutes a caller's voice.
+# Gender comes from Google's own ssml_gender, NOT from the name: "Achird" and
+# "Achernar" are male and female respectively and nothing in the string says so.
+_GOOGLE_MALE_VOICES = {
+    "hi-in-chirp3-hd-achird", "hi-in-chirp3-hd-charon", "hi-in-chirp3-hd-fenrir",
+    "hi-in-chirp3-hd-orus", "hi-in-chirp3-hd-puck", "hi-in-chirp3-hd-schedar",
+    "hi-in-neural2-b", "hi-in-neural2-c", "hi-in-wavenet-b", "hi-in-wavenet-c",
+}
+_GOOGLE_FEMALE_VOICES = {
+    "hi-in-chirp3-hd-achernar", "hi-in-chirp3-hd-aoede", "hi-in-chirp3-hd-kore",
+    "hi-in-chirp3-hd-leda", "hi-in-chirp3-hd-zephyr", "hi-in-chirp3-hd-sulafat",
+    "hi-in-neural2-a", "hi-in-neural2-d", "hi-in-wavenet-a", "hi-in-wavenet-d",
+}
+GOOGLE_VOICES = _GOOGLE_MALE_VOICES | _GOOGLE_FEMALE_VOICES
+
+# ── Smallest.ai Lightning ───────────────────────────────────────────────────
+# From the live get_voices catalog, Hindi-tagged Indian-accent voices only.
+# ⚠️ The palettes are PER-MODEL and do not overlap: the API hard-rejects a
+# cross-model voice ("Voice 'devansh' is not available on the
+# lightning_v3.1_pro model") — i.e. a mute call. lightning_v3.1 is our default,
+# so its names lead; the _pro names are listed separately for the picker.
+_SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis"}
+_SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
+_SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
+_SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
+SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
+
+# One place where every engine's male voices land, so _voice_gender works for
+# all four. Missing a name here means a male voice speaking feminine Hindi —
+# the #1 immersion complaint from live calls.
+_MALE_VOICES |= _GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
+
+
+def _engine_of(model: str) -> str:
+    """Normalize a stored tts_model into one of our four engine ids."""
+    m = (model or "").strip().lower()
+    if m.startswith(("rumik", "silk")):
+        return "rumik"
+    if m.startswith(("google", "chirp")):
+        return "google"
+    if m.startswith(("smallest", "lightning")):
+        return "smallest"
+    return "sarvam"
+
+
+# Per-engine defaults + palettes, so adding a 5th engine is one table row rather
+# than a new branch in three functions.
+_ENGINE_DEFAULT_VOICE = {
+    "sarvam": "priya",
+    "rumik": "ira",
+    # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
+    "google": "hi-IN-Chirp3-HD-Achird",
+    "smallest": "devansh",
+}
+
+
+def _engine_palette(engine: str):
+    return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
+            "smallest": SMALLEST_VOICES}.get(engine)
+
 
 def _default_voice_for(agent) -> str:
-    """Provider default voice — both are female, so grammar stays feminine."""
-    return "ira" if _agent_tts_model(agent).startswith(("rumik", "silk")) else "priya"
+    """Provider default voice. Grammar follows it via _voice_gender, so the
+    default and the prompt's verb endings can never disagree."""
+    return _ENGINE_DEFAULT_VOICE.get(_engine_of(_agent_tts_model(agent)), "priya")
 
 
 def _voice_gender(voice) -> str:
@@ -815,11 +883,17 @@ def _agent_voice(agent):
     voice = (agent.get("voice") or "").strip()
     if not voice:
         return None
-    is_rumik = _agent_tts_model(agent).startswith(("rumik", "silk"))
-    if is_rumik and voice.lower() not in RUMIK_VOICES:
-        return None
-    if not is_rumik and voice.lower() in RUMIK_VOICES:
-        return None
+    engine = _engine_of(_agent_tts_model(agent))
+    palette = _engine_palette(engine)
+    low = voice.lower()
+    if palette is not None:
+        # Engine with a known palette: the voice MUST be in it.
+        return voice if low in palette else None
+    # Sarvam has no enumerated palette here (dozens of speakers across bulbul
+    # versions), so instead reject anything that clearly belongs elsewhere.
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES):
+        if low in other:
+            return None
     return voice
 
 

@@ -111,9 +111,10 @@ class Settings:
          for p in _env(
              "RUMIK_TERM_MAP",
              "लाइव क्लासेस=Live Classes;लाइव क्लास=Live Class;क्लासेस=classes;"
-             "क्लास=class;असेसमेंट=assessment;व्हाट्सएप=WhatsApp;"
+             "क्लास=class;लाइव=Live;असेसमेंट=assessment;व्हाट्सएप=WhatsApp;"
              "कॉन्सेप्ट्स=concepts;कॉन्सेप्ट=concept;सिलेबस=syllabus;"
-             "डेमो=demo;ऑनलाइन=online;बैच=batch").split(";")
+             "डेमो=demo;ऑनलाइन=online;बैच=batch;इम्प्रूवमेंट=Improvement;"
+             "प्रोग्राम=Program").split(";")
          if "=" in p and p.split("=", 1)[0].strip()),
         key=lambda kv: -len(kv[0]))))
 

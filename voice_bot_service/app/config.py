@@ -68,8 +68,14 @@ class Settings:
     stt_provider: str = field(default_factory=lambda: _env("STT_PROVIDER", "sarvam"))
     google_stt_language: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
+    # "telephony", NOT "latest_long": measured on the caller channel of real call
+    # 31a1acf1 (8 kHz Hindi phone audio), latest_long dropped most of every
+    # utterance ("क्या बात कर रहा है?" for a 15-word sentence) while telephony
+    # transcribed it nearly in full. Shipping latest_long would have rigged the
+    # A/B against Google. chirp_2 is comparable but only serves from
+    # us-central1 — a cross-ocean hop per turn from Mumbai, so not for live calls.
     google_stt_model: str = field(
-        default_factory=lambda: _env("GOOGLE_STT_MODEL", "latest_long"))
+        default_factory=lambda: _env("GOOGLE_STT_MODEL", "telephony"))
     google_stt_location: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LOCATION", "global"))
     # How long the 1.4 turn-stop strategy may hold a turn waiting for Sarvam's

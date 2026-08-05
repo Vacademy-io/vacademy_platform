@@ -49,7 +49,10 @@ public class LiveSessionStep1RequestDTO {
     private List<ScheduleDTO> updatedSchedules;
     private List<String> deletedScheduleIds;
 
-    private LearnerButtonConfigDTO learnerButtonConfig;
+    // Either a single LearnerButtonConfigDTO-shaped object (legacy) or a list of
+    // them. Kept untyped so both shapes round-trip untouched; see
+    // LearnerButtonConfigDTO for the field names.
+    private Object learnerButtonConfig;
 
     private BbbConfigDTO bbbConfig;
 
@@ -102,7 +105,7 @@ public class LiveSessionStep1RequestDTO {
         private boolean dailyAttendance;
         private String defaultClassLink;
         private String defaultClassName;
-        private LearnerButtonConfigDTO learnerButtonConfig;
+        private Object learnerButtonConfig;
     }
 
     @Data

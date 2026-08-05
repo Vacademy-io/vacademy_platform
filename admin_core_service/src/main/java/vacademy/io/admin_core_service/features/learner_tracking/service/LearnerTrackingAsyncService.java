@@ -596,7 +596,8 @@ public class LearnerTrackingAsyncService {
                                 userId,
                                 subjectId,
                                 List.of(LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name()),
-                                List.of(ModuleStatusEnum.ACTIVE.name()));
+                                List.of(ModuleStatusEnum.ACTIVE.name()),
+                                List.of(ChapterStatus.ACTIVE.name()));
 
                 addOrUpdatePercentageOperation(
                                 userId,
@@ -631,7 +632,9 @@ public class LearnerTrackingAsyncService {
                                 userId,
                                 List.of(LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name()),
                                 packageSessionId,
-                                List.of(SubjectStatusEnum.ACTIVE.name()));
+                                List.of(SubjectStatusEnum.ACTIVE.name()),
+                                List.of(ModuleStatusEnum.ACTIVE.name()),
+                                List.of(ChapterStatus.ACTIVE.name()));
 
                 if (percentage == null) {
                         log.warn("Course-progress rollup produced no value for user {} / packageSession {} "

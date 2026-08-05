@@ -1,7 +1,6 @@
 package vacademy.io.community_service.feature.support.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,8 +48,13 @@ public class SupportSuperAdminController {
      * @param instituteId  single-institute filter (kept for existing callers/deep links)
      * @param instituteIds multi-institute filter (repeated or comma-separated); unioned with
      *                     {@code instituteId}. Empty/absent means all institutes.
-     * @param unassigned   only tickets with no engineer assigned (takes precedence over engineerId)
-     * @param search       case-insensitive substring match on the ticket subject
+     * @param unassigned    only tickets with no engineer assigned (takes precedence over engineerId)
+     * @param search        case-insensitive substring match on the ticket subject
+     * @param createdFrom   inclusive lower bound on the ticket's creation time (ISO-8601 instant)
+     * @param createdTo     inclusive upper bound on the ticket's creation time (ISO-8601 instant)
+     * @param sortBy        one of lastMessageAt (default) | createdAt | updatedAt | firstResponseDueAt;
+     *                      anything else falls back to the default rather than erroring
+     * @param sortDirection ASC or DESC (default)
      */
     @GetMapping("/tickets")
     public ResponseEntity<PageResponseDto<SupportTicketDto>> tickets(
@@ -61,11 +65,15 @@ public class SupportSuperAdminController {
             @RequestParam(value = "engineerId", required = false) String engineerId,
             @RequestParam(value = "unassigned", defaultValue = "false") boolean unassigned,
             @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "createdFrom", required = false) String createdFrom,
+            @RequestParam(value = "createdTo", required = false) String createdTo,
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @RequestParam(value = "sortDirection", required = false) String sortDirection,
             @RequestParam(value = "overdue", defaultValue = "false") boolean overdue,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100));
+        Pageable pageable = ticketService.buildPageable(page, size, sortBy, sortDirection);
         List<String> institutes = new ArrayList<>();
         if (instituteIds != null) {
             institutes.addAll(instituteIds);
@@ -74,7 +82,8 @@ public class SupportSuperAdminController {
             institutes.add(instituteId);
         }
         return ResponseEntity.ok(ticketService.search(
-                institutes, status, engineerId, unassigned, search, overdue, pageable));
+                institutes, status, engineerId, unassigned, search,
+                createdFrom, createdTo, overdue, pageable));
     }
 
     @GetMapping("/tickets/counts")

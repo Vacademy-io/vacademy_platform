@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,8 @@ import vacademy.io.community_service.feature.support.enums.TicketStatus;
 import vacademy.io.community_service.feature.support.repository.SupportTicketMessageRepository;
 import vacademy.io.community_service.feature.support.repository.SupportTicketRepository;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -40,6 +44,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -147,9 +152,8 @@ public class SupportTicketService {
                                                AddMessageRequest request) {
         SupportTicket ticket = getOrThrow(ticketId);
         requireInstitute(ticket, instituteId);
-        if (request == null || !StringUtils.hasText(request.getBody())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
-        }
+        // A screenshot on its own is a legitimate reply, so text is only required when nothing is attached.
+        String body = requireBodyOrAttachments(request);
         Date now = new Date();
 
         SupportTicketMessage message = SupportTicketMessage.builder()
@@ -157,7 +161,7 @@ public class SupportTicketService {
                 .senderType(SenderType.CUSTOMER)
                 .senderUserId(user != null ? user.getUserId() : ticket.getRaisedByUserId())
                 .senderName(user != null ? user.getFullName() : ticket.getRaisedByName())
-                .body(request.getBody().trim())
+                .body(body)
                 .attachments(writeAttachments(request.getAttachments()))
                 .internalNote(false)
                 .build();
@@ -339,12 +343,18 @@ public class SupportTicketService {
     @Transactional(readOnly = true)
     public PageResponseDto<SupportTicketDto> search(Collection<String> instituteIds, String statusFilter,
                                                     String engineerId, boolean unassigned, String searchTerm,
+                                                    String createdFrom, String createdTo,
                                                     boolean onlyOverdue, Pageable pageable) {
         TicketStatus status = TicketStatus.fromName(statusFilter, null);
         List<String> institutes = instituteIds == null ? List.of() : instituteIds.stream()
                 .filter(StringUtils::hasText)
                 .map(String::trim)
                 .collect(Collectors.toList());
+        Date from = parseInstant(createdFrom, "createdFrom");
+        Date to = parseInstant(createdTo, "createdTo");
+        if (from != null && to != null && from.after(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "createdFrom must not be after createdTo");
+        }
         Page<SupportTicket> page = ticketRepository.searchTickets(
                 !institutes.isEmpty(),
                 // Never bind an empty IN list; the sentinel is unreachable when hasInstitutes=false.
@@ -354,11 +364,85 @@ public class SupportTicketService {
                 (unassigned || !StringUtils.hasText(engineerId)) ? null : engineerId,
                 unassigned,
                 likeParam(searchTerm),
+                from,
+                to,
                 onlyOverdue,
                 new Date(),
                 pageable);
         Map<String, String> names = engineerNames(page);
         return PageResponseDto.of(page, t -> toSummaryDto(t, names));
+    }
+
+    /**
+     * Entity properties the inbox/board may sort on. Sorting is driven by a client-supplied string,
+     * so it must never reach {@link Sort} unchecked — an arbitrary property path is a JPQL injection
+     * point and leaks schema shape through the resulting error messages.
+     */
+    private static final Map<String, String> SORTABLE = Map.of(
+            "lastMessageAt", "lastMessageAt",
+            "createdAt", "createdAt",
+            "updatedAt", "updatedAt",
+            "firstResponseDueAt", "firstResponseDueAt");
+
+    private static final String DEFAULT_SORT = "lastMessageAt";
+
+    /**
+     * Build the inbox page request. Defaults to newest activity first — without an explicit ORDER BY
+     * Postgres returns rows in whatever order it likes, which is what made the console look unsorted.
+     * {@code id} breaks ties so pagination stays stable across pages.
+     *
+     * <p>Null handling is deliberately not set here: Spring Data's {@code QueryUtils} applies a
+     * Sort's direction but drops its null handling for {@code @Query} methods, so
+     * {@code nullsLast()} would be a silent no-op. Postgres then sorts NULLs first on DESC, which
+     * would pin a null-{@code lastMessageAt} ticket above every real conversation — V37 backfills
+     * that column instead. {@code firstResponseDueAt} is legitimately null for no-SLA plans, but is
+     * only offered ascending ("due soonest"), where Postgres already puts NULLs last.
+     */
+    public Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
+        String property = SORTABLE.getOrDefault(sortBy == null ? "" : sortBy.trim(), DEFAULT_SORT);
+        Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection)
+                ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Sort sort = Sort.by(direction, property).and(Sort.by(Sort.Direction.DESC, "id"));
+        return PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100), sort);
+    }
+
+    /**
+     * Validate a reply and return its trimmed body. A message must carry text or at least one
+     * attachment — an entirely empty message is still rejected. Returns "" for attachment-only
+     * replies; the column is NOT NULL, so an empty string is the correct stored value.
+     */
+    private String requireBodyOrAttachments(AddMessageRequest request) {
+        String body = (request == null || request.getBody() == null) ? "" : request.getBody().trim();
+        // Mirror sanitizeAttachments, which keeps only non-null entries — a list of nulls is empty
+        // once stored, so treating it as "has attachments" would persist a blank message.
+        boolean hasAttachments = request != null && request.getAttachments() != null
+                && request.getAttachments().stream().anyMatch(Objects::nonNull);
+        if (body.isEmpty() && !hasAttachments) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body or attachments are required");
+        }
+        return body;
+    }
+
+    /** Notification e-mails need something to show when the reply is attachments only. */
+    private String alertBody(String body, List<AttachmentDto> attachments) {
+        if (StringUtils.hasText(body)) {
+            return body;
+        }
+        int count = attachments == null ? 0 : attachments.size();
+        return count == 1 ? "(sent an attachment)" : "(sent " + count + " attachments)";
+    }
+
+    /** Parse an ISO-8601 instant (e.g. {@code 2026-08-05T00:00:00.000Z}); blank means "no bound". */
+    private Date parseInstant(String value, String field) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return Date.from(Instant.parse(value.trim()));
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    field + " must be an ISO-8601 instant, e.g. 2026-08-05T00:00:00Z");
+        }
     }
 
     /**
@@ -384,9 +468,8 @@ public class SupportTicketService {
     @Transactional
     public SupportTicketDto addSupportMessage(String ticketId, CustomUserDetails user, AddMessageRequest request) {
         SupportTicket ticket = getOrThrow(ticketId);
-        if (request == null || !StringUtils.hasText(request.getBody())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
-        }
+        // A screenshot on its own is a legitimate reply, so text is only required when nothing is attached.
+        String body = requireBodyOrAttachments(request);
         boolean internal = request.isInternalNote();
         Date now = new Date();
 
@@ -395,7 +478,7 @@ public class SupportTicketService {
                 .senderType(SenderType.SUPPORT)
                 .senderUserId(user != null ? user.getUserId() : null)
                 .senderName(user != null ? user.getFullName() : "Support")
-                .body(request.getBody().trim())
+                .body(body)
                 .attachments(writeAttachments(request.getAttachments()))
                 .internalNote(internal)
                 .build();
@@ -412,7 +495,7 @@ public class SupportTicketService {
             ticket.setLastMessageAt(now);
             ticket.setMessageCount(ticket.getMessageCount() + 1);
             ticketRepository.save(ticket);
-            alertService.onSupportReply(ticket, request.getBody().trim());
+            alertService.onSupportReply(ticket, alertBody(body, request.getAttachments()));
         } else {
             ticketRepository.save(ticket); // touch updated_at only
         }

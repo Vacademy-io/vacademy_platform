@@ -33,7 +33,15 @@ export function usePlaceAiCall({ invalidateKeys = [] }: UsePlaceAiCallOptions = 
                 campaignId: vars.campaignId,
                 preferredNumberId: vars.preferredNumberId,
             }),
-        onSuccess: (_resp, vars) => {
+        onSuccess: (resp, vars) => {
+            // A skip is HTTP 200 with dispatched=false (lead already assigned, duplicate
+            // within 30s, daily cap reached). Toasting "queued" for those told the user a
+            // call was placed when nothing was dialled — the phone simply never rang, with
+            // no reason shown anywhere. Surface the server's reason instead.
+            if (resp && resp.dispatched === false) {
+                toast.warning(resp.providerMessage || 'AI call was not placed');
+                return;
+            }
             toast.success(`AI call queued${vars.leadName ? ` for ${vars.leadName}` : ''}`);
             queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
             queryClient.invalidateQueries({ queryKey: ['telephony-call-history'] });

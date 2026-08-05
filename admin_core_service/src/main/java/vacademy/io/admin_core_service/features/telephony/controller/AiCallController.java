@@ -32,6 +32,10 @@ public class AiCallController {
         // credits / dial another's lead by passing a foreign instituteId).
         instituteAccessValidator.validateUserAccess(user, req.getInstituteId());
         String actorUserId = user == null ? null : user.getUserId();
-        return ResponseEntity.ok(aiCallService.placeCall(req, actorUserId));
+        // humanInitiated=true: someone pressed Call and is waiting for a phone to ring.
+        // If they ask for a call, they get a call — the already-assigned / daily-cap /
+        // duplicate throttles exist to bound automation, and must never silently swallow
+        // an explicit request. Only credit exhaustion can stop it, and that errors loudly.
+        return ResponseEntity.ok(aiCallService.placeCall(req, actorUserId, true));
     }
 }

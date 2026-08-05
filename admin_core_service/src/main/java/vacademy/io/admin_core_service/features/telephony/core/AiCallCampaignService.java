@@ -134,6 +134,17 @@ public class AiCallCampaignService {
             return new StartResult(leads.size(), 0, false, "No eligible leads (none have a user id).");
         }
 
+        // Dry run: report the counts the confirm dialog needs, WITHOUT placing any calls.
+        // Reports RAW eligibility on purpose. The cooldown below is a dispatch-time
+        // guard, NOT an eligibility rule — subtracting it here returned eligible=0 for
+        // the whole cooldown window, and the confirm button disables itself on
+        // eligible === 0 and renders "no contact number" copy. One campaign therefore
+        // left the list looking permanently broken for five minutes.
+        if (dryRun) {
+            return new StartResult(leads.size(), refs.size(), false,
+                    refs.size() + " eligible lead(s) will be called.");
+        }
+
         // Cooldown, applied PER LEAD. The real guarantee we owe is "no lead is dialled
         // twice by a re-fire" — not "this audience is frozen". The audience-level claim
         // below can't tell "call these 10 checked leads" from "call the whole list", so
@@ -143,15 +154,13 @@ public class AiCallCampaignService {
         // it also stops a follow-up whole-list run from re-dialling the subset that was
         // just called (which the audience claim alone never covered).
         List<LeadRef> callable = dropRecentlyAiCalled(instituteId, refs);
+        int skippedRecent = refs.size() - callable.size();
         if (callable.isEmpty()) {
+            // Logged, not silent: "nothing dialled" must be explainable from the logs.
+            log.info("ai-call bulk: audience={} all {} eligible lead(s) already AI-called "
+                    + "within the {}s cooldown — nothing dispatched", audienceId, refs.size(), bulkCooldownSec);
             return new StartResult(leads.size(), 0, false,
                     "Every eligible lead here was already AI-called in the last few minutes.");
-        }
-
-        // Dry run: report the counts the confirm dialog needs, WITHOUT placing any calls.
-        if (dryRun) {
-            return new StartResult(leads.size(), callable.size(), false,
-                    callable.size() + " eligible lead(s) will be called.");
         }
 
         // Idempotency for a WHOLE-LIST run: claim this audience for the cooldown window.
@@ -183,7 +192,11 @@ public class AiCallCampaignService {
         log.info("ai-call bulk: audience={} total={} eligible={} callable={} dispatched async (pace={}ms)",
                 audienceId, leads.size(), refs.size(), callable.size(), paceMs);
         return new StartResult(leads.size(), callable.size(), true,
-                "Queued " + callable.size() + " AI calls; outcomes will arrive via the webhook.");
+                "Queued " + callable.size() + " AI calls"
+                + (skippedRecent > 0
+                        ? " (" + skippedRecent + " skipped — already called in the last few minutes)"
+                        : "")
+                + "; outcomes will arrive via the webhook.");
     }
 
     /**

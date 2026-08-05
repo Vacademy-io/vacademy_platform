@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallResponse
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
@@ -132,30 +133,27 @@ public class AiCallService {
     }
 
     /**
-     * Automated entry point (workflow node, bulk campaign, scheduler). All three
-     * throttles apply: already-assigned, daily cap, and the near-simultaneous dedup.
+     * Automated entry point (workflow node, scheduler, retry re-dialer). Every throttle
+     * applies: already-assigned, daily cap, and the near-simultaneous dedup.
      */
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
-        return placeCall(req, counsellorUserId, false);
+        return placeCall(req, counsellorUserId, CallTrigger.AUTOMATION);
     }
 
     /**
-     * @param humanInitiated a person pressed "Call" and is waiting for a phone to ring.
-     *        Set ONLY by the manual controller — server-side, never from the request body.
+     * @param trigger who asked for this call — decides which pre-dial throttles apply.
+     *        Set SERVER-side by the calling path, never read from the request body, so
+     *        automation cannot opt itself out. See {@link CallTrigger}: every throttle
+     *        returns HTTP 200 with dispatched=false and dials nothing, so applying one
+     *        to a human's explicit request makes calling look broken rather than
+     *        throttled — which is exactly what happened to counsellors, whose leads are
+     *        all assigned and so were refused by the first guard every time.
      *
-     *        <p>When true, the three SILENT skips below are bypassed: already-assigned,
-     *        daily cap, and the 30s duplicate window. Every one of them returns HTTP 200
-     *        with dispatched=false and dials nothing, so an explicit human request
-     *        vanished with no phone call and no error — a counsellor's own leads are all
-     *        assigned, so the first guard refused her every single time.
-     *
-     *        <p>The governing rule: these throttles exist to bound AUTOMATION, which can
-     *        loop, re-enter and fan out. A human clicking a button does none of that, and
-     *        must never be silently refused. Credit exhaustion still blocks both paths —
-     *        that one throws a visible error rather than pretending to dial.
+     *        <p>Credit exhaustion still blocks every path, and throws a visible error
+     *        rather than pretending to dial.
      */
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId,
-                                       boolean humanInitiated) {
+                                       CallTrigger trigger) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required.");
         }
@@ -242,7 +240,7 @@ public class AiCallService {
         // lead-specific; non-lead subjects (e.g. student feedback) have their eligibility
         // decided by the caller/scheduler.
         if (isLead && leadAlreadyAssigned(userId, req.getInstituteId())) {
-            if (!humanInitiated) {
+            if (trigger.enforcesAssignedLeadGuard()) {
                 log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
                 return AiCallResponseDTO.builder()
                         .status("SKIPPED_ASSIGNED")
@@ -260,11 +258,11 @@ public class AiCallService {
         // only — MOCK never leaves the box. Per-institute setting wins; else the
         // server-wide default. Returns a distinct skip status the campaign loop can log.
         //
-        // Skipped for a human-initiated call: the cap is there to stop AUTOMATION running
-        // up an unbounded bill, and one person clicking one button cannot. Silently
-        // refusing that click — after automation had already eaten the day's cap — is the
-        // failure mode this whole guard set kept producing.
-        if (!mock && !humanInitiated) {
+        // Skipped for a single manual click: the cap is there to stop fan-out running up
+        // an unbounded bill, and one person clicking one button cannot. Silently refusing
+        // that click — after automation had already eaten the day's cap — is the failure
+        // mode this whole guard set kept producing. Bulk campaigns still respect it.
+        if (!mock && trigger.enforcesDailyCap()) {
             int cap = settings.getMaxCallsPerDay() > 0 ? settings.getMaxCallsPerDay() : globalMaxCallsPerDay;
             if (cap > 0) {
                 java.sql.Timestamp since = java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(24)));
@@ -292,10 +290,11 @@ public class AiCallService {
         synchronized (lockFor(dedupKey)) {
             java.sql.Timestamp since = java.sql.Timestamp.from(
                     Instant.now().minusSeconds(Math.max(1, dedupWindowSec)));
-            // Human-initiated calls are never de-duped: the window exists to collapse an
-            // ACCIDENTAL double dispatch from automation, and a person clicking twice is
-            // asking for a second call, not repeating themselves by mistake.
-            if (!humanInitiated
+            // A single manual click is never de-duped: the window exists to collapse an
+            // ACCIDENTAL double dispatch, and a person clicking twice is asking for a
+            // second call, not repeating themselves by mistake. Bulk keeps it — a
+            // campaign overlapping a workflow node is precisely the accident it catches.
+            if (trigger.enforcesDuplicateWindow()
                     && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);

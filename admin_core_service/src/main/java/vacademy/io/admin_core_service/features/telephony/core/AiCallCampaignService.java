@@ -17,6 +17,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.List;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -267,7 +268,13 @@ public class AiCallCampaignService {
                         // Actor-owned, exactly like the one-off "Click to AI call" path —
                         // so the starter (and their manager, via hierarchy scope) sees
                         // these rows in the call log.
-                        var resp = aiCallService.placeCall(req, actorUserId);
+                        // BULK_MANUAL: a person picked these leads and pressed Call, so the
+                        // already-assigned guard must not apply — on a counsellor's own
+                        // list EVERY lead is assigned to her, which silently reduced the
+                        // whole campaign to zero dials while still reporting "Queued N".
+                        // The daily cap and the duplicate window still apply: bounding a
+                        // fan-out is exactly what those two are for.
+                        var resp = aiCallService.placeCall(req, actorUserId, CallTrigger.BULK_MANUAL);
                         // Only a call the provider accepted is "placed". The 30s dedup
                         // returns dispatched=false with no call-log row, and a provider
                         // rejection returns a FAILED row — counting either as placed made

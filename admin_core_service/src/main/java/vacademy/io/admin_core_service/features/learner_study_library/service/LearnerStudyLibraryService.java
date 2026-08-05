@@ -117,17 +117,33 @@ public class LearnerStudyLibraryService {
         for (LearnerModuleDTOWithDetails module : modules) {
             List<LearnerChapterDetailsDTO> chapters = module.getChapters();
             if (chapters == null || chapters.isEmpty()) {
-                module.setPercentageCompleted(0.0);
+                module.setPercentageCompleted(null);
                 continue;
             }
             double chapterPctSum = 0.0;
+            int countedChapters = 0;
             for (LearnerChapterDetailsDTO chapter : chapters) {
-                Double pct = pctByChapter.getOrDefault(chapter.getId(), 0.0);
-                chapter.setPercentageCompleted(pct);
+                Double pct = pctByChapter.get(chapter.getId());
+                // A chapter with no learner-visible slide never appears in the
+                // progress rows, so pct is null rather than 0. Keep showing it as
+                // 0% (there is nothing in it to complete) but keep it OUT of the
+                // module denominator: a chapter the learner cannot even open must
+                // not count as work they failed to do. Counting it capped the
+                // module below 100% forever, which blocked course certificates and
+                // made every added empty chapter visibly divide the module -- one
+                // empty chapter beside a 41.67% chapter rendered 21%, two rendered
+                // 14%. Mirrors ActivityLogRepository.getModuleCompletionPercentage,
+                // which excludes the same chapters from the stored rollup.
+                chapter.setPercentageCompleted(pct == null ? 0.0 : pct);
                 chapter.setLastSlideViewed(lastSlideByChapter.get(chapter.getId()));
-                chapterPctSum += (pct == null ? 0.0 : pct);
+                if (pct != null) {
+                    chapterPctSum += pct;
+                    countedChapters++;
+                }
             }
-            module.setPercentageCompleted(chapterPctSum / chapters.size());
+            // No countable chapter means the whole module is empty. Null, not 0,
+            // so the subject average can skip it for the same reason.
+            module.setPercentageCompleted(countedChapters == 0 ? null : chapterPctSum / countedChapters);
         }
     }
 

@@ -25,4 +25,13 @@ public class CreateSupportTicketRequest {
     /** true = support-team-only; the institute never sees this ticket. */
     private Boolean internalOnly;
     private List<AttachmentDto> attachments;
+
+    // ---- Reporter: the institute-side person who actually reported the issue ----------
+    // Optional. When supplied, the ticket is attributed to them instead of "Vacademy Support",
+    // and they become the sole recipient of reply notifications. Without it there is nobody on
+    // the institute's side to notify, because raisedBy* would describe the support agent.
+    // The userId is what makes an in-app system alert possible; email alone only reaches inbox.
+    private String reportedByUserId;
+    private String reportedByName;
+    private String reportedByEmail;
 }

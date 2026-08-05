@@ -8,6 +8,8 @@ import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.community_service.feature.session.dto.admin.EmailRequestDto;
 import vacademy.io.community_service.feature.session.dto.admin.EmailUserDto;
 import vacademy.io.community_service.feature.session.manager.NotificationService;
+import vacademy.io.community_service.feature.support.client.SupportAnnouncementClient;
+import vacademy.io.community_service.feature.support.dto.SupportRecipientDto;
 import vacademy.io.community_service.feature.support.entity.SupportTicket;
 
 import java.util.ArrayList;
@@ -33,6 +35,8 @@ public class SupportAlertService {
 
     @Autowired
     private NotificationService notificationService;
+    @Autowired
+    private SupportAnnouncementClient announcementClient;
 
     /** A new ticket was raised: alert Sentry→Slack and email the support recipients. */
     public void onNewTicket(SupportTicket ticket, String firstMessageBody, List<String> recipientEmails) {
@@ -56,19 +60,60 @@ public class SupportAlertService {
         }
     }
 
-    /** A support agent replied: notify the institute user who raised the ticket. */
-    public void onSupportReply(SupportTicket ticket, String replyBody) {
+    /**
+     * A support agent replied: tell the person who raised the ticket, by email and by in-app
+     * system alert.
+     *
+     * <p>Exactly one recipient, always — the raiser. Never the institute's other admins: they did
+     * not raise this and must not be pinged for it.
+     */
+    public void onSupportReply(SupportTicket ticket, String replyBody,
+                               String senderUserId, String senderName) {
         try {
-            if (!StringUtils.hasText(ticket.getRaisedByEmail())) {
+            // Internal-only tickets are support scratch work the institute must never see.
+            if (ticket.isInternalOnly()) {
                 return;
             }
+            SupportRecipientDto raiser = resolveRaiser(ticket);
+            if (raiser == null) {
+                // Support-logged tickets record no institute-side contact, so there is nobody to
+                // tell. Logged rather than silently dropped so the gap is visible.
+                log.warn("Ticket {} (institute {}) has no raiser contact — reply not notified",
+                        ticket.getId(), ticket.getInstituteId());
+                return;
+            }
+
             String subject = "Re: [" + shortId(ticket.getId()) + "] " + ticket.getSubject();
             String body = buildReplyEmail(ticket, replyBody);
+
+            // Deliberately NOT attributed to the ticket's institute. notification-service resolves
+            // the FROM address and the CC/BCC rules from the send's instituteId, so attributing
+            // this to the customer would post our support reply from *their* configured sender and
+            // copy it to their compliance mailbox. Support mail stays on the platform institute.
             sendEmail(subject, body, ticket.getId(),
-                    List.of(recipient(ticket.getRaisedByUserId(), ticket.getRaisedByEmail())));
+                    List.of(recipient(raiser.getUserId(), raiser.getEmail())));
+
+            announcementClient.sendSystemAlert(ticket.getInstituteId(),
+                    "Support replied: " + ticket.getSubject(), body,
+                    senderUserId, senderName, List.of(raiser));
         } catch (Exception e) {
-            log.error("Failed to dispatch support-reply email for {}: {}", ticket.getId(), e.getMessage(), e);
+            log.error("Failed to dispatch support-reply alert for {}: {}", ticket.getId(), e.getMessage(), e);
         }
+    }
+
+    /**
+     * The institute-side person who raised the ticket, or null when none was recorded.
+     *
+     * <p>A SUPPORT raisedByRole means the fields describe the support agent who logged the ticket,
+     * not anyone at the institute — notifying them would email ourselves.
+     */
+    private SupportRecipientDto resolveRaiser(SupportTicket ticket) {
+        if ("SUPPORT".equalsIgnoreCase(ticket.getRaisedByRole())
+                || !StringUtils.hasText(ticket.getRaisedByEmail())) {
+            return null;
+        }
+        return new SupportRecipientDto(ticket.getRaisedByUserId(),
+                ticket.getRaisedByEmail().trim(), ticket.getRaisedByName());
     }
 
     // ---- internals ---------------------------------------------------------------

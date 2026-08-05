@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import {
     FloppyDisk,
     ArrowCounterClockwise,
@@ -633,6 +634,7 @@ function isAutoFilledVar(value: unknown): boolean {
 type WhatsAppTemplateInfo = {
     name: string;
     content?: string;
+    status?: string;
     dynamic_parameters?: string;
 };
 
@@ -715,9 +717,50 @@ function TemplateVarsEditor({
     if (!parsed || !vars) return null;
 
     const cfg = parsed;
+    const template = templates.find((t) => t.name === cfg.templateName);
+    // Which variables does the approved template actually use? Read from its own
+    // body — never a hardcoded list — so editing the template in WhatsApp (adding
+    // a {{7}}, dropping a {{4}}) is reflected here as soon as it is synced.
+    const templateKeys = template?.content
+        ? Array.from(template.content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g))
+              .map((m) => m[1] ?? '')
+              .filter((k, i, all) => all.indexOf(k) === i)
+        : [];
+    // A variable the template needs but this step does not supply. The send would
+    // fail at run time ("Missing required template variable"), so surface it here.
+    const missingKeys = templateKeys.filter((k) => !(k in vars));
+    // Only approved templates can actually be sent on, so those are the choices —
+    // plus whatever this step already points at, so the value is never lost.
+    const approvedNames = templates
+        .filter((t) => (t.status ?? '').toUpperCase() === 'APPROVED')
+        .map((t) => t.name)
+        .sort((a, b) => a.localeCompare(b));
+    const templateChoices =
+        typeof cfg.templateName === 'string' &&
+        cfg.templateName &&
+        !approvedNames.includes(cfg.templateName)
+            ? [cfg.templateName, ...approvedNames]
+            : approvedNames;
+    const unusedKeys =
+        templateKeys.length > 0 ? Object.keys(vars).filter((k) => !templateKeys.includes(k)) : [];
+
     const writeVar = (key: string, value: string) =>
         onChange(
             JSON.stringify({ ...cfg, templateVars: { ...vars, [key]: value } }, null, 2)
+        );
+    const addMissingVars = () =>
+        onChange(
+            JSON.stringify(
+                {
+                    ...cfg,
+                    templateVars: {
+                        ...vars,
+                        ...Object.fromEntries(missingKeys.map((k) => [k, ''])),
+                    },
+                },
+                null,
+                2
+            )
         );
     const writeField = (field: string, value: string) =>
         onChange(JSON.stringify({ ...cfg, [field]: value }, null, 2));
@@ -768,7 +811,18 @@ function TemplateVarsEditor({
                             className="h-8 flex-1 font-mono text-xs"
                         />
                     ) : (
-                        <span className="text-xs text-neutral-600">{cfg.templateName}</span>
+                        // Simple view: pick from the institute's approved templates. The
+                        // list is whatever WhatsApp has approved — never a fixed set — and
+                        // the current value stays selectable even if it is not in the list
+                        // (e.g. not synced yet), so opening this screen can't blank it.
+                        <MyDropdown
+                            currentValue={cfg.templateName}
+                            dropdownList={templateChoices}
+                            handleChange={(value) => writeField('templateName', value)}
+                            placeholder="Choose a WhatsApp template"
+                            className="h-8 flex-1 text-xs"
+                            contentClassName="max-h-72 overflow-y-auto"
+                        />
                     )}
                 </div>
             )}
@@ -776,7 +830,6 @@ function TemplateVarsEditor({
                 values substituted live. When the body is unknown here, say so —
                 showing bare {{1}} boxes with no explanation reads as a bug. */}
             {(() => {
-                const template = templates.find((t) => t.name === cfg.templateName);
                 if (template?.content) {
                     return <TemplateBodyPreview template={template} vars={vars} />;
                 }
@@ -809,6 +862,41 @@ function TemplateVarsEditor({
                     </div>
                 );
             })()}
+            {/* The template changed under this step: it now uses variables this step
+                does not fill in. Sends would fail, so make it fixable in one click. */}
+            {missingKeys.length > 0 && (
+                <div className="mb-2 flex items-start gap-2 rounded-md border border-danger-200 bg-danger-50 p-3">
+                    <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-danger-500" />
+                    <div className="flex-1 text-xs text-danger-700">
+                        <p className="font-medium">
+                            This template needs {missingKeys.length} more{' '}
+                            {missingKeys.length === 1 ? 'value' : 'values'}
+                        </p>
+                        <p className="mt-0.5 text-danger-600">
+                            The WhatsApp template uses{' '}
+                            {missingKeys.map((k) => `{{${k}}}`).join(', ')}, but this step
+                            doesn&apos;t provide {missingKeys.length === 1 ? 'it' : 'them'}. Messages
+                            will fail to send until {missingKeys.length === 1 ? 'it is' : 'they are'}{' '}
+                            filled in.
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 h-7 gap-1.5 text-xs"
+                            onClick={addMissingVars}
+                        >
+                            <Plus size={12} />
+                            Add {missingKeys.length === 1 ? 'it' : 'them'}
+                        </Button>
+                    </div>
+                </div>
+            )}
+            {unusedKeys.length > 0 && (
+                <p className="mb-2 text-caption text-neutral-400">
+                    Not used by this template any more:{' '}
+                    {unusedKeys.map((k) => `{{${k}}}`).join(', ')} — safe to leave or clear.
+                </p>
+            )}
             <div className="space-y-2">{textVars.map(renderVar)}</div>
             {!devMode && textVars.length === 0 && (
                 <p className="text-caption text-neutral-500">

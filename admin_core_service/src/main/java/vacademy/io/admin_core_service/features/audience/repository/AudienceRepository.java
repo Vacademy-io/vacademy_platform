@@ -38,6 +38,22 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
                            @Param("cooldownSec") long cooldownSec);
 
     /**
+     * Release a claim taken by {@link #tryClaimAiCampaign} when the run never actually
+     * started (the dispatch pool refused the submission). Without this the audience
+     * stays locked for the whole cooldown window having placed ZERO calls, and the
+     * rejection message wrongly tells the user a bulk run is already in progress.
+     *
+     * <p>Clearing to NULL rather than restoring the prior value is equivalent for
+     * gating — the previous value was either NULL or already older than the cooldown,
+     * so both allow an immediate re-claim — and nothing else reads this column.
+     */
+    @Transactional
+    @Modifying
+    @Query(value = "UPDATE audience SET last_ai_campaign_started_at = NULL WHERE id = :audienceId",
+            nativeQuery = true)
+    void releaseAiCampaignClaim(@Param("audienceId") String audienceId);
+
+    /**
      * Find all campaigns for a specific institute
      */
     List<Audience> findByInstituteId(String instituteId);

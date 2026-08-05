@@ -116,8 +116,10 @@ export interface Module {
 export interface ModuleWithChapters {
   module: Module;
   module_order: number | null;
-  // Server-computed module rollup from /modules-with-chapters.
-  percentage_completed?: number;
+  // Server-computed module rollup from /modules-with-chapters. Null when the
+  // module has no learner-visible content at all, which is why the subject
+  // average skips it instead of scoring it 0.
+  percentage_completed?: number | null;
   chapters: Chapter[];
 }
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
@@ -239,16 +241,26 @@ export const CourseStructureDetails = ({
   const calculateModuleProgress = (mod: ModuleWithChapters): number =>
     Math.round(mod?.percentage_completed ?? 0);
 
+  // Subject progress = mean of its MODULE percentages, skipping modules the
+  // server scored as null.
+  //
+  // Null means "no learner-visible content in here at all" (no chapters, or
+  // every chapter empty), which is different from 0%. Averaging it in as 0
+  // would let an empty module drag the subject down with work the learner
+  // cannot do, the same bug the module denominator has one level lower.
   const calculateSubjectProgress = (subjectId: string): number => {
     const modules = subjectModulesMap[subjectId] ?? [];
-    if (modules.length === 0) return 0;
+    const countedModules = modules.filter(
+      (mod) => mod.percentage_completed !== null && mod.percentage_completed !== undefined,
+    );
+    if (countedModules.length === 0) return 0;
 
-    const totalProgress = modules.reduce(
+    const totalProgress = countedModules.reduce(
       (sum, mod) => sum + (mod.percentage_completed ?? 0),
       0,
     );
 
-    return Math.round(totalProgress / modules.length);
+    return Math.round(totalProgress / countedModules.length);
   };
 
   // Helper: render progress bar

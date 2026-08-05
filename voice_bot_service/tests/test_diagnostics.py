@@ -325,3 +325,36 @@ def test_note_tts_spend_never_raises_into_the_call():
     d.note_tts_spend("junk", None, "x")   # must not raise
     d.note_tts_spend(None, None)
     assert dg.to_payload(d)["health"] is not None
+
+
+def test_reconcile_join_aware_fragments_are_not_deleted():
+    """Live ae7d3069: Saaras split 'नहीं जान सकते हैं आप' into fragment finals;
+    the aggregator joined them into ONE context message; per-final matching
+    counted every fragment deleted on a call the model demonstrably followed."""
+    heard = ["नहीं जान।", "सकते हैं आप।", "IGCSE"]
+    delivered = ["नहीं जान। सकते हैं आप।"]      # joined; IGCSE truly lost
+    n, samples = dg.reconcile_answers(heard, delivered)
+    assert n == 1 and samples == ["IGCSE"]
+
+
+def test_reconcile_containment_consumes_spans():
+    # The joined message can cover each fragment once — a REPEATED fragment
+    # still needs its own copy.
+    n, samples = dg.reconcile_answers(
+        ["Symbiosis.", "Symbiosis."], ["haan Symbiosis. accha"])
+    assert n == 1 and samples == ["Symbiosis."]
+
+
+def test_reconcile_short_keys_never_containment_match():
+    # 'हाँ।' normalizes to a 2-char key; containment would find it inside half
+    # the transcript and hide REAL deletions of short acks.
+    n, _ = dg.reconcile_answers(["हाँ।"], ["हाय। इफ यू रिकॉर्ड योर नेम।"])
+    assert n == 1
+
+
+def test_reconcile_exact_matched_message_not_reused_as_span():
+    # A delivered message consumed by exact matching is spoken for — it must
+    # not ALSO absorb a fragment via containment.
+    n, _ = dg.reconcile_answers(
+        ["Symbiosis school", "Symbiosis"], ["Symbiosis school"])
+    assert n == 1

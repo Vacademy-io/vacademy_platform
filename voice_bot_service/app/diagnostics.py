@@ -205,6 +205,14 @@ def _norm_answer(text: str) -> str:
     return "".join(ch for ch in (text or "").casefold() if ch.isalnum())
 
 
+# Containment matching below this many normalized chars is off: a tiny key like
+# "हा" ("हाँ।" after stripping marks) is a substring of half the transcript and
+# would mark genuinely-deleted acks as delivered. 4, not 5: normalization drops
+# Devanagari combining vowels, so a real two-word fragment like "नहीं जान।"
+# shrinks to just 4 consonant chars ("नहजन").
+_CONTAIN_MIN_CHARS = 4
+
+
 def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     """PURE. Which caller answers never reached the model?
 
@@ -219,20 +227,50 @@ def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     including the literal answers IGCSE, Symbiosis, Monday. They never reach the
     model, the transcript, or the report, and nothing re-asks for them.
 
-    Multiset difference, so a genuine repeat ("SSC." twice) is not miscounted.
+    Two passes:
+    1. Multiset exact match, so a genuine repeat ("SSC." twice) is not miscounted.
+    2. CONTAINMENT with consumption: Saaras splits one halting utterance into
+       fragment finals ("नहीं जान।" + "सकते हैं आप।") which the aggregator JOINS
+       into one context message — per-final exact matching then counted every
+       fragment as deleted. Live call ae7d3069 reported 10 deletions on a
+       conversation the model demonstrably followed (it answered each refusal).
+       A fragment found inside a delivered message consumes that span, so a
+       repeat still needs its own copy.
     """
     pool: Dict[str, int] = {}
     for m in delivered:
         k = _norm_answer(m)
         if k:
             pool[k] = pool.get(k, 0) + 1
-    missing: List[str] = []
+    leftovers: List[tuple] = []
     for h in heard:
         k = _norm_answer(h)
         if not k:
             continue
         if pool.get(k, 0) > 0:
             pool[k] -= 1
+        else:
+            leftovers.append((h, k))
+    # Pass 2 over what exact matching couldn't place. Consume matched spans from
+    # a mutable copy of the delivered pool (exact-pass leftovers included — a
+    # message that exact-matched is spoken for and must not also absorb fragments,
+    # so only UNCONSUMED copies are searchable).
+    spans: List[str] = []
+    for m in delivered:
+        k = _norm_answer(m)
+        if k and pool.get(k, 0) > 0:
+            pool[k] -= 1
+            spans.append(k)
+    missing: List[str] = []
+    for h, k in leftovers:
+        if len(k) >= _CONTAIN_MIN_CHARS:
+            for i, span in enumerate(spans):
+                j = span.find(k)
+                if j >= 0:
+                    spans[i] = span[:j] + span[j + len(k):]
+                    break
+            else:
+                missing.append(h)
         else:
             missing.append(h)
     return len(missing), missing[:_MAX_DELETED_ANSWERS]

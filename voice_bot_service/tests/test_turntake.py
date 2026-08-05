@@ -137,3 +137,24 @@ def test_unducked_flow_unchanged():
         decisions.append(d.kind)
     assert NUDGE in decisions            # idle nudge at 8s, exactly as before
     assert DUCK_RESUME not in decisions
+
+
+# ── Rumik term normalization (providers.normalize_for_rumik is import-safe:
+# pipecat imports in providers.py are module-level and CI installs them) ──
+
+def test_normalize_for_rumik_replaces_transliterated_terms():
+    from app.providers import normalize_for_rumik
+    m = (("लाइव क्लासेस", "Live Classes"), ("क्लासेस", "classes"))
+    out = normalize_for_rumik("हमारी लाइव क्लासेस के बारे में।", term_map=m)
+    assert out == "हमारी Live Classes के बारे में।"
+    # longest key wins; bare word still handled on its own
+    assert normalize_for_rumik("क्लासेस अच्छी हैं", term_map=m) == "classes अच्छी हैं"
+    # untouched text passes through byte-identical
+    assert normalize_for_rumik("नमस्ते जी", term_map=m) == "नमस्ते जी"
+
+
+def test_default_term_map_is_longest_first():
+    from app.config import Settings
+    lens = [len(k) for k, _ in Settings().rumik_term_map]
+    assert lens == sorted(lens, reverse=True)
+    assert ("लाइव क्लासेस", "Live Classes") in Settings().rumik_term_map

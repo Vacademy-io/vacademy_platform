@@ -708,6 +708,27 @@ _RUMIK_PACE_STYLES = (
 _RUMIK_SLOW_STYLE = "speaks slowly and calmly, unhurried, with deliberate pauses"
 
 
+def normalize_for_rumik(text: str, term_map=None) -> str:
+    """Deterministic Devanagari→Latin replacement for terms Rumik mispronounces.
+
+    The LLM transliterates English product terms into Devanagari when composing
+    Hindi ("Live Classes" in the prompt → "लाइव क्लासेस" in the reply) and Rumik
+    then speaks gibberish ("लव असेस" — heard on both founder test calls). Prompt
+    rules failed to stop the transliteration twice, so this runs where it cannot
+    be ignored: on the text actually sent for synthesis. Applied ONLY on the
+    Rumik paths — transcripts, context, and Sarvam agents keep the written form.
+    Map is longest-key-first (config guarantees the sort) so 'लाइव क्लासेस' wins
+    over the bare 'क्लासेस'.
+    """
+    if not text:
+        return text
+    mapping = term_map if term_map is not None else get_settings().rumik_term_map
+    for dev, latin in mapping:
+        if dev in text:
+            text = text.replace(dev, latin)
+    return text
+
+
 def rumik_pace_description(pace):
     """Prose that makes Rumik speak at the rate `pace` means on Sarvam."""
     if pace is None:
@@ -735,6 +756,9 @@ async def rumik_synthesize_wav(text: str, voice: str, api_key: str,
     import io
     import json as _json
     import wave
+    # Same term normalization as the live call, so the admin's audition never
+    # sounds better than what the caller will hear.
+    text = normalize_for_rumik(text)
     own = session is None
     if own:
         session = aiohttp.ClientSession()
@@ -1173,6 +1197,9 @@ class RumikTTSService(InterruptibleTTSService):
         """
         from pipecat.frames.frames import ErrorFrame, TTSStartedFrame
         from websockets.protocol import State
+        # Devanagari-transliterated English terms → Latin BEFORE synthesis (the
+        # 'लाइव क्लासेस' → 'लव असेस' class; see normalize_for_rumik).
+        text = normalize_for_rumik(text)
         # Letterless input is not speech; same guard as Sarvam (has_word_char).
         if not has_word_char(text):
             logger.info("rumik: skipping letterless chunk %r", (text or "")[:40])

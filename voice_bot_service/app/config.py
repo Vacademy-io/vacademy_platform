@@ -99,6 +99,24 @@ class Settings:
     rumik_api_key: str = field(default_factory=lambda: _env("RUMIK_API_KEY"))
     rumik_voice: str = field(default_factory=lambda: _env("RUMIK_VOICE", "ira"))
 
+    # Deterministic Devanagari→Latin term fixes applied to text entering Rumik.
+    # Rumik reads Devanagari-transliterated English as gibberish ("लाइव क्लासेस"
+    # spoken as "लव असेस" — founder calls 8e1e00ad + ae7d3069). A prompt rule
+    # failed TWICE to stop the LLM transliterating (11k-char authored prompts
+    # win over rules), so the fix is a replacement at the synthesis boundary —
+    # deterministic, testable, and invisible to transcripts/context (which keep
+    # the written form). Longest-first; extend via env: "देवनागरी=Latin;…".
+    rumik_term_map: tuple = field(default_factory=lambda: tuple(sorted(
+        ((p.split("=", 1)[0].strip(), p.split("=", 1)[1].strip())
+         for p in _env(
+             "RUMIK_TERM_MAP",
+             "लाइव क्लासेस=Live Classes;लाइव क्लास=Live Class;क्लासेस=classes;"
+             "क्लास=class;असेसमेंट=assessment;व्हाट्सएप=WhatsApp;"
+             "कॉन्सेप्ट्स=concepts;कॉन्सेप्ट=concept;सिलेबस=syllabus;"
+             "डेमो=demo;ऑनलाइन=online;बैच=batch").split(";")
+         if "=" in p and p.split("=", 1)[0].strip()),
+        key=lambda kv: -len(kv[0]))))
+
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
     # Server-side chars Sarvam buffers before synthesizing the first audio (default 50).

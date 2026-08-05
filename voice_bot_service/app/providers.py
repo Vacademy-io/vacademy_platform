@@ -445,6 +445,14 @@ class RumikTTSService(InterruptibleTTSService):
                  description: str | None = None,
                  turn_wait_secs: float = 20.0, **kwargs):
         super().__init__(sample_rate=sample_rate, **kwargs)
+        # 1.4 validates that every settings field is initialized (None = "this
+        # service does not support it"); leaving them NOT_GIVEN logs an ERROR on
+        # every call and leaves the metrics model name blank.
+        try:
+            self._settings.voice = voice
+            self._settings.language = None
+        except Exception:
+            pass
         self._api_key = api_key
         self._voice = voice
         self._model = model
@@ -771,7 +779,13 @@ class RumikTTSService(InterruptibleTTSService):
         self._turn_done.set()
 
     # ── synthesis ──
-    async def run_tts(self, text: str):
+    async def run_tts(self, text: str, context_id: str | None = None):
+        """1.4 calls ``run_tts(prepared_text, context_id)``; 0.0.95 passed text
+        only. The mismatch made EVERY reply raise "takes 2 positional arguments
+        but 3 were given" — a MUTE bot on the founder's first 1.4 call, with the
+        error swallowed into an ErrorFrame the diagnostics never surfaced.
+        context_id is accepted and unused: our sender loop is per-socket, and
+        pipecat correlates frames itself via the id it passed in."""
         """Enqueue one sentence. Returns immediately — the sender loop serialises.
 
         Nothing here may block: pipecat calls this from the pipeline task, and

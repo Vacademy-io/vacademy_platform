@@ -1206,3 +1206,58 @@ def test_stt_settings_follow_the_model_capability_table():
     assert svc._settings.model == "saaras:v4"
     svc25 = build("saaras:v2.5")      # would raise on language if we guessed
     assert svc25._settings.model == "saaras:v2.5"
+
+
+def test_our_service_overrides_match_their_base_signatures():
+    """THE test that was missing. On the pipecat 1.4 migration, base run_tts
+    became run_tts(text, context_id) while our Rumik override still took (text)
+    — so EVERY reply raised "takes 2 positional arguments but 3 were given" and
+    the bot was mute on the founder's first 1.4 call. The suite passed anyway,
+    because the tests called our override directly with the OLD signature.
+
+    Signature drift in a subclass is invisible to unit tests by construction, so
+    assert compatibility structurally: for every method we override that also
+    exists on a pipecat base class, our version must accept at least as many
+    positional parameters as the base passes.
+    """
+    import inspect
+
+    def positional(fn):
+        try:
+            params = list(inspect.signature(fn).parameters.values())
+        except (TypeError, ValueError):
+            return None
+        return [p for p in params
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+
+    problems = []
+    for svc_cls in (pv.RumikTTSService,):
+        for name, ours in vars(svc_cls).items():
+            if name.startswith("__") or not callable(ours):
+                continue
+            for base in svc_cls.__mro__[1:]:
+                theirs = vars(base).get(name)
+                if theirs is None or not callable(theirs):
+                    continue
+                mine, base_sig = positional(ours), positional(theirs)
+                if mine is None or base_sig is None:
+                    break
+                required_by_base = len(base_sig)
+                accepted_by_us = len(mine)
+                takes_varargs = any(
+                    p.kind == p.VAR_POSITIONAL
+                    for p in inspect.signature(ours).parameters.values())
+                if accepted_by_us < required_by_base and not takes_varargs:
+                    problems.append(
+                        f"{svc_cls.__name__}.{name} accepts {accepted_by_us} "
+                        f"positional args but {base.__name__}.{name} is called "
+                        f"with {required_by_base}")
+                break
+    assert not problems, "; ".join(problems)
+
+
+def test_rumik_run_tts_accepts_the_context_id_pipecat_passes():
+    """Belt to the braces above, on the exact method that broke production."""
+    import inspect
+    params = list(inspect.signature(pv.RumikTTSService.run_tts).parameters)
+    assert params[:3] == ["self", "text", "context_id"], params

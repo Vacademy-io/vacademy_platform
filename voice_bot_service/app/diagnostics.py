@@ -44,10 +44,18 @@ SLOW_TTS = "SLOW_TTS"
 SLOW_LLM = "SLOW_LLM"
 TRANSFER_FAILED = "TRANSFER_FAILED"
 PROMPT_UNFILLED = "PROMPT_UNFILLED"
+# The caller spoke but the bot produced NO audio at all. Added 2026-08-05 after
+# the pipecat 1.4 migration shipped a mute bot: RumikTTSService.run_tts kept the
+# 0.0.95 signature, 1.4 called it with (text, context_id), and every reply died
+# as an ErrorFrame pipecat only logged. The call was scored RED for
+# LIKELY_MACHINE while the REAL story — "we never said a word" — appeared
+# nowhere in the panel. A whole class of outage was invisible; now it is not.
+BOT_SILENT = "BOT_SILENT"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
+    BOT_SILENT,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -56,7 +64,7 @@ ALL_FAULTS = (
 # "Voice synthesis stalled" while the actual story was that the caller repeated
 # "hybrid model" four times and we never once transcribed it.
 HEADLINE_PRIORITY = (
-    CRASH, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
+    CRASH, BOT_SILENT, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
     FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED,
     PROMPT_UNFILLED,
 )
@@ -302,6 +310,12 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     if d.crash:
         fire(CRASH, RED)
 
+    # A conversation where the caller spoke and we never produced a single audio
+    # frame is total failure, whatever else the counters say. Requires a caller
+    # turn so an unanswered dial (nobody there, nothing to say) stays quiet.
+    if d.user_turns >= 1 and d.bot_turns == 0 and d.tts_chars == 0:
+        fire(BOT_SILENT, RED)
+
     if d.tts_stall_cap_hit or d.tts_stalls >= 2 or (d.tts_stalls >= 1 and d.tts_silent_generations >= 1):
         fire(TTS_WEDGE, RED)
     elif d.tts_stalls == 1 or d.tts_wedges >= 1 or d.tts_letterless_skipped >= 1:
@@ -392,6 +406,7 @@ _HEADLINE_TEXT = {
     SLOW_LLM: "Slow agent responses",
     TRANSFER_FAILED: "Human transfer was requested but failed",
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
+    BOT_SILENT: "The agent never spoke — the caller heard nothing",
 }
 
 

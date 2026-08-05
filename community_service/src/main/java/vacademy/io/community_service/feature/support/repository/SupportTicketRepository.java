@@ -42,6 +42,9 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
      * collection: binding null (or an empty list) to an {@code IN} parameter is not portable and
      * blows up at bind time. Callers MUST pass a non-empty {@code instituteIds} — use a throwaway
      * sentinel when {@code hasInstitutes} is false; the OR makes it unreachable.
+     *
+     * <p>Ordering is supplied by the {@link Pageable}, never hard-coded here — see
+     * {@code SupportTicketService.buildPageable} for the whitelist of sortable columns.
      */
     @Query("SELECT t FROM SupportTicket t WHERE "
             + "(:hasInstitutes = false OR t.instituteId IN :instituteIds) AND "
@@ -49,6 +52,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
             + "(:unassigned = false OR t.assignedEngineerId IS NULL) AND "
             + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!') AND "
+            + "(:createdFrom IS NULL OR t.createdAt >= :createdFrom) AND "
+            + "(:createdTo IS NULL OR t.createdAt <= :createdTo) AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
             + "    AND t.firstResponseDueAt < :now "
             + "    AND t.status NOT IN (vacademy.io.community_service.feature.support.enums.TicketStatus.RESOLVED, "
@@ -60,6 +65,10 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
                                       @Param("unassigned") boolean unassigned,
                                       /** Pre-lowercased, wildcard-escaped and %-wrapped by the service. */
                                       @Param("search") String search,
+                                      /** Inclusive lower bound on created_at; null disables the filter. */
+                                      @Param("createdFrom") Date createdFrom,
+                                      /** Inclusive upper bound on created_at; null disables the filter. */
+                                      @Param("createdTo") Date createdTo,
                                       @Param("onlyOverdue") boolean onlyOverdue,
                                       @Param("now") Date now,
                                       Pageable pageable);

@@ -131,7 +131,7 @@ class TranscriptCollector(FrameProcessor):
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
-                 gate_enabled=None):
+                 gate_enabled=None, interrupt_on_vad=None, recently_cut=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
@@ -148,6 +148,9 @@ class TranscriptCollector(FrameProcessor):
         # The words themselves are the trigger of last resort.
         self._duck = duck
         self._gate_enabled = gate_enabled or (lambda: duck is not None)
+        self._interrupt_on_vad = interrupt_on_vad or (lambda: False)
+        # True while a reply cancelled moments ago could still be picked up.
+        self._recently_cut = recently_cut or (lambda: False)
 
         async def _noop_absorb(text):
             return None
@@ -220,9 +223,16 @@ class TranscriptCollector(FrameProcessor):
             # answer to its closing question, not an interruption. When the VAD
             # missed the onset (no duck — the 8e1e00ad failure mode) the bot is
             # still speaking, so is_bot_speaking() carries the trigger.
+            # "Mid-reply" now includes JUST-CUT, because interrupting at VAD
+            # onset means the bot is already silent by the time the words arrive
+            # (~1.5s later, STT). Without this the absorb path could never fire
+            # and every "haan" ended the bot's turn — measured on the probe: the
+            # model answered the acknowledgment from a standing start instead of
+            # finishing its sentence.
             mid_reply = self._gate_enabled() and (
                 self._is_bot_speaking()
-                or (self._duck is not None and self._duck.has_pending_audio()))
+                or (self._duck is not None and self._duck.has_pending_audio())
+                or self._recently_cut())
             if mid_reply:
                 if text.startswith("["):
                     # Synthetic noise cue mid-reply: nothing to answer, nothing
@@ -238,11 +248,26 @@ class TranscriptCollector(FrameProcessor):
                     # aggregator never sees this turn, so pipecat's min-words and
                     # emulated-VAD paths cannot delete it (ANSWER_DELETED).
                     self._on_transcript(backchannel=True)
-                    logger.info("turn-gate: absorbed backchannel %r — reply "
-                                "continues (ducked=%s)", text[:30], ducked)
+                    logger.info("turn-gate: absorbed backchannel %r "
+                                "(ducked=%s, cut=%s)", text[:30], ducked,
+                                self._interrupt_on_vad())
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
+                    if self._interrupt_on_vad():
+                        # The VAD onset already cancelled the reply, and a
+                        # cancelled reply cannot be un-cancelled — so ask for the
+                        # rest of it instead of leaving the caller in silence
+                        # after their "haan". run_llm=True: this is the ONLY
+                        # place that regenerates, and it fires solely for
+                        # acknowledgments, so it cannot loop on real answers.
+                        await self.push_frame(LLMMessagesAppendFrame(
+                            messages=[{"role": "user", "content":
+                                       "[They just acknowledged you — carry on "
+                                       "from where you were interrupted, in one "
+                                       "short sentence. Do not restart or "
+                                       "re-greet.]"}],
+                            run_llm=True), direction)
                     return
                 self._on_transcript()
                 # Real barge-in. If ducked, the line is already silent and this
@@ -335,12 +360,14 @@ class DuckGate(FrameProcessor):
     _HOLDABLE = (TTSAudioRawFrame, TTSTextFrame, TTSStartedFrame, TTSStoppedFrame,
                  LLMFullResponseStartFrame, LLMFullResponseEndFrame)
 
-    def __init__(self, enabled, is_bot_speaking, on_duck, on_unduck, diag):
+    def __init__(self, enabled, is_bot_speaking, on_duck, on_unduck, diag,
+                 on_interrupt=None):
         super().__init__()
         self._enabled = enabled
         self._is_bot_speaking = is_bot_speaking
         self._on_duck = on_duck
         self._on_unduck = on_unduck
+        self._on_interrupt = on_interrupt or (lambda: None)
         self._diag = diag
         self._held: deque = deque()
         self._ducked = False
@@ -357,6 +384,10 @@ class DuckGate(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, InterruptionFrame):
+            # Stamp WHEN the reply died, so a backchannel whose words land after
+            # the cut can still be answered with "carry on" instead of the model
+            # replying to a bare "haan" from a standing start.
+            self._on_interrupt()
             # The reply is formally dead — the held tail must never play.
             if self._held or self._ducked:
                 logger.info("duck: interruption — dropping %d held frame(s)",
@@ -1624,8 +1655,22 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # (cough, backchannel) must never hard-cancel a reply. DuckGate silences
         # the line instantly; the turn-gate decides on the words.
         start=[
-            VADUserTurnStartStrategy(enable_interruptions=False,
+            # enable_interruptions=True — MEASURED DECISION, reversed from the
+            # duck-only design. Holding audio in DuckGate cannot stop the bot
+            # quickly, because by the time the caller speaks the reply has
+            # already flowed PAST the duck into pipecat's output queue and
+            # Plivo's buffer; live call d6e82def logged "dropping 0 held
+            # frame(s)" on an interrupt for exactly this reason. Only a flush
+            # empties those, and the duck could only flush after the STT final
+            # arrived — 0.8-1.6s later. Probed talk-over was 1.96s.
+            # A native interruption at VAD onset flushes both immediately.
+            # Backchannels are still not lost: the turn-gate appends them to the
+            # context, and _resume_after_backchannel below has the bot pick up
+            # its sentence, because a cancelled reply cannot be un-cancelled.
+            VADUserTurnStartStrategy(enable_interruptions=settings.interrupt_on_vad,
                                      enable_user_speaking_frames=True),
+            # Interims must NOT interrupt on their own: Google STT streams them
+            # continuously, and the VAD onset above already covers the stop.
             TranscriptionUserTurnStartStrategy(use_interim=True,
                                                enable_interruptions=False),
         ],
@@ -1662,9 +1707,17 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def _on_unduck():
         flags["ducked_since"] = 0.0
 
+    def _on_interrupt():
+        flags["last_cut_t"] = time.time()
+
+    def _recently_cut() -> bool:
+        return (flags["last_cut_t"] > 0
+                and time.time() - flags["last_cut_t"] <= settings.backchannel_carry_secs)
+
     duck = DuckGate(enabled=lambda: settings.duck_enabled,
                     is_bot_speaking=lambda: flags["bot_speaking"],
-                    on_duck=_on_duck, on_unduck=_on_unduck, diag=diag)
+                    on_duck=_on_duck, on_unduck=_on_unduck, diag=diag,
+                    on_interrupt=_on_interrupt)
 
     async def _absorb(text):
         if text is not None:
@@ -1680,7 +1733,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      bot_stopped_t=lambda: flags["bot_stopped_t"],
                                      duck=duck, on_absorb=_absorb,
                                      backchannel_extra=settings.backchannel_extra,
-                                     gate_enabled=lambda: settings.duck_enabled)
+                                     gate_enabled=lambda: settings.duck_enabled,
+                                     interrupt_on_vad=lambda: settings.interrupt_on_vad,
+                                     recently_cut=_recently_cut)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,

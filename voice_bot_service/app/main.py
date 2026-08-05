@@ -697,6 +697,52 @@ async def answer(
     return PlainTextResponse(xml, media_type="application/xml")
 
 
+def _cap_audio_lead(output, max_lead: float) -> bool:
+    """Stop pushing audio into Plivo faster than it can play it.
+
+    pipecat's websocket output paces at TWICE real time (send_interval =
+    chunk_duration / 2) to keep the far end's buffer full. For a browser that is
+    fine. For a phone call it is the reason barge-in feels broken: Plivo ends up
+    holding ~half the reply, and DuckGate can only withhold audio it has not sent
+    yet — live call d6e82def logged "dropping 0 held frame(s)" on an interrupt
+    because the entire reply was already inside Plivo, still playing.
+
+    Replaces the pacing clock with: burst until `max_lead` seconds of cushion
+    exist, then track real time. Falling behind (slow TTS, a busy loop) re-primes
+    the cushion instead of accumulating debt, so this cannot cause a stall it
+    would not otherwise have.
+
+    Returns False if the transport internals differ from the pinned pipecat, in
+    which case we leave the stock behaviour alone rather than break audio.
+    """
+    try:
+        chunk_secs = output.audio_chunk_size / (output.sample_rate * 2)
+    except Exception:
+        logger.warning("audio pacing: cannot read chunk size — leaving pipecat default")
+        return False
+    if chunk_secs <= 0:
+        return False
+    state = {"t0": None, "sent": 0.0}
+
+    async def _paced_sleep():
+        now = time.monotonic()
+        if state["t0"] is None:
+            state["t0"] = now
+        lead = state["sent"] - (now - state["t0"])
+        if lead < 0:
+            # Behind real time (TTS slower than playback, or the loop was busy):
+            # re-anchor so the next chunks re-prime the cushion.
+            state["t0"], state["sent"], lead = now, 0.0, 0.0
+        elif lead > max_lead:
+            await asyncio.sleep(lead - max_lead)
+        state["sent"] += chunk_secs
+
+    output._write_audio_sleep = _paced_sleep      # noqa: SLF001 - deliberate
+    logger.info("audio pacing: lead capped at %.2fs (chunk %.0fms)",
+                max_lead, chunk_secs * 1000)
+    return True
+
+
 @router.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     """One live call. Plivo connects here per the <Stream> URL; we wire the
@@ -806,6 +852,20 @@ async def ws_endpoint(websocket: WebSocket):
                 serializer=serializer,
             ),
         )
+
+        # Bound how much audio Plivo may hold ahead of playback — the barge-in
+        # fix (see _cap_audio_lead). Applied after the transport exists but
+        # before the pipeline runs, and re-applied on StartFrame because
+        # pipecat's start() recomputes its own interval.
+        if s.audio_max_lead_secs > 0:
+            _out = transport.output()
+            _orig_start = _out.start
+
+            async def _start_then_cap(frame, _o=_out, _s=_orig_start):
+                await _s(frame)
+                _cap_audio_lead(_o, s.audio_max_lead_secs)
+
+            _out.start = _start_then_cap
 
         # The outcome is owned HERE (not inside run_bot) so a mid-pipeline crash
         # still leaves a reportable object — a lost report strands the paused

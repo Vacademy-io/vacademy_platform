@@ -65,6 +65,10 @@ class CallState:
     # the watchdog's DUCK_RESUME when the voiced sound produced no words at all.
     # While ducked the idle machinery is paused — the silence is deliberate.
     ducked_since: float = 0.0
+    # When a reply was last cancelled. A backchannel arriving within
+    # backchannel_carry_secs of this can still be answered with "carry on"
+    # rather than the model replying to a bare "haan" from a standing start.
+    last_cut_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):

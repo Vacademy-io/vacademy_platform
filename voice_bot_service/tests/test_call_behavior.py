@@ -1326,3 +1326,40 @@ def test_new_engines_fall_back_to_sarvam_instead_of_going_mute():
     assert "falling back to Sarvam" in google_branch
     smallest_branch = src[src.index('startswith("smallest")'):src.index('startswith("rumik")')]
     assert "except Exception" in smallest_branch
+
+
+def test_bot_is_interrupted_at_vad_onset_not_at_transcript():
+    """MEASURED root cause of "it takes ages for the bot to stop" (three founder
+    calls): holding audio in DuckGate cannot stop playback, because the reply has
+    already flowed past the duck into pipecat's output queue and Plivo's buffer —
+    live call d6e82def logged "dropping 0 held frame(s)" on the interrupt. Only a
+    flush empties those, and waiting for the STT final delayed it 0.8-1.6s.
+    Probe: 1.92s of talk-over before, 0.32s after."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    vad = src[src.index("VADUserTurnStartStrategy("):]
+    assert "enable_interruptions=settings.interrupt_on_vad" in vad[:200]
+    # Interims must NOT interrupt: Google STT streams them continuously.
+    tr = src[src.index("TranscriptionUserTurnStartStrategy("):]
+    assert "enable_interruptions=False" in tr[:200]
+
+
+def test_backchannel_after_a_cut_carries_on_instead_of_answering_haan():
+    """Interrupting at VAD onset means the bot is already silent when the words
+    arrive ~1.5s later, so the absorb path would never fire and every "haan"
+    ended the bot's turn (observed on the probe: the model answered the
+    acknowledgment from a standing start). A cut within backchannel_carry_secs
+    still counts as mid-reply, and the bot is asked to carry on."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector.process_frame)
+    assert "self._recently_cut()" in src
+    assert "carry on" in src
+
+
+def test_audio_lead_is_capped_so_plivo_cannot_hoard_the_reply():
+    import inspect
+    import app.main as mm
+    src = inspect.getsource(mm._cap_audio_lead)
+    assert "max_lead" in src and "monotonic" in src
+    # Falling behind must re-anchor rather than accumulate debt.
+    assert "if lead < 0" in src

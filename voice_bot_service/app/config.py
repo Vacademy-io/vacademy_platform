@@ -248,6 +248,23 @@ class Settings:
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.
     sample_rate: int = 8000
 
+    # ── How far ahead of real time we may push audio into Plivo ─────────────
+    # THE root cause of "after I speak, it takes ages for the bot to stop"
+    # (founder, three separate calls). pipecat's websocket transport sends each
+    # chunk at TWICE real time (_send_interval = chunk_duration / 2), so Plivo
+    # accumulates unplayed audio equal to ~half the reply — up to 10s on a 20s
+    # pitch. Our barge-in duck can only hold what has NOT been sent yet, so on
+    # live call d6e82def the interrupt logged "dropping 0 held frame(s)": the
+    # whole reply was already inside Plivo and kept playing regardless.
+    #
+    # This caps the lead instead: burst until there is this much cushion, then
+    # track real time. Plivo then holds ~this much, so ducking silences the line
+    # within it, and BotStoppedSpeaking stops firing half a reply early (which
+    # was also skewing every dead-air and idle measurement).
+    # 0 disables the patch and restores pipecat's 2x behaviour.
+    audio_max_lead_secs: float = field(
+        default_factory=lambda: float(_env("AUDIO_MAX_LEAD_SECS", "0.3")))
+
     # Turn-taking latency knobs (pipecat defaults: 0.8 / 0.5 — a full 1.3s of
     # dead air before the LLM even starts). vad_stop_secs = silence needed to
     # decide the caller finished; too low clips slow speakers mid-sentence.
@@ -329,6 +346,21 @@ class Settings:
     # A backchannel ("haan", "theek hai") resumes the reply and is appended to
     # the LLM context without a generation; anything else commits a real
     # interruption. false = exact pre-duck behavior (rollback, no deploy).
+    # Interrupt the bot the moment the caller's voice is detected, instead of
+    # waiting for their words to be transcribed. MEASURED: with this off, the
+    # bot kept talking 1.96s after the caller started (probe) because the reply
+    # had already flowed past our duck into pipecat's output queue and Plivo's
+    # buffer, and only a flush clears those. Cost: a cancelled reply cannot be
+    # resumed, so a backchannel makes the bot pick up its sentence via a
+    # regeneration cue (see TranscriptCollector). false = the duck-only
+    # behaviour, if over-eager stopping on noisy lines ever outweighs this.
+    # How long after a cancelled reply a bare acknowledgment still means "carry
+    # on with what you were saying" rather than a new turn to answer.
+    backchannel_carry_secs: float = field(
+        default_factory=lambda: float(_env("BACKCHANNEL_CARRY_SECS", "3.0")))
+    interrupt_on_vad: bool = field(
+        default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
+
     duck_enabled: bool = field(
         default_factory=lambda: _env("DUCK_ENABLED", "true").lower() == "true")
     # VAD heard a sound but STT produced no words (cough, horn): resume the held

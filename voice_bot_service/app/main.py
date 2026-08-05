@@ -554,11 +554,12 @@ async def ws_endpoint(websocket: WebSocket):
     """One live call. Plivo connects here per the <Stream> URL; we wire the
     socket into Pipecat and run the conversation."""
     # Imported here so /health and /answer work even while heavy audio deps load.
-    from pipecat.audio.vad.silero import SileroVADAnalyzer
-    from pipecat.audio.vad.vad_analyzer import VADParams
+    # pipecat 1.4: transports.network is gone (→ transports.websocket.fastapi),
+    # and the VAD moved off the transport onto the user aggregator (bot.py owns
+    # it now, with the telephony min_volume tuning).
     from pipecat.runner.utils import parse_telephony_websocket
     from pipecat.serializers.plivo import PlivoFrameSerializer
-    from pipecat.transports.network.fastapi_websocket import (
+    from pipecat.transports.websocket.fastapi import (
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
     )
@@ -651,17 +652,9 @@ async def ws_endpoint(websocket: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                # stop_secs below the 0.8 default: how much silence ends the caller's
-                # turn — the single biggest chunk of perceived response latency.
-                # min_volume/confidence below pipecat defaults (0.6/0.7): those are
-                # webrtc-headset numbers, and on live call 8e1e00ad the volume gate
-                # made the VAD stone-deaf to the caller (see config.vad_min_volume).
-                vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(stop_secs=s.vad_stop_secs,
-                                     min_volume=s.vad_min_volume,
-                                     confidence=s.vad_confidence,
-                                     start_secs=s.vad_start_secs)
-                ),
+                # pipecat 1.4: NO vad_analyzer here — the VAD (with the telephony
+                # min_volume=0.35 tuning from live call 8e1e00ad) lives on the
+                # user aggregator in bot.run_bot, alongside Smart Turn v3.
                 serializer=serializer,
             ),
         )

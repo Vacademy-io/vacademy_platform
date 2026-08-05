@@ -12,7 +12,6 @@ from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.services.tts_service import InterruptibleTTSService, TTSService
 
-from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 
 from .config import get_settings
 
@@ -38,222 +37,137 @@ def has_word_char(text: str | None) -> bool:
     return bool(text) and _WORD_CHAR_RE.search(text) is not None
 
 
-class ClauseFlushAggregator(SimpleTextAggregator):
-    """Sentence aggregation with Devanagari-danda + length fallbacks.
+def _register_saaras_v4() -> bool:
+    """Teach pipecat 1.4 about saaras:v4 (our production STT model).
 
-    The stock SimpleTextAggregator flushes ONLY at Latin end-of-sentence marks.
-    Live evidence: English agents sometimes stream multi-sentence replies with no
-    mid-response periods, and Hindi replies end sentences with the danda '।' the
-    matcher doesn't recognize — either way the WHOLE response reaches the TTS as
-    one giant unit. That unit is also the all-or-nothing context-commit unit, so a
-    single barge-in wiped the entire block (INCLUDING the part the caller already
-    heard) from the assistant context — the model then re-asked questions it had
-    already asked ('memory reset' on live calls). Small units = small losses, plus
-    earlier first audio.
+    1.4's MODEL_CONFIGS table stops at saaras:v3 and REJECTS anything else with
+    ValueError("Unsupported model") — which would crash build_stt on every call.
+    Caught by the migration dry-run, never by a test.
+
+    This is a DATA entry, not a behaviour patch: v4 is v3's capability shape
+    (language pin + mode + server VAD params on the transcribe endpoint), which
+    is exactly what we proved in production for a month via the 0.0.95 socket
+    shim. Downgrading instead is worse: saaras:v3 garbled code-switched Hinglish
+    ("Myapolicil tme we face") and saarika:v2.5 transliterated English callers
+    into Devanagari and went deaf on a live call.
+
+    Returns True when v4 is registered/known; False means we must fall back.
     """
-
-    _MAX_CHARS = 140
-
-    async def aggregate(self, text):
-        result = await super().aggregate(text)
-        if result is not None:
-            # A flush unit with NO word character (e.g. a lone closing quote left
-            # by an authored script's quoted line) is not speech — and Sarvam
-            # REJECTS it with "Text must contain at least one character from the
-            # allowed languages", which wedges the TTS socket open-but-dead (see
-            # ResilientSarvamTTSService). Push it back so it merges into the next
-            # unit: emitted text stays byte-identical to the old concatenation.
-            if not has_word_char(result):
-                self._text = result + self._text
-                return None
-            return result
-        buf = self._text
-        # Devanagari sentence end.
-        danda = buf.find("।")
-        if danda >= 0:
-            out, rest = buf[: danda + 1], buf[danda + 1:]
-            if not has_word_char(out):
-                return None          # leave it buffered; merges into the next unit
-            self._text = rest
-            return out.strip() or None
-        # Length fallback for punctuation-less streams: cut at the last soft break.
-        if len(buf) >= self._MAX_CHARS:
-            cut = max(buf.rfind(", ", 0, self._MAX_CHARS + 20),
-                      buf.rfind(" ", 0, self._MAX_CHARS + 20))
-            if cut <= 0:
-                cut = len(buf) - 1
-            out, rest = buf[: cut + 1], buf[cut + 1:]
-            if not has_word_char(out):
-                return None
-            self._text = rest
-            return out.strip() or None
-        return None
-
-
-class _SaarasSocketProxy:
-    """Gives a TRANSCRIBE socket the surface pipecat expects of a TRANSLATE one.
-
-    pipecat branches on the model name in TWO places, not one:
-      _connect  -> chooses the endpoint      (handled by _SaarasStreamingShim)
-      run_stt   -> calls socket.translate()  (handled HERE)
-    A transcribe socket exposes only flush/on/recv/start_listening/transcribe, so
-    `translate()` raised AttributeError on EVERY audio frame: the socket connected,
-    the receive task ran, and not one byte of audio was ever sent — a live call
-    produced ZERO transcripts while the caller said "Hello" seven times. set_prompt
-    is a no-op for the same reason (it exists only on the translate socket).
-    """
-
-    def __init__(self, sock):
-        self._sock = sock
-
-    def __getattr__(self, name):
-        return getattr(self._sock, name)
-
-    async def translate(self, **kwargs):
-        return await self._sock.transcribe(**kwargs)
-
-    async def set_prompt(self, *args, **kwargs):
-        return None
-
-
-class _SaarasConnectCtx:
-    """Async-CM wrapper so pipecat's __aenter__/__aexit__ get the proxied socket."""
-
-    def __init__(self, ctx):
-        self._ctx = ctx
-
-    async def __aenter__(self):
-        return _SaarasSocketProxy(await self._ctx.__aenter__())
-
-    async def __aexit__(self, *exc):
-        return await self._ctx.__aexit__(*exc)
-
-
-class _SaarasStreamingShim:
-    """Makes pipecat's translate-socket call land on the TRANSCRIBE socket.
-
-    pipecat 0.0.95 routes every non-"saarika" model to
-    speech_to_text_translate_streaming, which takes no language_code and always
-    returns English. Sarvam's websocket docs list saaras:v4 on the normal
-    transcribe channel WITH `language-code` and a `mode`
-    (transcribe|translate|verbatim|translit|codemix, saaras:v3/v4 only).
-
-    Swapping the endpoint UNDER pipecat — rather than overriding _connect — keeps
-    its receive-task, prompt and handler wiring intact, which the deaf-detection
-    fix depends on. `mode` is absent from the pinned SDK's signature, so it rides
-    RequestOptions' additional_query_parameters.
-    """
-
-    def __init__(self, client, language_code: str, mode: str):
-        self._client = client
-        self._language_code = language_code
-        self._mode = mode
-
-    def connect(self, **kwargs):
-        from sarvamai.core.request_options import RequestOptions
-        kwargs["language_code"] = self._language_code
-        kwargs["request_options"] = RequestOptions(
-            additional_query_parameters={"mode": self._mode})
-        return _SaarasConnectCtx(self._client.speech_to_text_streaming.connect(**kwargs))
-
-
-def _install_saaras_shim(svc, language_code: str, mode: str) -> None:
     try:
-        svc._sarvam_client.speech_to_text_translate_streaming = _SaarasStreamingShim(
-            svc._sarvam_client, language_code, mode)
-        svc._stt_mode = mode
-        logger.info("stt: %s mode=%s language=%s", svc.model_name, mode, language_code)
+        from pipecat.services.sarvam import stt as _sarvam_stt
+        configs = _sarvam_stt.MODEL_CONFIGS
+        if "saaras:v4" in configs:
+            return True
+        base = configs.get("saaras:v3")
+        if base is None:
+            return False
+        import dataclasses
+        configs["saaras:v4"] = dataclasses.replace(base)
+        logger.info("stt: registered saaras:v4 with pipecat (v3 capability shape)")
+        return True
     except Exception:
-        # Fail OPEN: without the shim pipecat still connects (translate mode), so
-        # the bot keeps hearing — it just loses the language pin and the mode.
-        logger.exception("stt: saaras shim not installed — using pipecat default routing")
+        logger.exception("stt: could not register saaras:v4 — falling back to v3")
+        return False
 
 
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
               mode: str | None = None):
+    """STT factory with an A/B provider switch (STT_PROVIDER=sarvam|google).
+
+    Why the switch exists: across the founder's four 2026-08-05 test calls the
+    chronic offender was Saaras — interjections the VAD heard but STT never
+    transcribed (the "gap"), 3.8-4.4s finals, mid-phrase fragment splits, and
+    garbage like "जी, चॉपी अच्छा". Google STT (same GCP project as the Vertex
+    LLM, streaming v2 with INTERIM results — which Sarvam never sends) is the
+    comparison arm. Flip per call via the env; nothing else changes.
+
+    pipecat 1.4 note: Sarvam mode/language/prompt/high-vad are NATIVE now
+    (settings=), so the 0.0.95 socket-proxy shim era is over. ttfs_p99_latency
+    matters: the Smart Turn stop strategy HOLDS the user turn for
+    max(0, ttfs_p99 - vad_stop) waiting for a final (Sarvam never flags
+    finalized=True). The pipecat default 1.17 adds ~1s of dead air per turn —
+    the POC ships 0.5.
+    """
     s = get_settings()
-    # Pin STT to the agent's configured language (BCP-47, e.g. "hi-IN"), falling back to
-    # the SARVAM_STT_LANGUAGE env default. A pin matters: auto-detect drifts a Hindi/
-    # Hinglish caller into a neighbouring Indic language (Punjabi/Marathi) and the call
-    # follows it. `bias` is a short vocabulary hint (the agent's own name, e.g. "Aarushi")
-    # fed to saarika's `prompt` so a caller repeating the name isn't transcribed as
-    # "Aayushi"/"Aarush" and fed back into the LLM context as a wrong name. Guarded so a
-    # bad value can't crash startup — it just falls back to auto / no bias.
-    # saaras* are STT-TRANSLATE models: they AUTO-DETECT the language and pipecat
-    # raises ValueError("Model does not accept language parameter") if one is
-    # passed — which would crash EVERY call the moment the model env was flipped.
-    # The two families take mutually exclusive params: saaras takes `prompt` (the
-    # name bias) and refuses `language`; saarika takes `language` and refuses
-    # `prompt`. Decide once, here.
-    # saaras:v3/v4 are UNIFIED models: per Sarvam's websocket docs they accept
-    # `language-code` AND a `mode` (transcribe | translate | verbatim | translit |
-    # codemix). pipecat 0.0.95 predates that — it routes ANY "saaras*" model to
-    # the translate socket and raises if a language is passed — so we keep the
-    # language here and re-route in _connect below. saarika (legacy) is
-    # transcribe-only and takes language_code natively.
-    mode = (mode or s.sarvam_stt_mode or "transcribe").strip()
-    model_l = (s.sarvam_stt_model or "").lower()
-    is_saaras = "saaras" in model_l
-    tag = language or s.sarvam_stt_language
-    # The name bias (`prompt`) is saaras-only, and pipecat validates BOTH ways:
-    # saarika raises on `prompt`, saaras raises on `language`. Since the saaras
-    # path constructs a saarika-shaped shim (below) to get the language accepted,
-    # the prompt can never go through InputParams — it is set on the instance
-    # after construction instead.
-    allow_bias = False
-    params = None
-    if tag or allow_bias or s.sarvam_stt_high_vad:
-        # Field-by-field: a single bad value (e.g. an unknown language tag) must
-        # not silently discard the OTHER params — the old blanket except dropped
-        # high_vad_sensitivity (+0.7s/turn) and the language pin together
-        # (deep-review B2; Odia's wrong tag triggered exactly this).
-        kwargs = {}
-        if tag:
+    if s.stt_provider == "google":
+        from pipecat.services.google.stt import GoogleSTTService
+        langs = []
+        for t in ((language or s.google_stt_language) or "hi-IN").split(","):
+            t = t.strip()
+            if not t:
+                continue
             try:
                 from pipecat.transcriptions.language import Language
-                kwargs["language"] = Language(tag)
+                langs.append(Language(t))
             except Exception:
-                logger.warning("build_stt: unknown language tag %r — auto-detect", tag)
-        if allow_bias:
-            kwargs["prompt"] = bias[:200]
-        if s.sarvam_stt_high_vad:
-            # Sarvam-side fast endpointing: measured (48h of live turns) as the
-            # binding latency constraint — the server takes ~0.65-0.76s after end
-            # of speech to finalize. High sensitivity finalizes sooner.
-            kwargs["high_vad_sensitivity"] = True
-        try:
-            params = SarvamSTTService.InputParams(**kwargs)
-        except Exception:
-            logger.warning("build_stt: InputParams rejected %r — using defaults", kwargs)
-            params = None
-    if is_saaras:
-        # Construct as saarika so pipecat's "saaras must not get a language" guard
-        # does not fire and _language_string is still resolved for us, then restore
-        # the real model name.
-        svc = ResilientSarvamSTTService(
-            api_key=s.sarvam_api_key,
-            model="saarika:v2.5",
+                logger.warning("build_stt: unknown google language tag %r", t)
+        creds = s.vertex_credentials_json.strip() or None
+        return GoogleSTTService(
+            credentials=creds,
+            credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
+            location=s.google_stt_location,
             sample_rate=sample_rate,
-            params=params,
+            params=GoogleSTTService.InputParams(
+                languages=langs or None,
+                model=s.google_stt_model,
+                enable_automatic_punctuation=True,
+                # Interims give the turn-stop strategy real-time evidence and let
+                # the turn-gate see words sooner than Sarvam ever could.
+                enable_interim_results=True,
+            ),
         )
-        svc.set_model_name(s.sarvam_stt_model)
-        # DO NOT set _prompt here. pipecat's _connect calls
-        # `self._socket_client.set_prompt(...)` whenever "saaras" is in the model
-        # name — but set_prompt exists ONLY on the TRANSLATE socket, and the shim
-        # hands it a TRANSCRIBE socket. Setting it raised inside _connect, so the
-        # socket was never usable and run_stt's deaf-detection hammered reconnect:
-        # a live call logged 1827 reconnects with zero transcripts. The name bias
-        # is simply not available on this path; the language pin and mode matter
-        # far more. (Verified: transcribe socket exposes only
-        # flush/on/recv/start_listening/transcribe.)
-        svc._prompt = None
-        _install_saaras_shim(svc, language_code=tag or "unknown", mode=mode)
-        return svc
-    return ResilientSarvamSTTService(
+    # ── Sarvam (default) ──
+    mode = (mode or s.sarvam_stt_mode or "transcribe").strip()
+    stt_model = (s.sarvam_stt_model or "").strip()
+    # saaras:v4 is not in pipecat 1.4's model table; register it (v3's capability
+    # shape) or fall back to v3 rather than raising on every call.
+    if "v4" in stt_model and not _register_saaras_v4():
+        logger.warning("stt: saaras:v4 unavailable on this pipecat — using saaras:v3")
+        stt_model = "saaras:v3"
+    tag = language or s.sarvam_stt_language
+    # ASK pipecat what this model accepts instead of guessing. 1.4 raises on any
+    # unsupported field ("does not support prompt parameter"), and the families
+    # differ in BOTH directions: saaras:v2.5 takes a prompt but no language;
+    # saaras:v3/v4 take language + mode + server VAD params but NO prompt;
+    # saarika takes language only. Guessing here cost a whole dry-run cycle.
+    caps = None
+    try:
+        from pipecat.services.sarvam import stt as _sarvam_stt
+        caps = _sarvam_stt.MODEL_CONFIGS.get(stt_model)
+    except Exception:
+        pass
+
+    def _supports(field: str, default: bool) -> bool:
+        return bool(getattr(caps, f"supports_{field}", default)) if caps else default
+
+    settings_kwargs = {"model": stt_model}
+    if tag and _supports("language", True):
+        # An unknown tag must not take high_vad down with it (deep-review B2),
+        # hence the per-field guard.
+        try:
+            from pipecat.transcriptions.language import Language
+            settings_kwargs["language"] = Language(tag)
+        except Exception:
+            logger.warning("build_stt: unknown language tag %r — auto-detect", tag)
+    if bias and _supports("prompt", False):
+        settings_kwargs["prompt"] = bias[:200]
+    if s.sarvam_stt_high_vad and _supports("vad_params", False):
+        settings_kwargs["high_vad_sensitivity"] = True
+    try:
+        stt_settings = SarvamSTTService.Settings(**settings_kwargs)
+    except Exception:
+        logger.warning("build_stt: Settings rejected %r — model only", settings_kwargs)
+        stt_settings = SarvamSTTService.Settings(model=stt_model)
+    return SarvamSTTService(
         api_key=s.sarvam_api_key,
-        model=s.sarvam_stt_model,
+        # Capability-gated, same reason as the settings above: saaras:v2.5 (a
+        # documented SARVAM_STT_MODEL rollback target) has supports_mode=False
+        # and 1.4 raises "does not support mode parameter" — that would have
+        # crashed every call the moment anyone used the rollback.
+        mode=mode if _supports("mode", False) else None,
         sample_rate=sample_rate,
-        params=params,
+        settings=stt_settings,
+        ttfs_p99_latency=s.sarvam_ttfs_p99,
     )
 
 
@@ -261,30 +175,23 @@ def build_llm():
     s = get_settings()
     if s.llm_provider == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
-        # in-country inference → low TTFT with no cross-ocean RTT. Lazy import so the
-        # google extra is only touched when this provider is actually selected (the
-        # sarvam/google/openrouter paths never load it). Auth = service account JSON.
-        # pipecat's GoogleLLMService auto-sets thinking_budget=0 (thinking OFF) → the
-        # fast path, no extra config. temperature 0.35 for proper-noun stability.
+        # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
+        # account JSON. pipecat auto-disables Gemini "thinking" → the fast path.
         from pipecat.services.google.llm import GoogleLLMService
-        from pipecat.services.google.llm_vertex import GoogleVertexLLMService
+        from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 
         creds = s.vertex_credentials_json.strip() or None
         return GoogleVertexLLMService(
             credentials=creds,
             credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
-            project_id=s.vertex_project_id or None,
+            project_id=s.vertex_project_id,
             location=s.vertex_location,
             model=s.vertex_model,
             params=GoogleLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
     if s.llm_provider == "google":
-        # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop;
-        # Google's edge is local to the cluster — see config.llm_provider).
-        # reasoning_effort none: Gemini 3.1 "thinks" by default, which pushes
-        # TTFT up and widens its variance; 'none' measured 0.75-0.85s flat.
-        # Sent via extra_body (not a top-level kwarg) so the OpenAI SDK can't
-        # reject it as an unknown parameter.
+        # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).
+        # reasoning_effort 'none' via extra_body: 3.1 thinks by default.
         return OpenAILLMService(
             api_key=s.gemini_api_key,
             base_url=s.google_llm_base_url,
@@ -295,7 +202,6 @@ def build_llm():
             ),
         )
     if s.llm_provider == "openrouter":
-        # Lazy import — only needed when the fallback is active.
         from pipecat.services.openrouter.llm import OpenRouterLLMService
 
         return OpenRouterLLMService(
@@ -303,13 +209,10 @@ def build_llm():
             model=s.openrouter_model,
             params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
-    # Sarvam's OpenAI-compatible chat-completions API, India-hosted.
-    # reasoning_effort MUST be the literal JSON null (Python None via extra_body;
-    # the SDK drops None kwargs but keeps them inside extra_body) — that is the
-    # ONLY value that disables the hybrid "thinking". Measured from the Mumbai
-    # anchor: sarvam-105b 0.14s / sarvam-30b 0.16s median TTFT with null, vs
-    # 6-14s (or content=None) with thinking on. The string "none" is a 400.
-    # Same trick as the founder's POC (sales-poc-ai services.py).
+    # Sarvam's OpenAI-compatible chat API. reasoning_effort MUST be the literal
+    # JSON null (Python None inside extra_body — the SDK drops None kwargs but
+    # keeps them in extra_body): the ONLY value that disables hybrid thinking.
+    # 0.14s median TTFT from Mumbai with null; 6-14s (or content=None) without.
     return OpenAILLMService(
         api_key=s.sarvam_api_key,
         base_url=s.sarvam_llm_base_url,
@@ -321,31 +224,25 @@ def build_llm():
     )
 
 
-def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
+def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
               pace: float | None = None, temperature: float | None = None):
-    """`aiohttp_session` is REQUIRED by SarvamTTSService (keyword-only, no
-    default) — the FastAPI lifespan owns one shared session (see main.py).
+    """TTS factory. `aiohttp_session` is accepted for call-site compatibility but
+    unused on 1.4 (Sarvam's service owns its own websocket).
 
-    `pace`/`temperature` are the per-AGENT voice tuning (ai_agent.pace /
-    .temperature via the call context); None falls back to the global TTS_PACE /
-    Sarvam's model default. Clamped to Bulbul v3's documented ranges so a bad
-    stored value can't 400 the TTS mid-call. (InputParams DOES carry temperature
-    on pipecat 0.0.95 — verified against the installed package.)"""
+    pipecat 1.4 upgrades absorbed here: SarvamTTSService now has native
+    reconnect/keepalive (the Resilient wrapper is gone), and InputParams carries
+    pace/temperature/enable_preprocessing natively (the pace_override config
+    injection is dead). Rumik stays a custom service — UNVERIFIED on 1.4 beyond
+    construction; Sarvam is the production engine (founder decision 2026-08-05
+    after Mulberry garbled phone-leg Hindi: प्रतिशत → "प्रतिलत")."""
     s = get_settings()
-    # TTS PROVIDER SWITCH. Per-agent, defaulting to the env. "rumik" is the
-    # default going forward: Rs 0.50/1k chars against Sarvam's Rs 3.00 on the line
-    # that is 65% of per-call cost, with a real cancel primitive so barge-in does
-    # not require closing (and wedging) the socket.
     model = (tts_model or s.tts_model or "").strip().lower()
+    eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
     if model.startswith("rumik") or model.startswith("silk"):
         if not s.rumik_api_key:
-            logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul:v3")
+            logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul")
         else:
-            # The agent's pace was previously DROPPED on this path — Rumik took no
-            # pace at all while production Sarvam runs at TTS_PACE 1.1, which is
-            # most of why Rumik sounded slow next to it.
-            eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
             return RumikTTSService(
                 api_key=s.rumik_api_key,
                 # Rumik emits 24 kHz ONLY; the output transport resamples to the
@@ -355,32 +252,19 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
                 model="mulberry",
                 description=rumik_pace_description(eff_pace),
             )
-    eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
     kwargs = {"pace": eff_pace, "enable_preprocessing": True}
     if temperature is not None:
         kwargs["temperature"] = _clamp(temperature, 0.01, 2.0)
-    # enable_preprocessing: bulbul normalizes numbers/dates/mixed-script text
-    # before synthesis — noticeably cleaner Hinglish (POC voice recipe).
     if s.sarvam_tts_min_buffer > 0:
-        # Server-side chars Sarvam buffers before the FIRST audio byte (default 50).
-        # Clamped to Sarvam's validated floor: 20 was REJECTED by the WS config
-        # ('Input parameters has to be a valid dictionary') → NO AUDIO on every call
-        # (2026-07-20 outage). Probe-verified: 30 and 50 accepted.
+        # Sarvam's WS validation floor is 30 (20 = rejected config = silent call,
+        # 2026-07-20 outage).
         kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
-    return ResilientSarvamTTSService(
+    return SarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
-        aiohttp_session=aiohttp_session,
         params=SarvamTTSService.InputParams(**kwargs),
-        # Clause-level TTS/context units — see ClauseFlushAggregator docstring.
-        text_aggregator=ClauseFlushAggregator(),
-        # pipecat 0.0.95's WS class NEVER puts pace into the config message (verified
-        # from the live config dump + source), so pace historically applied only to
-        # REST previews — never to live calls. Inject it ourselves (probe-verified:
-        # Sarvam's WS config ACCEPTS 'pace' and returns audio).
-        pace_override=eff_pace,
     )
 
 
@@ -390,314 +274,6 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     except (TypeError, ValueError):
         return lo
 
-
-class ResilientSarvamSTTService(SarvamSTTService):
-    """Deaf-call guard. The stock run_stt SWALLOWS websocket send errors (it just
-    logs 'Error sending audio to Sarvam') and never reconnects — one dropped Sarvam
-    socket leaves the call deaf for its remainder (observed live: 617 consecutive
-    send errors over 12s while the caller kept talking). Re-send through a fresh
-    connection, at most once per cooldown so a hard Sarvam outage can't turn every
-    20ms audio chunk into a reconnect storm. Faithful to the pinned pipecat==0.0.95
-    internals (_socket_client / _disconnect / _connect) — re-verify on upgrade."""
-
-    # Callable -> True when a wordless-but-voiced caller turn may be represented
-    # as a synthetic backchannel (set by bot.py; None = feature off).
-    _backchannel_gate = None
-
-    def set_backchannel_gate(self, gate):
-        self._backchannel_gate = gate
-
-    async def _handle_message(self, message):
-        await super()._handle_message(message)
-        # Sarvam DROPS empty finals ("if transcript.strip()"), so a short "hmm"/
-        # "okay" the STT can't words-ify produces NO frame at all: the model never
-        # gets a turn-trigger and — because the VAD activity also re-arms the idle
-        # nudge — the call sits in dead air until the caller says real words
-        # (observed live: 13s mid-pitch stall, caller asked "why are you getting
-        # paused again and again?"). Represent such finals as a minimal "Hmm."
-        # transcript so the normal turn machinery continues the conversation.
-        # RESTRAINED (live lesson): empty finals also fire on breath/noise right
-        # around REAL captured utterances — un-throttled synthesis spawned extra
-        # LLM turns mid-complaint and fed talk-over. One-shot until the next real
-        # final, and suppressed within 2.5s of one (that empty is just its tail).
-        try:
-            if getattr(message, "type", None) != "data":
-                return
-            data = getattr(message, "data", None)
-            t = getattr(data, "transcript", None)
-            import time as _time
-            if t and t.strip():
-                self._synth_armed = True
-                self._last_real_final_t = _time.monotonic()
-                pending = getattr(self, "_synth_task", None)
-                if pending is not None and not pending.done():
-                    pending.cancel()   # real words beat the debounced synth
-                return
-            gate = self._backchannel_gate
-            if gate is None or not gate():
-                return
-            if not getattr(self, "_synth_armed", True):
-                return
-            if _time.monotonic() - getattr(self, "_last_real_final_t", 0.0) < 2.5:
-                return
-            # DEBOUNCE 1.2s: Sarvam can emit the empty final (breath tail) 100-300ms
-            # BEFORE the real final of the same utterance — an immediate synth then
-            # produced TWO back-to-back LLM turns (deep-review A8). The pending task
-            # is cancelled the moment a real final arrives.
-            pending = getattr(self, "_synth_task", None)
-            if pending is not None and not pending.done():
-                return
-            import asyncio as _asyncio
-            self._synth_task = _asyncio.create_task(self._delayed_backchannel())
-        except Exception:
-            pass
-
-    async def _delayed_backchannel(self):
-        import asyncio as _asyncio
-        try:
-            await _asyncio.sleep(1.2)
-            gate = self._backchannel_gate
-            if gate is None or not gate():
-                return
-            self._synth_armed = False
-            from pipecat.frames.frames import TranscriptionFrame
-            from pipecat.utils.time import time_now_iso8601
-            # Bracketed cue, NOT "Hmm." — prompt rule 7 reads a spoken 'hmm' as
-            # CONSENT, so a cough/breath was auto-agreeing to demos (deep-review
-            # A8 "phantom consent"). A cue can't be read as a yes, and the
-            # transcript honestly records an unclear sound.
-            await self.push_frame(TranscriptionFrame(
-                "[unclear sound from the caller]", self._user_id, time_now_iso8601(), None))
-        except _asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-
-    _RECONNECT_COOLDOWN_SECS = 5.0
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._last_reconnect_at = 0.0
-
-    _diag = None
-
-    def set_diagnostics(self, diag):
-        self._diag = diag
-
-    async def _reconnect_once(self):
-        import time as _time
-        now = _time.monotonic()
-        if now - self._last_reconnect_at < self._RECONNECT_COOLDOWN_SECS:
-            return False
-        # Count AFTER the cooldown gate. run_stt calls this per audio frame
-        # (~50/s), so counting before it turned "reconnect attempts" into "frames
-        # seen while the socket was down" — a live call reported 1827 when the
-        # true number was ~7. A metric that inflates 250x is worse than none.
-        try:
-            if self._diag is not None:
-                self._diag.bump("stt_reconnects")
-        except Exception:
-            pass
-        self._last_reconnect_at = now
-        try:
-            await self._disconnect()
-        except Exception:
-            pass
-        try:
-            await self._connect()
-            return self._socket_client is not None
-        except Exception as e:
-            logger = __import__("logging").getLogger("voice_bot")
-            logger.warning("sarvam stt reconnect failed: %s", e)
-            return False
-
-    async def run_stt(self, audio: bytes):
-        # REAL deaf-call detection (deep-review A5). The old exception-based
-        # retry here was DEAD CODE: base run_stt wraps its send in
-        # `except Exception` (log + ErrorFrame + yield None) so NOTHING ever
-        # escapes, and a mid-call socket death never nulls _socket_client — the
-        # 617-consecutive-error deaf call was still possible. The RELIABLE
-        # signal is the receive task having EXITED: the server closed the
-        # socket, the base's _receive_task_handler returned, and every
-        # subsequent send silently no-ops. Detect that and reconnect (5s
-        # cooldown so a hard Sarvam outage can't turn every 20ms chunk into a
-        # connect storm).
-        rt = getattr(self, "_receive_task", None)
-        if self._socket_client is None or (rt is not None and rt.done()):
-            await self._reconnect_once()
-        async for f in super().run_stt(audio):
-            yield f
-
-
-class ResilientSarvamTTSService(SarvamTTSService):
-    """Silent-bot guard + pace injection. (1) In pipecat 0.0.95, when Sarvam closes
-    the TTS socket cleanly the receive loop exits WITHOUT reconnecting and leaves
-    _receive_task as a finished-but-non-None task; the next run_tts calls _connect(),
-    but task creation is guarded by `not self._receive_task`, so the NEW socket gets
-    no receive loop → synthesized audio is never read → the bot goes silent. Clearing
-    finished task handles before delegating closes the trap. (2) The stock class never
-    sends 'pace' in the WS config (only the REST path uses it), so agent pace did
-    nothing on live calls — inject it into the config dict (Sarvam-accepted,
-    probe-verified 2026-07-20)."""
-
-    # bot.py wires this to stamp "a response's audio is now pending" — the
-    # audio-stall watchdog uses it to detect a generated-but-never-heard reply
-    # (observed live: TTS first-byte spiked to 7s; every reply was cancelled by
-    # the caller's next 'hello' before its audio started → permanently silent call).
-    _on_generate = None
-
-    def set_generate_callback(self, cb):
-        self._on_generate = cb
-
-    # Set when Sarvam answers with {"type":"error"}. pipecat's _receive_messages
-    # only logs it and pushes an ErrorFrame — it never closes the socket, so the
-    # socket stays OPEN but never synthesizes again and run_tts's
-    # `state is State.CLOSED` guard can't see it. We treat any TTS error as
-    # socket death and force a reconnect before the next synthesis.
-    _wedged = False
-    _diag = None
-
-    def set_diagnostics(self, diag):
-        self._diag = diag
-
-    def _diag_bump(self, name):
-        try:
-            if self._diag is not None:
-                self._diag.bump(name)
-        except Exception:
-            pass
-
-    async def push_frame(self, frame, direction=None):
-        # Cheap isinstance on the frame stream — the ONLY place the Sarvam error
-        # surfaces (it is pushed, not raised, and not returned by run_tts).
-        try:
-            from pipecat.frames.frames import ErrorFrame as _ErrF
-            if isinstance(frame, _ErrF) and "TTS Error" in str(getattr(frame, "error", "")):
-                if not self._wedged:
-                    self._diag_bump("tts_wedges")
-                    logger.error("tts: Sarvam rejected input — marking socket wedged, "
-                                 "will reconnect before next synthesis: %s",
-                                 str(getattr(frame, "error", ""))[:160])
-                self._wedged = True
-        except Exception:
-            pass
-        if direction is None:
-            await super().push_frame(frame)
-        else:
-            await super().push_frame(frame, direction)
-
-    async def run_tts(self, text: str):
-        # 1) Never SEND letterless text: it is not speech, and it is what wedges
-        #    the socket in the first place. Skipped BEFORE _on_generate so a
-        #    chunk we never send can't arm the audio-stall stamp (which would
-        #    make the watchdog "recover" from a stall that cannot happen).
-        if not has_word_char(text):
-            self._diag_bump("tts_letterless_skipped")
-            logger.info("tts: skipping letterless chunk %r", (text or "")[:40])
-            return
-        # 2) A previously-wedged socket produces ZERO audio forever. Rebuild it
-        #    before synthesizing rather than waiting ~3.5s for the stall watchdog.
-        if self._wedged:
-            self._diag_bump("tts_wedge_reconnects")
-            logger.warning("tts: reconnecting wedged socket before synthesis")
-            self._wedged = False
-            try:
-                await self._disconnect()
-                await self._connect()
-            except Exception as e:
-                logger.warning("tts: wedge reconnect failed: %s", e)
-        self._diag_bump("replies_generated")
-        if self._on_generate is not None:
-            try:
-                self._on_generate()
-            except Exception:
-                pass
-        async for frame in super().run_tts(text):
-            yield frame
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-        # Stock 0.0.95 sends Sarvam's {"type":"flush"} BEFORE super() reads the
-        # aggregator remainder — so a short unpunctuated response TAIL is sent
-        # post-flush and sits unsynthesized in Sarvam's server buffer until the
-        # NEXT turn (or is discarded on reconnect). ClauseFlushAggregator makes
-        # short tails frequent → "last words of a reply never play" (deep-review
-        # A4). Re-flushing AFTER super() pushes the tail out immediately.
-        from pipecat.frames.frames import LLMFullResponseEndFrame as _EndF
-        if isinstance(frame, _EndF):
-            try:
-                await self.flush_audio()
-            except Exception as e:
-                logger.warning("post-remainder flush failed: %s", e)
-
-    def __init__(self, *args, pace_override: float | None = None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._pace_override = pace_override
-        # Serializes connect/disconnect: three drivers touch the socket (the
-        # processor's run_tts error path, the interruption handler's per-barge-in
-        # reconnect, and the watchdog's stall recovery). The base's
-        # _connect_websocket is check-then-act with awaits in between — two
-        # concurrent calls both pass the check and the loser's socket LEAKS OPEN
-        # server-side (deep-review B1/F5; plausible contributor to Sarvam's
-        # first-byte stalls). Verified: base _connect/_disconnect never nest, so
-        # a non-reentrant Lock is safe.
-        import asyncio as _asyncio
-        self._conn_lock = _asyncio.Lock()
-
-    async def _send_config(self):
-        if self._pace_override is not None:
-            self._settings["pace"] = float(self._pace_override)
-        await super()._send_config()
-
-    async def _connect(self):
-        async with self._conn_lock:
-            for attr in ("_receive_task", "_keepalive_task"):
-                t = getattr(self, attr, None)
-                if t is not None and t.done():
-                    setattr(self, attr, None)
-            await super()._connect()
-
-    async def _disconnect(self):
-        async with self._conn_lock:
-            await super()._disconnect()
-
-
-# ── Rumik Silk TTS ───────────────────────────────────────────────────────────
-
-# Rumik has NO numeric speed control. Probed live: speed / pace / rate /
-# speaking_rate / speech_rate / tempo / length_scale all move duration by <=4%,
-# i.e. inside the vendor's own +-5% per-request variance — they are silently
-# ignored. What DOES work is the natural-language `description`, and strongly:
-# "speaks very slowly and calmly" ran +44% long, so the mechanism is real.
-#
-# Measured means over 3 runs each (115-char Hinglish line, speaker ira):
-#     (none)                                        14.7 chars/s
-#     "brisk, upbeat conversational pace"           14.8   <- mild prose does NOTHING
-#     "quickly and briskly, energetic"              16.1
-#     "rapidly with urgency, no pauses"             17.6
-#     "extremely fast, rushed, clipped, no pauses"  19.9
-#
-# READ THIS BEFORE "CORRECTING" THE MAPPING BELOW. The phrase is not a translation
-# of the admin's pace value — it is the instruction that gets Rumik to a rate in
-# the neighbourhood of what pace means on Sarvam, and the ladder is deliberately
-# a notch aggressive from there. Verified rates on the same 115-char line:
-#     Sarvam bulbul:v3  pace 1.0 -> 12.8 chars/s, pace 1.1 -> 16.1, pace 1.5 -> 22.0
-#     Rumik unsteered   -> ~15.1;  "quick" -> ~16.2;  "rapid" -> ~18.8
-# (Sarvam's pace IS a speed multiplier — probed, higher is faster. And omitting
-# pace is NOT the same as pace=1.0: the API's own default sits near 1.08.)
-#
-# So Rumik unsteered is only ~6% slower than the Sarvam settings we ship, which is
-# NOT enough to explain a listener calling it "very slow". The perceived slowness
-# is prosody — Mulberry's inter-word and sentence pauses and its more deliberate
-# delivery — not characters per second. That is also why mild prose ("brisk")
-# moves nothing while assertive prose ("no pauses at all") moves a lot: the phrase
-# is acting on the pauses. Hence the ladder targets a bit faster than Sarvam
-# parity at any given pace value; it was tuned against the complaint, not against
-# a spreadsheet.
-#
-# CAVEAT, unresolved: per-request spread was 9.5-22.2%, so the MEAN is
-# controllable but an individual utterance is not. Pace will vary audibly between
-# sentences in a way Sarvam's numeric pace does not.
 _RUMIK_PACE_STYLES = (
     (1.15, "speaks extremely fast, rushed and hurried, clipped delivery, no pauses at all"),
     (1.05, "speaks rapidly with urgency, fast and energetic, no pauses"),
@@ -909,7 +485,14 @@ class RumikTTSService(InterruptibleTTSService):
         # three-sentence reply reached the caller. Only a runtime trace showed it.
         self._pending_sends = 0
         self._interruptions_seen = 0
-        self.set_model_name(f"silk-{model}")
+        # 1.4: set_model_name is gone — the model lives in self._settings.model
+        # (synced to metrics); keep a plain model_name attr for our diagnostics.
+        try:
+            self._settings.model = f"silk-{model}"
+            self._sync_model_name_to_metrics()
+        except Exception:
+            pass
+        self.model_name = f"silk-{model}"
         self.set_voice(voice)
 
     def set_credits_callback(self, cb):

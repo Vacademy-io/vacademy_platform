@@ -12,6 +12,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bake the Smart Turn v3 model into the image: constructing the analyzer pulls
+# its weights once at BUILD time. The 1-vCPU Mumbai box must never download a
+# model during a live call's cold start (and outbound HF may be slow/blocked).
+ENV HF_HOME=/srv/.hf
+RUN python -c "\
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams; \
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3; \
+LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1.5)); \
+print('smart turn v3 baked')"
+
 COPY app ./app
 
 EXPOSE 8090

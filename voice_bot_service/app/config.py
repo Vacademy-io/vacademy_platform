@@ -60,6 +60,28 @@ class Settings:
     #    from the transcript. Watch Hindi-first agents.
     #  * The name bias (`prompt`) only works on saaras, so it now ENGAGES — the
     #    agent's own name should stop coming back as "Aayushi"/"Aarush".
+    # ── STT provider A/B (pipecat 1.4 migration, founder-approved 2026-08-05) ──
+    # "sarvam" (default) | "google". Google = streaming v2 on the SAME GCP
+    # project/credentials as the Vertex LLM; it sends INTERIM results (Sarvam
+    # never does), which Smart Turn and the turn-gate both benefit from. Flip
+    # per test call via env; nothing else changes.
+    stt_provider: str = field(default_factory=lambda: _env("STT_PROVIDER", "sarvam"))
+    google_stt_language: str = field(
+        default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
+    google_stt_model: str = field(
+        default_factory=lambda: _env("GOOGLE_STT_MODEL", "latest_long"))
+    google_stt_location: str = field(
+        default_factory=lambda: _env("GOOGLE_STT_LOCATION", "global"))
+    # How long the 1.4 turn-stop strategy may hold a turn waiting for Sarvam's
+    # final (Sarvam never flags finalized=True). pipecat default 1.17 = ~1s of
+    # added dead air EVERY turn; the founder POC ships 0.5.
+    sarvam_ttfs_p99: float = field(
+        default_factory=lambda: float(_env("SARVAM_TTFS_P99", "0.5")))
+    # Smart Turn v3 semantic end-of-turn: max silence it may wait before forcing
+    # the turn closed (the model usually decides much earlier).
+    smart_turn_stop_secs: float = field(
+        default_factory=lambda: float(_env("SMART_TURN_STOP_SECS", "1.5")))
+
     sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saaras:v4"))
     # Pin STT to one language instead of auto-detect. Default "hi-IN": auto-detect
     # drifts a Hindi/Hinglish caller into a NEIGHBOURING Indic language — Punjabi or
@@ -188,7 +210,11 @@ class Settings:
     # dead air before the LLM even starts). vad_stop_secs = silence needed to
     # decide the caller finished; too low clips slow speakers mid-sentence.
     # agg_timeout_secs = extra wait for a late-arriving final transcript.
-    vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
+    # 0.2 on pipecat 1.4 (was 0.5): end-of-turn is Smart Turn v3's job now — the
+    # VAD stop only feeds the turn analyzer, and a long window here just delays
+    # it. POC ships 0.15; 0.2 is one notch safer on noisy phone lines.
+    # ⚠ REMOVE any VAD_STOP_SECS=0.5 override from box/k8s env on deploy.
+    vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.2")))
     # Silero gates on RMS volume BEFORE the model runs, default 0.6 — tuned for
     # headset/webrtc audio. On the founder's 2026-08-05 call (8e1e00ad) that gate
     # never passed for the CALLER's own voice (the loud call-screening robot DID

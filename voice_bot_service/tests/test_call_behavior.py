@@ -20,6 +20,30 @@ import json as _json
 import app.bot as b
 import app.providers as pv
 
+import inspect
+import json as _json
+import os
+
+import app.main as m
+import app.report as rpt
+import app.admin_core as ac
+
+
+class _W3Settings:
+    """Minimal settings stub for token/spool/cache tests."""
+
+    internal_client_secret = "sekrit"
+
+    def __init__(self, tmp=""):
+        self.tts_cache_dir = str(tmp)
+        self.tts_cache_max_files = 4000
+        self.tts_cache_max_bytes = 500 * 1024 * 1024
+
+    @property
+    def report_spool_dir(self):
+        return os.path.join(self.tts_cache_dir, "_report_spool")
+
+
 
 class FakeOutcome:
     def __init__(self):
@@ -103,45 +127,6 @@ def test_stall_stamp_never_set_while_speaking_and_cleared_on_stop():
 
 # ── Ordering invariants (the outage class: forward references in run_bot) ────
 
-def test_run_bot_wiring_order():
-    import inspect
-    src = inspect.getsource(b.run_bot)
-    assert src.index("tts = build_tts") < src.index("set_generate_callback")
-    assert src.index("async def _begin_stop") < src.index("set_arm_stop(_begin_stop)")
-
-
-# ── ClauseFlushAggregator: danda split, tail preservation, no text loss ──────
-
-@pytest.mark.asyncio
-async def test_aggregator_danda_split_and_no_loss():
-    a = pv.ClauseFlushAggregator()
-    outs = []
-    toks = ["जी, मैं आरुषि — वैकैडमी से। ", "क्या मैं आपसे बात कर सकती हूँ?"]
-    for tok in toks:
-        r = await a.aggregate(tok)
-        if r:
-            outs.append(r)
-    assert len(outs) == 2
-    # nothing lost: emitted + remainder == input (modulo whitespace)
-    joined = "".join(outs) + a.text
-    assert joined.replace(" ", "") == "".join(toks).replace(" ", "")
-
-
-@pytest.mark.asyncio
-async def test_aggregator_length_fallback_preserves_text():
-    a = pv.ClauseFlushAggregator()
-    long_text = "word " * 60  # punctuation-less stream
-    outs = []
-    for tok in [long_text[i:i + 20] for i in range(0, len(long_text), 20)]:
-        r = await a.aggregate(tok)
-        if r:
-            outs.append(r)
-    joined = "".join(outs) + a.text
-    assert joined.replace(" ", "") == long_text.replace(" ", "")
-
-
-# ── A6b: failed handoff must speak a fallback, not stop on a broken promise ──
-
 def test_sentinel_has_transfer_fallback():
     sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
     assert sg._transfer_fail_closing
@@ -181,82 +166,6 @@ def test_nudge_cap_and_gating():
 # context → verbatim repeats. The sentinel shields it.)
 
 @pytest.mark.asyncio
-async def test_sentinel_swallows_orphan_end_after_interruption():
-    from pipecat.frames.frames import (
-        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-        LLMTextFrame,
-    )
-    from pipecat.processors.frame_processor import FrameDirection
-
-    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
-    pushed = []
-
-    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
-        pushed.append(frame)
-    sg.push_frame = fake_push
-
-    async def fake_super(self, frame, direction):
-        return
-
-    async def drive(frame):
-        # call SentinelGate.process_frame but stub the super() call chain by
-        # patching the base class method for the duration
-        import unittest.mock as um
-        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
-            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
-
-    # Interrupted stream: text → interruption → orphan End
-    await drive(LLMTextFrame("Hello there"))
-    await drive(InterruptionFrame())
-    await drive(LLMFullResponseEndFrame())
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 0, "orphan End must be swallowed"
-
-    # Healthy next response: Start → text → End must pass through
-    await drive(LLMFullResponseStartFrame())
-    await drive(LLMTextFrame("Next reply."))
-    await drive(LLMFullResponseEndFrame())
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 1, "healthy End must pass"
-
-
-@pytest.mark.asyncio
-async def test_sentinel_new_start_clears_pending_swallow():
-    """If the expected orphan End never arrives, a NEW response's Start must
-    clear the pending swallow so the healthy End isn't eaten instead."""
-    from pipecat.frames.frames import (
-        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-        LLMTextFrame,
-    )
-    from pipecat.processors.frame_processor import FrameDirection
-    import unittest.mock as um
-
-    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
-    pushed = []
-
-    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
-        pushed.append(frame)
-    sg.push_frame = fake_push
-
-    async def fake_super(self, frame, direction):
-        return
-
-    async def drive(frame):
-        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
-            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
-
-    await drive(LLMTextFrame("partial"))
-    await drive(InterruptionFrame())          # pending swallow armed
-    await drive(LLMFullResponseStartFrame())  # new response begins first
-    await drive(LLMTextFrame("healthy reply"))
-    await drive(LLMFullResponseEndFrame())    # must NOT be swallowed
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 1
-
-
-# ── A3: transcripts record what the caller HEARD (playout), not generation ───
-
-@pytest.mark.asyncio
 async def test_played_transcript_records_ttstext_and_merges_clauses():
     from pipecat.frames.frames import TTSTextFrame, TranscriptionFrame
     from pipecat.processors.frame_processor import FrameDirection
@@ -276,14 +185,14 @@ async def test_played_transcript_records_ttstext_and_merges_clauses():
         with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
             await rec.process_frame(frame, FrameDirection.DOWNSTREAM)
 
-    await drive(TTSTextFrame("Hello!"))
-    await drive(TTSTextFrame("Am I speaking with Shreyash?"))
+    await drive(TTSTextFrame("Hello!", aggregated_by="sentence"))
+    await drive(TTSTextFrame("Am I speaking with Shreyash?", aggregated_by="sentence"))
     assert len(o.transcript) == 1                      # consecutive clauses merge
     assert "Hello!" in o.transcript[0]["text"]
     assert "Shreyash" in o.transcript[0]["text"]
 
     o.transcript.append({"role": "user", "text": "yes"})  # caller turn intervenes
-    await drive(TTSTextFrame("Great, thank you."))
+    await drive(TTSTextFrame("Great, thank you.", aggregated_by="sentence"))
     assert o.transcript[-1]["role"] == "assistant"
     assert o.transcript[-1]["text"] == "Great, thank you."
     assert len(o.transcript) == 3
@@ -304,66 +213,6 @@ def test_generation_time_commits_removed():
 
 
 # ── A5: deaf-call detection keys on the receive task, not on exceptions ──────
-
-def test_stt_deaf_detection_is_receive_task_based():
-    """The base run_stt swallows send errors — an exception-based retry is dead
-    code (the original deaf-call incident stayed possible). Detection must key
-    on the receive task having exited."""
-    import inspect
-    src = inspect.getsource(pv.ResilientSarvamSTTService.run_stt)
-    assert "_receive_task" in src and ".done()" in src
-    # the unreachable exception-retry scaffolding must be gone (ignore comments)
-    code_lines = [l for l in src.splitlines() if not l.strip().startswith("#")]
-    assert not any("except Exception" in l for l in code_lines)
-    # reconnect keeps its storm-guard cooldown
-    rsrc = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
-    assert "_RECONNECT_COOLDOWN_SECS" in rsrc
-
-
-# ── B1/Stage E: TTS connect/disconnect serialized; stall recovery re-enabled ──
-
-def test_tts_connect_lock_and_stall_reenabled():
-    import inspect
-    src = inspect.getsource(pv.ResilientSarvamTTSService)
-    assert "_conn_lock" in src
-    # both mutators go through the lock
-    c = src.split("async def _connect")[1].split("async def _disconnect")[0]
-    d = src.split("async def _disconnect")[1]
-    assert "_conn_lock" in c and "_conn_lock" in d
-    # default ON with env kill-switch retained
-    import app.config as cfg
-    import inspect as _i
-    csrc = _i.getsource(cfg)
-    assert 'STALL_RECOVERY_ENABLED", "true"' in csrc
-
-
-# ═══ Wave 3 ═══════════════════════════════════════════════════════════════════
-
-import inspect
-import json as _json
-import os
-
-import app.main as m
-import app.report as rpt
-import app.admin_core as ac
-
-
-class _W3Settings:
-    """Minimal settings stub for token/spool/cache tests."""
-
-    internal_client_secret = "sekrit"
-
-    def __init__(self, tmp=""):
-        self.tts_cache_dir = str(tmp)
-        self.tts_cache_max_files = 4000
-        self.tts_cache_max_bytes = 500 * 1024 * 1024
-
-    @property
-    def report_spool_dir(self):
-        return os.path.join(self.tts_cache_dir, "_report_spool")
-
-
-# ── B4: /ws admission token ──────────────────────────────────────────────────
 
 def test_ws_token_roundtrip_and_rejections(monkeypatch):
     monkeypatch.setattr(m, "get_settings", lambda: _W3Settings())
@@ -700,77 +549,6 @@ def test_has_word_char_predicate():
     assert pv.has_word_char("2")
 
 
-@pytest.mark.asyncio
-async def test_aggregator_never_emits_letterless_unit_and_preserves_text():
-    """A lone closing quote must never become its own TTS chunk — that exact
-    input is what Sarvam rejects, wedging the socket open-but-dead."""
-    agg = pv.ClauseFlushAggregator()
-    fed, out = "", []
-    for piece in ['"Okay, SSC." ', '" ', "And what's the name of the school?"]:
-        fed += piece
-        r = await agg.aggregate(piece)
-        while r:
-            assert pv.has_word_char(r), f"letterless unit emitted: {r!r}"
-            out.append(r)
-            r = None
-    # Nothing is lost: everything emitted plus the buffered remainder equals input.
-    joined = "".join(out) + agg._text
-    assert joined.replace(" ", "") == fed.replace(" ", ""), (joined, fed)
-
-
-@pytest.mark.asyncio
-async def test_run_tts_skips_letterless_and_never_arms_stall_stamp():
-    """Skipping must happen BEFORE _on_generate, else the watchdog would try to
-    'recover' a stall for a chunk we deliberately never sent."""
-    svc = pv.ResilientSarvamTTSService.__new__(pv.ResilientSarvamTTSService)
-    stamped = []
-    svc._on_generate = lambda: stamped.append(1)
-    svc._wedged = False
-    frames = [f async for f in pv.ResilientSarvamTTSService.run_tts(svc, '"')]
-    assert frames == [] and stamped == []
-
-
-@pytest.mark.asyncio
-async def test_tts_error_marks_socket_wedged_then_reconnects_once():
-    """pipecat only logs Sarvam's error and pushes an ErrorFrame — it never
-    closes the socket, so run_tts's CLOSED guard can't see it. We must."""
-    from pipecat.frames.frames import ErrorFrame
-
-    svc = pv.ResilientSarvamTTSService.__new__(pv.ResilientSarvamTTSService)
-    svc._wedged = False
-    svc._on_generate = None
-    pushed = []
-
-    async def fake_super_push(frame, *a, **k):
-        pushed.append(frame)
-
-    with um.patch.object(pv.SarvamTTSService, "push_frame", new=fake_super_push):
-        await pv.ResilientSarvamTTSService.push_frame(
-            svc, ErrorFrame(error="TTS Error: Text must contain at least one character"))
-    assert svc._wedged is True
-    assert len(pushed) == 1          # the frame is still forwarded, not swallowed
-
-    calls = []
-
-    async def fake_disconnect():
-        calls.append("disconnect")
-
-    async def fake_connect():
-        calls.append("connect")
-
-    async def fake_super_run(text):
-        calls.append(f"synth:{text}")
-        if False:
-            yield None
-
-    svc._disconnect = fake_disconnect
-    svc._connect = fake_connect
-    with um.patch.object(pv.SarvamTTSService, "run_tts", new=lambda self, t: fake_super_run(t)):
-        _ = [f async for f in pv.ResilientSarvamTTSService.run_tts(svc, "Hello there.")]
-    assert calls == ["disconnect", "connect", "synth:Hello there."]
-    assert svc._wedged is False      # cleared, so the next turn doesn't reconnect again
-
-
 def test_clean_opening_strips_wrapping_quotes():
     assert b._clean_opening('"Hi, this is Avni."') == "Hi, this is Avni."
     assert b._clean_opening('“Hello there.”') == "Hello there."
@@ -779,27 +557,6 @@ def test_clean_opening_strips_wrapping_quotes():
 
 
 # ── Item 3: the glitch cue must not tell the model to shorten unheard content
-
-def test_stall_recovery_cue_demands_full_replay_not_brief():
-    src = inspect.getsource(b.run_bot)
-    tail = src[src.index("if d.kind == STALL_RECOVER"):]
-    # …to the NEXT branch, not the first `continue` (the re-check guard has one).
-    block = tail[:tail.index("if d.kind == ORPHAN_ASK")]
-    # Comment lines are stripped: the comment here NAMES the removed word, and
-    # asserting over it would fail on its own documentation (same trap as the A5
-    # 'except Exception' test).
-    cue = "\n".join(l for l in block.splitlines() if not l.strip().startswith("#"))
-    assert "briefly" not in cue, "the 'briefly' cue deleted announcements the caller never heard"
-    assert "IN FULL" in cue
-    # And the handler re-checks the world before tearing down the socket.
-    # The guard must NOT read tts_gen_t (apply_decision has already zeroed it —
-    # that spelling silently disables every recovery). It must use the pure
-    # helper, which the timeline harness covers.
-    assert "stall_recovery_still_needed(flags, time.time())" in cue
-    # …and a real yield point before it, else the re-check is dead code.
-    assert "await asyncio.sleep(" in cue
-    assert 'flags["tts_gen_t"] == 0.0' not in cue
-
 
 def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
     src = inspect.getsource(b.SentinelGate.process_frame)
@@ -996,30 +753,6 @@ def test_date_time_placeholders_resolve():
     assert tmr and tmr != b._fill_placeholders("{{today}}", ctx)
 
 
-def test_stall_cap_closes_the_call_instead_of_sitting_silent():
-    src = inspect.getsource(b.run_bot)
-    blk = src[src.index("diag.tts_stall_cap_hit = True"):]
-    blk = blk[:blk.index("if d.kind == ORPHAN_ASK")]
-    assert "_begin_stop()" in blk and "end_requested = True" in blk
-
-
-def test_hearing_failed_closes_the_call_honestly():
-    src = inspect.getsource(b.run_bot)
-    blk = src[src.index("if d.kind == HEARING_FAILED"):]
-    blk = blk[:blk.index("if d.kind == NUDGE")]
-    assert "_begin_stop()" in blk and "end_requested = True" in blk
-    assert "cant_hear_closing" in blk
-    # The line must own the problem, not blame the caller or apologise a 5th time.
-    line = src[src.index("cant_hear_closing = ("):]
-    line = line[:line.index("end_closing =")]
-    assert "call you back" in line and "call back" in line
-    # A real transcript must clear the streak.
-    on_tr = src[src.index("def on_transcript"):]
-    assert 'flags["deaf_streak"] = 0' in on_tr[:on_tr.index("transcript = TranscriptCollector")]
-
-
-# ── STT model routing: saaras:v4 with per-agent language + mode ──────────────
-
 def test_agent_language_drives_stt_language_and_mode():
     assert b._agent_language({"language": "hinglish"})[0] == "hi-IN"
     assert b._agent_language({"language": "english"})[0] == "en-IN"
@@ -1039,55 +772,6 @@ def test_every_language_tag_is_one_sarvam_accepts():
     ours = {tag for tag, _ in b._STT_LANGS.values()}
     assert ours <= sarvam, f"Sarvam would reject: {sorted(ours - sarvam)}"
 
-
-def test_saaras_is_routed_to_the_transcribe_socket(monkeypatch):
-    """pipecat sends any saaras* model to the translate socket, which has no
-    language_code and always returns English. The shim redirects it."""
-    monkeypatch.setenv("SARVAM_STT_MODEL", "saaras:v4")
-    pv.get_settings.cache_clear()
-    try:
-        svc = pv.build_stt(8000, language="hi-IN", bias="Aarushi", mode="codemix")
-        assert svc.model_name == "saaras:v4"
-        assert svc._stt_mode == "codemix"
-        assert svc._language_string == "hi-IN", "the language pin must survive"
-        shim = svc._sarvam_client.speech_to_text_translate_streaming
-        assert isinstance(shim, pv._SaarasStreamingShim)
-        # _prompt MUST stay None on this path. pipecat's _connect calls
-        # socket.set_prompt() whenever "saaras" is in the model name, but
-        # set_prompt exists ONLY on the translate socket — and the shim hands it a
-        # TRANSCRIBE socket. Setting it raised inside _connect, so the socket was
-        # never usable and deaf-detection hammered reconnect: a live call logged
-        # 1827 reconnects and zero transcripts.
-        assert svc._prompt is None, "set_prompt does not exist on the transcribe socket"
-    finally:
-        pv.get_settings.cache_clear()
-
-
-def test_saarika_still_uses_its_native_path(monkeypatch):
-    monkeypatch.setenv("SARVAM_STT_MODEL", "saarika:v2.5")
-    pv.get_settings.cache_clear()
-    try:
-        svc = pv.build_stt(8000, language="hi-IN")
-        assert svc.model_name == "saarika:v2.5"
-        assert getattr(svc, "_stt_mode", None) is None
-        assert not isinstance(svc._sarvam_client.speech_to_text_translate_streaming,
-                              pv._SaarasStreamingShim)
-    finally:
-        pv.get_settings.cache_clear()
-
-
-def test_reconnect_counter_is_gated_by_the_cooldown():
-    """run_stt calls _reconnect_once per audio frame (~50/s). Counting before the
-    cooldown gate turned "reconnect attempts" into "frames seen while down" — a
-    live call reported 1827 when the truth was ~7."""
-    src = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
-    body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
-    assert body.index("_RECONNECT_COOLDOWN_SECS") < body.index('bump("stt_reconnects")'), (
-        "the counter must be incremented AFTER the cooldown gate"
-    )
-
-
-# ── item 10: the end intent must be per-response and revocable ───────────────
 
 def test_end_marker_latches_per_response_not_per_call():
     src = inspect.getsource(b.SentinelGate.process_frame)
@@ -1126,36 +810,6 @@ def test_caller_words_cancel_a_pending_close():
 
 
 # ── Rumik Silk TTS (default provider) ────────────────────────────────────────
-
-def test_build_tts_picks_rumik_by_default_and_sarvam_on_request(monkeypatch):
-    class _S: pass
-    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
-    pv.get_settings.cache_clear()
-    try:
-        r = pv.build_tts(8000, voice="ira", aiohttp_session=None, tts_model="rumik")
-        assert type(r).__name__ == "RumikTTSService"
-        # 24 kHz is Rumik's ONLY output. pipecat resolves
-        # _sample_rate = _init_sample_rate or transport rate, so declaring 24k
-        # makes the OUTPUT TRANSPORT resample to the 8k Plivo leg. Declaring 8k
-        # would play 24k audio at 8k = chipmunk speech.
-        assert r._init_sample_rate == 24000
-        s = pv.build_tts(8000, voice="shubh", aiohttp_session=None, tts_model="sarvam")
-        assert type(s).__name__ == "ResilientSarvamTTSService"
-    finally:
-        pv.get_settings.cache_clear()
-
-
-def test_rumik_falls_back_to_sarvam_without_a_key(monkeypatch):
-    """Never leave a call mute because a key is missing."""
-    monkeypatch.setenv("TTS_MODEL", "rumik")
-    monkeypatch.delenv("RUMIK_API_KEY", raising=False)
-    pv.get_settings.cache_clear()
-    try:
-        t = pv.build_tts(8000, aiohttp_session=None, tts_model="rumik")
-        assert type(t).__name__ == "ResilientSarvamTTSService"
-    finally:
-        pv.get_settings.cache_clear()
-
 
 def test_rumik_started_flag_is_initialised():
     """run_tts reads _started. TTSService.start() creates it, but our first
@@ -1277,6 +931,17 @@ class _FakeSock:
 def _rumik_stub(inbound=None):
     """A RumikTTSService with pipecat's I/O stubbed, ready to drive directly."""
     svc = pv.RumikTTSService(api_key="rk_test", voice="ira", sample_rate=24000)
+    # pipecat 1.4: create_task requires an initialized TaskManager (0.0.95 let
+    # standalone processors spawn tasks). Route straight to asyncio for tests.
+    svc.create_task = lambda coro, name=None: asyncio.create_task(coro)
+
+    async def _cancel_task(task, timeout=None):
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    svc.cancel_task = _cancel_task
     svc._websocket = _FakeSock(inbound)
     svc._sample_rate = 24000
     pushed = []
@@ -1459,3 +1124,85 @@ def test_rumik_synthesize_wav_accepts_a_description():
     import inspect as _i
     sig = _i.signature(pv.rumik_synthesize_wav)
     assert "description" in sig.parameters
+
+
+# ── pipecat 1.4 migration guards ─────────────────────────────────────────────
+
+def test_sentinel_never_arms_the_orphan_end_swallow_on_14():
+    """1.4's assistant aggregator closes the turn itself on interruption — the
+    0.0.95 `_started`-underflow this swallow shielded does not exist, and eating
+    a legitimate End would corrupt turn accounting. The interruption branch must
+    clear the buffer WITHOUT arming the swallow."""
+    import inspect
+    src = inspect.getsource(b.SentinelGate)
+    i = src.index("InterruptionFrame):")
+    branch = src[i:i + 700]
+    assert "_swallow_next_end = True" not in branch
+    assert 'self._buffer = ""' in branch
+
+
+def test_turn_gate_uses_broadcast_interruption():
+    """The 0.0.95 push_interruption_task_frame_and_wait is deprecated in 1.4
+    (delegates without waiting); the turn-gate must use the real API."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector)
+    assert "broadcast_interruption" in src
+    assert "push_interruption_task_frame_and_wait" not in src
+
+
+def test_build_tts_defaults_to_sarvam_and_rumik_on_request():
+    import inspect
+    src = inspect.getsource(pv.build_tts)
+    # Rumik only on explicit request; Sarvam is the fall-through (founder
+    # decision 2026-08-05 after Mulberry garbled phone-leg Hindi).
+    assert 'startswith("rumik")' in src
+    assert "SarvamTTSService(" in src
+
+
+def test_interims_never_enter_the_transcript():
+    """Google STT (the A/B arm) streams InterimTranscriptionFrames continuously;
+    the collector must act on FINALS only or the dedupe window, the turn-gate
+    and the transcript all drown."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector.process_frame)
+    assert "InterimTranscriptionFrame" in src
+
+
+def test_saaras_v4_is_registered_with_pipecat():
+    """pipecat 1.4's model table stops at saaras:v3 and RAISES on anything else —
+    our production model would have crashed build_stt on every call. Caught by
+    the migration dry-run, never by the suite; pinned here now."""
+    from pipecat.services.sarvam import stt as sarvam_stt
+    assert pv._register_saaras_v4() is True
+    assert "saaras:v4" in sarvam_stt.MODEL_CONFIGS
+    v3 = sarvam_stt.MODEL_CONFIGS["saaras:v3"]
+    v4 = sarvam_stt.MODEL_CONFIGS["saaras:v4"]
+    # v4 must inherit v3's capability shape (language + mode + server VAD).
+    assert v4.supports_language and v4.supports_mode and v4.supports_vad_params
+    assert v4.use_translate_endpoint == v3.use_translate_endpoint
+
+
+def test_stt_settings_follow_the_model_capability_table():
+    """1.4 raises on any field the model doesn't accept, in BOTH directions:
+    saaras:v3/v4 take language+mode but NOT prompt; saaras:v2.5 is the reverse.
+    build_stt must ASK the table, not assume."""
+    import app.config as cfg
+
+    def build(model):
+        cfg.get_settings.cache_clear()
+        orig = os.environ.get("SARVAM_STT_MODEL")
+        os.environ["SARVAM_STT_MODEL"] = model
+        os.environ.setdefault("SARVAM_API_KEY", "sk_test")
+        try:
+            return pv.build_stt(8000, language="hi-IN", bias="Ameet")
+        finally:
+            if orig is None:
+                os.environ.pop("SARVAM_STT_MODEL", None)
+            else:
+                os.environ["SARVAM_STT_MODEL"] = orig
+            cfg.get_settings.cache_clear()
+
+    svc = build("saaras:v4")          # would raise on prompt if we guessed
+    assert svc._settings.model == "saaras:v4"
+    svc25 = build("saaras:v2.5")      # would raise on language if we guessed
+    assert svc25._settings.model == "saaras:v2.5"

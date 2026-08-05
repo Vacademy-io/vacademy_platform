@@ -1,6 +1,10 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { getActiveWorkflowsQuery } from '@/services/workflow-service';
+import {
+    getWorkflowsByStatusQuery,
+    WORKFLOW_STATUSES,
+    type WorkflowStatus,
+} from '@/services/workflow-service';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { WorkflowCard } from './workflow-card';
@@ -12,18 +16,36 @@ import { Plus } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useNavigate } from '@tanstack/react-router';
 
+/** `null` = no status filter, i.e. show every lifecycle status. */
+type StatusFilter = WorkflowStatus | null;
+
+const STATUS_LABELS: Record<WorkflowStatus, string> = {
+    ACTIVE: 'Active',
+    DRAFT: 'Draft',
+    INACTIVE: 'Inactive',
+};
+
 export function WorkflowListPage() {
     const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedType, setSelectedType] = useState<string | null>(null);
+    const [selectedStatus, setSelectedStatus] = useState<StatusFilter>(null);
+
+    // Status is filtered server-side (the list endpoint only returns workflows whose status is
+    // in the payload), so this drives the request rather than a client-side .filter().
     const {
         data: workflows,
         isLoading,
         error,
-    } = useSuspenseQuery(getActiveWorkflowsQuery(instituteDetails?.id || ''));
-
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedType, setSelectedType] = useState<string | null>(null);
+    } = useQuery(
+        getWorkflowsByStatusQuery(
+            instituteDetails?.id || '',
+            selectedStatus ? [selectedStatus] : WORKFLOW_STATUSES
+        )
+    );
 
     useEffect(() => {
         setNavHeading(
@@ -33,7 +55,9 @@ export function WorkflowListPage() {
         );
     }, [setNavHeading]);
 
-    if (isLoading) {
+    // Only take over the whole page on the first load — switching the status filter refetches,
+    // and swapping the filter chips out for a full-page loader would make them jump.
+    if (isLoading && !workflows) {
         return <DashboardLoader />;
     }
 
@@ -53,9 +77,10 @@ export function WorkflowListPage() {
 
     // Filter workflows based on search term and selected type
     const filteredWorkflows = workflows?.filter((workflow: Workflow) => {
+        // description is nullable on the wire (drafts often have none) — guard both.
         const matchesSearch =
-            workflow.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            workflow.description.toLowerCase().includes(searchTerm.toLowerCase());
+            (workflow.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (workflow.description ?? '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesType = !selectedType || workflow.workflow_type === selectedType;
         return matchesSearch && matchesType;
     });
@@ -79,7 +104,9 @@ export function WorkflowListPage() {
             <div className="mb-8 flex flex-col gap-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-neutral-800">Active Workflows</h1>
+                        <h1 className="text-3xl font-bold text-neutral-800">
+                            {selectedStatus ? `${STATUS_LABELS[selectedStatus]} Workflows` : 'Workflows'}
+                        </h1>
                         <p className="mt-1 text-neutral-600">
                             {filteredWorkflows?.length || 0} workflow
                             {filteredWorkflows?.length !== 1 ? 's' : ''} found
@@ -97,7 +124,7 @@ export function WorkflowListPage() {
                 </div>
 
                 {/* Search and Filter Section */}
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                     <div className="relative max-w-md flex-1">
                         <MagnifyingGlass
                             className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
@@ -110,6 +137,30 @@ export function WorkflowListPage() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-10"
                         />
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-600">Status:</span>
+                        <div className="flex gap-2">
+                            <Button
+                                variant={selectedStatus === null ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setSelectedStatus(null)}
+                            >
+                                All
+                            </Button>
+                            {WORKFLOW_STATUSES.map((status) => (
+                                <Button
+                                    key={status}
+                                    variant={selectedStatus === status ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setSelectedStatus(status)}
+                                >
+                                    {STATUS_LABELS[status]}
+                                </Button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Type Filter */}
@@ -145,16 +196,16 @@ export function WorkflowListPage() {
                 <div className="flex h-[50vh] flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50">
                     <div className="max-w-md text-center">
                         <p className="mb-2 text-lg font-medium text-neutral-500">
-                            {searchTerm || selectedType
+                            {searchTerm || selectedType || selectedStatus
                                 ? 'No workflows found'
-                                : 'No active workflows'}
+                                : 'No workflows yet'}
                         </p>
                         <p className="text-sm text-neutral-400">
-                            {searchTerm || selectedType
+                            {searchTerm || selectedType || selectedStatus
                                 ? 'Try adjusting your search or filter criteria'
                                 : 'Create your first workflow to automate your institute processes'}
                         </p>
-                        {!searchTerm && !selectedType && (
+                        {!searchTerm && !selectedType && !selectedStatus && (
                             <Button
                                 onClick={() => {
                                     navigate({ to: '/workflow/create' });

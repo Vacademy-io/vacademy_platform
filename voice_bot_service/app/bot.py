@@ -1212,6 +1212,17 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
             "deti hoon'. NEVER write Hindi words in Latin letters."
         )
+        # Rumik reads Devanagari-transliterated English as gibberish — live call
+        # 8e1e00ad: the model wrote 'लाइव क्लासेस' and the caller heard 'लव असेस'
+        # (founder: "it pronounced many words poorly"). Sarvam bulbul handles
+        # either script, so this stays Rumik-only to leave legacy agents alone.
+        if _agent_tts_model(agent) == "rumik":
+            script_rule += (
+                "\n- EVERY English-origin word — product and class names included — must be in "
+                "English letters, never Devanagari transliteration: write 'Live Classes', "
+                "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
+                "for Hindi words ONLY; if a word is English, spell it in English."
+            )
     # The caller HEARS every character — markdown becomes spoken garbage (a live call
     # read out its own bullet list). And a short first clause reaches the ear sooner
     # (TTS synthesizes the first chunk while the rest streams).

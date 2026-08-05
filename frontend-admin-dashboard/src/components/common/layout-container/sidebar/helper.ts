@@ -255,17 +255,28 @@ export function getModules(subModules: SubModuleType[] | undefined) {
  * ("/settings?selectedTab=telephony"). The router does NOT parse a query out of
  * `to` — it would end up inside the pathname and match nothing — so anything
  * after the "?" has to travel in `search`.
+ *
+ * Values are JSON-coerced exactly the way the router's own `parseSearch` does,
+ * because `stringifySearch` re-serialises anything JSON-parseable: handing it
+ * the raw string "0" produces `?currentStep="0"` in the address bar, which then
+ * parses back out as the string "0" and blows up a `z.number()` schema. Coercing
+ * here makes a sidebar click land on exactly the URL a hard page load would.
  */
 export function parseSidebarLink(link?: string): {
     to: string;
-    search?: Record<string, string>;
+    search?: Record<string, unknown>;
 } {
     if (!link) return { to: '' };
     const q = link.indexOf('?');
     if (q === -1) return { to: link };
-    const search: Record<string, string> = {};
+    const search: Record<string, unknown> = {};
     new URLSearchParams(link.slice(q + 1)).forEach((value, key) => {
-        search[key] = value;
+        try {
+            // Non-JSON values ("liveTests", "telephony", …) stay strings.
+            search[key] = JSON.parse(value);
+        } catch {
+            search[key] = value;
+        }
     });
     return { to: link.slice(0, q), search };
 }

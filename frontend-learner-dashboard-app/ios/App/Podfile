@@ -67,6 +67,10 @@ target 'HCCA Learning' do
   capacitor_pods
 end
 
+target 'ZOE Edtech' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

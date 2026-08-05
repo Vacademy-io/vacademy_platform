@@ -65,6 +65,21 @@ public class CallSearchService {
     private static final ZoneId FALLBACK_ZONE = ZoneId.of("Asia/Kolkata");
 
     /** Per-row AI metadata (latest result wins on webhook dupes), joined laterally. */
+    /**
+     * "Is this an AI-agent call?" — an AI result has landed, OR the row was placed on
+     * an AI provider. The provider list must stay in sync with the AI implementations
+     * of {@code AiOutboundCaller} (see {@code ProviderType}): AAVTAAR, VACADEMY_AI (our
+     * own voice bot, dialled over Plivo) and MOCK.
+     *
+     * <p>Testing the provider matters because the result arm alone only turns true once
+     * the end-of-call report lands. Checking {@code = 'AAVTAAR'} here meant a VACADEMY_AI
+     * call was reported as HUMAN for its whole life when no report ever arrives — every
+     * no-answer/busy/failed dial, which on a bulk campaign is a large share of the list —
+     * so the AI/Human KPI undercounted and the "AI" call-type filter hid them outright.
+     *
+     * <p>Repeated inline at the four sites below rather than concatenated in: three of
+     * them sit inside SQL text blocks.
+     */
     private static final String AI_LATERAL = """
             LEFT JOIN LATERAL (
                 SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
@@ -167,7 +182,8 @@ public class CallSearchService {
                    COUNT(DISTINCT tcl.user_id) FILTER (WHERE tcl.user_id IS NOT NULL AND tcl.user_id <> 'UNKNOWN') AS unique_leads,
                    COUNT(*) FILTER (WHERE tcl.direction = 'INBOUND') AS inbound,
                    COUNT(*) FILTER (WHERE tcl.direction = 'OUTBOUND') AS outbound,
-                   COUNT(*) FILTER (WHERE acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') AS ai_calls
+                   COUNT(*) FILTER (WHERE acr.acr_id IS NOT NULL
+                                       OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK')) AS ai_calls
             """;
 
     /**
@@ -251,7 +267,9 @@ public class CallSearchService {
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
                    acr.diag_faults AS diag_faults,
-                   CASE WHEN (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') THEN 'AI' ELSE 'HUMAN' END AS call_type,
+                   CASE WHEN (acr.acr_id IS NOT NULL
+                              OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))
+                        THEN 'AI' ELSE 'HUMAN' END AS call_type,
                    COALESCE(tcl.callback_at, acr.ai_callback_at AT TIME ZONE 'UTC') AS callback_at_eff
             """;
 
@@ -309,13 +327,26 @@ public class CallSearchService {
         // institute, not to any one counsellor (counsellor_user_id IS NULL), so it
         // would otherwise be invisible to everyone. Institute-wide admins (scopeCsv
         // NULL) already see everything. Still institute-bounded — never cross-tenant.
+        //
+        // Third arm: an UNOWNED call whose LEAD is assigned to someone in scope. A
+        // workflow-fired AI call has no human actor at all (placeCall gets a null
+        // counsellor by design), so ownership can never be stamped on it — without
+        // this, calls to a counsellor's own leads are invisible to her and visible
+        // only to admins. Deliberately restricted to counsellor_user_id IS NULL: it
+        // rescues calls nobody owns, and never exposes another counsellor's calls.
         StringBuilder sb = new StringBuilder("""
                 WHERE tcl.institute_id = :instituteId
                   AND COALESCE(tcl.start_time, tcl.created_at) >= :fromUtc
                   AND COALESCE(tcl.start_time, tcl.created_at) < :toUtc
                   AND (:scopeCsv IS NULL
                        OR tcl.counsellor_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ','))
-                       OR (tcl.direction = 'INBOUND' AND tcl.counsellor_user_id IS NULL))
+                       OR (tcl.direction = 'INBOUND' AND tcl.counsellor_user_id IS NULL)
+                       OR (tcl.counsellor_user_id IS NULL AND EXISTS (
+                             SELECT 1 FROM user_lead_profile ulp
+                             WHERE ulp.user_id = tcl.user_id
+                               AND ulp.institute_id = tcl.institute_id
+                               AND ulp.assigned_counselor_id
+                                     = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))))
                 """);
 
         if (notBlank(f.getDirection())) {
@@ -332,9 +363,11 @@ public class CallSearchService {
         }
         if (notBlank(f.getCallType())) {
             if ("AI".equalsIgnoreCase(f.getCallType().trim())) {
-                sb.append(" AND (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR')");
+                sb.append(" AND (acr.acr_id IS NOT NULL"
+                        + " OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             } else if ("HUMAN".equalsIgnoreCase(f.getCallType().trim())) {
-                sb.append(" AND (acr.acr_id IS NULL AND tcl.provider_type <> 'AAVTAAR')");
+                sb.append(" AND (acr.acr_id IS NULL"
+                        + " AND tcl.provider_type NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             }
         }
         // Disposition filter matches the EFFECTIVE outcome — the same value the

@@ -19,6 +19,7 @@ import {
     getDisplaySettingsFromCache,
     getDisplaySettings,
     resolveEffectivePostLoginRoute,
+    buildCustomRoleDisplaySettingsKey,
 } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
@@ -44,34 +45,73 @@ import type { SubOrgAccess } from '@/types/faculty-access';
 const LEARNER_ROLE_NAMES = ['STUDENT', 'LEARNER'];
 
 /**
- * Resolve which custom-role id should drive the admin-portal display settings
- * for a user holding `userRoles`. Prefers a non-learner (staff) role over a
- * learner role; within each group it keeps the original backend-list match order
- * (so multi-staff users resolve exactly as before) and matches names
- * case-insensitively. Returns null when nothing matches (caller then falls back
- * to the base CUSTOM_ROLE_DISPLAY_SETTINGS_KEY).
+ * Resolve which custom-role ids should drive the admin-portal display settings
+ * for a user holding `userRoles`. Prefers non-learner (staff) roles over learner
+ * roles, and keeps the backend's own list order.
+ *
+ * Returns EVERY staff role the user holds, not just the first. A user is often
+ * given two roles that split the product between them (COUNSELLOR for the CRM,
+ * Upselling for the library); resolving to whichever one the backend happened to
+ * list first meant everything the other role granted never showed up. Callers
+ * union the configs behind those ids.
+ *
+ * Returns [] when nothing matches (caller then falls back to the base
+ * CUSTOM_ROLE_DISPLAY_SETTINGS_KEY).
  */
-const pickDisplaySettingsRoleId = (
+export const pickDisplaySettingsRoleIds = (
     userRoles: string[] | undefined,
     customRoles: Array<{ id: string | number; name: string }> | undefined
-): string | null => {
-    if (!userRoles?.length || !customRoles?.length) return null;
+): string[] => {
+    if (!userRoles?.length || !customRoles?.length) return [];
 
     const isLearner = (r: string) => LEARNER_ROLE_NAMES.includes(r.toUpperCase());
     const staffRoles = userRoles.filter((r) => !isLearner(r));
     const learnerRoles = userRoles.filter(isLearner);
 
-    // Find the first custom role in the backend's own list order (exactly as the
-    // previous `customRoles.find(...)` did) whose name matches one of `roles`.
-    const matchIn = (roles: string[]) => {
+    // Collect every custom role, in the backend's own list order, whose name
+    // matches one of `roles`. The /roles response can carry two rows for the
+    // same name (a platform 'Admin' and an institute 'ADMIN'), so match
+    // case-insensitively and keep only the first row per name — the user holds
+    // one role, and two ids for it would union a config with itself.
+    const matchIn = (roles: string[]): string[] => {
         const wanted = new Set(roles.map((r) => r.toUpperCase()));
-        return customRoles.find((cr) => cr?.name && wanted.has(cr.name.toUpperCase()));
+        const takenNames = new Set<string>();
+        const ids: string[] = [];
+        customRoles.forEach((cr) => {
+            if (!cr?.name) return;
+            const name = cr.name.toUpperCase();
+            if (!wanted.has(name) || takenNames.has(name)) return;
+            takenNames.add(name);
+            ids.push(String(cr.id));
+        });
+        return ids;
     };
 
-    // Staff roles win over learner roles; only the learner-vs-staff precedence
-    // changes vs. the old behavior — every other case resolves identically.
-    const matched = matchIn(staffRoles) || matchIn(learnerRoles);
-    return matched ? String(matched.id) : null;
+    // Staff roles win outright over learner roles — a learner role must never
+    // widen what a staff member sees in the admin portal.
+    const staffMatches = matchIn(staffRoles);
+    return staffMatches.length > 0 ? staffMatches : matchIn(learnerRoles);
+};
+
+/**
+ * The display-settings key the admin portal should read for this user.
+ * Extracted so both login paths (fresh login and institute selection) resolve
+ * it identically, and so it is testable without the surrounding login flow.
+ */
+export const resolveDisplaySettingsRoleKey = (
+    hasAdminRole: boolean,
+    hasFaculty: boolean,
+    userRoles: string[] | undefined,
+    customRoles: Array<{ id: string | number; name: string }> | undefined
+): string => {
+    // ADMIN outranks everything: admins keep their own settings blob and must
+    // never have a custom role merged into it.
+    if (hasAdminRole) return ADMIN_DISPLAY_SETTINGS_KEY;
+    if (!hasFaculty) return TEACHER_DISPLAY_SETTINGS_KEY;
+
+    const roleIds = pickDisplaySettingsRoleIds(userRoles, customRoles);
+    if (roleIds.length === 0) return CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
+    return buildCustomRoleDisplaySettingsKey(roleIds);
 };
 
 export interface LoginFlowResult {
@@ -374,20 +414,23 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
 
             // Determine redirect URL from Display Settings - fetch the correct role settings first
             const hasFaculty = hasFacultyAssignedPermission(instituteId);
-            let roleKey: string = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            let roleKey: string = resolveDisplaySettingsRoleKey(
+                hasAdminRole,
+                hasFaculty,
+                instituteResult.selectedInstitute?.roles,
+                undefined
+            );
 
             if (!hasAdminRole && hasFaculty) {
-                roleKey = CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
                 try {
                     const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
                     const customRoles = await getAllRoles();
-                    const matchedRoleId = pickDisplaySettingsRoleId(
+                    roleKey = resolveDisplaySettingsRoleKey(
+                        hasAdminRole,
+                        hasFaculty,
                         instituteResult.selectedInstitute?.roles,
                         customRoles
                     );
-                    if (matchedRoleId) {
-                        roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRoleId}`;
-                    }
                 } catch (err) {
                     console.error('Failed to map custom role for display settings', err);
                 }
@@ -665,21 +708,24 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
         void getCourseSettings(true).catch(() => { });
 
         // Determine redirect URL from Display Settings - fetch the correct role settings first
-        let roleKey: string = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
         const hasFaculty = hasFacultyAssignedPermission(instituteId);
+        let roleKey: string = resolveDisplaySettingsRoleKey(
+            hasAdminRole,
+            hasFaculty,
+            selectedInstitute?.roles,
+            undefined
+        );
 
         if (!hasAdminRole && hasFaculty) {
-            roleKey = CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
             try {
                 const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
                 const customRoles = await getAllRoles();
-                const matchedRoleId = pickDisplaySettingsRoleId(
+                roleKey = resolveDisplaySettingsRoleKey(
+                    hasAdminRole,
+                    hasFaculty,
                     selectedInstitute?.roles,
                     customRoles
                 );
-                if (matchedRoleId) {
-                    roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRoleId}`;
-                }
             } catch (err) {
                 console.error('Failed to map custom role for display settings', err);
             }

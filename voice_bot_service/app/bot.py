@@ -133,7 +133,7 @@ class TranscriptCollector(FrameProcessor):
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
-                 diag=None, in_machine_window=None):
+                 diag=None, in_machine_window=None, reply_in_flight=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
@@ -146,6 +146,7 @@ class TranscriptCollector(FrameProcessor):
         # then treated as the caller and cut our opening three times. A clock
         # cannot be flipped by a single bad transcript.
         self._in_machine_window = in_machine_window or (lambda: False)
+        self._reply_in_flight = reply_in_flight or (lambda: False)
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -265,7 +266,9 @@ class TranscriptCollector(FrameProcessor):
             mid_reply = self._gate_enabled() and (
                 self._is_bot_speaking()
                 or (self._duck is not None and self._duck.has_pending_audio())
-                or self._recently_cut())
+                or self._recently_cut()
+                # ...or the reply exists but has not reached the line yet.
+                or self._reply_in_flight())
             if mid_reply:
                 if text.startswith("["):
                     # Synthetic noise cue mid-reply: nothing to answer, nothing
@@ -560,6 +563,7 @@ class SentinelGate(FrameProcessor):
     pipeline after the final utterance finished playing."""
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
+                 on_reply_start=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
                  transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
@@ -569,6 +573,7 @@ class SentinelGate(FrameProcessor):
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
+        self._on_reply_start = on_reply_start or (lambda: None)
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -666,6 +671,7 @@ class SentinelGate(FrameProcessor):
             return
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            self._on_reply_start()
             # A bot generating a fresh reply is NOT closing. Live call ee8e2168:
             # the bot said goodbye, the caller re-engaged with "Yes, I can", the
             # bot asked "May I know a convenient date and time?" — and the stale
@@ -1835,6 +1841,32 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("duck_absorbs")
         await duck.resume("backchannel" if text is not None else "no_content")
 
+    def _on_reply_start():
+        flags["reply_started_t"] = time.time()
+
+    def _reply_in_flight() -> bool:
+        """True from the LLM starting a reply until that reply is off the line.
+
+        Exists for the ~0.5-1.0s hole between "the LLM began composing" and
+        "the bot is audible". Call bc84958c: Sarvam split one answer into two
+        finals 0.85s apart, the second landed in that hole, the turn-gate saw a
+        quiet bot and let it through as a brand-new turn, and the bot delivered
+        its ENTIRE Marks Improvement pitch TWICE — about 40 seconds of it. The
+        caller asked, on the line, "फिर से repeat क्यों कर रहे हैं आप".
+
+        The second final was not a barge-in either: it arrived through
+        TranscriptionUserTurnStartStrategy, which has interruptions disabled, so
+        nothing cancelled the first reply.
+
+        Time-capped so a generation that dies without ever reaching playout
+        cannot mute the caller's turns for the rest of the call.
+        """
+        st = flags["reply_started_t"]
+        if not st or flags["bot_speaking"]:
+            return False        # is_bot_speaking() already covers the audible case
+        return (flags["bot_stopped_t"] < st
+                and (time.time() - st) < settings.reply_inflight_grace_secs)
+
     def _in_machine_window() -> bool:
         return (time.time() - _run_bot_t0) < settings.machine_greeting_window_secs
 
@@ -1850,10 +1882,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      gate_enabled=lambda: settings.duck_enabled,
                                      interrupt_on_vad=lambda: settings.interrupt_on_vad,
                                      recently_cut=_recently_cut, diag=diag,
-                                     in_machine_window=_in_machine_window)
+                                     in_machine_window=_in_machine_window,
+                                     reply_in_flight=_reply_in_flight)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
+                            on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
     pipeline = Pipeline([

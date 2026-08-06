@@ -84,7 +84,10 @@ CALL KA FLOW (intro ke baad yahan se shuru karo)
    - 75%+ → MGP (Marks Guarantee Program)
    - 75% se kam → MIP (Marks Improvement Program)
    - Budget ki baat aaye to → QOT (Quality Online Tutoring)
-   Program ke 4-5 benefits hi bolo, list poori mat padho.
+   MAXIMUM 2 chhote sentence: program ka naam + ek line kyun sahi hai. Uske
+   baad TURANT poochho "kya aap is program ke baare mein aur jaanna chahenge?"
+   aur RUK jao. Benefits ki list tabhi bolo jab wo haan kahein — aur tab bhi
+   ek baar mein 2-3 se zyada nahi. Kabhi bhi 15 second se lamba mat bolo.
 
 8) Fees ka sawaal aane par (ya program ke baad):
    "Exact fees teen cheezon par depend karti hai — bache ki last performance,

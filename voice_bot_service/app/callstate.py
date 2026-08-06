@@ -44,6 +44,11 @@ class CallState:
     user_stopped_t: float = 0.0
     # When bot audio last STOPPED (dedupe scope + orphan turn-stealing guard).
     bot_stopped_t: float = 0.0
+    # When the LLM began composing the CURRENT reply. A reply is "in flight"
+    # from here until its audio stops, and there is a ~0.5-1.0s window inside
+    # that where the bot is not yet audible — call bc84958c fell into exactly
+    # that window and delivered its whole pitch twice. 0 = no reply pending.
+    reply_started_t: float = 0.0
     # One-shot guards.
     orphan_used: bool = False
     # Consecutive caller utterances that produced NO transcript. Reset by any real

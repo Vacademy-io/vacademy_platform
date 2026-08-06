@@ -1466,6 +1466,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
         interrupt_on_vad=lambda: True,      # what production actually runs
         filler_phrases=[],
         in_machine_window=in_machine_window or (lambda: True),
+        reply_in_flight=lambda: False,
     )
 
     async def _push(frame, direction=None):
@@ -1593,3 +1594,54 @@ def test_carrier_lines_are_not_counted_as_deleted_answers():
     assert heard == ["Raman", "class aath mein hai"]
     n, _samples = dg_mod.reconcile_answers(heard, ["Raman", "class aath mein hai"])
     assert n == 0, "carrier lines still manufacture a false ANSWER_DELETED"
+
+
+# ── call bc84958c (2026-08-06): the double pitch ─────────────────────────────
+@pytest.mark.asyncio
+async def test_a_second_final_during_composition_is_not_a_fresh_turn():
+    """Sarvam split one answer into two finals 0.85s apart. The first started a
+    reply; the second arrived in the ~0.9s hole before that reply was audible,
+    the turn-gate saw a quiet bot, and it became a BRAND-NEW turn — so the bot
+    delivered its entire Marks Improvement pitch twice, ~40s of it, and the
+    caller asked on the line "फिर से repeat क्यों कर रहे हैं आप".
+
+    In flight, the second final must be handled as mid-reply (absorbed or a
+    formal interruption) — either way ONE reply, never two."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)   # composing, not yet audible
+    tc._reply_in_flight = lambda: True
+    await _feed(tc, "नहीं।")
+    assert rec.interruptions == 1, (
+        "a real answer arriving mid-composition must cancel the in-flight reply, "
+        "not spawn a second one")
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_during_composition_does_not_spawn_a_reply_either():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: True
+    await _feed(tc, "हाँ।")
+    assert rec.interruptions == 0
+    assert any("carry on" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_bot_with_no_reply_pending_still_takes_normal_turns():
+    """The guard must not swallow ordinary turns — that would mute the call."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: False
+    await _feed(tc, "Raman seventh class mein hai")
+    assert rec.interruptions == 0
+    assert rec.frames, "a normal turn was swallowed"
+
+
+def test_reply_in_flight_is_time_capped():
+    """A generation that dies before playout must not mute the caller forever."""
+    import app.callstate as cs
+    from app.config import get_settings
+    s = get_settings()
+    assert s.reply_inflight_grace_secs > 0
+    st = cs.CallState(t=0.0)
+    assert st.reply_started_t == 0.0, "must default to 'no reply pending'"

@@ -363,6 +363,11 @@ class Settings:
     # phrase match is far more likely to be the caller than the network.
     machine_greeting_window_secs: float = field(
         default_factory=lambda: float(_env("MACHINE_GREETING_WINDOW_SECS", "22.0")))
+    # Ceiling on how long a reply counts as "in flight" before its audio
+    # starts. Covers LLM TTFB + TTS TTFB with headroom; capped so a generation
+    # that dies pre-playout cannot swallow the caller's turns.
+    reply_inflight_grace_secs: float = field(
+        default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     interrupt_on_vad: bool = field(
         default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
 

@@ -2,6 +2,7 @@ package vacademy.io.community_service.feature.support.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.logging.SentryLogger;
@@ -12,6 +13,7 @@ import vacademy.io.community_service.feature.support.client.SupportAnnouncementC
 import vacademy.io.community_service.feature.support.client.SupportAuthClient;
 import vacademy.io.community_service.feature.support.dto.SupportRecipientDto;
 import vacademy.io.community_service.feature.support.entity.SupportTicket;
+import vacademy.io.community_service.feature.support.enums.TicketPriority;
 import vacademy.io.community_service.feature.support.enums.TicketStatus;
 
 import java.util.ArrayList;
@@ -34,6 +36,21 @@ import java.util.Map;
 public class SupportAlertService {
 
     private static final String SOURCE = "SUPPORT_HELPDESK";
+
+    /**
+     * Link target for the "Open the Support panel" button. Unset by default — the button is left
+     * out entirely rather than pointing somewhere that may not exist.
+     */
+    @Value("${support.portal.url:}")
+    private String portalUrl;
+
+    /**
+     * Hosted PNG of the Vacademy mark, served from the public media CDN. A PNG rather than the
+     * repo's vacademy-logo.svg because mail clients — Gmail especially — do not render SVG.
+     * Overridable, but the default is a real, verified-public URL so branding works out of the box.
+     */
+    @Value("${support.brand.logo.url:https://d1om4dxj9e7kkd.cloudfront.net/ADMIN_PUBLIC_UPLOAD/dd55d3c0-bba3-4111-98e1-0dfe884fa019-vacademy-logo.png}")
+    private String logoUrl;
 
     @Autowired
     private NotificationService notificationService;
@@ -87,7 +104,7 @@ public class SupportAlertService {
                 return;
             }
 
-            String subject = "Re: [" + shortId(ticket.getId()) + "] " + ticket.getSubject();
+            String subject = replySubject(ticket);
             String body = buildReplyEmail(ticket, replyBody);
 
             // Deliberately NOT attributed to the ticket's institute. notification-service resolves
@@ -123,7 +140,7 @@ public class SupportAlertService {
                 return;
             }
 
-            String subject = "Resolved: [" + shortId(ticket.getId()) + "] " + ticket.getSubject();
+            String subject = resolvedSubject(ticket);
             String body = buildResolvedEmail(ticket);
 
             sendEmail(subject, body, ticket.getId(),
@@ -178,8 +195,7 @@ public class SupportAlertService {
         if (recipientEmails == null || recipientEmails.isEmpty()) {
             return;
         }
-        String subject = String.format("[Support][%s][%s] %s",
-                ticket.getPlanAtCreation(), ticket.getPriority(), ticket.getSubject());
+        String subject = newTicketSubject(ticket);
         String body = buildNewTicketEmail(ticket, firstMessageBody);
         List<EmailUserDto> users = new ArrayList<>();
         for (String email : recipientEmails) {
@@ -203,47 +219,230 @@ public class SupportAlertService {
         return new EmailUserDto(userId, email, new HashMap<>());
     }
 
+    /**
+     * The team-facing alert when an institute raises an issue. Same brand chrome as the customer
+     * mails, but the content is triage information — plan and priority first, because that is what
+     * decides who picks it up and how fast.
+     */
     private String buildNewTicketEmail(SupportTicket ticket, String firstMessageBody) {
-        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#1f2937\">"
-                + "<h2 style=\"margin:0 0 12px\">New support issue</h2>"
-                + row("Institute", safe(ticket.getInstituteName(), ticket.getInstituteId()))
-                + row("Plan", String.valueOf(ticket.getPlanAtCreation()))
-                + row("Priority", String.valueOf(ticket.getPriority()))
-                + row("Category", String.valueOf(ticket.getCategory()))
-                + row("Raised by", safe(ticket.getRaisedByName(), ticket.getRaisedByEmail()))
-                + row("Subject", ticket.getSubject())
-                + "<div style=\"margin-top:12px;padding:12px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap\">"
-                + escape(firstMessageBody) + "</div>"
-                + "<p style=\"margin-top:16px;color:#6b7280\">Open it in the support console to reply.</p>"
+        String meta = metaRow("Institute", safe(ticket.getInstituteName(), ticket.getInstituteId()))
+                + metaRow("Raised by", safe(ticket.getRaisedByName(),
+                        safe(ticket.getRaisedByEmail(), "unknown")))
+                + metaRow("Plan", String.valueOf(ticket.getPlanAtCreation()))
+                + metaRow("Category", String.valueOf(ticket.getCategory()));
+
+        String body =
+                priorityPill(ticket)
+                + "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\""
+                + " style=\"width:100%;margin:0 0 16px;font-size:14px;line-height:1.6\">"
+                + meta + "</table>"
+                + "<div style=\"margin:0 0 4px;font-size:13px;font-weight:600;color:#6b7280\">"
+                + "Reported issue</div>"
+                + "<div style=\"margin:0;padding:2px 0 2px 14px;border-left:3px solid " + BRAND + ";"
+                + "font-size:15px;line-height:1.6;color:#111827;white-space:pre-wrap\">"
+                + escape(firstMessageBody) + "</div>";
+
+        return shell("New support issue", ticket, body,
+                "Open it in the support console to reply.");
+    }
+
+    /** A coloured pill, so MAJOR is obvious at a glance in a crowded inbox. */
+    private String priorityPill(SupportTicket ticket) {
+        boolean major = ticket.getPriority() == TicketPriority.MAJOR;
+        String bg = major ? "#fef2f2" : "#f3f4f6";
+        String fg = major ? "#b91c1c" : "#4b5563";
+        return "<div style=\"margin:0 0 14px\">"
+                + "<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;"
+                + "background:" + bg + ";color:" + fg + ";font-size:12px;font-weight:700;"
+                + "letter-spacing:.04em\">" + String.valueOf(ticket.getPriority()) + "</span>"
                 + "</div>";
+    }
+
+    /** Table row rather than a div pair — labels and values stay aligned across mail clients. */
+    private String metaRow(String label, String value) {
+        return "<tr>"
+                + "<td style=\"padding:3px 12px 3px 0;color:#6b7280;white-space:nowrap;"
+                + "vertical-align:top\">" + escape(label) + "</td>"
+                + "<td style=\"padding:3px 0;color:#111827;font-weight:600\">"
+                + escape(value) + "</td></tr>";
     }
 
     private String buildResolvedEmail(SupportTicket ticket) {
         boolean closed = ticket.getStatus() == TicketStatus.CLOSED;
-        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#1f2937\">"
-                + "<p>Your issue <strong>" + escape(ticket.getSubject()) + "</strong> has been "
-                + (closed ? "closed" : "marked resolved") + " by the Vacademy support team.</p>"
-                + "<p style=\"margin-top:16px;color:#6b7280\">If it is not fully sorted, reply from the "
-                + "Support panel in your dashboard and the issue will reopen.</p>"
-                + "</div>";
+        String body =
+                "<p style=\"margin:0 0 4px;font-size:15px;line-height:1.6;color:#374151\">"
+                + "We've " + (closed ? "closed this issue" : "marked this issue resolved") + ". "
+                + "If it isn't fully sorted, reply from the Support panel and it reopens "
+                + "automatically — there's no need to raise a new one.</p>";
+        return emailShell(closed ? "Issue closed" : "Issue resolved", ticket, body);
     }
 
     private String buildReplyEmail(SupportTicket ticket, String replyBody) {
-        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#1f2937\">"
-                + "<p>You have a new reply from the Vacademy support team on your issue "
-                + "<strong>" + escape(ticket.getSubject()) + "</strong>:</p>"
-                + "<div style=\"margin-top:8px;padding:12px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap\">"
+        String body =
+                "<p style=\"margin:0 0 14px;font-size:15px;line-height:1.6;color:#374151\">"
+                + "Our support team has replied to your issue:</p>"
+                // Left rule rather than a grey fill: it reads as a quote and survives dark mode,
+                // where a light background can leave dark text on dark.
+                + "<div style=\"margin:0 0 16px;padding:2px 0 2px 14px;border-left:3px solid " + BRAND + ";"
+                + "font-size:15px;line-height:1.6;color:#111827;white-space:pre-wrap\">"
                 + escape(replyBody) + "</div>"
-                + "<p style=\"margin-top:16px;color:#6b7280\">Reply from the Support panel in your dashboard.</p>"
+                + "<p style=\"margin:0;font-size:14px;line-height:1.6;color:#6b7280\">"
+                + "You can reply from the Support panel in your dashboard.</p>";
+        return emailShell("New reply from support", ticket, body);
+    }
+
+    /** Vacademy orange, taken from vacademy-logo.svg and the dashboard's --primary token. */
+    private static final String BRAND = "#ED7424";
+
+    /**
+     * One shell for every customer-facing support mail, so a reply and a resolution look like the
+     * same conversation. Styles are inline and the layout is a single centred column: mail clients
+     * strip &lt;style&gt; blocks and handle floats badly.
+     */
+    /**
+     * Customer-facing wrapper: brand chrome, then a CTA, a sign-off, and a footer explaining why
+     * they received it. The team alert uses {@link #shell} directly — it wants neither.
+     */
+    private String emailShell(String heading, SupportTicket ticket, String bodyHtml) {
+        String body = bodyHtml
+                + ctaButton()
+                + "<div style=\"padding:18px 0 0;font-size:15px;line-height:1.6;color:#374151\">"
+                + "Regards,<br><span style=\"font-weight:600;color:#111827\">Vacademy Support</span>"
+                + "</div>";
+        // Raw, not escaped: shell() escapes the footer, and escaping twice would render an
+        // institute called "Kids & Co" as "Kids &amp;amp; Co".
+        String footer = "You're receiving this because you raised an issue with Vacademy support"
+                + (StringUtils.hasText(ticket.getInstituteName())
+                        ? " for " + ticket.getInstituteName() : "")
+                + ".";
+        return shell(heading, ticket, body, footer);
+    }
+
+    /**
+     * Brand chrome shared by every support mail: rule, centred logo, heading, the issue and its
+     * ticket number, then the caller's body and footer. Styles are inline and the layout is a
+     * single centred column — mail clients strip &lt;style&gt; blocks and handle floats badly.
+     */
+    private String shell(String heading, SupportTicket ticket, String bodyHtml, String footerText) {
+        String subject = escape(ticket.getSubject());
+
+        return "<div style=\"margin:0;padding:24px 12px;background:#f6f7f9;"
+                + "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif\">"
+                + "<div style=\"max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;"
+                + "border-radius:12px;overflow:hidden\">"
+
+                // Brand rule. A flat coloured bar renders identically everywhere, unlike a gradient.
+                + "<div style=\"height:4px;background:" + BRAND + ";font-size:0;line-height:0\">&nbsp;</div>"
+
+                // Logo gets its own centred band; the copy below stays left-aligned, which is
+                // easier to read than a fully centred email.
+                + "<div style=\"padding:28px 24px 22px;text-align:center\">" + brandMark() + "</div>"
+
+                + "<div style=\"padding:0 24px\">"
+                + "<h1 style=\"margin:0 0 6px;font-size:20px;line-height:1.3;color:#111827;"
+                + "font-weight:600\">" + escape(heading) + "</h1>"
+                // The issue title is what the reader recognises — the id is for us, so it is
+                // demoted to the footer instead of leading the subject line.
+                + "<div style=\"margin:0 0 6px;font-size:15px;color:#4b5563\">"
+                + "Issue: <span style=\"color:#111827;font-weight:600\">" + subject + "</span></div>"
+                // The reference sits with the issue rather than buried in the footer — it is the
+                // thing the reader quotes back when they get in touch.
+                + (StringUtils.hasText(ticket.getTicketNumber())
+                        ? "<div style=\"margin:0 0 18px;font-size:13px;color:#6b7280\">Ticket "
+                          + "<span style=\"font-weight:600;color:" + BRAND + "\">"
+                          + escape(ticket.getTicketNumber()) + "</span></div>"
+                        : "<div style=\"margin:0 0 18px\"></div>")
+                + "</div>"
+
+                + "<div style=\"padding:0 24px 22px\">" + bodyHtml + "</div>"
+
+                // No ticket number here — it is shown beside the issue above, and repeating it
+                // twice in a short mail just adds noise.
+                + "<div style=\"padding:14px 24px;border-top:1px solid #f0f1f3;background:#fafafa;"
+                + "font-size:12px;line-height:1.6;color:#9ca3af\">"
+                + escape(footerText)
+                + "</div>"
+
+                + "</div></div>";
+    }
+
+    /**
+     * The wordmark. A text wordmark is the default rather than the fallback: the logo is an SVG,
+     * which Gmail strips outright, and image blocking is common enough that a picture-only header
+     * often renders as an empty box. Set {@code support.brand.logo.url} to a hosted PNG to use the
+     * real mark — the alt text keeps the header readable even when images are blocked.
+     */
+    private String brandMark() {
+        if (StringUtils.hasText(logoUrl)) {
+            // width+height attributes as well as CSS: Outlook ignores the style and would
+            // otherwise draw the image at its full 256px. inline-block so the parent's
+            // text-align:center actually centres it — margin:auto is unreliable in Outlook.
+            return "<img src=\"" + logoUrl + "\" alt=\"Vacademy\" width=\"64\" height=\"64\""
+                    + " style=\"width:64px;height:64px;display:inline-block;border:0;outline:none;"
+                    + "text-decoration:none\">";
+        }
+        return "<div style=\"font-size:26px;font-weight:700;letter-spacing:-.01em;color:" + BRAND + "\">"
+                + "Vacademy</div>";
+    }
+
+    /** Rendered only when a portal URL is configured — a dead button is worse than none. */
+    private String ctaButton() {
+        if (!StringUtils.hasText(portalUrl)) {
+            return "";
+        }
+        return "<div style=\"padding:4px 24px 0\">"
+                + "<a href=\"" + portalUrl + "\" style=\"display:inline-block;padding:11px 20px;"
+                + "background:" + BRAND + ";color:#ffffff;font-size:14px;font-weight:600;"
+                + "text-decoration:none;border-radius:8px\">Open the Support panel</a>"
                 + "</div>";
     }
 
-    private String row(String label, String value) {
-        return "<div style=\"margin:4px 0\"><strong>" + label + ":</strong> " + escape(value) + "</div>";
-    }
 
     private String safe(String primary, String fallback) {
         return StringUtils.hasText(primary) ? primary : (fallback == null ? "" : fallback);
+    }
+
+    /**
+     * Subject lines. The issue title leads because that is what the reader recognises; the
+     * reference trails in brackets, where it still threads the conversation in Gmail.
+     * Kept as named methods so they can be asserted on without dispatching a real mail.
+     */
+    /**
+     * Team-facing: urgency, then who, then what, with the reference last.
+     *
+     * <p>Ordered for a crowded inbox. Gmail shows roughly 70 characters on desktop and 35 on
+     * mobile, so priority and institute lead — they decide whether a mail is opened now. The old
+     * "[Support][PLAN][PRIORITY] subject" form spent its opening characters on three bracket
+     * groups, never named the institute at all, and buried the issue in the middle. The plan is
+     * dropped rather than shortened: it is derivable from the institute and was crowding out the
+     * two fields that actually drive triage.
+     */
+    String newTicketSubject(SupportTicket ticket) {
+        return String.format("%s · %s · %s [%s]",
+                ticket.getPriority(),
+                safe(ticket.getInstituteName(), ticket.getInstituteId()),
+                ticket.getSubject(),
+                reference(ticket));
+    }
+
+    String replySubject(SupportTicket ticket) {
+        return "Re: " + ticket.getSubject() + " [" + reference(ticket) + "]";
+    }
+
+    String resolvedSubject(SupportTicket ticket) {
+        return "Resolved: " + ticket.getSubject() + " [" + reference(ticket) + "]";
+    }
+
+    /**
+     * The reference to quote in a subject line. Prefers the human-facing ticket number; falls back
+     * to a UUID fragment only for rows that predate numbering or whose allocation failed, so the
+     * subject always carries something stable enough to keep the thread together.
+     */
+    private String reference(SupportTicket ticket) {
+        if (StringUtils.hasText(ticket.getTicketNumber())) {
+            return ticket.getTicketNumber();
+        }
+        return "#" + shortId(ticket.getId());
     }
 
     private String shortId(String id) {

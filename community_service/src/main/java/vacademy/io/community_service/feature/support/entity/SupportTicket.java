@@ -49,6 +49,10 @@ public class SupportTicket {
     @Column(name = "raised_by_role", length = 50)
     private String raisedByRole;
 
+    /** Human-facing reference (VAC-001, … VAC-1000). Allocated from a global Postgres sequence. */
+    @Column(name = "ticket_number", length = 32)
+    private String ticketNumber;
+
     @Column(name = "subject", length = 500, nullable = false)
     private String subject;
 

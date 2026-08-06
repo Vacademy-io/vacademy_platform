@@ -101,6 +101,7 @@ public class SupportTicketService {
                 .raisedByName(raiserName)
                 .raisedByEmail(raiserEmail)
                 .raisedByRole(raisedByRole)
+                .ticketNumber(allocateTicketNumber())
                 .subject(request.getSubject().trim())
                 .category(category)
                 .priority(priority)
@@ -245,6 +246,7 @@ public class SupportTicketService {
                 .raisedByName(hasReporter ? trimToNull(request.getReportedByName()) : "Vacademy Support")
                 .raisedByEmail(hasReporter ? trimToNull(request.getReportedByEmail()) : null)
                 .raisedByRole(hasReporter ? "ADMIN" : "SUPPORT")
+                .ticketNumber(allocateTicketNumber())
                 .subject(request.getSubject().trim())
                 .category(category)
                 .priority(priority)
@@ -469,6 +471,23 @@ public class SupportTicketService {
         }
         int count = attachments == null ? 0 : attachments.size();
         return count == 1 ? "(sent an attachment)" : "(sent " + count + " attachments)";
+    }
+
+    /**
+     * Allocate the next human-facing reference, e.g. VAC-001 … VAC-999, VAC-1000.
+     *
+     * <p>Zero-padded to three digits and then allowed to grow — {@code %03d} pads to a minimum
+     * width and never truncates, so 1000 formats as "1000", not "100". Best-effort: a ticket
+     * without a number is still a usable ticket, so a sequence hiccup must not fail creation.
+     */
+    private String allocateTicketNumber() {
+        try {
+            Long next = ticketRepository.nextTicketNumber();
+            return next == null ? null : String.format("VAC-%03d", next);
+        } catch (Exception e) {
+            log.error("Could not allocate a ticket number: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** Trimmed value, or null when blank — keeps empty strings out of the raisedBy* columns. */
@@ -701,6 +720,7 @@ public class SupportTicketService {
                 .raisedByName(t.getRaisedByName())
                 .raisedByEmail(t.getRaisedByEmail())
                 .raisedByRole(t.getRaisedByRole())
+                .ticketNumber(t.getTicketNumber())
                 .subject(t.getSubject())
                 .category(t.getCategory() != null ? t.getCategory().name() : null)
                 .priority(t.getPriority() != null ? t.getPriority().name() : null)

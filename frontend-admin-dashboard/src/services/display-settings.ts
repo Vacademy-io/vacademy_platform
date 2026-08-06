@@ -30,6 +30,218 @@ interface CachedDisplaySettings {
     instituteId: string;
 }
 
+const CUSTOM_ROLE_KEY_PREFIX = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_`;
+
+/**
+ * Separator between role ids inside a custom-role key. A user can hold more
+ * than one staff role (e.g. COUNSELLOR for CRM + Upselling for the library),
+ * and each role carries its own saved config under `ROLE_DISPLAY_SETTINGS`.
+ * Picking just one of them meant everything the OTHER role granted stayed
+ * invisible, so the key carries every role the user holds and the configs are
+ * unioned on read. Neither numeric ids nor UUIDs contain '+'.
+ */
+const ROLE_ID_SEPARATOR = '+';
+
+/**
+ * Build the display-settings key for the custom role(s) a user holds.
+ * A single id yields exactly the key shape used before multi-role support
+ * (`CUSTOM_ROLE_DISPLAY_SETTINGS_KEY_<id>`), so single-role users — the vast
+ * majority — read and cache under the same key as always.
+ */
+export function buildCustomRoleDisplaySettingsKey(roleIds: Array<string | number>): string {
+    const ids: string[] = [];
+    (roleIds || []).forEach((raw) => {
+        const id = String(raw ?? '').trim();
+        if (id && !ids.includes(id)) ids.push(id);
+    });
+    if (ids.length === 0) return CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
+    return `${CUSTOM_ROLE_KEY_PREFIX}${ids.join(ROLE_ID_SEPARATOR)}`;
+}
+
+/** Role ids encoded in a custom-role key; [] for admin/teacher keys. */
+function parseCustomRoleIds(role: RoleKey): string[] {
+    if (!role.startsWith(CUSTOM_ROLE_KEY_PREFIX)) return [];
+    return role.slice(CUSTOM_ROLE_KEY_PREFIX.length).split(ROLE_ID_SEPARATOR).filter(Boolean);
+}
+
+// The `ROLE_DISPLAY_SETTINGS` blob is untyped on the wire and is walked
+// generically below, so this mirrors the `any` the fetch path already uses for
+// it rather than fighting a recursive JSON type through every branch.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsonValue = any;
+
+function isPlainObject(value: unknown): value is Record<string, JsonValue> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+// `locked` restricts rather than grants, so it flips the union: a tab is locked
+// only while EVERY role locks it. Any role that leaves it open unlocks it.
+const AND_BOOLEAN_KEYS = new Set(['locked']);
+// Position fields take the earliest slot any role gave the item.
+const MIN_NUMBER_KEYS = new Set(['order']);
+// Deny-lists: an entry survives only while EVERY role denies it.
+const INTERSECTED_ARRAY_KEYS = new Set(['hiddenColumns']);
+// Maps whose missing keys mean "visible". A role that never hid an entry must
+// not be counted as a vote to hide it.
+const ABSENT_MEANS_VISIBLE_MAP_KEYS = new Set(['visibleRoles']);
+
+function uniqueKeys(objects: Array<Record<string, JsonValue>>): string[] {
+    const keys: string[] = [];
+    objects.forEach((obj) =>
+        Object.keys(obj).forEach((k) => {
+            if (!keys.includes(k)) keys.push(k);
+        })
+    );
+    return keys;
+}
+
+/**
+ * Union one field across the roles a user holds. `values` has one slot per
+ * role, in key order, holding `undefined` where that role's blob omits the
+ * field — index 0 is the primary role (the first one the admin configured).
+ */
+function unionRoleValues(key: string, values: JsonValue[]): JsonValue {
+    // Handled before the single-opinion shortcut below: absence is itself a
+    // meaningful vote for these maps, so a role that omits the key still counts.
+    if (ABSENT_MEANS_VISIBLE_MAP_KEYS.has(key)) {
+        const objects = values.filter(isPlainObject);
+        if (objects.length === 0) return undefined;
+        const out: Record<string, JsonValue> = {};
+        uniqueKeys(objects).forEach((k) => {
+            out[k] = values.some((v) => !isPlainObject(v) || v[k] !== false);
+        });
+        return out;
+    }
+
+    const present = values.filter((v) => v !== undefined && v !== null);
+    if (present.length === 0) return undefined;
+    // Only one role expressed an opinion — take it verbatim rather than
+    // inventing a default for the roles that stayed silent.
+    if (present.length === 1) return present[0];
+
+    const first = present[0];
+
+    if (typeof first === 'boolean') {
+        const bools = present.filter((v) => typeof v === 'boolean') as boolean[];
+        if (bools.length === 0) return first;
+        return AND_BOOLEAN_KEYS.has(key) ? bools.every(Boolean) : bools.some(Boolean);
+    }
+
+    if (typeof first === 'number') {
+        const nums = present.filter((v) => typeof v === 'number') as number[];
+        if (nums.length === 0) return first;
+        // Un-unionable numbers fall to the primary role.
+        return MIN_NUMBER_KEYS.has(key) ? Math.min(...nums) : first;
+    }
+
+    // Routes, default-tab ids and other scalars can't be combined — the primary
+    // role decides.
+    if (typeof first === 'string') return first;
+
+    if (Array.isArray(first)) {
+        const arrays = present.filter(Array.isArray) as JsonValue[][];
+        if (arrays.length === 0) return first;
+
+        if (INTERSECTED_ARRAY_KEYS.has(key)) {
+            return arrays.reduce((acc, arr) => acc.filter((item) => arr.includes(item)));
+        }
+
+        // Lists of identified items (sidebar tabs, categories, widgets, custom
+        // buttons): union by id, and union each item field-by-field.
+        const hasIds = arrays.some((arr) =>
+            arr.some((item) => isPlainObject(item) && item.id !== undefined && item.id !== null)
+        );
+        if (hasIds) {
+            const ids: string[] = [];
+            arrays.forEach((arr) =>
+                arr.forEach((item) => {
+                    if (!isPlainObject(item) || item.id === undefined || item.id === null) return;
+                    const id = String(item.id);
+                    if (!ids.includes(id)) ids.push(id);
+                })
+            );
+            return ids.map((id) =>
+                unionRoleObjects(
+                    arrays.map((arr) =>
+                        arr.find((item) => isPlainObject(item) && String(item.id) === id)
+                    )
+                )
+            );
+        }
+
+        // Allow-lists (enabled custom fields, assigned sub-orgs…): union.
+        const out: JsonValue[] = [];
+        arrays.forEach((arr) =>
+            arr.forEach((item) => {
+                if (!out.includes(item)) out.push(item);
+            })
+        );
+        return out;
+    }
+
+    if (isPlainObject(first)) return unionRoleObjects(values);
+
+    return first;
+}
+
+function unionRoleObjects(objects: Array<JsonValue | undefined>): JsonValue {
+    const present = objects.filter(isPlainObject);
+    if (present.length === 0) return undefined;
+    const out: Record<string, JsonValue> = {};
+    uniqueKeys(present).forEach((k) => {
+        const value = unionRoleValues(
+            k,
+            objects.map((obj) => (isPlainObject(obj) ? obj[k] : undefined))
+        );
+        if (value !== undefined) out[k] = value;
+    });
+    return out;
+}
+
+/**
+ * Exactly one sidebar category may be the landing default. Unioning two roles
+ * that each named their own default would flag both, so keep the first one (in
+ * display order) that is both flagged and visible, else the first visible.
+ */
+function normalizeCategoryDefault(categories: JsonValue[]): JsonValue[] {
+    if (!Array.isArray(categories) || categories.length === 0) return categories;
+    const ordered = categories
+        .filter(isPlainObject)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (ordered.length === 0) return categories;
+    const chosen =
+        ordered.find((c) => c.default && c.visible !== false) ||
+        ordered.find((c) => c.visible !== false) ||
+        ordered[0];
+    return categories.map((c) => (isPlainObject(c) ? { ...c, default: c === chosen } : c));
+}
+
+/**
+ * Narrow the raw `ROLE_DISPLAY_SETTINGS` blob to the role(s) in the key.
+ *
+ * Roles the admin never configured contribute nothing — folding in the
+ * wide-open baseline defaults for them would silently undo the restrictions the
+ * configured role does carry. Returns null when no role in the key has a saved
+ * config, which puts the caller back on plain defaults exactly as before.
+ */
+function narrowToRoleDisplaySettings(blob: JsonValue, roleIds: string[]): JsonValue | null {
+    if (!isPlainObject(blob)) return null;
+    const configured = roleIds
+        .map((id) => blob[id])
+        .filter((cfg) => isPlainObject(cfg) && Object.keys(cfg).length > 0);
+
+    if (configured.length === 0) return null;
+    // Single-role users take the untouched blob — identical to the pre-merge path.
+    if (configured.length === 1) return configured[0];
+
+    const merged = unionRoleObjects(configured);
+    if (isPlainObject(merged) && Array.isArray(merged.sidebarCategories)) {
+        merged.sidebarCategories = normalizeCategoryDefault(merged.sidebarCategories);
+    }
+    return merged;
+}
+
 function getLocalStorageKey(role: RoleKey, instituteId?: string | null): string {
     let prefix: string = StorageKey.TEACHER_DISPLAY_SETTINGS;
     if (role === ADMIN_DISPLAY_SETTINGS_KEY) prefix = StorageKey.ADMIN_DISPLAY_SETTINGS;
@@ -921,8 +1133,7 @@ export async function getDisplaySettings(
         }
 
         if (isCustomRole && serverData) {
-            const roleId = role.split('_').pop() || '';
-            serverData = serverData[roleId] || null;
+            serverData = narrowToRoleDisplaySettings(serverData, parseCustomRoleIds(role));
         }
 
         const merged = mergeDisplayWithDefaults(
@@ -980,7 +1191,11 @@ export async function saveDisplaySettings(
     let finalSettingData: any = settings;
 
     if (isCustomRole) {
-        const roleId = role.split('_').pop() || '';
+        // Saving always targets ONE role — the settings page builds a single-id
+        // key from the role being edited. Merged keys only ever appear on the
+        // read path, so take the first id rather than writing one blob under
+        // several roles.
+        const roleId = parseCustomRoleIds(role)[0] || '';
         let existingData: Record<string, any> = {};
 
         try {

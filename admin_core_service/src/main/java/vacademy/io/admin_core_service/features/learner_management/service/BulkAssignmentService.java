@@ -30,7 +30,13 @@ import vacademy.io.admin_core_service.features.fee_management.repository.FeeType
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
@@ -94,10 +100,17 @@ public class BulkAssignmentService {
     private final AssignedFeeValueRepository assignedFeeValueRepository;
     private final AftInstallmentRepository aftInstallmentRepository;
     private final SubOrgService subOrgService;
+    private final InstituteSubOrgRepository instituteSubOrgRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
     private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
+
+    // @Lazy: the workflow engine reaches back into enrollment-side beans, so a constructor
+    // injection here closes a Spring bean cycle that only fails at context startup.
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private WorkflowTriggerService workflowTriggerService;
 
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
@@ -705,6 +718,11 @@ public class BulkAssignmentService {
                 log.warn("Failed to trigger enrollment workflow for userId={}: {}",
                         userId, e.getMessage());
             }
+
+            // Sub-org members enrolled here must fire the same SUB_ORG_MEMBER_ENROLLMENT
+            // automation the /sub-org/v1/add-member route fires.
+            triggerSubOrgMemberEnrollmentWorkflow(
+                    instituteId, userDTO, config.getPackageSession(), subOrgRoles, adminUserId);
         } else {
             // Fallback: create mapping directly if userDTO is not available. Stamp sub-org
             // fields here too — linkStudentToInstitute (used above) reads them off
@@ -941,6 +959,9 @@ public class BulkAssignmentService {
                 log.warn("Failed to trigger enrollment workflow for re-enrollment userId={}: {}",
                         userId, e.getMessage());
             }
+
+            triggerSubOrgMemberEnrollmentWorkflow(
+                    instituteId, userDTO, config.getPackageSession(), subOrgRoles, adminUserId);
         }
 
         log.info("Re-enrolled: userId={}, packageSession={}, userPlan={}, mapping={}",
@@ -1004,6 +1025,18 @@ public class BulkAssignmentService {
         if (packageSession == null || !Boolean.TRUE.equals(packageSession.getIsOrgAssociated())) {
             return null;
         }
+
+        // Admin-picked sub-org (the "Enroll Learner" wizard's sub-org step) wins over the
+        // custom-field path below. That path always mints a NEW Institute when the user has no
+        // prior mapping in this PS, so without an explicit choice every admin enrollment would
+        // spawn a duplicate organization instead of joining the one the admin selected.
+        SubOrgResolution explicit = resolveExplicitSubOrg(assignment, instituteId);
+        if (explicit != null) {
+            log.info("Using admin-selected sub-org id={} roles={} for userId={} packageSession={}",
+                    explicit.id(), explicit.roles(), userId, packageSession.getId());
+            return explicit;
+        }
+
         List<CustomFieldValueDTO> customFieldValues = mergeCustomFields(
                 newUserData != null ? newUserData.getCustomFieldValues() : null,
                 assignment != null ? assignment.getCustomFieldValues() : null);
@@ -1018,6 +1051,122 @@ public class BulkAssignmentService {
         log.info("Resolved sub-org id={} roles={} for userId={} packageSession={}",
                 subOrg.getId(), roles, userId, packageSession.getId());
         return new SubOrgResolution(subOrg, roles);
+    }
+
+    /**
+     * Resolves the sub-org the admin explicitly chose for this assignment — either an existing
+     * one ({@code subOrgId}) or a brand-new one ({@code newSubOrg}). Returns null when the
+     * assignment carries neither, letting the caller fall back to custom-field resolution.
+     *
+     * <p>A newly created sub-org is also linked to the parent institute via {@code institute_suborg}
+     * so it shows up on the Manage Sub-Orgs listing — unlike the learner-side custom-field path,
+     * which only saves the bare Institute row.
+     */
+    private SubOrgResolution resolveExplicitSubOrg(AssignmentItemDTO assignment, String instituteId) {
+        if (assignment == null) {
+            return null;
+        }
+
+        if (StringUtils.hasText(assignment.getSubOrgId())) {
+            Institute subOrg = instituteRepository.findById(assignment.getSubOrgId())
+                    .orElseThrow(() -> new VacademyException(
+                            "Selected sub-organization not found: " + assignment.getSubOrgId()));
+            return new SubOrgResolution(subOrg, normalizeSubOrgRoles(assignment.getSubOrgRoles()));
+        }
+
+        AssignmentItemDTO.NewSubOrgDTO newSubOrg = assignment.getNewSubOrg();
+        if (newSubOrg == null || !StringUtils.hasText(newSubOrg.getName())) {
+            return null;
+        }
+
+        Institute created = instituteRepository.save(Institute.builder()
+                .instituteName(newSubOrg.getName().trim())
+                .email(StringUtils.hasText(newSubOrg.getEmail()) ? newSubOrg.getEmail().trim() : null)
+                .mobileNumber(StringUtils.hasText(newSubOrg.getMobileNumber())
+                        ? newSubOrg.getMobileNumber().trim() : null)
+                .build());
+
+        try {
+            InstituteSubOrg link = new InstituteSubOrg();
+            link.setInstituteId(instituteId);
+            link.setSuborgId(created.getId());
+            link.setName(created.getInstituteName());
+            link.setStatus(StatusEnum.ACTIVE.name());
+            instituteSubOrgRepository.save(link);
+        } catch (Exception e) {
+            // The enrollment itself is already valid without the parent link; losing it only
+            // hides the sub-org from the Manage Sub-Orgs listing, so don't fail the row for it.
+            log.warn("Failed to link new sub-org {} to institute {}: {}",
+                    created.getId(), instituteId, e.getMessage());
+        }
+
+        log.info("Created sub-org id={} name={} for institute {} from bulk assign",
+                created.getId(), created.getInstituteName(), instituteId);
+        return new SubOrgResolution(created, normalizeSubOrgRoles(assignment.getSubOrgRoles()));
+    }
+
+    /**
+     * Falls back to ADMIN,LEARNER (the same default {@code InstituteCustomFieldMapper} applies when
+     * the "admin only access" answer is absent) and normalises casing/spacing of an explicit value.
+     */
+    private String normalizeSubOrgRoles(String roles) {
+        if (!StringUtils.hasText(roles)) {
+            return SubOrgRoles.ADMIN.name() + "," + SubOrgRoles.LEARNER.name();
+        }
+        return Arrays.stream(roles.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .map(r -> r.toUpperCase(Locale.ROOT))
+                .distinct()
+                .collect(Collectors.joining(","));
+    }
+
+    /**
+     * Fires SUB_ORG_MEMBER_ENROLLMENT with the exact context shape the /sub-org/v1/add-member route
+     * publishes (member / packageSessionIds / subOrgAdmin / packageId), so workflows built for the
+     * sub-org members page fire identically when the same person is enrolled from the admin
+     * "Enroll Learner" wizard.
+     *
+     * <p>Only fires for members who actually get learner access — an ADMIN-only member manages the
+     * organization rather than consuming the course, and the member-enrollment automations
+     * (welcome mail, LMS user creation, drip) are meant for learners.
+     */
+    private void triggerSubOrgMemberEnrollmentWorkflow(
+            String instituteId, UserDTO userDTO, PackageSession packageSession,
+            String subOrgRoles, String adminUserId) {
+        if (userDTO == null || packageSession == null || !hasLearnerRole(subOrgRoles)) {
+            return;
+        }
+        try {
+            UserDTO adminDTO = null;
+            if (StringUtils.hasText(adminUserId)) {
+                List<UserDTO> admins = authService.getUsersFromAuthServiceByUserIds(List.of(adminUserId));
+                adminDTO = CollectionUtils.isEmpty(admins) ? null : admins.get(0);
+            }
+
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("member", userDTO);
+            contextData.put("packageSessionIds", packageSession.getId());
+            contextData.put("subOrgAdmin", adminDTO);
+            contextData.put("packageId", packageSession.getPackageEntity() != null
+                    ? packageSession.getPackageEntity().getId() : null);
+
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
+                    packageSession.getId(), instituteId, contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger SUB_ORG_MEMBER_ENROLLMENT for userId={} packageSession={}: {}",
+                    userDTO.getId(), packageSession.getId(), e.getMessage());
+        }
+    }
+
+    private boolean hasLearnerRole(String subOrgRoles) {
+        if (!StringUtils.hasText(subOrgRoles)) {
+            return false;
+        }
+        return Arrays.stream(subOrgRoles.split(","))
+                .map(String::trim)
+                .anyMatch(SubOrgRoles.LEARNER.name()::equalsIgnoreCase);
     }
 
     /**

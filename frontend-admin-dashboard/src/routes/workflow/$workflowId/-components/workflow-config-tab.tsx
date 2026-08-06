@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    getTemplatesByTypeQuery,
+    getWhatsAppTemplatesForPreviewQuery,
     getWorkflowRawQuery,
+    syncWhatsAppTemplatesFromMeta,
     updateNodeTemplate,
     WorkflowRawNode,
 } from '@/services/workflow-service';
@@ -14,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import {
     FloppyDisk,
     ArrowCounterClockwise,
@@ -109,8 +111,12 @@ function normalEditableSections(configText: string): {
             cfg.templateVars && typeof cfg.templateVars === 'object' && !Array.isArray(cfg.templateVars)
                 ? (cfg.templateVars as Record<string, string>)
                 : null;
+        // A send node counts as configurable when the admin can edit wording, and
+        // as worth showing when it at least names a template (they get to read
+        // what goes out, even if every value is auto-filled).
         const message =
-            !!vars && Object.values(vars).some((v) => !String(v ?? '').trim().startsWith('#'));
+            (!!vars && Object.values(vars).some((v) => !isAutoFilledVar(v))) ||
+            typeof cfg.templateName === 'string';
         const params =
             cfg.prebuiltKey && cfg.params && typeof cfg.params === 'object' && !Array.isArray(cfg.params)
                 ? (cfg.params as Record<string, unknown>)
@@ -610,10 +616,25 @@ function OutputDataPointsEditor({
  * up front; values starting with '#' are SpEL formulas and live in the advanced
  * fold. Writes into the same config text as the raw JSON editor.
  */
+/**
+ * True when a template variable is filled in by the system rather than typed by
+ * the admin. Two forms mean "not message text":
+ *   • a formula — starts with '#' (SpEL);
+ *   • a bare field name like "name" or "chargeDate" — the send handler looks
+ *     these up on the learner record before falling back to a literal.
+ * Anything with a space or punctuation is real message text and stays editable.
+ */
+function isAutoFilledVar(value: unknown): boolean {
+    const trimmed = String(value ?? '').trim();
+    if (trimmed.startsWith('#')) return true;
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed);
+}
+
 /** Minimal shape of a WhatsApp template as served by the templates API. */
 type WhatsAppTemplateInfo = {
     name: string;
     content?: string;
+    status?: string;
     dynamic_parameters?: string;
 };
 
@@ -644,7 +665,7 @@ function TemplateBodyPreview({
                 if (!match) return <span key={i}>{segment}</span>;
                 const key = match[1] ?? '';
                 const value = vars[key];
-                const isFormula = String(value ?? '').trim().startsWith('#');
+                const isFormula = isAutoFilledVar(value);
                 if (value != null && !isFormula && String(value).length > 0) {
                     return (
                         <span key={i} className="rounded bg-primary-50 px-1 font-medium text-primary-600">
@@ -667,11 +688,15 @@ function TemplateVarsEditor({
     onChange,
     devMode,
     templates,
+    onSyncTemplates,
+    syncing,
 }: {
     configText: string;
     onChange: (next: string) => void;
     devMode: boolean;
     templates: WhatsAppTemplateInfo[];
+    onSyncTemplates?: () => void;
+    syncing?: boolean;
 }) {
     let parsed: Record<string, unknown> | null = null;
     try {
@@ -692,9 +717,50 @@ function TemplateVarsEditor({
     if (!parsed || !vars) return null;
 
     const cfg = parsed;
+    const template = templates.find((t) => t.name === cfg.templateName);
+    // Which variables does the approved template actually use? Read from its own
+    // body — never a hardcoded list — so editing the template in WhatsApp (adding
+    // a {{7}}, dropping a {{4}}) is reflected here as soon as it is synced.
+    const templateKeys = template?.content
+        ? Array.from(template.content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g))
+              .map((m) => m[1] ?? '')
+              .filter((k, i, all) => all.indexOf(k) === i)
+        : [];
+    // A variable the template needs but this step does not supply. The send would
+    // fail at run time ("Missing required template variable"), so surface it here.
+    const missingKeys = templateKeys.filter((k) => !(k in vars));
+    // Only approved templates can actually be sent on, so those are the choices —
+    // plus whatever this step already points at, so the value is never lost.
+    const approvedNames = templates
+        .filter((t) => (t.status ?? '').toUpperCase() === 'APPROVED')
+        .map((t) => t.name)
+        .sort((a, b) => a.localeCompare(b));
+    const templateChoices =
+        typeof cfg.templateName === 'string' &&
+        cfg.templateName &&
+        !approvedNames.includes(cfg.templateName)
+            ? [cfg.templateName, ...approvedNames]
+            : approvedNames;
+    const unusedKeys =
+        templateKeys.length > 0 ? Object.keys(vars).filter((k) => !templateKeys.includes(k)) : [];
+
     const writeVar = (key: string, value: string) =>
         onChange(
             JSON.stringify({ ...cfg, templateVars: { ...vars, [key]: value } }, null, 2)
+        );
+    const addMissingVars = () =>
+        onChange(
+            JSON.stringify(
+                {
+                    ...cfg,
+                    templateVars: {
+                        ...vars,
+                        ...Object.fromEntries(missingKeys.map((k) => [k, ''])),
+                    },
+                },
+                null,
+                2
+            )
         );
     const writeField = (field: string, value: string) =>
         onChange(JSON.stringify({ ...cfg, [field]: value }, null, 2));
@@ -702,10 +768,10 @@ function TemplateVarsEditor({
     const entries = Object.entries(vars).sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true })
     );
-    const textVars = entries.filter(([, v]) => !String(v ?? '').trim().startsWith('#'));
-    const formulaVars = entries.filter(([, v]) => String(v ?? '').trim().startsWith('#'));
+    const textVars = entries.filter(([, v]) => !isAutoFilledVar(v));
+    const formulaVars = entries.filter(([, v]) => isAutoFilledVar(v));
 
-    if (!devMode && textVars.length === 0) return null;
+    if (!devMode && textVars.length === 0 && typeof cfg.templateName !== 'string') return null;
 
     const renderVar = ([key, value]: [string, string]) => (
         <div key={key} className="flex items-start gap-2">
@@ -745,17 +811,105 @@ function TemplateVarsEditor({
                             className="h-8 flex-1 font-mono text-xs"
                         />
                     ) : (
-                        <span className="text-xs text-neutral-600">{cfg.templateName}</span>
+                        // Simple view: pick from the institute's approved templates. The
+                        // list is whatever WhatsApp has approved — never a fixed set — and
+                        // the current value stays selectable even if it is not in the list
+                        // (e.g. not synced yet), so opening this screen can't blank it.
+                        <MyDropdown
+                            currentValue={cfg.templateName}
+                            dropdownList={templateChoices}
+                            handleChange={(value) => writeField('templateName', value)}
+                            placeholder="Choose a WhatsApp template"
+                            className="h-8 flex-1 text-xs"
+                            contentClassName="max-h-72 overflow-y-auto"
+                        />
                     )}
                 </div>
             )}
-            {/* Full message preview: the approved template body with this node's
-                variable values substituted live. */}
-            <TemplateBodyPreview
-                template={templates.find((t) => t.name === cfg.templateName)}
-                vars={vars}
-            />
+            {/* Full message preview: the template body with this node's variable
+                values substituted live. When the body is unknown here, say so —
+                showing bare {{1}} boxes with no explanation reads as a bug. */}
+            {(() => {
+                if (template?.content) {
+                    return <TemplateBodyPreview template={template} vars={vars} />;
+                }
+                if (typeof cfg.templateName !== 'string' || !cfg.templateName) return null;
+                return (
+                    <div className="mb-2 flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3">
+                        <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-warning-500" />
+                        <div className="flex-1 text-xs text-warning-700">
+                            <p className="font-medium">Message preview unavailable</p>
+                            <p className="mt-0.5 text-warning-600">
+                                {template
+                                    ? 'This WhatsApp template has no body text stored here yet.'
+                                    : 'This WhatsApp template was created in Meta and has not been imported yet.'}{' '}
+                                The message still sends normally — only the preview is missing. Import
+                                your templates to see the full text with your values filled in.
+                            </p>
+                            {onSyncTemplates && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 h-7 gap-1.5 text-xs"
+                                    disabled={syncing}
+                                    onClick={onSyncTemplates}
+                                >
+                                    <ArrowCounterClockwise size={12} />
+                                    {syncing ? 'Importing…' : 'Import templates from WhatsApp'}
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
+            {/* The template changed under this step: it now uses variables this step
+                does not fill in. Sends would fail, so make it fixable in one click. */}
+            {missingKeys.length > 0 && (
+                <div className="mb-2 flex items-start gap-2 rounded-md border border-danger-200 bg-danger-50 p-3">
+                    <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-danger-500" />
+                    <div className="flex-1 text-xs text-danger-700">
+                        <p className="font-medium">
+                            This template needs {missingKeys.length} more{' '}
+                            {missingKeys.length === 1 ? 'value' : 'values'}
+                        </p>
+                        <p className="mt-0.5 text-danger-600">
+                            The WhatsApp template uses{' '}
+                            {missingKeys.map((k) => `{{${k}}}`).join(', ')}, but this step
+                            doesn&apos;t provide {missingKeys.length === 1 ? 'it' : 'them'}. Messages
+                            will fail to send until {missingKeys.length === 1 ? 'it is' : 'they are'}{' '}
+                            filled in.
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 h-7 gap-1.5 text-xs"
+                            onClick={addMissingVars}
+                        >
+                            <Plus size={12} />
+                            Add {missingKeys.length === 1 ? 'it' : 'them'}
+                        </Button>
+                    </div>
+                </div>
+            )}
+            {unusedKeys.length > 0 && (
+                <p className="mb-2 text-caption text-neutral-400">
+                    Not used by this template any more:{' '}
+                    {unusedKeys.map((k) => `{{${k}}}`).join(', ')} — safe to leave or clear.
+                </p>
+            )}
             <div className="space-y-2">{textVars.map(renderVar)}</div>
+            {!devMode && textVars.length === 0 && (
+                <p className="text-caption text-neutral-500">
+                    This message&apos;s wording is fixed by the approved WhatsApp template. The
+                    highlighted parts above are filled in per learner when it sends.
+                </p>
+            )}
+            {!devMode && formulaVars.length > 0 && (
+                <p className="mt-2 text-caption text-neutral-400">
+                    Filled in automatically:{' '}
+                    {formulaVars.map(([key]) => `{{${key}}}`).join(', ')}
+                </p>
+            )}
             {devMode && formulaVars.length > 0 && (
                 <details className="mt-2">
                     <summary className="cursor-pointer text-caption text-neutral-400">
@@ -775,6 +929,8 @@ function NodeConfigEditorCard({
     templates,
     collapsed,
     onToggleCollapsed,
+    onSyncTemplates,
+    syncingTemplates,
 }: {
     workflowId: string;
     node: WorkflowRawNode;
@@ -782,6 +938,8 @@ function NodeConfigEditorCard({
     templates: WhatsAppTemplateInfo[];
     collapsed: boolean;
     onToggleCollapsed: () => void;
+    onSyncTemplates: () => void;
+    syncingTemplates: boolean;
 }) {
     const queryClient = useQueryClient();
 
@@ -996,6 +1154,8 @@ function NodeConfigEditorCard({
                     onChange={setConfigText}
                     devMode={devMode}
                     templates={templates}
+                    onSyncTemplates={onSyncTemplates}
+                    syncing={syncingTemplates}
                 />
                 <QueryParamsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
                 {!devMode && !hasSimpleSettings && (
@@ -1116,11 +1276,20 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
     // Approved WhatsApp templates — used to render full message previews in the
     // Message content panels (body text with variables substituted).
     const { data: instituteDetails } = useQuery(useInstituteQuery());
+    const instituteId = instituteDetails?.id ?? '';
     const { data: whatsappTemplates } = useQuery({
-        ...getTemplatesByTypeQuery(instituteDetails?.id ?? '', 'WHATSAPP'),
-        enabled: !!instituteDetails?.id,
+        ...getWhatsAppTemplatesForPreviewQuery(instituteId),
+        enabled: !!instituteId,
     });
     const templates: WhatsAppTemplateInfo[] = (whatsappTemplates ?? []) as WhatsAppTemplateInfo[];
+    const queryClient = useQueryClient();
+    // Templates authored directly in Meta are unknown here until synced, which
+    // is why a message can show its variables but no body.
+    const syncTemplates = useMutation({
+        mutationFn: () => syncWhatsAppTemplatesFromMeta(instituteId),
+        onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: ['WHATSAPP_TEMPLATES_PREVIEW', instituteId] }),
+    });
     // Simple view by default; the developer toggle persists across visits.
     const [devMode, setDevMode] = useState(
         () => localStorage.getItem('workflow-config-dev-mode') === 'true'
@@ -1236,6 +1405,8 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     templates={templates}
                     collapsed={effectiveCollapsed.has(node.node_template_id)}
                     onToggleCollapsed={() => toggleCollapsed(node.node_template_id)}
+                    onSyncTemplates={() => syncTemplates.mutate()}
+                    syncingTemplates={syncTemplates.isPending}
                 />
             ))}
         </div>

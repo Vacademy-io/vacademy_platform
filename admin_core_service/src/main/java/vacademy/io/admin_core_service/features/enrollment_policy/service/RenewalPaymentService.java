@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
@@ -12,6 +14,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
@@ -40,6 +43,8 @@ public class RenewalPaymentService {
     private final WorkflowTriggerService workflowTriggerService;
     private final AuthService authService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService mandateService;
+    private final vacademy.io.admin_core_service.features.invoice.service.InvoiceService invoiceService;
+    private final vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService paymentNotificatonService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -61,11 +66,141 @@ public class RenewalPaymentService {
         }
         UserPlan userPlan = paymentLog.getUserPlan();
         if (paymentStatus == PaymentStatusEnum.PAID) {
+            // Record the payment itself as settled. Renewals previously left the log
+            // in its pre-payment state, so a paid renewal showed as unpaid in payment
+            // history and any invoice would have hung off a non-PAID log.
+            paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
+            paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
+            paymentLogRepository.save(paymentLog);
             handleSuccessfulRenewal(userPlan, instituteId);
+            scheduleRenewalInvoicing(orderId, instituteId);
         } else if (paymentStatus == PaymentStatusEnum.FAILED) {
             handleFailedRenewal(userPlan, instituteId);
         } else {
             log.info("Payment status is PENDING for orderId: {}, waiting for final status", orderId);
+        }
+    }
+
+    /**
+     * Queue the renewal's invoice + receipt to run once this transaction commits.
+     *
+     * <p>Invoicing must not share the renewal transaction: {@code generateInvoiceWithResult}
+     * is itself {@code @Transactional}, so a PDF/S3 failure inside would mark the
+     * transaction rollback-only and silently undo the plan extension — leaving a member
+     * who has already been charged without access. Deferring to after-commit means the
+     * worst case is a renewal with a missing invoice, which is logged and re-issuable.</p>
+     *
+     * <p>Hooked here rather than at the call sites because every gateway funnels through
+     * {@link #handleRenewalPaymentConfirmation} — Razorpay and Stripe webhooks, the eWay
+     * poller, and the sync charge path in RenewalChargeService. Any future gateway gets
+     * invoicing for free instead of having to remember it.</p>
+     */
+    private void scheduleRenewalInvoicing(String orderId, String instituteId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    runRenewalInvoicing(orderId, instituteId);
+                }
+            });
+        } else {
+            runRenewalInvoicing(orderId, instituteId);
+        }
+    }
+
+    /** Best-effort wrapper: the money is already taken, so invoicing can never break the renewal. */
+    private void runRenewalInvoicing(String orderId, String instituteId) {
+        try {
+            generateRenewalInvoiceAndNotify(orderId, instituteId);
+        } catch (Exception e) {
+            log.error("Renewal succeeded but invoicing failed for orderId {}: {}", orderId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Invoice + receipt email for a renewal payment, mirroring what the enrollment
+     * path does in {@code PaymentLogService.handlePostPaymentLogic}: generate a real
+     * Invoice (so the payment-history tab has a downloadable INV- document) and mail
+     * it, honouring the institute's {@code INVOICE_SETTING.invoicePdfPlacement} — a
+     * separate invoice email, or one confirmation email carrying the PDF.
+     *
+     * <p>Runs with no transaction of its own — {@link #scheduleRenewalInvoicing} calls it
+     * after the renewal has committed, and {@code generateInvoiceWithResult} opens its
+     * own transaction. Also safe to call directly to re-issue an invoice for a renewal
+     * whose first attempt failed.</p>
+     *
+     * <p>Idempotency piggybacks on invoice generation's own {@code existsByPaymentLogId}
+     * guard, exactly as the enrollment path does: a retried webhook finds the invoice
+     * already there and skips the email rather than mailing the member twice.</p>
+     */
+    public void generateRenewalInvoiceAndNotify(String orderId, String instituteId) {
+        PaymentLog paymentLog = paymentLogRepository.findById(orderId).orElse(null);
+        if (paymentLog == null || paymentLog.getUserPlan() == null) {
+            log.warn("Renewal invoice skipped — no payment log / user plan for orderId {}", orderId);
+            return;
+        }
+        if (paymentLog.getPaymentAmount() == null || paymentLog.getPaymentAmount() <= 0) {
+            log.info("Renewal invoice skipped — non-positive amount on payment log {}", paymentLog.getId());
+            return;
+        }
+
+        var pdfPlacement = invoiceService.getInvoicePdfPlacement(instituteId);
+        boolean attachInvoiceToConfirmation =
+                pdfPlacement == vacademy.io.admin_core_service.features.invoice.enums.InvoicePdfPlacement.PAYMENT_CONFIRMATION_EMAIL;
+
+        log.info("Generating renewal invoice for payment log {} (pdfPlacement={})",
+                paymentLog.getId(), pdfPlacement);
+        var invoiceResult = invoiceService.generateInvoiceWithResult(
+                paymentLog.getUserPlan(),
+                paymentLog,
+                instituteId,
+                /* sendEmail */ !attachInvoiceToConfirmation);
+
+        if (attachInvoiceToConfirmation && invoiceResult != null && !invoiceResult.isAlreadyExisted()) {
+            String invoiceNumber = invoiceResult.getInvoice() != null
+                    ? invoiceResult.getInvoice().getInvoiceNumber()
+                    : null;
+            sendRenewalConfirmationEmail(paymentLog, instituteId, invoiceResult.getPdfBytes(), invoiceNumber);
+        }
+        log.info("Renewal invoice complete for payment log {}", paymentLog.getId());
+    }
+
+    /**
+     * Consolidated renewal receipt: the payment-confirmation email with the invoice
+     * PDF attached. Mirrors {@code PaymentLogService.sendSyncPaymentConfirmation} —
+     * the renewal webhook carries no gateway DTOs, so we build a minimal
+     * response/request pair from the PaymentLog itself. Best-effort: a mail failure
+     * is logged and never disturbs the completed renewal.
+     */
+    private void sendRenewalConfirmationEmail(PaymentLog paymentLog, String instituteId,
+            byte[] pdfBytes, String invoiceNumber) {
+        try {
+            if (paymentLog.getUserId() == null) {
+                return;
+            }
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId()));
+            if (users == null || users.isEmpty() || users.get(0) == null) {
+                log.warn("Renewal confirmation email skipped — user {} not found", paymentLog.getUserId());
+                return;
+            }
+            UserDTO userDTO = users.get(0);
+
+            var responseDTO = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("paymentStatus", PaymentStatusEnum.PAID.name());
+            responseData.put("amount", paymentLog.getPaymentAmount());
+            responseData.put("transactionId", paymentLog.getId());
+            responseDTO.setResponseData(responseData);
+
+            var requestDTO = new vacademy.io.common.payment.dto.PaymentInitiationRequestDTO();
+            requestDTO.setCurrency(paymentLog.getCurrency());
+            requestDTO.setEmail(userDTO.getEmail());
+
+            paymentNotificatonService.sendPaymentConfirmationNotification(
+                    instituteId, responseDTO, requestDTO, userDTO, pdfBytes, invoiceNumber);
+        } catch (Exception e) {
+            log.error("Failed to send renewal confirmation email for payment log {}: {}",
+                    paymentLog.getId(), e.getMessage(), e);
         }
     }
 

@@ -51,6 +51,23 @@ export interface AssignmentItem {
      * payment). When non-null, supersedes the two flat cpo_payment_* fields.
      */
     cpo_config?: CpoEnrollmentConfig | null;
+
+    /**
+     * Org-associated package sessions only. The sub-organization the learner joins.
+     * Without it the backend falls back to minting a brand-new sub-org from custom-field
+     * answers, which would duplicate the organization on every admin enrollment.
+     */
+    sub_org_id?: string | null;
+
+    /** CSV written to `ssigm.comma_separated_org_roles` — "ADMIN,LEARNER" or "ADMIN". */
+    sub_org_roles?: string | null;
+
+    /** Set instead of `sub_org_id` to create the organization as part of the enrollment. */
+    new_sub_org?: {
+        name: string;
+        email?: string | null;
+        mobile_number?: string | null;
+    } | null;
 }
 
 export interface AssignOptions {
@@ -327,7 +344,66 @@ export interface SelectedPackageSession {
      * AssignmentItem. Applies to every learner selected in the bulk run.
      */
     cpoConfig?: CpoEnrollmentConfig;
+
+    /**
+     * True when `package_session.is_org_associated` — enrolling into it requires choosing the
+     * sub-organization the learner belongs to (the sub-org step of the wizard).
+     */
+    isOrgAssociated?: boolean;
+
+    /** Sub-org step: the existing organization picked for this course. */
+    subOrgId?: string | null;
+    subOrgName?: string | null;
+
+    /** Sub-org step: 'LEARNER' → "ADMIN,LEARNER", 'ADMIN' → admin-only access. */
+    subOrgRole?: SubOrgRoleChoice;
+
+    /** Sub-org step: set instead of `subOrgId` when creating a new organization inline. */
+    newSubOrg?: NewSubOrgInput;
 }
+
+/**
+ * Role the enrolled member holds inside the sub-org.
+ * - 'LEARNER' → `ADMIN,LEARNER` (the default a learner-side enrollment produces): consumes the
+ *   course and can administer their organization's roster.
+ * - 'ADMIN' → `ADMIN` only: manages the organization without learner access.
+ */
+export type SubOrgRoleChoice = 'LEARNER' | 'ADMIN';
+
+export interface NewSubOrgInput {
+    name: string;
+    email?: string;
+    mobileNumber?: string;
+}
+
+/** Serialises a role choice to the CSV the backend stores on the SSIGM. */
+export const subOrgRolesCsv = (role: SubOrgRoleChoice | undefined): string =>
+    role === 'ADMIN' ? 'ADMIN' : 'ADMIN,LEARNER';
+
+/** A sub-org already present in a package session, from /sub-org/v1/by-package-session. */
+export interface PackageSessionSubOrg {
+    sub_org_id: string;
+    name: string | null;
+    email: string | null;
+    mobile_number: string | null;
+    member_count: number | null;
+    admins: Array<{
+        user_id: string | null;
+        name: string | null;
+        email: string | null;
+        role: string | null;
+    }>;
+}
+
+/**
+ * A course in the sub-org step is ready once the admin either picked an existing
+ * organization or typed a name for a new one.
+ */
+export const isSubOrgSelectionReady = (ps: SelectedPackageSession): boolean => {
+    if (!ps.isOrgAssociated) return true;
+    if (ps.subOrgId) return true;
+    return !!ps.newSubOrg?.name?.trim();
+};
 
 /** Global bulk enroll options (Step 3) */
 export interface BulkEnrollOptions {

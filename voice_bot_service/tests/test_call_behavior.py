@@ -1363,3 +1363,44 @@ def test_audio_lead_is_capped_so_plivo_cannot_hoard_the_reply():
     assert "max_lead" in src and "monotonic" in src
     # Falling behind must re-anchor rather than accumulate debt.
     assert "if lead < 0" in src
+
+
+# ── the repeated-introduction / language-flip root cause (2026-08-06) ────────
+
+def test_scripted_opening_is_written_to_context_deterministically():
+    """ROOT CAUSE of both "the questions repeat" and "it switches to Hindi":
+    pipecat 1.4 commits a TTSSpeakFrame utterance to context only when it
+    COMPLETES. A caller who speaks over the opening cancels that commit, and the
+    model is left with no record that it ever introduced itself. MEASURED on the
+    live pipeline — uninterrupted the context held the opening (n=4); interrupted
+    at +4s it held only (system, user, assistant-reply) and that reply
+    re-introduced the agent from scratch. The language flip is the same wound:
+    LANGUAGE STABILITY anchors on "your own previous turns", and there were none.
+
+    So we append it ourselves and tell pipecat not to, giving exactly one copy
+    whether or not the caller interrupts."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    greet = src[src.index("diag.greet_path = \"scripted\""):]
+    assert "TTSSpeakFrame(opening, append_to_context=False)" in greet[:2400]
+    assert "LLMMessagesAppendFrame" in greet[:2400]
+
+
+def test_already_spoken_rule_quotes_the_opening_and_is_opening_only():
+    """Authored prompts here are call SCRIPTS whose first block IS the
+    introduction (Shiksha Nation's literally starts "Bot: Hi! I'm Ameet calling
+    from…"), so the model reads from the top and says it again. Naming the
+    opening verbatim also gives the first turn a language anchor."""
+    MARK = "ALREADY SPOKEN — do not repeat"
+    with_opening = b.build_system_prompt({"agent": {
+        "name": "Ameet", "systemPrompt": "Bot: Hi! I am Ameet. " * 40,
+        "direction": "OUTBOUND",
+        "openingLine": "Hi! I am Ameet calling from Shiksha Nation."}})
+    assert MARK in with_opening
+    assert "Hi! I am Ameet calling from Shiksha Nation." in with_opening
+    assert "never restart your script" in with_opening
+    # mid-call "hello" must NOT re-trigger the opening
+    assert "ONLY at the start" in with_opening
+    without = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert MARK not in without

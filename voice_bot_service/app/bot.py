@@ -1448,6 +1448,27 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
                          + ", ".join(dispositions)) if dispositions else "")
 
+    # When a scripted opening is configured we SPEAK IT VERBATIM before the model
+    # ever runs. Authored prompts are usually a call SCRIPT whose first block is
+    # that very introduction (Shiksha Nation's is written as "Bot: Hi! I'm Ameet
+    # calling from…"), so without this the model reads the script from the top and
+    # delivers the introduction a second time — which is exactly what callers heard.
+    # Naming the opening verbatim also gives LANGUAGE STABILITY something to anchor
+    # to on the first turn, when the model has no previous turns of its own.
+    opening_line = _clean_opening(_fill_placeholders(
+        (agent.get("openingLine") or "").strip(), context))
+    already_said_rule = ""
+    if opening_line:
+        already_said_rule = (
+            "ALREADY SPOKEN — do not repeat: this call has ALREADY opened with exactly "
+            f"\"{opening_line}\" It has been said. NEVER introduce yourself, your name or "
+            "your company again, and never restart your script from the top, no matter what "
+            "the caller says (including a bare 'hello' mid-call — that means they are "
+            "checking the line is alive, so simply continue). Resume from the point in your "
+            "instructions that comes AFTER the introduction. Keep speaking the SAME LANGUAGE "
+            "as that opening unless the caller clearly asks for another one."
+        )
+
     # An agent whose author wrote a real prompt (opening choreography, identity rules,
     # language + conversation rules) is AUTHORITATIVE. Piling the generic scaffolding on
     # top DUPLICATES it and — via intent_line's "introduce yourself" vs a "confirm
@@ -1460,8 +1481,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
             "pacing and conversation rules — follow them exactly. Greet and introduce yourself "
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
-            "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
-            "opening — never reply with just a bare greeting word.",
+            "caller speaks first at the very START of the call, your FIRST reply IS your "
+            "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
+            already_said_rule,
             now_line,
             greeting_rule,
             name_sanity_rule,
@@ -1491,6 +1513,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        already_said_rule,
         now_line,
         greeting_rule,
         name_sanity_rule,
@@ -1836,7 +1859,29 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.greet_path = "scripted"
             diag.greet_delay_secs = round(time.time() - _run_bot_t0, 2)
             logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
-            await task.queue_frames([TTSSpeakFrame(opening)])
+            # Record the opening in the LLM context OURSELVES, and tell pipecat
+            # not to (append_to_context=False) so there is exactly one copy.
+            #
+            # pipecat 1.4 does commit TTSSpeakFrame utterances — but only when
+            # the utterance COMPLETES: the turn opens on TTSStartedFrame and is
+            # committed at the end. A caller who speaks over the opening cancels
+            # that commit, and the model is then left with NO record that it
+            # ever introduced itself. Measured on the live pipeline: uninterrupted
+            # the context held the opening; interrupted at +4s it held only
+            # (system, user, assistant-reply) and the reply re-introduced the
+            # agent from scratch. That is both of the founder's complaints in one
+            # mechanism — the re-delivered intro, AND the language flip, because
+            # LANGUAGE STABILITY anchors on "your own previous turns" and there
+            # were none.
+            #
+            # Trade-off, deliberate: if the caller cuts the opening short, the
+            # context claims slightly more than the caller heard. Believing it
+            # said a bit too much is far cheaper than re-delivering the whole
+            # introduction, and the played transcript (PlayedTranscriptRecorder)
+            # still records the truth for the report.
+            await task.queue_frames([
+                LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
+                TTSSpeakFrame(opening, append_to_context=False)])
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

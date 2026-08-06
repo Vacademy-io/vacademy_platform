@@ -81,6 +81,32 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
                         @Param("courseId") String courseId,
                         @Param("userId") String userId);
 
+        /**
+         * Per-package_session PERCENTAGE_PACKAGE_SESSION_COMPLETED for this user
+         * across the course's package_sessions, as (packageSessionId, percentage)
+         * rows.
+         *
+         * Progress is recorded per batch, not per course: a learner enrolled in
+         * several batches of the same course has a different percentage in each.
+         * findMaxCoursePercentageForUser deliberately collapses them to the best
+         * one, which is wrong for any caller that knows which batch is on screen —
+         * the course-details page showed Class 3's number while listing Class 5's
+         * content. Callers with a package_session in hand must use this instead.
+         */
+        @Query(value = """
+                        SELECT lo.source_id AS packageSessionId,
+                               CAST(lo.value AS DOUBLE PRECISION) AS percentage
+                        FROM learner_operation lo
+                        JOIN package_session ps ON ps.id = lo.source_id
+                        WHERE ps.package_id = :courseId
+                          AND lo.user_id = :userId
+                          AND lo.source = 'PACKAGE_SESSION'
+                          AND lo.operation = 'PERCENTAGE_PACKAGE_SESSION_COMPLETED'
+                          AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+                        """, nativeQuery = true)
+        java.util.List<Object[]> findCoursePercentagesByPackageSessionForUser(
+                        @Param("courseId") String courseId,
+                        @Param("userId") String userId);
         /** One slide-level progress row (operation → raw value) for the overlay queries below. */
         interface SlideOperationRow {
                 String getSourceId();

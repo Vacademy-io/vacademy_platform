@@ -30,6 +30,12 @@ public class PackageSessionDTO {
     private Boolean isParent;
     private String parentId;
     private String name;
+    /**
+     * Progress this learner has made in THIS batch, 0-100. Only populated on
+     * user-scoped responses (course-init); null everywhere else, including the
+     * open/unauthenticated catalogue, which stays user-agnostic.
+     */
+    private Double percentageCompleted;
 
     // Constructor from PackageSession entity
     public PackageSessionDTO(PackageSession packageSession,Double readTimeInMinutes) {

@@ -587,10 +587,31 @@ public class StudyLibraryService {
         // Skipped for the open/unauthenticated path so the public catalog response
         // stays user-agnostic.
         if (user != null && user.getUserId() != null) {
+            // One round trip for every batch of this course the learner has
+            // progress in; the course-level max is folded in memory from the same
+            // rows the old MAX query read, so its value is unchanged.
+            Map<String, Double> percentageByPackageSession = new HashMap<>();
+            for (Object[] row : learnerOperationRepository
+                    .findCoursePercentagesByPackageSessionForUser(courseId, user.getUserId())) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] instanceof Number) {
+                    percentageByPackageSession.put(String.valueOf(row[0]), ((Number) row[1]).doubleValue());
+                }
+            }
+            Double maxPercentage = percentageByPackageSession.values().stream()
+                    .max(Double::compare)
+                    .orElse(null);
+
             for (CourseDTOWithDetails dto : result) {
+                // Per-batch: the details page renders one package_session's content,
+                // so it has to show that package_session's own percentage.
+                if (dto.getPackageSessions() != null) {
+                    dto.getPackageSessions().forEach(
+                            ps -> ps.setPercentageCompleted(percentageByPackageSession.get(ps.getId())));
+                }
+                // Course-level keeps its best-of-all-batches meaning for existing
+                // callers that have no package_session to scope by.
                 if (dto.getCourse() != null) {
-                    Double pct = learnerOperationRepository.findMaxCoursePercentageForUser(courseId, user.getUserId());
-                    dto.getCourse().setPercentageCompleted(pct);
+                    dto.getCourse().setPercentageCompleted(maxPercentage);
                 }
             }
         }

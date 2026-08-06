@@ -108,7 +108,11 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                                 : 'Not selected')}
                                     </span>
                                     <span className="rounded-full bg-white px-2 py-0.5 text-caption font-medium text-neutral-600 ring-1 ring-inset ring-neutral-200">
-                                        {ps.subOrgRole === 'ADMIN' ? 'Admin only' : learnerTerm}
+                                        {ps.subOrgRole === 'ADMIN_ONLY'
+                                            ? 'Admin only'
+                                            : ps.subOrgRole === 'ADMIN'
+                                              ? `Admin + ${learnerTerm}`
+                                              : `Staff — ${learnerTerm}`}
                                     </span>
                                 </li>
                             ))}

@@ -9,8 +9,10 @@ import vacademy.io.community_service.feature.session.dto.admin.EmailRequestDto;
 import vacademy.io.community_service.feature.session.dto.admin.EmailUserDto;
 import vacademy.io.community_service.feature.session.manager.NotificationService;
 import vacademy.io.community_service.feature.support.client.SupportAnnouncementClient;
+import vacademy.io.community_service.feature.support.client.SupportAuthClient;
 import vacademy.io.community_service.feature.support.dto.SupportRecipientDto;
 import vacademy.io.community_service.feature.support.entity.SupportTicket;
+import vacademy.io.community_service.feature.support.enums.TicketStatus;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +39,8 @@ public class SupportAlertService {
     private NotificationService notificationService;
     @Autowired
     private SupportAnnouncementClient announcementClient;
+    @Autowired
+    private SupportAuthClient authClient;
 
     /** A new ticket was raised: alert Sentry→Slack and email the support recipients. */
     public void onNewTicket(SupportTicket ticket, String firstMessageBody, List<String> recipientEmails) {
@@ -102,18 +106,70 @@ public class SupportAlertService {
     }
 
     /**
+     * The ticket was resolved or closed by the support team: tell the raiser it is done.
+     *
+     * <p>Callers must only invoke this on a genuine non-terminal → terminal transition, and never
+     * for a customer closing their own ticket — nobody wants an email about their own click.
+     */
+    public void onTicketResolved(SupportTicket ticket, String senderUserId, String senderName) {
+        try {
+            if (ticket.isInternalOnly()) {
+                return;
+            }
+            SupportRecipientDto raiser = resolveRaiser(ticket);
+            if (raiser == null) {
+                log.warn("Ticket {} (institute {}) has no raiser contact — resolution not notified",
+                        ticket.getId(), ticket.getInstituteId());
+                return;
+            }
+
+            String subject = "Resolved: [" + shortId(ticket.getId()) + "] " + ticket.getSubject();
+            String body = buildResolvedEmail(ticket);
+
+            sendEmail(subject, body, ticket.getId(),
+                    List.of(recipient(raiser.getUserId(), raiser.getEmail())));
+
+            announcementClient.sendSystemAlert(ticket.getInstituteId(),
+                    "Support resolved: " + ticket.getSubject(), body,
+                    senderUserId, senderName, List.of(raiser));
+        } catch (Exception e) {
+            log.error("Failed to dispatch resolution alert for {}: {}", ticket.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
      * The institute-side person who raised the ticket, or null when none was recorded.
      *
      * <p>A SUPPORT raisedByRole means the fields describe the support agent who logged the ticket,
      * not anyone at the institute — notifying them would email ourselves.
+     *
+     * <p>The stored raiser "email" is frequently a <em>username</em>: the login principal carries
+     * no email address, so the portal recorded {@code getUsername()} in that column and every
+     * reply mail was addressed to something like "topmate_admin". When the stored value is not an
+     * address we resolve the real one from auth-service by user id, which repairs those tickets
+     * without a migration. Only if that also fails do we give up.
      */
     private SupportRecipientDto resolveRaiser(SupportTicket ticket) {
-        if ("SUPPORT".equalsIgnoreCase(ticket.getRaisedByRole())
-                || !StringUtils.hasText(ticket.getRaisedByEmail())) {
+        if ("SUPPORT".equalsIgnoreCase(ticket.getRaisedByRole())) {
             return null;
         }
-        return new SupportRecipientDto(ticket.getRaisedByUserId(),
-                ticket.getRaisedByEmail().trim(), ticket.getRaisedByName());
+        String stored = ticket.getRaisedByEmail();
+        if (looksLikeEmail(stored)) {
+            return new SupportRecipientDto(ticket.getRaisedByUserId(), stored.trim(),
+                    ticket.getRaisedByName());
+        }
+        SupportRecipientDto resolved = authClient.findById(ticket.getRaisedByUserId());
+        if (resolved == null) {
+            return null;
+        }
+        // Keep the ticket's own display name; auth-service is only the source of the address.
+        return new SupportRecipientDto(resolved.getUserId(), resolved.getEmail(),
+                StringUtils.hasText(ticket.getRaisedByName()) ? ticket.getRaisedByName() : resolved.getName());
+    }
+
+    /** Cheap sanity check — enough to tell an address from a username, not RFC validation. */
+    private boolean looksLikeEmail(String value) {
+        return StringUtils.hasText(value) && value.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     }
 
     // ---- internals ---------------------------------------------------------------
@@ -159,6 +215,16 @@ public class SupportAlertService {
                 + "<div style=\"margin-top:12px;padding:12px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap\">"
                 + escape(firstMessageBody) + "</div>"
                 + "<p style=\"margin-top:16px;color:#6b7280\">Open it in the support console to reply.</p>"
+                + "</div>";
+    }
+
+    private String buildResolvedEmail(SupportTicket ticket) {
+        boolean closed = ticket.getStatus() == TicketStatus.CLOSED;
+        return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#1f2937\">"
+                + "<p>Your issue <strong>" + escape(ticket.getSubject()) + "</strong> has been "
+                + (closed ? "closed" : "marked resolved") + " by the Vacademy support team.</p>"
+                + "<p style=\"margin-top:16px;color:#6b7280\">If it is not fully sorted, reply from the "
+                + "Support panel in your dashboard and the issue will reopen.</p>"
                 + "</div>";
     }
 

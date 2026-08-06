@@ -313,8 +313,9 @@ public class SupportTicketService {
                         computeDue(ticket.getCreatedAt(), ticket.getPlanAtCreation(), newPriority));
             }
         }
+        boolean justResolved = false;
         if (StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         if (request.getAssignedEngineerId() != null) {
             if (StringUtils.hasText(request.getAssignedEngineerId())) {
@@ -350,6 +351,9 @@ public class SupportTicketService {
             }
         }
         ticketRepository.save(ticket);
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
 
         boolean editMessage = StringUtils.hasText(request.getMessage()) || request.isAttachmentsSet();
         if (editMessage) {
@@ -553,10 +557,14 @@ public class SupportTicketService {
         } else {
             ticket.setAssignedEngineerId(null);
         }
+        boolean justResolved = false;
         if (request != null && StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         ticketRepository.save(ticket);
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
         return toDetailDto(ticket, true);
     }
 
@@ -574,10 +582,15 @@ public class SupportTicketService {
                 ticket.setFirstResponseDueAt(computeDue(ticket.getCreatedAt(), ticket.getPlanAtCreation(), newPriority));
             }
         }
+        boolean justResolved = false;
         if (StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         ticketRepository.save(ticket);
+        // After the save, so a failed notification cannot roll back the status change.
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
         return toDetailDto(ticket, true);
     }
 
@@ -606,10 +619,18 @@ public class SupportTicketService {
         }
     }
 
-    private void applyStatus(SupportTicket ticket, TicketStatus newStatus) {
+    /**
+     * @return true when this call moved the ticket from a live state into a terminal one — the
+     *         moment worth telling the raiser about. Returns false for terminal → terminal
+     *         (RESOLVED → CLOSED), so tidying up a ticket does not email them a second time.
+     *         Callers on the customer's own path must ignore it: nobody wants an email about
+     *         their own click.
+     */
+    private boolean applyStatus(SupportTicket ticket, TicketStatus newStatus) {
         if (newStatus == null) {
-            return;
+            return false;
         }
+        boolean wasTerminal = ticket.getStatus() != null && ticket.getStatus().isTerminal();
         ticket.setStatus(newStatus);
         if (newStatus.isTerminal()) {
             if (ticket.getResolvedAt() == null) {
@@ -618,6 +639,7 @@ public class SupportTicketService {
         } else {
             ticket.setResolvedAt(null);
         }
+        return !wasTerminal && newStatus.isTerminal();
     }
 
     private Date computeDue(Date from, SupportPlan plan, TicketPriority priority) {

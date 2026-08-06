@@ -355,12 +355,12 @@ export function QuestionPaperTemplate({
                     </Button>
                 )}
             </DialogTrigger>
-            <DialogContent className="no-scrollbar !m-0 !h-screen !w-full !max-w-full !gap-0 !overflow-hidden overflow-y-auto !rounded-none !p-0 [&>button]:hidden">
+            <DialogContent className="no-scrollbar !m-0 !h-screen !w-full !max-w-full !gap-0 !overflow-hidden !rounded-none !p-0 [&>button]:hidden">
                 {isQuestionDataLoading ? (
                     <DashboardLoader />
                 ) : (
-                    <div>
-                        <div className="flex w-screen items-center justify-between bg-primary-100 p-2">
+                    <div className="flex h-screen flex-col">
+                        <div className="flex w-full shrink-0 items-center justify-between bg-primary-100 p-2">
                             <div className="flex items-start gap-2">
                                 <img
                                     src={instituteLogo}
@@ -376,7 +376,7 @@ export function QuestionPaperTemplate({
                                                 <Input
                                                     value={field.value}
                                                     onChange={field.onChange}
-                                                    className="rounded-none border-none p-0 !text-[1.2rem] shadow-none focus-visible:ring-0 focus-visible:ring-transparent"
+                                                    className="rounded-none border-none p-0 !text-h3 shadow-none focus-visible:ring-0 focus-visible:ring-transparent"
                                                     placeholder="Untitled"
                                                     disabled
                                                 />
@@ -414,8 +414,8 @@ export function QuestionPaperTemplate({
                                 </DialogClose>
                             </div>
                         </div>
-                        <div className="flex h-screen items-start">
-                            <div className="mt-4 flex w-40 flex-col items-center justify-center gap-2">
+                        <div className="flex min-h-0 flex-1 items-start">
+                            <div className="flex h-full w-40 shrink-0 flex-col items-center gap-2 pt-4">
                                 <AlertDialog
                                     open={addQuestionDialogBox}
                                     onOpenChange={setAddQuestionDialogBox}
@@ -448,7 +448,7 @@ export function QuestionPaperTemplate({
                                         ></QuestionTypeSelection>
                                     </AlertDialogContent>
                                 </AlertDialog>
-                                <div className="flex h-[325vh] w-40 flex-col items-start justify-between gap-4 overflow-x-hidden overflow-y-scroll p-2">
+                                <div className="flex min-h-0 w-40 flex-1 flex-col items-start gap-4 overflow-x-hidden overflow-y-auto p-2">
                                     <Sortable
                                         value={fields}
                                         onMove={({ activeIndex, overIndex }) =>
@@ -542,13 +542,13 @@ export function QuestionPaperTemplate({
                                     </Sortable>
                                 </div>
                             </div>
-                            <Separator orientation="vertical" className="min-h-screen" />
+                            <Separator orientation="vertical" className="h-full" />
                             {questions.length === 0 ? (
-                                <div className="flex h-screen w-screen items-center justify-center">
+                                <div className="flex h-full w-full items-center justify-center">
                                     <h1>No Question Exists.</h1>
                                 </div>
                             ) : (
-                                <div className="ml-6 flex w-full flex-col gap-3 pr-6 pt-4">
+                                <div className="ml-6 flex h-full min-w-0 flex-1 flex-col gap-3 overflow-y-auto pr-6 pt-4">
                                     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                                         <div className="flex items-center justify-between gap-4">
                                             <span className="text-subtitle font-semibold text-neutral-600">
@@ -592,8 +592,7 @@ export function QuestionPaperTemplate({
                                             form: form,
                                             currentQuestionIndex: currentQuestionIndex,
                                             setCurrentQuestionIndex: setCurrentQuestionIndex,
-                                            className:
-                                                'dialog-height overflow-auto flex w-full flex-col gap-6',
+                                            className: 'flex w-full flex-col gap-6 pb-6',
                                             examType: examType,
                                         }}
                                     />

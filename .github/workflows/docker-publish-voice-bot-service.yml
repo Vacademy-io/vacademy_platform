@@ -117,6 +117,11 @@ jobs:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           REPOSITORY: voice-bot-service/voice-bot-service-repo
           GIT_SHA: ${{ github.sha }}
+          # Google Cloud TTS (Chirp3-HD) + Vertex LLM auth. Same service account
+          # JSON the Mumbai box mounts at /etc/vertex-sa.json. Without it the
+          # k8s pods 502 on Google previews while the box serves them fine —
+          # which is what the admin dashboard hits.
+          VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
         run: |
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
             # VOICE_BOT_CLIENT_NAME/SECRET must match a row in admin_core's
@@ -127,8 +132,18 @@ jobs:
             #      secret VOICE_BOT_CLIENT_SECRET to that row's secret_key;
             #   b) dedicated identity: INSERT a 'voice_bot_service' row with a
             #      fresh random secret and store the same value in the secret.
+            # Optional extras are appended only when non-empty. `kubectl set env
+            # KEY=` with an empty value CLEARS the key, so listing an unset
+            # secret inline would wipe a working credential on every deploy —
+            # exactly how Google TTS previews broke once already.
+            EXTRA_ENV=""
+            if [ -n "${VERTEX_CREDENTIALS_JSON:-}" ]; then
+              EXTRA_ENV="VERTEX_CREDENTIALS_JSON=$VERTEX_CREDENTIALS_JSON"
+            fi
+
             kubectl set env deployment/"$DEPLOYMENT_NAME" \
               --namespace "$NAMESPACE" \
+              ${EXTRA_ENV:+"$EXTRA_ENV"} \
               PUBLIC_BASE=https://backend-stage.vacademy.io/voice-bot-service \
               ADMIN_CORE_BASE=https://backend-stage.vacademy.io \
               VOICE_BOT_CLIENT_NAME=${{ vars.VOICE_BOT_CLIENT_NAME || 'voice_bot_service' }} \

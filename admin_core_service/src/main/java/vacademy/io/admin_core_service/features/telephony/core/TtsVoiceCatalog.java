@@ -195,8 +195,15 @@ public final class TtsVoiceCatalog {
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {
+        // LOWERCASED, because isVoiceOf() looks up a lowercased key and calls
+        // itself case-insensitive. It was not: the ids went in with their own
+        // casing, so every Google voice ('hi-IN-Chirp3-HD-...') failed the check,
+        // AiAgentService dutifully "fell back" to defaultVoice — which is MALE —
+        // and a female Chirp3-HD voice could not be saved at all. Sarvam, Rumik
+        // and Smallest never noticed: their ids are already lowercase.
         BY_MODEL.forEach((model, voices) -> IDS_BY_MODEL.put(model,
-                voices.stream().map(m -> m.get("id")).collect(Collectors.toSet())));
+                voices.stream().map(m -> m.get("id").toLowerCase(Locale.ROOT))
+                        .collect(Collectors.toSet())));
     }
 
     /** Every voice, model-tagged. The frontend groups by {@code model}. */
@@ -218,6 +225,31 @@ public final class TtsVoiceCatalog {
         if (MODEL_GOOGLE.equals(m)) return "hi-IN-Chirp3-HD-Achird";
         if (MODEL_SMALLEST.equals(m)) return "devansh";
         return "priya";
+    }
+
+    /**
+     * The palette's OWN spelling of {@code voice}, or null when it is not in it.
+     *
+     * <p>Exists because Google voice ids are CASE-SENSITIVE at the vendor
+     * ({@code hi-IN-Chirp3-HD-Achernar}) while everything around them is
+     * case-insensitive. AiAgentService used to store
+     * {@code voice.trim().toLowerCase()}, which is harmless for Sarvam, Rumik and
+     * Smallest (their names are lowercase anyway) and silently fatal for Google:
+     * {@code hi-in-chirp3-hd-achernar} is rejected by the vendor, the bot falls
+     * back to Sarvam, and Sarvam's default voice is MALE. The founder picked a
+     * female Chirp3-HD voice on 2026-08-06, saved it, and every call still came
+     * out male with nothing anywhere saying why.
+     *
+     * <p>So: accept any casing from any client, store the catalog's.
+     */
+    public static String canonicalVoice(String model, String voice) {
+        if (voice == null || voice.isBlank()) return null;
+        String want = voice.trim().toLowerCase(Locale.ROOT);
+        for (Map<String, String> v : forModel(model)) {
+            String id = v.get("id");
+            if (id != null && id.toLowerCase(Locale.ROOT).equals(want)) return id;
+        }
+        return null;
     }
 
     /** True when {@code voice} is in {@code model}'s palette (case-insensitive). */

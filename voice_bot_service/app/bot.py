@@ -1348,6 +1348,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
                 "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
                 "for Hindi words ONLY; if a word is English, spell it in English."
             )
+    # REGISTER. Founder, after hearing live calls: "everything is highly formal
+    # Hindi... words that in general are not used". Measured across two days of
+    # calls: 198 uses of literary vocabulary — प्रदर्शन 37x, पूछताछ 28x, अकादमिक
+    # 14x, अवधारणा 12x. It is translationese: the authored script is English and
+    # the model renders it into textbook Hindi, which no counsellor speaks and
+    # which the TTS also stumbles over. The pairs below are the actual offenders
+    # from those transcripts, not invented examples — concrete swaps steer a
+    # model far better than "be conversational".
+    plain_hindi_rule = "" if is_english else (
+        "SPEAK PHONE HINDI, NOT TEXTBOOK HINDI. Use the words a real counsellor "
+        "says out loud. Where the everyday word IS English, use the English word — "
+        "that is how people actually speak; it is not a mistake. Say: performance "
+        "(never प्रदर्शन), enquiry (never पूछताछ), academic (never अकादमिक/शैक्षणिक), "
+        "concepts (never अवधारणाएँ), annual exam (never वार्षिक परीक्षा), tracking "
+        "(never निगरानी), counsellor (never सलाहकार), problem/difficulty (never "
+        "कठिनाई), structured (never संरचित), suitable / सही रहेगा (never उपयुक्त), "
+        "guidance (never मार्गदर्शन), tests (never परीक्षण), doubts (never संदेह), "
+        "fees (never शुल्क), scholarship (never छात्रवृत्ति), lectures (never "
+        "व्याख्यान), parents / माता-पिता (never अभिभावक), option (never विकल्प), "
+        "score किया (never अंक प्राप्त किए). If a word would sound odd from a "
+        "shopkeeper or a parent on a phone call, do not use it."
+    )
     # The caller HEARS every character — markdown becomes spoken garbage (a live call
     # read out its own bullet list). And a short first clause reaches the ear sooner
     # (TTS synthesizes the first chunk while the rest streams).
@@ -1497,6 +1519,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             language_stability_rule,
             f"{gender_line} {addressee_line}",
             script_rule,
+            plain_hindi_rule,
             plain_speech_rule,
             fast_open_rule,
             one_step_rule,
@@ -1528,6 +1551,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
         script_rule,
+        plain_hindi_rule,
         plain_speech_rule,
         fast_open_rule,
         one_step_rule,

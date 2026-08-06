@@ -1404,3 +1404,23 @@ def test_already_spoken_rule_quotes_the_opening_and_is_opening_only():
     without = b.build_system_prompt({"agent": {
         "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
     assert MARK not in without
+
+
+def test_plain_hindi_register_rule_targets_the_words_actually_used():
+    """Founder after live calls: "everything is highly formal Hindi... words that
+    in general are not used". Measured across two days of transcripts: 198 uses of
+    literary vocabulary (प्रदर्शन 37x, पूछताछ 28x, अकादमिक 14x, अवधारणा 12x). It is
+    translationese — the authored script is English and the model renders it as
+    textbook Hindi. The rule names the ACTUAL offenders, because concrete swaps
+    steer a model far better than "be conversational"."""
+    hi = b.build_system_prompt({"agent": {
+        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "PHONE HINDI" in hi
+    for offender in ("प्रदर्शन", "पूछताछ", "अकादमिक", "अवधारणाएँ", "शुल्क", "अभिभावक"):
+        assert offender in hi, offender
+    # English agents must not be told about Hindi vocabulary at all.
+    en = b.build_system_prompt({"agent": {
+        "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "PHONE HINDI" not in en

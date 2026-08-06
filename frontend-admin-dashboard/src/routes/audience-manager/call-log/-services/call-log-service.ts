@@ -94,6 +94,11 @@ export const CALL_FAULT_CODES = [
     'TTS_WEDGE',
     'REPLY_UNPLAYED',
     'ANSWER_DELETED',
+    // Newer bot faults. A code missing here renders as "Unrecognised fault
+    // code" in the sheet — which is exactly what REPLY_LOOP did on call
+    // 597aeb3f, because it shipped in the bot and not here.
+    'BOT_SILENT',
+    'REPLY_LOOP',
     'DEAD_AIR',
     'FALSE_REASK',
     'LIKELY_MACHINE',
@@ -146,6 +151,12 @@ export interface CallDiagnostics {
         bargeIns?: number | null;
         orphanReasks?: number | null;
         orphanFalseReasks?: number | null;
+        /** Longest run of bot turns that began the same way (REPLY_LOOP). */
+        maxReplyRestarts?: number | null;
+        /** Sentences dropped because the bot had already said them this call. */
+        repeatsSuppressed?: number | null;
+        /** Operator/voicemail lines filtered out of the agent's context. */
+        carrierAnnouncements?: number | null;
         nudges?: number | null;
         idleHangup?: boolean | null;
         capFarewell?: boolean | null;

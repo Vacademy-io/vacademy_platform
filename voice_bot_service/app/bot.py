@@ -84,7 +84,8 @@ from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
-                       caller_asked_to_repeat, normalize_spoken, ABSORB)
+                       caller_asked_to_repeat, normalize_spoken, question_topic,
+                       ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -619,19 +620,38 @@ class NoRepeatGate(FrameProcessor):
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
         self._spoken: list = []
+        self._asked: set = set()      # question TOPICS already put to the caller
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
+        self._handback = 0
 
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
             return True
         if caller_asked_to_repeat(self._last_caller_text()):
             return True            # they ASKED us to say it again
-        return not is_repeat(sentence, self._spoken)
+        if is_repeat(sentence, self._spoken):
+            return False
+        # Same QUESTION, different words. Sentence similarity cannot see this:
+        # call 597aeb3f asked "Aur wo abhi kis class mein hai?" and then "Raman
+        # abhi kis class mein padh raha hai?", which score ~0.6 against each
+        # other and sailed through.
+        topic = question_topic(sentence)
+        return not (topic and topic in self._asked)
+
+    # Said INSTEAD of a reply that turned out to be entirely a repeat. The first
+    # version of this guard re-emitted the duplicate rather than go silent, and
+    # it fired seven times in one afternoon — so the guard against dead air was
+    # itself producing the repetition the founder was hearing. Hand the turn
+    # back instead, and never with the same words twice running.
+    _HANDBACK = ("Ji, boliye.", "Haan ji?", "Aap batayiye.", "Ji?")
 
     async def _emit(self, text: str, direction):
         self._spoken.append(normalize_spoken(text))
+        topic = question_topic(text)
+        if topic:
+            self._asked.add(topic)
         self._emitted += 1
         await self.push_frame(LLMTextFrame(text), direction)
 
@@ -681,9 +701,13 @@ class NoRepeatGate(FrameProcessor):
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
             if self._emitted == 0 and self._held_tail:
-                # Everything was a repeat. Silence would be worse.
-                logger.info("no-repeat: whole reply was a repeat — keeping the last line")
-                await self._emit(self._held_tail, direction)
+                # Everything was a repeat. Do NOT say it again — hand the turn
+                # back in a few words so the line is not dead either.
+                line = self._HANDBACK[self._handback % len(self._HANDBACK)]
+                self._handback += 1
+                logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
+                self._emitted += 1
+                await self.push_frame(LLMTextFrame(line), direction)
             await self.push_frame(frame, direction)
             return
 

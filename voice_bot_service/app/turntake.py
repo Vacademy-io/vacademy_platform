@@ -266,3 +266,41 @@ def is_repeat(sentence: str, spoken, threshold: float = 0.80) -> bool:
 
 def normalize_spoken(sentence: str) -> str:
     return " ".join((sentence or "").split()).casefold()
+
+
+# ── asking the same QUESTION twice, in different words ─────────────────────
+# Sentence similarity catches a re-rendered sentence but not a paraphrase. Live
+# call 597aeb3f asked for the class twice — "Aur wo abhi kis class mein hai?"
+# then "Raman abhi kis class mein padh raha hai?" — which score about 0.6
+# against each other and sailed through a 0.80 gate.
+#
+# A counselling call asks a FIXED, SMALL set of questions, so the robust key is
+# not the wording but the SUBJECT: name, class, marks, weak subject, fees, the
+# quiz link, the counselling slot. Ask about the same subject twice and it is a
+# repeat however it is phrased.
+_QUESTION_TOPICS = (
+    ("child_name", ("naam", "नाम", "name")),
+    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
+    ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
+    ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
+    ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
+    ("quiz_link", ("link", "लिंक", "quiz", "क्विज़", "whatsapp", "व्हाट्सएप")),
+    ("counselling", ("counselling", "counseling", "काउंसलिंग", "session", "सेशन",
+                     "slot", "book kar")),
+    ("program_more", ("aur jaanna", "और जानना", "baare mein aur", "और बताना")),
+)
+
+
+def question_topic(sentence: str):
+    """Which of our standard questions is this, if any? None = not one of them.
+
+    Only classifies actual QUESTIONS — a statement that merely mentions fees is
+    not the fees question, and suppressing it would gut the pitch.
+    """
+    t = " ".join((sentence or "").split()).casefold()
+    if not t or ("?" not in t and "？" not in t):
+        return None
+    for topic, cues in _QUESTION_TOPICS:
+        if any(c in t for c in cues):
+            return topic
+    return None

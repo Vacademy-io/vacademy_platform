@@ -66,6 +66,8 @@ const HEADLINE_TEXT: Record<string, string> = {
     TTS_WEDGE: 'Voice synthesis stalled — caller heard silence',
     REPLY_UNPLAYED: 'A reply was never played to the caller',
     ANSWER_DELETED: 'Caller answers were discarded before the agent saw them',
+    BOT_SILENT: 'The agent never spoke — the caller heard nothing',
+    REPLY_LOOP: 'The agent kept restarting the same reply',
     DEAD_AIR: 'Long silence during the call',
     FALSE_REASK: 'Agent re-asked for answers it had already heard',
     LIKELY_MACHINE: 'Probably an answering machine, not a person',
@@ -82,6 +84,8 @@ const FAULT_LABEL: Record<string, string> = {
     TTS_WEDGE: 'TTS wedge',
     REPLY_UNPLAYED: 'Reply unplayed',
     ANSWER_DELETED: 'Answers deleted',
+    BOT_SILENT: 'Agent silent',
+    REPLY_LOOP: 'Reply loop',
     DEAD_AIR: 'Dead air',
     FALSE_REASK: 'False re-ask',
     LIKELY_MACHINE: 'Likely machine',
@@ -193,6 +197,19 @@ function faultEvidence(code: string, d: CallDiagnostics): string[] {
                     ? `${turn.answersDeletedSamples.length} captured verbatim (below)`
                     : null
             );
+            break;
+        case 'REPLY_LOOP':
+            out.push(
+                turn.maxReplyRestarts != null
+                    ? `same reply restarted ${turn.maxReplyRestarts}x in a row`
+                    : null,
+                turn.repeatsSuppressed
+                    ? `${turn.repeatsSuppressed} repeated line(s) suppressed`
+                    : null
+            );
+            break;
+        case 'BOT_SILENT':
+            out.push('the agent produced no audio at all');
             break;
         case 'DEAD_AIR':
             out.push(

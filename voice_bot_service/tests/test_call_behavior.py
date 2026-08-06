@@ -1788,3 +1788,42 @@ async def test_repeating_is_allowed_when_the_caller_asks_for_it():
     rec.text.clear()
     await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hai. ")
     assert rec.text, "caller asked us to repeat and we refused"
+
+
+@pytest.mark.asyncio
+async def test_the_same_question_in_different_words_is_still_a_repeat():
+    """Call 597aeb3f asked for the class twice. The two sentences score ~0.6
+    against each other, so sentence similarity alone let it through."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Aur wo abhi kis class mein hai? ")
+    rec.text.clear()
+    await _reply(g, "Raman abhi kis class mein padh raha hai? ")
+    assert not any("class mein padh" in t for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_a_fully_repeated_reply_hands_back_instead_of_repeating():
+    """The first never-silent guard re-emitted the duplicate, and fired seven
+    times in one afternoon — the guard against dead air was itself producing
+    the repetition."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Kya main is WhatsApp number par link bhej doon? ")
+    rec.text.clear()
+    await _reply(g, "Kya main is WhatsApp number par link bhej doon? ")
+    joined = " ".join(rec.text)
+    assert joined.strip(), "the line went dead"
+    assert "WhatsApp" not in joined, "it repeated instead of handing back"
+
+
+@pytest.mark.asyncio
+async def test_statements_about_a_topic_are_not_suppressed_as_questions():
+    """Only QUESTIONS carry a topic. The pitch mentions fees constantly and
+    must survive."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Kya aap fees ke baare mein jaanna chahenge? ")
+    rec.text.clear()
+    await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hoti hai. ")
+    assert any("chalis hazaar" in t for t in rec.text), rec.text

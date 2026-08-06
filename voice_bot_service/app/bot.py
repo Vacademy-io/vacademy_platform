@@ -133,7 +133,8 @@ class TranscriptCollector(FrameProcessor):
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
-                 diag=None, in_machine_window=None, reply_in_flight=None):
+                 diag=None, in_machine_window=None, reply_in_flight=None,
+                 bot_spoke_once=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
@@ -147,6 +148,9 @@ class TranscriptCollector(FrameProcessor):
         # cannot be flipped by a single bad transcript.
         self._in_machine_window = in_machine_window or (lambda: False)
         self._reply_in_flight = reply_in_flight or (lambda: False)
+        self._bot_spoke_once = bot_spoke_once or (lambda: True)
+        # Have we already identified this line as a machine greeting?
+        self._carrier_seen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -227,6 +231,29 @@ class TranscriptCollector(FrameProcessor):
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: carrier announcement %r — not the callee, "
                             "dropping from context", text[:48])
+                self._carrier_seen = True
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
+            # Once we KNOW the line is playing a recording, the scraps between
+            # its recognisable sentences are that same recording. Call 38536b71
+            # died on a single one: 'तो।' — one word, no phrase match, so it
+            # counted as the callee and _greet_when_ready skipped our opening
+            # again (greetPath "callee_spoke_first"), even though the four real
+            # announcements around it were all filtered correctly.
+            #
+            # Deliberately narrow: only BEFORE we have spoken (after that the
+            # caller is answering us and every word matters), only 1-2 word
+            # scraps, and never an audio-check — "hello" in this window is the
+            # human picking up mid-greeting, which is the one thing here we
+            # must not swallow.
+            if (self._carrier_seen and self._in_machine_window()
+                    and not self._bot_spoke_once()
+                    and len(text.split()) <= 2 and not is_audio_check(text)):
+                self._outcome.transcript.append({"role": "user", "text": text})
+                if self._diag is not None:
+                    self._diag.bump("carrier_announcements")
+                logger.info("turn-gate: machine-greeting scrap %r — dropping", text[:32])
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
@@ -1883,7 +1910,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      interrupt_on_vad=lambda: settings.interrupt_on_vad,
                                      recently_cut=_recently_cut, diag=diag,
                                      in_machine_window=_in_machine_window,
-                                     reply_in_flight=_reply_in_flight)
+                                     reply_in_flight=_reply_in_flight,
+                                     bot_spoke_once=lambda: flags["bot_spoke_once"])
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,

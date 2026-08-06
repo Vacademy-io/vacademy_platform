@@ -176,7 +176,28 @@ def build_llm():
     if s.llm_provider == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
-        # account JSON. pipecat auto-disables Gemini "thinking" → the fast path.
+        # account JSON.
+        #
+        # THINKING MUST BE EXPLICITLY OFF. The comment that used to sit here said
+        # "pipecat auto-disables Gemini thinking → the fast path". That was simply
+        # untrue: InputParams.thinking defaults to None, pipecat sends no
+        # thinkingConfig at all, and gemini-2.5-flash then applies its own DYNAMIC
+        # thinking — it decides per request how long to reason before emitting a
+        # first token.
+        #
+        # Which makes it a latency landmine, because it is a function of the
+        # PROMPT. It cost 0.43s TTFB in the morning and 2.35s p50 / 5.76s p95 by
+        # midday on 2026-08-06, with no LLM code change between — what changed was
+        # that the system prompt grew richer (register rules, language rules, a
+        # staged script with branching), so the model started thinking about it.
+        #
+        # Measured from the Mumbai box, same region, same model, idle host:
+        #     thinking default : 2.16 / 2.43 / 2.55 s   (min/med/max of 3)
+        #     thinking_budget=0: 0.37 / 0.51 / 0.91 s
+        # 4.8x, for a scripted sales conversation that needs no reasoning at all.
+        # Other regions were measured too and are all WORSE than Mumbai once
+        # thinking is off (asia-southeast1 0.60, us-central1 0.62, global 0.82),
+        # so the region was never the problem and does not change.
         from pipecat.services.google.llm import GoogleLLMService
         from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 
@@ -187,7 +208,10 @@ def build_llm():
             project_id=s.vertex_project_id,
             location=s.vertex_location,
             model=s.vertex_model,
-            params=GoogleLLMService.InputParams(temperature=0.35, max_tokens=300),
+            params=GoogleLLMService.InputParams(
+                temperature=0.35, max_tokens=300,
+                thinking=GoogleLLMService.ThinkingConfig(
+                    thinking_budget=s.vertex_thinking_budget)),
         )
     if s.llm_provider == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).

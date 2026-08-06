@@ -366,6 +366,11 @@ class Settings:
     # Ceiling on how long a reply counts as "in flight" before its audio
     # starts. Covers LLM TTFB + TTS TTFB with headroom; capped so a generation
     # that dies pre-playout cannot swallow the caller's turns.
+    # Gemini "thinking" tokens before the first reply token. 0 = off, which is
+    # what a phone agent wants: measured 2.43s -> 0.51s TTFB on the Mumbai box.
+    # Raise ONLY if a future agent genuinely needs reasoning, and re-measure.
+    vertex_thinking_budget: int = field(
+        default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     interrupt_on_vad: bool = field(

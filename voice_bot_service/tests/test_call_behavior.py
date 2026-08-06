@@ -1467,6 +1467,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
         filler_phrases=[],
         in_machine_window=in_machine_window or (lambda: True),
         reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True,
     )
 
     async def _push(frame, direction=None):
@@ -1645,3 +1646,69 @@ def test_reply_in_flight_is_time_capped():
     assert s.reply_inflight_grace_secs > 0
     st = cs.CallState(t=0.0)
     assert st.reply_started_t == 0.0, "must default to 'no reply pending'"
+
+
+# ── LLM latency (2026-08-06) ─────────────────────────────────────────────────
+def test_vertex_thinking_is_explicitly_disabled():
+    """gemini-2.5-flash thinks DYNAMICALLY unless told not to, and pipecat's
+    InputParams.thinking defaults to None (sends no thinkingConfig at all) — so
+    "we didn't ask for thinking" is not the same as "thinking is off".
+
+    It cost 0.43s TTFB in the morning and 2.35s p50 / 5.76s p95 by midday with
+    no LLM code change, purely because the system prompt got richer. Measured
+    on the Mumbai box, same region and model: 2.43s -> 0.51s with budget 0."""
+    import app.providers as pvd
+    from app.config import get_settings
+    assert get_settings().vertex_thinking_budget == 0
+    src = inspect.getsource(pvd.build_llm)
+    assert "ThinkingConfig" in src
+    assert "vertex_thinking_budget" in src
+
+
+def test_thinking_budget_reaches_the_service_params():
+    """Guards the failure mode this whole fix is about: a knob that looks set in
+    our code and is silently dropped before the wire."""
+    from pipecat.services.google.llm import GoogleLLMService
+    p = GoogleLLMService.InputParams(
+        temperature=0.35, max_tokens=300,
+        thinking=GoogleLLMService.ThinkingConfig(thinking_budget=0))
+    assert p.thinking is not None, "pipecat dropped the thinking config"
+    assert p.thinking.thinking_budget == 0
+
+
+@pytest.mark.asyncio
+async def test_machine_greeting_scraps_do_not_suppress_our_opening():
+    """Call 38536b71: four announcements were filtered correctly, then the
+    one-word scrap 'तो।' slipped through, counted as the callee, and
+    _greet_when_ready skipped our opening (greetPath "callee_spoke_first")."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    await _feed(tc, "Your call has been forwarded to voicemail.")   # arms it
+    await _feed(tc, "तो।")
+    assert rec.frames == [], "a machine scrap reached the model"
+    assert rec.interruptions == 0
+
+
+@pytest.mark.asyncio
+async def test_a_human_picking_up_mid_greeting_is_never_swallowed():
+    """The one thing this filter must not eat."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    assert rec.frames, "the human saying hello was dropped as machine noise"
+
+
+@pytest.mark.asyncio
+async def test_short_answers_survive_once_we_have_spoken():
+    """After our opening, a one-word answer ('Raman') is the whole point."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._bot_spoke_once = lambda: True
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    rec.frames.clear()
+    await _feed(tc, "Raman")
+    assert rec.frames, "a real one-word answer was dropped"

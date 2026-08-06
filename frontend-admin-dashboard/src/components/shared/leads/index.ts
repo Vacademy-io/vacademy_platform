@@ -37,6 +37,12 @@ export { LeadStatTabs, type LeadStatTab } from './lead-stat-tabs';
 export { LeadCard } from './lead-card';
 export { LeadBoard } from './lead-board';
 export { LeadBoardColumn } from './lead-board-column';
+export { LeadStatusBoard } from './lead-status-board';
+export {
+    LeadStatusBoardColumn,
+    BOARD_SORT_PARAMS,
+    type BoardColumnSort,
+} from './lead-status-board-column';
 export { DEFAULT_BOARD_COLUMNS, type LeadBoardColumnConfig } from './lead-board-config';
 export { LeadViewToggle, type LeadView } from './lead-view-toggle';
 export { useUpdateLeadTier } from './use-update-lead-tier';

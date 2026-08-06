@@ -20,6 +20,8 @@ public class SupportTicketDto {
     private String raisedByName;
     private String raisedByEmail;
     private String raisedByRole;
+    /** Human-facing reference shown everywhere instead of the UUID, e.g. VAC-014. */
+    private String ticketNumber;
     private String subject;
     private String category;
     private String priority;

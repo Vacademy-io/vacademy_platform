@@ -41,14 +41,46 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_RUMIK = "rumik";
     /** Sarvam bulbul:v3 — Rs 3.00/1k chars, carries the +4 credits/min surcharge. */
     public static final String MODEL_SARVAM = "sarvam";
+    /**
+     * Google Cloud TTS, Chirp3-HD tier — the founder picked it BY EAR on 2026-08-05
+     * over Sarvam, Rumik and Google's own Neural2/WaveNet/Standard tiers, after Rumik
+     * garbled core Hindi on the phone leg (a caller asked what "प्रतिलत" meant; the
+     * model had written "प्रतिशत").
+     *
+     * <p>Economics, measured from our OWN calls rather than assumed — 779 characters
+     * per CALL-minute across 13 production calls: $30/1M chars works out to
+     * ~Rs 2.06/call-minute against Sarvam's Rs 2.34. It is CHEAPER than what we ship
+     * today, and Chirp3-HD carries 1M free characters a month (~1,280 call-minutes).
+     * Neural2/WaveNet ($16/1M ≈ Rs 1.10) are the cheaper fallback tiers.
+     *
+     * <p>No new vendor: it authenticates with the SAME service account as the Vertex
+     * LLM. Voice ids are locale-prefixed ({@code hi-IN-Chirp3-HD-Achird}), so a
+     * cross-vendor name is impossible to confuse with the other palettes.
+     */
+    public static final String MODEL_GOOGLE = "google";
+    /**
+     * Smallest.ai Lightning — Indian-language specialist (146 of its 234
+     * lightning_v3.1 voices are Hindi-capable), added alongside Google on the
+     * founder's instruction so the two can be compared on real calls.
+     *
+     * <p>⚠️ Its palettes are PER-MODEL and do not overlap: the API hard-rejects a
+     * cross-model voice ("Voice 'devansh' is not available on the lightning_v3.1_pro
+     * model"), which on a live call means silence. Only the lightning_v3.1 (standard)
+     * palette is exposed here; that is what the bot defaults to.
+     */
+    public static final String MODEL_SMALLEST = "smallest";
 
     /**
      * Engine stamped on a NEW agent. Existing agents are untouched — V421 pinned all
      * 17 of them to Sarvam, and they stay there until somebody changes them by hand.
      *
-     * <p>Rumik, on the founder's go-ahead after hearing it. Cost is the reason:
-     * Rs 0.50/1k characters against Sarvam's Rs 3.00 on the line that is ~65% of an
-     * AI call's marginal cost.
+     * <p>Google Chirp3-HD as of 2026-08-05, replacing Rumik. Rumik was chosen for
+     * cost (Rs 0.50/1k characters against Sarvam's Rs 3.00) but lost the argument on
+     * the phone: it garbled core Hindi, and a live caller asked what "प्रतिलत" meant
+     * when the model had written "प्रतिशत". Chirp3-HD was picked BY EAR over every
+     * other engine AND is cheaper per call-minute than Sarvam (~Rs 2.06 vs Rs 2.34
+     * at our measured 779 characters per call-minute), with ~1,280 free minutes a
+     * month. Rumik stays selectable for anyone who wants the floor price.
      *
      * <p>It was held at Sarvam for several hours while four P0s from an adversarial
      * review were fixed — reply truncation from pipecat's one-message-per-sentence
@@ -61,7 +93,7 @@ public final class TtsVoiceCatalog {
      * <p>STILL NOT PROVEN: no Rumik call has ever been placed over a real phone line.
      * The first agent created after this ships is that call.
      */
-    public static final String NEW_AGENT_DEFAULT = MODEL_RUMIK;
+    public static final String NEW_AGENT_DEFAULT = MODEL_GOOGLE;
 
     /**
      * Sarvam Bulbul v3 speakers (37, verified against docs.sarvam.ai 2026-07-16).
@@ -103,9 +135,63 @@ public final class TtsVoiceCatalog {
             v("adam", "male", MODEL_RUMIK), v("lucas", "male", MODEL_RUMIK),
             v("noah", "male", MODEL_RUMIK), v("theo", "male", MODEL_RUMIK));
 
+    /**
+     * Google Cloud hi-IN voices, curated from the live {@code list_voices} API
+     * (46 available; 30 of them Chirp3-HD). Genders are Google's own
+     * {@code ssml_gender} — NOT guessed from the name, because nothing in
+     * "Achird" (male) or "Achernar" (female) says which is which, and a wrong
+     * gender here makes a male voice speak feminine Hindi.
+     *
+     * <p>Chirp3-HD leads because the founder chose it by ear; the Neural2 and
+     * WaveNet entries are the ~half-price tiers, kept selectable for volume.
+     */
+    private static final List<Map<String, String>> GOOGLE_VOICES = List.of(
+            v("hi-IN-Chirp3-HD-Achird", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Charon", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Fenrir", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Orus", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Puck", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Schedar", "male", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Achernar", "female", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Aoede", "female", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Kore", "female", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Leda", "female", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Zephyr", "female", MODEL_GOOGLE),
+            v("hi-IN-Chirp3-HD-Sulafat", "female", MODEL_GOOGLE),
+            v("hi-IN-Neural2-B", "male", MODEL_GOOGLE),
+            v("hi-IN-Neural2-C", "male", MODEL_GOOGLE),
+            v("hi-IN-Neural2-A", "female", MODEL_GOOGLE),
+            v("hi-IN-Neural2-D", "female", MODEL_GOOGLE),
+            v("hi-IN-Wavenet-B", "male", MODEL_GOOGLE),
+            v("hi-IN-Wavenet-C", "male", MODEL_GOOGLE),
+            v("hi-IN-Wavenet-A", "female", MODEL_GOOGLE),
+            v("hi-IN-Wavenet-D", "female", MODEL_GOOGLE));
+
+    /**
+     * Smallest.ai Lightning v3.1 (standard) Hindi voices with an Indian accent,
+     * from the live {@code /waves/v1/lightning-v3.1/get_voices} catalog. Genders
+     * are the vendor's own {@code tags.gender}.
+     *
+     * <p>Only v3.1 voices are listed: mixing in a {@code _pro} name (mandar,
+     * manasi, meher…) would be rejected by the API on the standard model and the
+     * call would go silent.
+     */
+    private static final List<Map<String, String>> SMALLEST_VOICES = List.of(
+            v("devansh", "male", MODEL_SMALLEST),
+            v("kaustubh", "male", MODEL_SMALLEST),
+            v("virat", "male", MODEL_SMALLEST),
+            v("karan", "male", MODEL_SMALLEST),
+            v("yash", "male", MODEL_SMALLEST),
+            v("debashis", "male", MODEL_SMALLEST),
+            v("imogen", "female", MODEL_SMALLEST),
+            v("nirupma", "female", MODEL_SMALLEST),
+            v("niharika", "female", MODEL_SMALLEST));
+
     private static final Map<String, List<Map<String, String>>> BY_MODEL = Map.of(
             MODEL_SARVAM, SARVAM_VOICES,
-            MODEL_RUMIK, RUMIK_VOICES);
+            MODEL_RUMIK, RUMIK_VOICES,
+            MODEL_GOOGLE, GOOGLE_VOICES,
+            MODEL_SMALLEST, SMALLEST_VOICES);
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {
@@ -115,7 +201,8 @@ public final class TtsVoiceCatalog {
 
     /** Every voice, model-tagged. The frontend groups by {@code model}. */
     public static List<Map<String, String>> all() {
-        return java.util.stream.Stream.concat(RUMIK_VOICES.stream(), SARVAM_VOICES.stream()).toList();
+        return java.util.stream.Stream.of(GOOGLE_VOICES, SMALLEST_VOICES, RUMIK_VOICES,
+                SARVAM_VOICES).flatMap(List::stream).toList();
     }
 
     public static List<Map<String, String>> forModel(String model) {
@@ -124,7 +211,13 @@ public final class TtsVoiceCatalog {
 
     /** Default voice when none is set, or when a cross-vendor name had to be dropped. */
     public static String defaultVoice(String model) {
-        return MODEL_RUMIK.equals(normalizeModel(model)) ? "ira" : "priya";
+        String m = normalizeModel(model);
+        if (MODEL_RUMIK.equals(m)) return "ira";
+        // The founder's pick, and male — agent personas here are predominantly male
+        // and Hindi verb gender follows the voice.
+        if (MODEL_GOOGLE.equals(m)) return "hi-IN-Chirp3-HD-Achird";
+        if (MODEL_SMALLEST.equals(m)) return "devansh";
+        return "priya";
     }
 
     /** True when {@code voice} is in {@code model}'s palette (case-insensitive). */
@@ -153,13 +246,22 @@ public final class TtsVoiceCatalog {
         if (m.equals(MODEL_RUMIK) || m.startsWith("rumik") || m.startsWith("silk")
                 || m.startsWith("mulberry")) return MODEL_RUMIK;
         if (m.equals(MODEL_SARVAM) || m.startsWith("sarvam") || m.startsWith("bulbul")) return MODEL_SARVAM;
+        if (m.equals(MODEL_GOOGLE) || m.startsWith("google") || m.startsWith("chirp")) return MODEL_GOOGLE;
+        if (m.equals(MODEL_SMALLEST) || m.startsWith("smallest") || m.startsWith("lightning")) {
+            return MODEL_SMALLEST;
+        }
         return null;
     }
 
     /** For the picker: engines with their label and voice list. */
     public static List<Map<String, Object>> models() {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
-        out.add(model(MODEL_RUMIK, "Rumik Silk Mulberry 1.5", "Recommended — fastest and included in the base rate"));
+        out.add(model(MODEL_GOOGLE, "Google Chirp3-HD",
+                "Recommended — clearest Hindi; cheaper per minute than Sarvam"));
+        out.add(model(MODEL_SMALLEST, "Smallest.ai Lightning v3.1",
+                "Indian-language specialist"));
+        out.add(model(MODEL_RUMIK, "Rumik Silk Mulberry 1.5",
+                "Cheapest, but mispronounces some Hindi words on the phone"));
         out.add(model(MODEL_SARVAM, "Sarvam Bulbul v3", "+4 credits per minute"));
         return out;
     }

@@ -15,6 +15,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { getInstituteId } from '@/constants/helper';
+import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 import { handleDeleteAssessment } from '@/routes/assessment/assessment-list/-services/assessment-services';
 
 export function ScheduleTestDetailsDropdownLive({
@@ -40,6 +41,7 @@ export function ScheduleTestDetailsDropdownLive({
         });
     };
 
+    const { canDelete } = useAssessmentActionVisibility();
     const handleDeleteAssessmentClick = (assessmentId: string) => {
         console.log(assessmentId);
         setIsDeleteAssessmentDialog(true);
@@ -64,15 +66,17 @@ export function ScheduleTestDetailsDropdownLive({
                     >
                         View Assessment Details
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
-                        }}
-                    >
-                        Delete Assessment
-                    </DropdownMenuItem>
+                    {canDelete && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
+                            }}
+                        >
+                            Delete Assessment
+                        </DropdownMenuItem>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
             {isRemiderAlertDialogOpen && (
@@ -115,6 +119,7 @@ export function ScheduleTestDetailsDropdownUpcoming({
         });
     };
 
+    const { canDelete } = useAssessmentActionVisibility();
     const handleDeleteAssessmentClick = (assessmentId: string) => {
         console.log(assessmentId);
         setIsDeleteAssessmentDialog(true);
@@ -141,15 +146,17 @@ export function ScheduleTestDetailsDropdownUpcoming({
                         View Assessment Details
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
-                        }}
-                    >
-                        Delete Assessment
-                    </DropdownMenuItem>
+                    {canDelete && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
+                            }}
+                        >
+                            Delete Assessment
+                        </DropdownMenuItem>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
             {isDeleteAssessmentDialog && (
@@ -184,6 +191,7 @@ export function ScheduleTestDetailsDropdownPrevious({
         });
     };
 
+    const { canDelete } = useAssessmentActionVisibility();
     const handleDeleteAssessmentClick = (assessmentId: string) => {
         console.log(assessmentId);
         setIsDeleteAssessmentDialog(true);
@@ -210,15 +218,17 @@ export function ScheduleTestDetailsDropdownPrevious({
                         View Assessment Details
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
-                        }}
-                    >
-                        Delete Assessment
-                    </DropdownMenuItem>
+                    {canDelete && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
+                            }}
+                        >
+                            Delete Assessment
+                        </DropdownMenuItem>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
             {isDeleteAssessmentDialog && (
@@ -254,6 +264,7 @@ export function ScheduleTestDetailsDropdowDrafts({
             },
         });
     };
+    const { canDelete } = useAssessmentActionVisibility();
     const handleDeleteAssessmentClick = (assessmentId: string) => {
         console.log(assessmentId);
         setIsDeleteAssessmentDialog(true);
@@ -278,15 +289,17 @@ export function ScheduleTestDetailsDropdowDrafts({
                     >
                         View Assessment Details
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
-                        }}
-                    >
-                        Delete Assessment
-                    </DropdownMenuItem>
+                    {canDelete && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAssessmentClick(scheduleTestContent.assessment_id);
+                            }}
+                        >
+                            Delete Assessment
+                        </DropdownMenuItem>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
             {isDeleteAssessmentDialog && (

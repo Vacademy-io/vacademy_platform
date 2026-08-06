@@ -16,6 +16,7 @@ import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
 import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
+import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
@@ -624,6 +625,8 @@ public class AuthService {
                 instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword(), normalizePortalUrl(loginUrl), theme));
         genericEmailRequest.setSubject("Course Enrollment - " + instituteName);
+        // Names the event so institute-configured CC/BCC copies can match this send.
+        genericEmailRequest.setService(NotificationConstant.EVENT_LEARNER_ENROLL);
         notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
 
@@ -690,6 +693,8 @@ public class AuthService {
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Course Enrollment - " + instituteName);
         emailRequest.setBody(body);
+        // Names the event so institute-configured CC/BCC copies can match this send.
+        emailRequest.setService(NotificationConstant.EVENT_LEARNER_ENROLL);
         notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
 

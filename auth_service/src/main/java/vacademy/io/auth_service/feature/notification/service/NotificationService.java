@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
 import vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO;
@@ -165,6 +166,13 @@ public class NotificationService {
     public UnifiedSendResponse sendGenericHtmlMailViaUnified(GenericEmailRequest request, String instituteId) {
         String emailType = request.getEmailType() != null ? request.getEmailType() : "UTILITY_EMAIL";
 
+        // A caller that names its event (GenericEmailRequest.service) gets that name as the send
+        // source, which is what notification-service's EmailCcResolver matches institute-configured
+        // CC/BCC copies on. Callers that leave it blank keep the previous generic "auth-service"
+        // source and so remain uncopyable — that is intentional, not an oversight: an email must be
+        // explicitly named before an admin can select it as a copy trigger.
+        String source = StringUtils.hasText(request.getService()) ? request.getService() : "auth-service";
+
         return sendUnified(UnifiedSendRequest.builder()
                 .instituteId(instituteId != null ? instituteId : "")
                 .channel("EMAIL")
@@ -174,7 +182,7 @@ public class NotificationService {
                         .emailSubject(request.getSubject())
                         .emailBody(request.getBody())
                         .emailType(emailType)
-                        .source("auth-service")
+                        .source(source)
                         .build())
                 .build());
     }

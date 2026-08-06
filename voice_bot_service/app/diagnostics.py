@@ -44,10 +44,18 @@ SLOW_TTS = "SLOW_TTS"
 SLOW_LLM = "SLOW_LLM"
 TRANSFER_FAILED = "TRANSFER_FAILED"
 PROMPT_UNFILLED = "PROMPT_UNFILLED"
+# The caller spoke but the bot produced NO audio at all. Added 2026-08-05 after
+# the pipecat 1.4 migration shipped a mute bot: RumikTTSService.run_tts kept the
+# 0.0.95 signature, 1.4 called it with (text, context_id), and every reply died
+# as an ErrorFrame pipecat only logged. The call was scored RED for
+# LIKELY_MACHINE while the REAL story — "we never said a word" — appeared
+# nowhere in the panel. A whole class of outage was invisible; now it is not.
+BOT_SILENT = "BOT_SILENT"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
+    BOT_SILENT,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -56,7 +64,7 @@ ALL_FAULTS = (
 # "Voice synthesis stalled" while the actual story was that the caller repeated
 # "hybrid model" four times and we never once transcribed it.
 HEADLINE_PRIORITY = (
-    CRASH, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
+    CRASH, BOT_SILENT, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
     FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED,
     PROMPT_UNFILLED,
 )
@@ -109,6 +117,12 @@ class CallDiagnostics:
     # None = NOT MEASURED (never 0-by-default — see module docstring).
     answers_deleted: Optional[int] = None
     answers_deleted_samples: List[str] = field(default_factory=list)
+    # Ducking (instant barge-in hold). ducks = holds begun; absorbs = holds that
+    # turned out to be backchannels and resumed mid-sentence; timeout_resumes =
+    # voiced-but-wordless holds the watchdog released.
+    ducks: int = 0
+    duck_absorbs: int = 0
+    duck_timeout_resumes: int = 0
 
     # ── caller/agent shape (feeds the machine heuristic) ──
     user_turns: int = 0
@@ -199,6 +213,14 @@ def _norm_answer(text: str) -> str:
     return "".join(ch for ch in (text or "").casefold() if ch.isalnum())
 
 
+# Containment matching below this many normalized chars is off: a tiny key like
+# "हा" ("हाँ।" after stripping marks) is a substring of half the transcript and
+# would mark genuinely-deleted acks as delivered. 4, not 5: normalization drops
+# Devanagari combining vowels, so a real two-word fragment like "नहीं जान।"
+# shrinks to just 4 consonant chars ("नहजन").
+_CONTAIN_MIN_CHARS = 4
+
+
 def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     """PURE. Which caller answers never reached the model?
 
@@ -213,20 +235,50 @@ def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     including the literal answers IGCSE, Symbiosis, Monday. They never reach the
     model, the transcript, or the report, and nothing re-asks for them.
 
-    Multiset difference, so a genuine repeat ("SSC." twice) is not miscounted.
+    Two passes:
+    1. Multiset exact match, so a genuine repeat ("SSC." twice) is not miscounted.
+    2. CONTAINMENT with consumption: Saaras splits one halting utterance into
+       fragment finals ("नहीं जान।" + "सकते हैं आप।") which the aggregator JOINS
+       into one context message — per-final exact matching then counted every
+       fragment as deleted. Live call ae7d3069 reported 10 deletions on a
+       conversation the model demonstrably followed (it answered each refusal).
+       A fragment found inside a delivered message consumes that span, so a
+       repeat still needs its own copy.
     """
     pool: Dict[str, int] = {}
     for m in delivered:
         k = _norm_answer(m)
         if k:
             pool[k] = pool.get(k, 0) + 1
-    missing: List[str] = []
+    leftovers: List[tuple] = []
     for h in heard:
         k = _norm_answer(h)
         if not k:
             continue
         if pool.get(k, 0) > 0:
             pool[k] -= 1
+        else:
+            leftovers.append((h, k))
+    # Pass 2 over what exact matching couldn't place. Consume matched spans from
+    # a mutable copy of the delivered pool (exact-pass leftovers included — a
+    # message that exact-matched is spoken for and must not also absorb fragments,
+    # so only UNCONSUMED copies are searchable).
+    spans: List[str] = []
+    for m in delivered:
+        k = _norm_answer(m)
+        if k and pool.get(k, 0) > 0:
+            pool[k] -= 1
+            spans.append(k)
+    missing: List[str] = []
+    for h, k in leftovers:
+        if len(k) >= _CONTAIN_MIN_CHARS:
+            for i, span in enumerate(spans):
+                j = span.find(k)
+                if j >= 0:
+                    spans[i] = span[:j] + span[j + len(k):]
+                    break
+            else:
+                missing.append(h)
         else:
             missing.append(h)
     return len(missing), missing[:_MAX_DELETED_ANSWERS]
@@ -257,6 +309,12 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
 
     if d.crash:
         fire(CRASH, RED)
+
+    # A conversation where the caller spoke and we never produced a single audio
+    # frame is total failure, whatever else the counters say. Requires a caller
+    # turn so an unanswered dial (nobody there, nothing to say) stays quiet.
+    if d.user_turns >= 1 and d.bot_turns == 0 and d.tts_chars == 0:
+        fire(BOT_SILENT, RED)
 
     if d.tts_stall_cap_hit or d.tts_stalls >= 2 or (d.tts_stalls >= 1 and d.tts_silent_generations >= 1):
         fire(TTS_WEDGE, RED)
@@ -348,6 +406,7 @@ _HEADLINE_TEXT = {
     SLOW_LLM: "Slow agent responses",
     TRANSFER_FAILED: "Human transfer was requested but failed",
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
+    BOT_SILENT: "The agent never spoke — the caller heard nothing",
 }
 
 
@@ -388,6 +447,9 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "userTurns": d.user_turns, "botTurns": d.bot_turns,
                 "bargeIns": d.barge_ins,
                 "bargeInCancels": d.barge_in_cancels,
+                "ducks": d.ducks,
+                "duckAbsorbs": d.duck_absorbs,
+                "duckTimeoutResumes": d.duck_timeout_resumes,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
                 "nudges": d.nudges,

@@ -60,6 +60,15 @@ class CallState:
     # The bot has said its goodbye but the line is NOT yet closing. Held open for
     # end_grace_secs so a caller who re-engages ("Yes, I can") is not hung up on.
     end_pending_since: float = 0.0
+    # Bot audio is DUCKED (held in DuckGate) because the caller started speaking
+    # over a reply. Set at VAD onset; cleared by TurnGate absorb/interrupt or by
+    # the watchdog's DUCK_RESUME when the voiced sound produced no words at all.
+    # While ducked the idle machinery is paused — the silence is deliberate.
+    ducked_since: float = 0.0
+    # When a reply was last cancelled. A backchannel arriving within
+    # backchannel_carry_secs of this can still be answered with "carry on"
+    # rather than the model replying to a bare "haan" from a standing start.
+    last_cut_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -105,6 +114,12 @@ class WatchdogConfig:
     unplayed_confirm_secs: float = 3.0
     # Grace between the farewell finishing and actually closing the line.
     end_grace_secs: float = 2.0
+    # Duck (held bot audio) resume rules. no_words: the caller made a sound the
+    # VAD heard but STT produced nothing (cough, horn) — resume this long after
+    # their sound ended. max_hold: absolute ceiling on a single hold, so a
+    # missing transcript can never mute the bot indefinitely.
+    duck_no_words_resume_secs: float = 2.0
+    duck_max_hold_secs: float = 12.0
 
 
 # Decision kinds — one per watchdog side-effect branch.
@@ -118,6 +133,7 @@ NUDGE = "nudge"
 IDLE_HANGUP = "idle_hangup"
 ARM_STOP = "arm_stop"
 HEARING_FAILED = "hearing_failed"
+DUCK_RESUME = "duck_resume"
 
 
 @dataclass(frozen=True)
@@ -135,6 +151,23 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             return Decision(CANCEL_STARVED, now - s.stopping_since)
         if now - s.last_stop_reissue > cfg.stop_reissue_every_secs:
             return Decision(REISSUE_STOP)
+        return Decision(NONE)
+
+    # 2) Ducked: the bot's reply is deliberately held while the caller speaks
+    #    over it. Pause ALL idle machinery (the silence is ours, not theirs) —
+    #    except the duration cap, which is a spend bound and still binds. Resume
+    #    when their sound produced no words (TurnGate handles the with-words
+    #    paths event-driven), or unconditionally at the hold ceiling.
+    if s.ducked_since > 0:
+        if now - cfg.connected_at >= cfg.cap_secs:
+            return Decision(CAP_FAREWELL, now - cfg.connected_at)
+        held = now - s.ducked_since
+        if held >= cfg.duck_max_hold_secs:
+            return Decision(DUCK_RESUME, held)
+        if (not s.user_speaking
+                and now - max(s.user_stopped_t, s.ducked_since)
+                >= cfg.duck_no_words_resume_secs):
+            return Decision(DUCK_RESUME, held)
         return Decision(NONE)
 
     # 2) Close the line — but only after a grace in which the caller could
@@ -247,6 +280,9 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
     """State bookkeeping for a decision (I/O stays with the caller)."""
     if d.kind == REISSUE_STOP:
         s.last_stop_reissue = now
+    elif d.kind == DUCK_RESUME:
+        s.ducked_since = 0.0
+        s.t = now
     elif d.kind == ARM_STOP:
         s.end_pending_since = 0.0
     elif d.kind == STALL_RECOVER:

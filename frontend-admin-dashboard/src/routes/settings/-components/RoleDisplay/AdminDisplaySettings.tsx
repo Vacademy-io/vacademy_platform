@@ -33,6 +33,7 @@ import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
+import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -193,6 +194,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowViewPassword: true,
     allowSendResetPasswordMail: true,
     showApprovalToggle: true,
+    // Admins get this by default; teachers and custom roles do not.
+    allowEditCredentials: true,
 };
 
 const LEARNER_MANAGEMENT_OPTIONS: Array<{
@@ -209,6 +212,11 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
         key: 'allowViewPassword',
         label: 'Allow Viewing Learner Password',
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
+    },
+    {
+        key: 'allowEditCredentials',
+        label: 'Allow Editing Learner Username & Password',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowEditCredentials ?? false,
     },
     {
         key: 'allowSendResetPasswordMail',
@@ -1290,6 +1298,10 @@ export default function AdminDisplaySettings() {
                     })()}
                 </CardContent>
             </Card>
+            <AssessmentActionsCard
+                settings={settings.assessmentPage}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
+            />
             </section>
 
             <section id="grp-layout" className="space-y-6">

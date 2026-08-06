@@ -22,7 +22,7 @@ public class GroupedSessionsByDateDTO {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "Asia/Kolkata")
     private Date date;
     private List<LiveSessionListDTO> sessions;
-    private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
+    private Object learnerButtonConfig;
     private String defaultClassLink;
     private String defaultClassName;
 

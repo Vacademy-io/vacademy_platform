@@ -50,7 +50,8 @@ public class AiCallCampaignController {
         return ResponseEntity.ok(campaignService.startForAudience(
                 instituteId, audienceId, dryRun, campaignId, preferredNumberId,
                 body == null ? null : body.getResponseIds(),
-                body == null ? null : body.getParallel()));
+                body == null ? null : body.getParallel(),
+                user == null ? null : user.getUserId()));
     }
 
     /** Live per-lead call statuses for the progress dialog (polled every few seconds). */

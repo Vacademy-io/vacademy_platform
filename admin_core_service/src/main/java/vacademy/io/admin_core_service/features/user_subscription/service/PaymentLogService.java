@@ -33,6 +33,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.invoice.enums.InvoicePdfPlacement;
+import vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoicePaymentLogMappingRepository;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogMapping;
 import vacademy.io.common.core.standard_classes.ListService;
@@ -680,8 +681,12 @@ public class PaymentLogService {
                 } catch (Exception ue) {
                     log.warn("Could not enrich PAYMENT_SUCCESS context with user details: {}", ue.getMessage());
                 }
-                // Trial-start label ("20th July") for welcome templates that announce a start day.
-                successCtx.put("nextMonday", nextMondayLabel());
+                // Programme start label ("20th July") for welcome templates. Published
+                // under both keys: 'nextMonday' for templates already using it, and the
+                // accurate 'trialStartDate' for anyone whose start day isn't Monday.
+                String startLabel = trialStartLabel(paidPlan);
+                successCtx.put("nextMonday", startLabel);
+                successCtx.put("trialStartDate", startLabel);
                 String successEventId = paidPlan.getEnrollInviteId() != null
                         ? paidPlan.getEnrollInviteId()
                         : instituteId;
@@ -938,10 +943,29 @@ public class PaymentLogService {
         }
     }
 
+    /**
+     * The zone the per-day series is bucketed in. Interpolated straight into a native query, so an
+     * unknown value would surface as a Postgres error rather than a bad chart — anything ZoneId
+     * cannot parse is rejected here and falls back to UTC (the pre-existing behaviour).
+     */
+    private String resolveDayBucketZone(String requestedZone) {
+        if (!StringUtils.hasText(requestedZone)) {
+            return "UTC";
+        }
+        try {
+            return java.time.ZoneId.of(requestedZone.trim()).getId();
+        } catch (java.time.DateTimeException e) {
+            log.warn("Ignoring unrecognised collection-summary time zone '{}'; bucketing by UTC",
+                    requestedZone);
+            return "UTC";
+        }
+    }
+
     @Transactional(readOnly = true)
     /**
      * Aggregated PAID collection for an institute (optionally one sub-org) over a
-     * UTC date window. Returns the grand total + a per-day series for charting.
+     * UTC date window. Returns the grand total + a per-day series for charting;
+     * the days are cut in request.timeZone (default UTC).
      * Omitting the dates yields the all-time total (epoch -> now).
      */
     public CollectionSummaryResponseDTO getCollectionSummary(CollectionSummaryRequestDTO request) {
@@ -958,7 +982,8 @@ public class PaymentLogService {
                 noSubOrg ? "__none__" : request.getSubOrgId(),
                 noSubOrg,
                 startDate,
-                endDate);
+                endDate,
+                resolveDayBucketZone(request.getTimeZone()));
 
         double total = 0d;
         long count = 0L;
@@ -1565,30 +1590,31 @@ public class PaymentLogService {
     }
 
     /**
-     * The next Monday STRICTLY after today ("3rd August"), for welcome templates that
-     * announce a trial start day. Must match the drip's "Wait Until Next Monday" DELAY
-     * node, which uses TemporalAdjusters.next with includeSameDay=false: enrolling ON a
-     * Monday announces the FOLLOWING Monday, because the first class only runs then too.
-     * (Using nextOrSame here made a Monday signup announce today, a full week early.)
+     * The date this learner's programme starts ("3rd August"), for welcome templates.
+     *
+     * <p>Reads the invite's {@code AUTOPAY_SETTING.TRIAL_STARTS_ON} — the same setting
+     * that anchors {@code next_charge_at} in UserPlanService — so an institute starting
+     * on Wednesdays announces a Wednesday rather than being told Monday and billed from
+     * Wednesday. Falls back to Monday when the invite names no day, preserving the
+     * meaning of the long-standing {@code nextMonday} variable.</p>
+     *
+     * <p>Strictly-next, matching the drip's DELAY node: enrolling ON the start weekday
+     * announces the FOLLOWING week, because the first class only runs then too.</p>
      */
-    private String nextMondayLabel() {
-        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
-        java.time.LocalDate monday = today.with(
-                java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
-        int day = monday.getDayOfMonth();
-        String suffix;
-        if (day >= 11 && day <= 13) {
-            suffix = "th";
-        } else {
-            switch (day % 10) {
-                case 1: suffix = "st"; break;
-                case 2: suffix = "nd"; break;
-                case 3: suffix = "rd"; break;
-                default: suffix = "th";
+    private String trialStartLabel(UserPlan plan) {
+        String settingJson = null;
+        try {
+            if (plan != null && plan.getEnrollInvite() != null) {
+                settingJson = plan.getEnrollInvite().getSettingJson();
             }
+        } catch (Exception e) {
+            log.debug("Could not read invite setting for start-date label: {}", e.getMessage());
         }
-        String month = monday.getMonth().getDisplayName(
-                java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH);
-        return day + suffix + " " + month;
+        java.time.DayOfWeek day = TrialStartResolver.dayFromInvite(settingJson);
+        if (day == null) {
+            day = TrialStartResolver.DEFAULT_LABEL_DAY;
+        }
+        return TrialStartResolver.label(
+                TrialStartResolver.nextStart(day, TrialStartResolver.zoneFromInvite(settingJson)));
     }
 }

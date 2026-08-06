@@ -848,6 +848,83 @@ public class DynamicNotificationService {
     }
 
     /**
+     * Hands a learner their portal credentials on the channel the caller asks
+     * for, using whatever template this institute has bound to
+     * {@link NotificationEventType#LEARNER_CREDENTIALS_SHARED}.
+     *
+     * <p>Nothing about the message is hardcoded here — subject, body and
+     * WhatsApp template name all come from the institute's own
+     * {@code templates} row. An institute that has bound no template for the
+     * requested channel sends nothing and says so, rather than falling back to
+     * a generic platform-branded mail the institute never approved. That is the
+     * whole point of routing this through the event config: a second institute
+     * can bind a completely different template to the same event without a code
+     * change, and a third can enable WhatsApp while leaving email alone.
+     *
+     * <p>Resolution order matches the guardian flow: the institute's own
+     * binding first, then a platform-wide {@code DEFAULT} binding if one exists.
+     *
+     * @return true when a message was dispatched
+     */
+    public boolean sendLearnerCredentialsNotification(
+            String instituteId,
+            NotificationTemplateType channel,
+            UserDTO learner,
+            String username,
+            String password) {
+
+        try {
+            NotificationEventConfig config = findEventConfig(
+                    NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel)
+                    .orElse(null);
+
+            if (config == null) {
+                log.info("No LEARNER_CREDENTIALS_SHARED {} template bound for institute {}; nothing sent",
+                        channel, instituteId);
+                return false;
+            }
+
+            // Each channel needs a different contact detail, and an absent one is
+            // a normal state (plenty of learners have no phone on file) — report
+            // it back so the UI can say which channel could not be used.
+            if (channel == NotificationTemplateType.EMAIL
+                    && !org.springframework.util.StringUtils.hasText(learner.getEmail())) {
+                log.info("Learner credential email skipped: userId={} has no email", learner.getId());
+                return false;
+            }
+            if (channel == NotificationTemplateType.WHATSAPP
+                    && !org.springframework.util.StringUtils.hasText(learner.getMobileNumber())) {
+                log.info("Learner credential WhatsApp skipped: userId={} has no mobile number", learner.getId());
+                return false;
+            }
+
+            Institute institute = getInstituteFromId(instituteId);
+
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    .userId(learner.getId())
+                    .userName(username)
+                    .userEmail(learner.getEmail())
+                    .userMobile(learner.getMobileNumber())
+                    .userFullName(learner.getFullName())
+                    .name(learner.getFullName())
+                    .userPassword(password)
+                    // Credentials are for the LEARNER portal, never the admin one.
+                    .portalUrl(resolveLearnerPortalUrl(institute))
+                    .instituteName(institute != null ? institute.getInstituteName() : null)
+                    .instituteId(instituteId)
+                    .themeColor(getThemeColorFromInstitute(institute))
+                    .build();
+
+            sendNotificationViaUnifiedApi(config, instituteId, learner, templateVars);
+            return true;
+        } catch (Exception e) {
+            log.error("Error sending learner credentials ({}) for institute {}: {}",
+                    channel, instituteId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
      * Resolves the Template entity referenced by a NotificationEventConfig.
      * Tries id-based lookup first so two configs sharing the same template_name can still
      * point at distinct rows (e.g. for session-specific dynamic_parameters while dispatching

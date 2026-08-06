@@ -178,7 +178,12 @@ public class UserPlanService {
                     .readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
             if (ap.path("ENABLED").asBoolean(false)) {
                 Integer trialDays = ap.has("TRIAL_DAYS") ? ap.get("TRIAL_DAYS").asInt(0) : null;
-                applyAutopaySetup(userPlan, true, trialDays);
+                // Optional: hold the trial clock until the day the programme actually
+                // starts (e.g. "MONDAY" for an institute whose classes begin on Mondays).
+                // Absent → the trial starts at enrollment, as before.
+                String trialStartsOn = ap.path("TRIAL_STARTS_ON").asText(null);
+                String trialZone = ap.path("TRIAL_TIMEZONE").asText(null);
+                applyAutopaySetup(userPlan, true, trialDays, trialStartsOn, trialZone);
             }
         } catch (Exception e) {
             logger.warn("Could not apply autopay for plan {}: {}", userPlan.getId(), e.getMessage());
@@ -187,6 +192,31 @@ public class UserPlanService {
 
     @Transactional
     public void applyAutopaySetup(UserPlan userPlan, boolean autopayEnabled, Integer trialDays) {
+        applyAutopaySetup(userPlan, autopayEnabled, trialDays, null, null);
+    }
+
+    /**
+     * As above, but the free trial can be anchored to the weekday the programme
+     * actually starts instead of the moment of enrollment.
+     *
+     * <p>A learner who signs up on Wednesday for a course whose classes begin on
+     * Monday would otherwise be charged 14 days later — having attended only nine
+     * days of classes. With {@code trialStartsOn=MONDAY} the clock starts on the
+     * first class day, so the trial is 14 days of the actual programme.</p>
+     *
+     * <p>Deliberately shares {@link WorkflowDateUtil#nextOccurrence} with the DELAY
+     * node and the {@code #dates} SpEL helper — the same call that decides when the
+     * drip's day-1 message goes out and what the welcome message names as the start
+     * date. Billing and messaging therefore cannot drift apart. Strictly-next applies:
+     * enrolling on a Monday anchors to the following Monday, because that is when the
+     * learner's first class runs.</p>
+     *
+     * @param trialStartsOn day-of-week name ("MONDAY"), or null to start immediately
+     * @param timezone      zone the weekday is evaluated in; null uses the server zone
+     */
+    @Transactional
+    public void applyAutopaySetup(UserPlan userPlan, boolean autopayEnabled, Integer trialDays,
+            String trialStartsOn, String timezone) {
         if (userPlan == null || !autopayEnabled) {
             return;
         }
@@ -194,6 +224,10 @@ public class UserPlanService {
 
         if (trialDays != null && trialDays > 0) {
             java.util.Calendar c = java.util.Calendar.getInstance();
+            java.time.ZonedDateTime trialStart = resolveTrialStart(trialStartsOn, timezone);
+            if (trialStart != null) {
+                c.setTimeInMillis(trialStart.toInstant().toEpochMilli());
+            }
             c.add(java.util.Calendar.DAY_OF_MONTH, trialDays);
             java.util.Date trialEnd = new java.sql.Timestamp(c.getTimeInMillis());
             userPlan.setIsTrial(true);
@@ -205,8 +239,24 @@ public class UserPlanService {
         }
         userPlan.setRenewalAttemptCount(0);
         userPlanRepository.save(userPlan);
-        logger.info("Autopay set on UserPlan {} (trialDays={}, nextChargeAt={})",
-                userPlan.getId(), trialDays, userPlan.getNextChargeAt());
+        logger.info("Autopay set on UserPlan {} (trialDays={}, trialStartsOn={}, nextChargeAt={})",
+                userPlan.getId(), trialDays, trialStartsOn, userPlan.getNextChargeAt());
+    }
+
+    /**
+     * Start-of-day on the next {@code trialStartsOn} weekday, or null when the trial
+     * should start immediately. Resolution (including the tolerance for a malformed
+     * weekday or zone, which must never block an enrollment) lives in
+     * {@link vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver}
+     * so the announced start date is computed the same way.
+     */
+    private java.time.ZonedDateTime resolveTrialStart(String trialStartsOn, String timezone) {
+        java.time.ZonedDateTime start = vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver
+                .resolveStart(trialStartsOn, timezone);
+        if (start == null && trialStartsOn != null && !trialStartsOn.isBlank()) {
+            logger.warn("Ignoring TRIAL_STARTS_ON='{}' — not a weekday name; trial starts now", trialStartsOn);
+        }
+        return start;
     }
 
     @Transactional

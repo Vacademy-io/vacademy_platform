@@ -10,20 +10,11 @@ import {
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getValidSelectedSubOrgId, getFacultyAccessData } from '@/lib/auth/facultyAccessUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
 const nfmt = (n: number) => n.toLocaleString('en-IN');
-const inr = (n: number): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-            notation: n >= 100000 ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
-    }
-};
+// Dues carry no currency of their own — follow the institute's, unsymbolled when undeterminable.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const toTime = (v: string | number | null | undefined): number | null => {
@@ -86,6 +77,8 @@ const coursesFromInvites = (invites: unknown): CourseRow[] => {
  */
 export default function SubOrgSeatCoursesWidget() {
     const navigate = useNavigate();
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const inr = (n: number) => formatInstituteMoney(n, resolveInstituteCurrency(instituteDetails));
     const instituteId = getCurrentInstituteId();
     const subOrgId =
         getValidSelectedSubOrgId() ?? getFacultyAccessData()?.subOrgs?.[0]?.subOrgId ?? null;

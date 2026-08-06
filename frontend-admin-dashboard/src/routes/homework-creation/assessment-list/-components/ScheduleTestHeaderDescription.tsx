@@ -2,10 +2,12 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MyButton } from '@/components/design-system/button';
 import { CalendarBlank } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
+import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 
 export const ScheduleTestHeaderDescription = () => {
     const isMobile = useIsMobile();
     const navigate = useNavigate();
+    const { canCreate } = useAssessmentActionVisibility();
 
     const handleRedirectRoute = (type: string) => {
         navigate({
@@ -37,16 +39,18 @@ export const ScheduleTestHeaderDescription = () => {
                     testing process from start to finish.
                 </p>
             </div>
-            <MyButton
-                scale="large"
-                buttonType="primary"
-                layoutVariant="default"
-                id="create-assessment"
-                onClick={() => handleRedirectRoute('EXAM')}
-            >
-                <CalendarBlank size={32} />
-                Create Homework
-            </MyButton>
+            {canCreate && (
+                <MyButton
+                    scale="large"
+                    buttonType="primary"
+                    layoutVariant="default"
+                    id="create-assessment"
+                    onClick={() => handleRedirectRoute('EXAM')}
+                >
+                    <CalendarBlank size={32} />
+                    Create Homework
+                </MyButton>
+            )}
         </div>
     );
 };

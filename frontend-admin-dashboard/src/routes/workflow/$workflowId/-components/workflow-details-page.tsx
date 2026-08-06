@@ -1,6 +1,6 @@
 import { useSuspenseQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { getWorkflowDiagramQuery, getActiveWorkflowsQuery, deleteWorkflow, triggerWorkflowNow } from '@/services/workflow-service';
+import { getWorkflowDiagramQuery, getWorkflowsByStatusQuery, WORKFLOW_STATUSES, deleteWorkflow, triggerWorkflowNow } from '@/services/workflow-service';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { WorkflowDiagramSimple } from './workflow-diagram-simple';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, PencilSimple, Trash, Eye, Play, Warning } from '@phosphor-icons/react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
+import { WorkflowStatusBadge } from '@/routes/workflow/-components/workflow-status-badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Calendar, Clock } from '@phosphor-icons/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -61,8 +62,10 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
     const [isRunning, setIsRunning] = useState(false);
     const [runResult, setRunResult] = useState<{ ok: boolean; message: string } | null>(null);
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
+    // Every status, not just ACTIVE — otherwise opening a DRAFT or INACTIVE workflow renders
+    // "Workflow not found" even though the workflow exists and the diagram loads fine.
     const { data: workflows } = useSuspenseQuery(
-        getActiveWorkflowsQuery(instituteDetails?.id || '')
+        getWorkflowsByStatusQuery(instituteDetails?.id || '', WORKFLOW_STATUSES)
     );
     const {
         data: diagram,
@@ -129,12 +132,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     <div className="flex-1">
                         <div className="flex items-center gap-3">
                             <h1 className="text-3xl font-bold text-neutral-800">{workflow.name}</h1>
-                            <Badge
-                                variant={workflow.status === 'ACTIVE' ? 'default' : 'secondary'}
-                                className="bg-green-100 text-green-800 hover:bg-green-100"
-                            >
-                                {workflow.status}
-                            </Badge>
+                            <WorkflowStatusBadge status={workflow.status} />
                             <Button
                                 variant="outline"
                                 size="sm"

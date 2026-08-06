@@ -1,6 +1,7 @@
 import { Workflow } from '@/types/workflow/workflow-types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { WorkflowStatusBadge } from '@/routes/workflow/-components/workflow-status-badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from '@tanstack/react-router';
 import { Calendar, Clock, Tag } from '@phosphor-icons/react';
@@ -132,12 +133,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                     <h3 className="line-clamp-2 text-lg font-semibold text-neutral-900 transition-colors group-hover:text-primary-600">
                         {workflow.name}
                     </h3>
-                    <Badge
-                        variant={workflow.status === 'ACTIVE' ? 'default' : 'secondary'}
-                        className="shrink-0 bg-green-100 text-green-800 hover:bg-green-100"
-                    >
-                        {workflow.status}
-                    </Badge>
+                    <WorkflowStatusBadge status={workflow.status} />
                 </div>
             </CardHeader>
 

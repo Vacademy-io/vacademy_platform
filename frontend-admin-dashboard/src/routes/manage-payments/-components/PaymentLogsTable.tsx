@@ -19,6 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
 import { updatePaymentLogTracking } from '@/services/payment-logs';
 import { useToast } from '@/hooks/use-toast';
+import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 
 // ─── Order Status Constants ───────────────────────────────────────────────────
 
@@ -253,12 +254,8 @@ const getStatusBadgeVariant = (
     }
 };
 
-const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency || 'USD',
-    }).format(amount);
-};
+const formatCurrency = (amount: number, currency: string) =>
+    formatMoney(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
  * `payment_log.date` is a DATE column (no time), so it arrives as UTC midnight — rendering it
@@ -530,7 +527,7 @@ export function PaymentLogsTable({
                 accessorFn: (row) => row?.payment_log?.payment_amount || 0,
                 cell: ({ row }) => {
                     const amount = row.original?.payment_log?.payment_amount || 0;
-                    const currency = row.original?.payment_log?.currency || 'USD';
+                    const currency = resolveEntryCurrency(row.original);
                     return (
                         <div className="font-semibold text-neutral-700">
                             {formatCurrency(amount, currency)}

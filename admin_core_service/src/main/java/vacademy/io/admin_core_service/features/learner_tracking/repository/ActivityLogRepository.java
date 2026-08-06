@@ -226,6 +226,32 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     WHERE mcm.module_id = :moduleId
                       AND cpm.status IN (:chapterStatusList)
                       AND c.status IN (:chapterStatusList)
+                      -- A chapter with no learner-visible slide can never produce a
+                      -- percentage: getChapterCompletionPercentage divides by a count
+                      -- of 0, returns NULL, and the cascade drops the write, so no
+                      -- CHAPTER row is ever stored. It would then land here via the
+                      -- LEFT JOIN as 0 and drag the module down forever -- a chapter
+                      -- the learner cannot even open counted as work they failed to
+                      -- do, capping the course below 100% and blocking certificates.
+                      -- Count a chapter only when it could actually produce a value.
+                      -- Slide statuses are pinned rather than parameterised because
+                      -- every caller passes exactly PUBLISHED + UNSYNC, matching
+                      -- the denominator used by getChapterCompletionPercentage.
+                      -- NOTE: never write an apostrophe in a comment inside a
+                      -- @Query block. Spring Data scans the query for quoted
+                      -- ranges before JPA sees it and does not understand SQL
+                      -- comments, so a lone apostrophe opens a string literal
+                      -- that never closes and the repository bean fails to
+                      -- build -- taking the whole service down at startup.
+                      AND EXISTS (
+                          SELECT 1
+                          FROM chapter_to_slides cts
+                          JOIN slide s ON s.id = cts.slide_id
+                          WHERE cts.chapter_id = c.id
+                            AND cts.status IN ('PUBLISHED', 'UNSYNC')
+                            AND s.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                                  'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+                      )
                 ) distinct_chapters
             LEFT JOIN (
                 SELECT DISTINCT ON (lo.source_id)
@@ -258,12 +284,39 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             WHERE
                 smm.subject_id = :subjectId
                 AND m.status IN (:moduleStatusList)
+                -- Same rule as getModuleCompletionPercentage, one level up: a
+                -- module that cannot produce a percentage must not sit in the
+                -- denominator as a 0. A module whose chapters are all empty (or
+                -- which has no chapters at all) never gets a MODULE row written,
+                -- so it would arrive here through the LEFT JOIN as 0 and hold the
+                -- subject down permanently. Count a module only when at least one
+                -- of its chapters could produce a value, which is exactly the
+                -- denominator getModuleCompletionPercentage uses.
+                AND EXISTS (
+                    SELECT 1
+                    FROM module_chapter_mapping mcm2
+                    JOIN chapter c2 ON c2.id = mcm2.chapter_id
+                    JOIN chapter_package_session_mapping cpm2 ON cpm2.chapter_id = c2.id
+                    WHERE mcm2.module_id = m.id
+                      AND c2.status IN (:chapterStatusList)
+                      AND cpm2.status IN (:chapterStatusList)
+                      AND EXISTS (
+                          SELECT 1
+                          FROM chapter_to_slides cts2
+                          JOIN slide s2 ON s2.id = cts2.slide_id
+                          WHERE cts2.chapter_id = c2.id
+                            AND cts2.status IN ('PUBLISHED', 'UNSYNC')
+                            AND s2.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                                   'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+                      )
+                )
             """, nativeQuery = true)
     Double getSubjectCompletionPercentage(
             @Param("userId") String userId,
             @Param("subjectId") String subjectId,
             @Param("learnerOperation") List<String> learnerOperation,
-            @Param("moduleStatusList") List<String> moduleStatusList);
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList);
 
     @Query(value = """
             SELECT
@@ -280,12 +333,45 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             WHERE
                 sps.session_id = :packageSessionId
                 AND s.status IN (:subjectStatusList)
+                -- Top of the same chain. A subject with no completable content
+                -- would otherwise land here as 0 and cap the course percentage the
+                -- learner sees, which is also what certificate eligibility is
+                -- gated on. Count a subject only when it has a module that has a
+                -- chapter that has a learner-visible slide, matching the
+                -- denominators used one and two levels below.
+                AND EXISTS (
+                    SELECT 1
+                    FROM subject_module_mapping smm2
+                    JOIN modules m2 ON m2.id = smm2.module_id
+                    WHERE smm2.subject_id = s.id
+                      AND m2.status IN (:moduleStatusList)
+                      AND EXISTS (
+                          SELECT 1
+                          FROM module_chapter_mapping mcm2
+                          JOIN chapter c2 ON c2.id = mcm2.chapter_id
+                          JOIN chapter_package_session_mapping cpm2 ON cpm2.chapter_id = c2.id
+                          WHERE mcm2.module_id = m2.id
+                            AND c2.status IN (:chapterStatusList)
+                            AND cpm2.status IN (:chapterStatusList)
+                            AND EXISTS (
+                                SELECT 1
+                                FROM chapter_to_slides cts2
+                                JOIN slide s2 ON s2.id = cts2.slide_id
+                                WHERE cts2.chapter_id = c2.id
+                                  AND cts2.status IN ('PUBLISHED', 'UNSYNC')
+                                  AND s2.source_type IN ('VIDEO', 'DOCUMENT', 'ASSIGNMENT', 'QUESTION',
+                                                         'QUIZ', 'HTML_VIDEO', 'AUDIO', 'SCORM', 'ASSESSMENT')
+                            )
+                      )
+                )
             """, nativeQuery = true)
     Double getPackageSessionCompletionPercentage(
             @Param("userId") String userId,
             @Param("learnerOperation") List<String> learnerOperation,
             @Param("packageSessionId") String packageSessionId,
-            @Param("subjectStatusList") List<String> subjectStatusList);
+            @Param("subjectStatusList") List<String> subjectStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList);
 
     /**
      * Resolves the parent chain a chapter rolls up into — module, subject, and the
@@ -1305,21 +1391,33 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     GROUP BY cs.subject_id, cs.module_id
                 ),
                 LearnerCompletion AS (
-                    -- Module % = mean over chapters of (mean over that chapter's
-                    -- slides of the slide's completion), computed live from the
-                    -- SLIDE-level operations. Matches the learner app exactly and
-                    -- never drifts, unlike the stored PERCENTAGE_CHAPTER_COMPLETED.
+                    -- Module % = mean over chapters of (mean over the slides in
+                    -- that chapter of the slide completion), computed live from
+                    -- the SLIDE-level operations. Matches the learner app exactly
+                    -- and never drifts, unlike the stored
+                    -- PERCENTAGE_CHAPTER_COMPLETED.
+                    -- NOTE: no apostrophes in a comment inside a @Query block --
+                    -- Spring Data scans for quoted ranges before JPA sees it and
+                    -- does not understand SQL comments, so an odd number of them
+                    -- opens a string literal that never closes and the repository
+                    -- bean fails to build, taking the service down at startup.
                     SELECT cp.subject_id, cp.module_id, AVG(cp.chapter_pct) AS learner_completion
                     FROM (
                         SELECT sp.subject_id, sp.module_id, sp.chapter_id,
                                AVG(sp.slide_pct) AS chapter_pct
                         FROM (
                             SELECT cs.subject_id, cs.module_id, cs.chapter_id, cs.slide_id,
+                                -- Must list EVERY slide-level completion operation. An operation
+                                -- missing here is not skipped: the CASE yields NULL and COALESCE
+                                -- turns it into 0, so a fully-completed slide silently drags the
+                                -- chapter average down. Keep in sync with the write-side cascade
+                                -- (LearnerTrackingAsyncService#updateChapterCompletionPercentage).
                                 COALESCE(MAX(CASE
                                     WHEN slo.operation IN (
                                             'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                             'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                            'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                          AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                     THEN LEAST(CAST(slo.value AS FLOAT), 100)
                                     ELSE NULL

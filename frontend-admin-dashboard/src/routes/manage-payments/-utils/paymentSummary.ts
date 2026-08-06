@@ -1,4 +1,5 @@
 import type { PaymentLogEntry } from '@/types/payment-logs';
+import { formatMoney, isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 
 /** A single KPI bucket: how many payments and their total amount, split by currency. */
 export interface StatBucket {
@@ -39,7 +40,7 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
 
     for (const entry of entries) {
         const amount = entry.payment_log?.payment_amount || 0;
-        const currency = entry.payment_log?.currency || '';
+        const currency = resolveEntryCurrency(entry);
         const status = (
             entry.current_payment_status ||
             entry.payment_log?.payment_status ||
@@ -59,28 +60,9 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
     return summary;
 };
 
-/** A currency is "real" only if it is a valid ISO 4217 code (so it renders a ₹/$/… symbol). */
-const isRealCurrency = (currency: string): boolean => {
-    if (!currency || currency === 'N/A') return false;
-    try {
-        new Intl.NumberFormat(undefined, { style: 'currency', currency });
-        return true;
-    } catch {
-        return false;
-    }
-};
-
-const formatMoney = (amount: number, currency: string): string => {
-    if (isRealCurrency(currency)) {
-        return new Intl.NumberFormat(undefined, {
-            style: 'currency',
-            currency,
-            maximumFractionDigits: 0,
-        }).format(amount);
-    }
-    // Unknown / blank currency — show a plain number (used only in the hover breakdown).
-    return `${currency && currency !== 'N/A' ? currency + ' ' : ''}${amount.toLocaleString()}`;
-};
+/** Card amounts are whole units — the paise/cents tail is noise at KPI altitude. */
+const formatBucketMoney = (amount: number, currency: string): string =>
+    formatMoney(amount, currency, { maximumFractionDigits: 0 });
 
 export interface BucketAmountSummary {
     /** Amounts in recognized currencies, joined (e.g. "₹13,000" or "₹13,000 + $40"). '' if none. */
@@ -100,8 +82,10 @@ export const summarizeBucketAmount = (
     const entries = Object.entries(amountByCurrency).sort((a, b) => b[1] - a[1]);
     const display = entries
         .filter(([currency]) => isRealCurrency(currency))
-        .map(([currency, amount]) => formatMoney(amount, currency))
+        .map(([currency, amount]) => formatBucketMoney(amount, currency))
         .join(' + ');
-    const full = entries.map(([currency, amount]) => formatMoney(amount, currency)).join(' + ');
+    const full = entries
+        .map(([currency, amount]) => formatBucketMoney(amount, currency))
+        .join(' + ');
     return { display, full };
 };

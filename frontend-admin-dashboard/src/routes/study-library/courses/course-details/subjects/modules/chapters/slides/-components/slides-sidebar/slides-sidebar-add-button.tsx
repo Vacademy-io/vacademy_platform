@@ -304,7 +304,23 @@ export const ChapterSidebarAddButton = () => {
     );
 
     const filteredDropdownList = useMemo(() => {
-        const base = dropdownList;
+        // Display Settings → Assessment Actions can turn off assessment creation
+        // for this role. Drop the in-slide "Create new assessment" option when it
+        // does; "Link existing assessment" stays, since linking isn't creating.
+        const base: typeof dropdownList =
+            roleDisplay?.assessmentPage?.showCreateAssessment !== false
+                ? dropdownList
+                : dropdownList.map((item) => {
+                      if (item.subItems && item.subItems.length > 0) {
+                          return {
+                              ...item,
+                              subItems: item.subItems.filter(
+                                  (s) => s.value !== 'create-assessment'
+                              ),
+                          };
+                      }
+                      return item;
+                  });
         const ct = roleDisplay?.contentTypes;
         if (!ct) return base;
         const isAllowed = (val: string): boolean => {
@@ -360,7 +376,7 @@ export const ChapterSidebarAddButton = () => {
                 return item;
             })
             .filter(Boolean) as typeof dropdownList;
-    }, [roleDisplay?.contentTypes, dropdownList]);
+    }, [roleDisplay?.contentTypes, roleDisplay?.assessmentPage, dropdownList]);
 
     const handleSelect = async (value: string) => {
         switch (value) {

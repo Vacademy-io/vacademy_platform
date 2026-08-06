@@ -42,6 +42,14 @@ export interface LeadStatusDraft {
 
 export const LEAD_STATUSES_QUERY_KEY = ['lead-statuses'];
 
+/**
+ * Sentinel accepted by the leads-list `lead_status_id` filter (backend
+ * LeadFilterDTO): matches leads with NO status at all — no lead_status_id and
+ * no profile conversion_status to fall back on. Not a real catalog row; it can
+ * be filtered on but never assigned to a lead.
+ */
+export const NO_STATUS_KEY = '__NO_STATUS__';
+
 export async function fetchLeadStatuses(): Promise<LeadStatus[]> {
     const instituteId = getCurrentInstituteId();
     if (!instituteId) return [];

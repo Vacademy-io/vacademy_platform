@@ -372,7 +372,9 @@ public class WorkflowAiDraftService {
                     || (val instanceof List && ((List<Object>) val).isEmpty())
                     || (val instanceof Map && ((Map<Object, Object>) val).isEmpty());
             if (blank) {
-                if (d.isRequired()) unresolvedRequired.add(d.getId());
+                // A TEMPLATE_VAR_MAP whose template is chosen but has no placeholders is complete
+                // with an empty map — the FE derives the placeholders, so don't warn about it.
+                if (d.isRequired() && !isSatisfiedEmptyVarMap(d, answered)) unresolvedRequired.add(d.getId());
                 continue;
             }
             try {
@@ -400,6 +402,22 @@ public class WorkflowAiDraftService {
                 .validationErrors(errors)
                 .warnings(warnings)
                 .build();
+    }
+
+    /**
+     * True for a variable-map decision that legitimately came back empty: its template pick is
+     * answered, and the template simply has no placeholders to map. Warning on these produced a
+     * "fill these in the builder" note for a decision the admin can never fill.
+     */
+    private boolean isSatisfiedEmptyVarMap(WorkflowDecisionDTO d, Map<String, Object> answered) {
+        if (!"TEMPLATE_VAR_MAP".equalsIgnoreCase(String.valueOf(d.getKind()))) return false;
+        List<String> deps = d.getDependsOn();
+        if (deps == null || deps.isEmpty()) return false;
+        for (String dep : deps) {
+            Object v = answered.get(dep);
+            if (v == null || (v instanceof String s && s.isBlank())) return false;
+        }
+        return true;
     }
 
     /** Write a decision's answer onto the skeleton at (nodeId, field dot-path). */

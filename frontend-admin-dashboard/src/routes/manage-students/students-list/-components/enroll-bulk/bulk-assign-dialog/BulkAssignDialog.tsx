@@ -16,12 +16,15 @@ import {
     BulkAssignResponse,
     BulkEnrollOptions,
     isChipGuardianReady,
+    isSubOrgSelectionReady,
     SelectedLearner,
     SelectedPackageSession,
+    subOrgRolesCsv,
 } from '../../../-types/bulk-assign-types';
 import { Step1LearnerSelector } from './steps/Step1LearnerSelector';
 import { Step2CourseSelector } from './steps/Step2CourseSelector';
 import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
+import { Step4SubOrg } from './steps/Step4SubOrg';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -44,8 +47,14 @@ interface BulkAssignDialogProps {
     initialPackageSessionId?: string;
 }
 
+/**
+ * Wizard steps, in order. 'suborg' only appears when at least one selected batch is
+ * org-associated, so the indices shift and must never be hard-coded.
+ */
+type StepKey = 'learners' | 'courses' | 'config' | 'suborg' | 'preview';
+
 export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackageSessionId }: BulkAssignDialogProps) => {
-    const { getPackageWiseLevels } = useInstituteDetailsStore();
+    const { getPackageWiseLevels, instituteDetails } = useInstituteDetailsStore();
     const { enrollmentNotifications } = useCourseSettings();
     const showNotifyLearners = enrollmentNotifications?.showNotifyLearners ?? true;
     const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
@@ -71,18 +80,49 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         return [];
     };
 
-    const STEPS = [
-        `Select ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}`,
-        `Select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
-        'Enrollment Config',
-        'Preview & Confirm',
-    ];
-
     const [step, setStep] = useState(0);
     const [selectedLearners, setSelectedLearners] = useState<SelectedLearner[]>([]);
     const [selectedPackageSessions, setSelectedPackageSessions] = useState<
         SelectedPackageSession[]
     >([]);
+
+    // Stamp `is_org_associated` (read off the institute-details store, the only place the
+    // flag is available client-side) onto each selection. Batches carrying it are sold to
+    // organisations, which is what makes the sub-org step appear.
+    useEffect(() => {
+        const batches = instituteDetails?.batches_for_sessions;
+        if (!batches?.length || selectedPackageSessions.length === 0) return;
+        let changed = false;
+        const next = selectedPackageSessions.map((ps) => {
+            const flag = batches.some(
+                (b) => b.id === ps.packageSessionId && b.is_org_associated === true
+            );
+            if (ps.isOrgAssociated === flag) return ps;
+            changed = true;
+            return { ...ps, isOrgAssociated: flag };
+        });
+        if (changed) setSelectedPackageSessions(next);
+    }, [selectedPackageSessions, instituteDetails]);
+
+    const needsSubOrgStep = selectedPackageSessions.some((ps) => ps.isOrgAssociated);
+
+    const stepKeys: StepKey[] = [
+        'learners',
+        'courses',
+        'config',
+        ...(needsSubOrgStep ? (['suborg'] as StepKey[]) : []),
+        'preview',
+    ];
+    const stepLabels: Record<StepKey, string> = {
+        learners: `Select ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}`,
+        courses: `Select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
+        config: 'Enrollment Config',
+        suborg: 'Sub-Organisation',
+        preview: 'Preview & Confirm',
+    };
+    const STEPS = stepKeys.map((key) => stepLabels[key]);
+    const currentStep: StepKey = stepKeys[step] ?? 'learners';
+    const previewIndex = stepKeys.length - 1;
 
     // Pre-select course when dialog opens with an initialPackageSessionId
     useEffect(() => {
@@ -139,6 +179,22 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 enroll_invite_id: ps.enrollInviteId ?? null,
                 access_days: ps.accessDays ?? null,
                 cpo_config: ps.cpoConfig ?? null,
+                // Only org-associated batches carry a sub-org; sending it for a normal batch
+                // would be ignored by the backend but is noise, so it's omitted entirely.
+                ...(ps.isOrgAssociated
+                    ? {
+                          sub_org_id: ps.subOrgId ?? null,
+                          sub_org_roles: subOrgRolesCsv(ps.subOrgRole),
+                          new_sub_org:
+                              !ps.subOrgId && ps.newSubOrg?.name?.trim()
+                                  ? {
+                                        name: ps.newSubOrg.name.trim(),
+                                        email: ps.newSubOrg.email?.trim() || null,
+                                        mobile_number: ps.newSubOrg.mobileNumber?.trim() || null,
+                                    }
+                                  : null,
+                      }
+                    : {}),
             })),
             options: {
                 duplicate_handling: options.duplicateHandling,
@@ -406,7 +462,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         try {
             const result = await bulkAssign(buildRequest(true));
             setPreviewResponse(result);
-            setStep(3);
+            setStep(previewIndex);
         } catch (e) {
             toast.error('Failed to generate preview. Please try again.');
         } finally {
@@ -447,20 +503,23 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
     };
 
     const canGoNext = () => {
-        if (step === 0) {
+        if (currentStep === 'learners') {
             return (
                 selectedLearners.length > 0 &&
                 selectedLearners.every(isChipGuardianReady) &&
                 !isResolvingGuardianLinks
             );
         }
-        if (step === 1) return selectedPackageSessions.length > 0;
-        if (step === 2) return true;
+        if (currentStep === 'courses') return selectedPackageSessions.length > 0;
+        if (currentStep === 'config') return true;
+        // Every org-associated batch must name the organisation being enrolled into —
+        // the backend rejects the enrollment outright without one.
+        if (currentStep === 'suborg') return selectedPackageSessions.every(isSubOrgSelectionReady);
         return false;
     };
 
     const handleNext = async () => {
-        if (step === 0) {
+        if (currentStep === 'learners') {
             setIsResolvingGuardianLinks(true);
             const ok = await resolveStep1GuardianLinks();
             setIsResolvingGuardianLinks(false);
@@ -468,7 +527,9 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             setStep(1);
             return;
         }
-        if (step === 2) {
+        // The step right before Preview generates it; which one that is depends on
+        // whether the sub-org step is in play.
+        if (step === previewIndex - 1) {
             handlePreview();
             return;
         }
@@ -528,7 +589,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
 
                 {/* Step Content */}
                 <div className="flex-1 overflow-y-auto">
-                    {step === 0 && (
+                    {currentStep === 'learners' && (
                         <Step1LearnerSelector
                             instituteId={INSTITUTE_ID || ''}
                             selectedLearners={selectedLearners}
@@ -544,14 +605,14 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                             onClearGuardianLinkError={clearGuardianLinkError}
                         />
                     )}
-                    {step === 1 && (
+                    {currentStep === 'courses' && (
                         <Step2CourseSelector
                             selectedPackageSessions={selectedPackageSessions}
                             onSelectedPackageSessionsChange={setSelectedPackageSessions}
                             initialPackageSessionId={initialPackageSessionId}
                         />
                     )}
-                    {step === 2 && (
+                    {currentStep === 'config' && (
                         <Step3EnrollConfig
                             instituteId={INSTITUTE_ID || ''}
                             selectedPackageSessions={selectedPackageSessions}
@@ -560,7 +621,13 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                             onOptionsChange={setOptions}
                         />
                     )}
-                    {step === 3 && previewResponse && (
+                    {currentStep === 'suborg' && (
+                        <Step4SubOrg
+                            selectedPackageSessions={selectedPackageSessions}
+                            onSelectedPackageSessionsChange={setSelectedPackageSessions}
+                        />
+                    )}
+                    {currentStep === 'preview' && previewResponse && (
                         <Step4Preview
                             previewResponse={previewResponse}
                             selectedPackageSessions={selectedPackageSessions}
@@ -593,7 +660,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                         >
                             Cancel
                         </MyButton>
-                        {step < 3 ? (
+                        {step < previewIndex ? (
                             <MyButton
                                 buttonType="primary"
                                 scale="small"
@@ -605,7 +672,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                                     ? 'Linking guardians…'
                                     : isSubmitting
                                       ? 'Loading…'
-                                      : step === 2
+                                      : step === previewIndex - 1
                                         ? 'Preview →'
                                         : 'Next →'}
                             </MyButton>

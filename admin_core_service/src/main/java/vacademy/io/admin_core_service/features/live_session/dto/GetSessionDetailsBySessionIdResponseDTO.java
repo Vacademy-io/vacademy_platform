@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.admin_core_service.features.live_session.dto.GetSessionByIdResponseDTO.LearnerButtonConfigDTO;
 
 import java.sql.Date;
 import java.sql.Time;
@@ -29,7 +28,8 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String defaultClassLink;
     private String defaultClassName;
     private String defaultClassLinkType;
-    private LearnerButtonConfigDTO learnerButtonConfig;
+    // Single object or list of objects — see LiveSessionStep1RequestDTO#learnerButtonConfig.
+    private Object learnerButtonConfig;
     private String waitingRoomLink;
     private Integer waitingRoomTime;
     private String registrationFormLinkForPublicSessions;

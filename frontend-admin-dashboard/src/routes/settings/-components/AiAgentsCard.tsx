@@ -170,7 +170,7 @@ export function AiAgentsCard({
     const allVoices = voicesQuery.data ?? FALLBACK_VOICES;
     // Engine decides the palette — the two share no voice names, so offering all of
     // them would let someone pick a voice that mutes every call.
-    const ttsModel = editing ? resolveTtsModel(editing) : 'rumik';
+    const ttsModel = editing ? resolveTtsModel(editing) : 'google';
     const voices = voicesForModel(allVoices, ttsModel);
 
     const stopPreview = () => {
@@ -181,7 +181,8 @@ export function AiAgentsCard({
 
     const playPreview = (agent: AiAgent) => {
         stopPreview();
-        const voice = (agent.voice || 'priya').trim().toLowerCase();
+        // Case preserved on purpose: Google voice ids are exact resource names.
+        const voice = (agent.voice || 'priya').trim();
         const params = new URLSearchParams({
             text: sampleText.trim() || DEFAULT_SAMPLE_TEXT,
             voice,
@@ -189,6 +190,11 @@ export function AiAgentsCard({
             pace: String(agent.pace ?? 1.0),
         });
         if (agent.temperature != null) params.set('temperature', String(agent.temperature));
+        // Audition on the SAME engine the call will use. Without this the tester
+        // always synthesised through Sarvam, so picking any other engine here
+        // auditioned a voice the caller would never hear (and a non-Sarvam voice
+        // name makes the preview fail outright).
+        params.set('model', resolveTtsModel(agent));
         const audio = new Audio(`${BASE_URL}/voice-bot-service/preview.mp3?${params.toString()}`);
         audioRef.current = audio;
         setPreviewState('loading');

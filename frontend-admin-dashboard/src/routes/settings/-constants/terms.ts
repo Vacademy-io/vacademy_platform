@@ -139,6 +139,7 @@ export const enum SettingsTabs {
     WhatsApp = 'whatsapp',
     LeadSettings = 'leadSettings',
     GuardianSettings = 'guardianSettings',
+    LearnerCredentials = 'learnerCredentials',
     GtmSettings = 'gtmSettings',
     Tnc = 'tnc',
     Integrations = 'integrations',

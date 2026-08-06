@@ -11,7 +11,15 @@ name: Deploy Voice Bot Service
 #      services.voice_bot_service.enabled=true) — this workflow only updates it.
 #   3. GitHub secrets: VOICE_BOT_CLIENT_SECRET (must match the voice_bot_service
 #      row seeded into admin_core's client_secret_key table) — SARVAM_API_KEY and
-#      the AWS/kubeconfig secrets already exist.
+#      the AWS/kubeconfig secrets already exist. TTS engine keys, each optional
+#      and each gating one engine: RUMIK_API_KEY (Rumik Silk Mulberry),
+#      SMALLEST_API_KEY (Smallest.ai Lightning). Google Cloud TTS (Chirp3-HD)
+#      needs NO key — it authenticates with the same Vertex service account as
+#      the LLM. An absent key is safe: build_tts falls back to Sarvam rather
+#      than serving a mute call.
+#      NOTE: `gh secret set` is rejected on this org's repos (HTTP 400), so
+#      these values go in through the GitHub UI:
+#      Settings > Secrets and variables > Actions.
 #   4. On admin_core: set VOICE_BOT_BASE_URL=https://backend-stage.vacademy.io/voice-bot-service
 
 # Two pushes in quick succession used to race: on 2026-08-03 the older run died on
@@ -109,6 +117,11 @@ jobs:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           REPOSITORY: voice-bot-service/voice-bot-service-repo
           GIT_SHA: ${{ github.sha }}
+          # Google Cloud TTS (Chirp3-HD) + Vertex LLM auth. Same service account
+          # JSON the Mumbai box mounts at /etc/vertex-sa.json. Without it the
+          # k8s pods 502 on Google previews while the box serves them fine —
+          # which is what the admin dashboard hits.
+          VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
         run: |
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
             # VOICE_BOT_CLIENT_NAME/SECRET must match a row in admin_core's
@@ -119,14 +132,25 @@ jobs:
             #      secret VOICE_BOT_CLIENT_SECRET to that row's secret_key;
             #   b) dedicated identity: INSERT a 'voice_bot_service' row with a
             #      fresh random secret and store the same value in the secret.
+            # Optional extras are appended only when non-empty. `kubectl set env
+            # KEY=` with an empty value CLEARS the key, so listing an unset
+            # secret inline would wipe a working credential on every deploy —
+            # exactly how Google TTS previews broke once already.
+            EXTRA_ENV=""
+            if [ -n "${VERTEX_CREDENTIALS_JSON:-}" ]; then
+              EXTRA_ENV="VERTEX_CREDENTIALS_JSON=$VERTEX_CREDENTIALS_JSON"
+            fi
+
             kubectl set env deployment/"$DEPLOYMENT_NAME" \
               --namespace "$NAMESPACE" \
+              ${EXTRA_ENV:+"$EXTRA_ENV"} \
               PUBLIC_BASE=https://backend-stage.vacademy.io/voice-bot-service \
               ADMIN_CORE_BASE=https://backend-stage.vacademy.io \
               VOICE_BOT_CLIENT_NAME=${{ vars.VOICE_BOT_CLIENT_NAME || 'voice_bot_service' }} \
               VOICE_BOT_CLIENT_SECRET=${{ secrets.VOICE_BOT_CLIENT_SECRET }} \
               SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
               RUMIK_API_KEY=${{ secrets.RUMIK_API_KEY }} \
+              SMALLEST_API_KEY=${{ secrets.SMALLEST_API_KEY }} \
               LLM_PROVIDER=${{ vars.VOICE_BOT_LLM_PROVIDER || 'sarvam' }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
@@ -152,6 +176,7 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.VOICE_BOT_MUMBAI_SSH_KEY }}
           RUMIK_API_KEY: ${{ secrets.RUMIK_API_KEY }}
+          SMALLEST_API_KEY: ${{ secrets.SMALLEST_API_KEY }}
           HOST: ${{ vars.VOICE_BOT_MUMBAI_HOST }}
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           REPOSITORY: voice-bot-service/voice-bot-service-repo
@@ -169,5 +194,9 @@ jobs:
              echo 'VOICE_BOT_IMAGE=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA' >> .env; \
              sed -i '/^RUMIK_API_KEY=/d' .env; \
              if [ -n '$RUMIK_API_KEY' ]; then echo 'RUMIK_API_KEY=$RUMIK_API_KEY' >> .env; fi; \
+             if [ -n '$SMALLEST_API_KEY' ]; then \
+               sed -i '/^SMALLEST_API_KEY=/d' .env; \
+               echo 'SMALLEST_API_KEY=$SMALLEST_API_KEY' >> .env; \
+             fi; \
              docker compose pull -q voice-bot; docker compose up -d; \
              sleep 5; docker compose ps"

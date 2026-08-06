@@ -135,16 +135,25 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
          * ModuleChapterMappingRepository.getModuleChapterProgress — average
          * over the chapter's slides of the best percentage op, capped at 100,
          * slides without progress counting as 0.
+         *
+         * A chapter appears here only if it has at least one learner-visible
+         * slide; an untouched slide still scores 0, so a chapter that has slides
+         * always produces a row. Callers rely on that: a missing chapter id means
+         * "nothing in it to complete", not "the learner scored zero".
          */
         @Query(value = """
                         SELECT sub.chapter_id AS "chapterId", AVG(sub.slide_pct) AS "percentageCompleted"
                         FROM (
                             SELECT cts.chapter_id, s.id,
+                                -- Must list EVERY slide-level completion operation. A type
+                                -- missing here scores its slides 0 forever and silently caps
+                                -- the chapter, module and subject the learner sees.
                                 COALESCE(MAX(CASE
                                     WHEN lo.operation IN (
                                             'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
                                             'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
-                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED', 'PERCENTAGE_AUDIO_LISTENED',
+                                            'PERCENTAGE_SCORM_COMPLETED', 'PERCENTAGE_ASSESSMENT_DONE')
                                          AND lo.value ~ '^[0-9]+(\\.[0-9]+)?$'
                                     THEN LEAST(CAST(lo.value AS FLOAT), 100)
                                     ELSE NULL

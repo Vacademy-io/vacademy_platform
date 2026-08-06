@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.learner.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.learner.dto.UsernameChangedRequest;
+import vacademy.io.admin_core_service.features.learner.service.LearnerCredentialSyncService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerLmsUserSyncService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -16,6 +18,21 @@ public class InternalLearnerDetailController {
 
     @Autowired
     private LearnerLmsUserSyncService learnerLmsUserSyncService;
+
+    @Autowired
+    private LearnerCredentialSyncService learnerCredentialSyncService;
+
+    /**
+     * Called by auth_service AFTER it commits a new {@code users.username}.
+     * Updates admin_core's own {@code student.username} copies and forwards the
+     * rename to assessment_service, which holds four more.
+     */
+    @PostMapping("/username-changed")
+    public ResponseEntity<String> usernameChanged(@RequestBody UsernameChangedRequest request) {
+        learnerCredentialSyncService.applyUsernameChange(
+                request.getUserId(), request.getOldUsername(), request.getNewUsername());
+        return ResponseEntity.ok("done");
+    }
 
     @PutMapping("/update")
     public ResponseEntity<String> updateLearnerDetail(@RequestBody UserDTO userDTO){

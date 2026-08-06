@@ -745,6 +745,13 @@ export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get
 export const CONVERT_PDF_TO_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-html`;
 export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
 export const SHARE_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/send-passwords`;
+// Rewrites users.username / password_hash and fans the rename out to every
+// denormalized copy (student.username + four assessment-database tables).
+export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/update-password`;
+// Sends the learner their credentials using whatever template the institute has
+// bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
+export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
+export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
 // Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
 // processing returns 425 so the FE retry loop (onError) re-polls.
 export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;
@@ -1049,6 +1056,9 @@ export const GET_SUB_ORG_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/sub
 export const GET_SUB_ORG_ALL_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/all-admins`;
 export const GET_SUB_ORG_MEMBERS = `${BASE_URL}/admin-core-service/sub-org/v1/members`;
 export const ADD_SUB_ORG_MEMBER = `${BASE_URL}/admin-core-service/sub-org/v1/add-member`;
+// Sub-orgs already present in one package session (+ their admins) — powers the sub-org
+// step of the Enroll Learner wizard for org-associated batches.
+export const GET_SUB_ORGS_BY_PACKAGE_SESSION = `${BASE_URL}/admin-core-service/sub-org/v1/by-package-session`;
 // Sub-org team (custom-role) endpoints — server-scoped to caller's sub-org
 export const SUB_ORG_TEAM_LIST = `${BASE_URL}/admin-core-service/sub-org/v1/team/list`;
 export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/add`;

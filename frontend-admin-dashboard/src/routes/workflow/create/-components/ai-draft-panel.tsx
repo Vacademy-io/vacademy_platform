@@ -154,6 +154,14 @@ export function AiDraftPanel({
                 .filter((d) => d.required)
                 .filter((d) => {
                     const v = answers[d.id];
+                    if (d.kind === 'TEMPLATE_VAR_MAP') {
+                        // A template with zero placeholders can never be answered — an empty map is
+                        // the complete answer, so it must not block Build.
+                        const { keys } = varMapKeys(d, answers, templatesFor);
+                        if (keys.length === 0) return false;
+                        const map = (v ?? {}) as Record<string, unknown>;
+                        return keys.some((k) => String(map[k] ?? '').trim() === '');
+                    }
                     return (
                         v == null ||
                         (typeof v === 'string' && v.trim() === '') ||
@@ -162,7 +170,18 @@ export function AiDraftPanel({
                     );
                 })
                 .map((d) => d.id),
-        [decisions, answers]
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [decisions, answers, emailTemplates.data, whatsappTemplates.data]
+    );
+
+    /** Prompts of the still-unanswered decisions, so a disabled Build button is never a mystery. */
+    const missingLabels = useMemo(
+        () =>
+            missingRequired
+                .map((id) => decisions.find((d) => d.id === id))
+                .map((d) => d?.prompt ?? d?.id ?? '')
+                .filter(Boolean),
+        [missingRequired, decisions]
     );
 
     const buildWorkflow = async () => {
@@ -363,11 +382,11 @@ export function AiDraftPanel({
                             templatesFor={templatesFor}
                         />
                     ))}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                         <span className="text-caption text-neutral-400">
                             {missingRequired.length === 0
                                 ? 'All set'
-                                : `${missingRequired.length} choice(s) still needed`}
+                                : `Still needed: ${missingLabels.join(' • ')}`}
                         </span>
                         <MyButton
                             buttonType="primary"
@@ -449,14 +468,7 @@ function DecisionControl({
 
     if (decision.kind === 'TEMPLATE_VAR_MAP') {
         // Placeholders come from the template chosen in the dependsOn decision.
-        const depId = decision.dependsOn?.[0];
-        const chosenName = depId ? (answers[depId] as string | undefined) : undefined;
-        const tmpl =
-            (chosenName &&
-                (templatesFor('WHATSAPP_TEMPLATE').find((t) => t.name === chosenName) ??
-                    templatesFor('EMAIL_TEMPLATE').find((t) => t.name === chosenName))) ||
-            undefined;
-        const params = parseParams(tmpl?.dynamic_parameters);
+        const { chosenName, params, keys } = varMapKeys(decision, answers, templatesFor);
         const current = (value as Record<string, string>) ?? {};
         if (!chosenName) {
             return (
@@ -466,13 +478,12 @@ function DecisionControl({
                 </div>
             );
         }
-        const keys = Object.keys(params);
         return (
             <div className="flex flex-col gap-2">
                 {label}
                 {keys.length === 0 && (
                     <span className="text-caption text-neutral-400">
-                        This template has no variables to map.
+                        This template has no variables to map — nothing to do here.
                     </span>
                 )}
                 {keys.map((k) => (
@@ -577,6 +588,26 @@ function TemplateSelect({
             )}
         </div>
     );
+}
+
+/**
+ * Placeholders a TEMPLATE_VAR_MAP decision actually needs, derived from the template chosen in its
+ * dependsOn decision. Shared by the control and the completeness check so the panel can never say
+ * "no variables to map" while still blocking Build on that same decision.
+ */
+function varMapKeys(
+    decision: AiDecisionItem,
+    answers: Record<string, unknown>,
+    templatesFor: (kind: string) => TemplateItem[]
+): { chosenName?: string; params: Record<string, string>; keys: string[] } {
+    const depId = decision.dependsOn?.[0];
+    const chosenName = depId ? (answers[depId] as string | undefined) : undefined;
+    if (!chosenName) return { chosenName: undefined, params: {}, keys: [] };
+    const tmpl =
+        templatesFor('WHATSAPP_TEMPLATE').find((t) => t.name === chosenName) ??
+        templatesFor('EMAIL_TEMPLATE').find((t) => t.name === chosenName);
+    const params = parseParams(tmpl?.dynamic_parameters);
+    return { chosenName, params, keys: Object.keys(params) };
 }
 
 function parseParams(dp: unknown): Record<string, string> {

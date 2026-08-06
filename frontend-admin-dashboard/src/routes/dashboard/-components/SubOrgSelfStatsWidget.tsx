@@ -6,7 +6,7 @@ import {
     ArrowRight,
     CaretRight,
     Coins,
-    CurrencyInr,
+    Money,
     GraduationCap,
     UsersThree,
     type Icon,
@@ -15,6 +15,9 @@ import { getSubOrgFinanceDetail } from '@/routes/manage-custom-teams/-services/c
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getValidSelectedSubOrgId, getFacultyAccessData } from '@/lib/auth/facultyAccessUtils';
 import { fetchCollectionSummary } from '../-services/collection-summary-service';
+import { isRealCurrency } from '@/utils/payment-currency';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { resolveInstituteCurrency } from '@/utils/institute-currency';
 
 interface StatVisual {
     Icon: Icon;
@@ -31,18 +34,32 @@ interface Stat {
     visual: StatVisual;
 }
 
-const inr = (n: number): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-            notation: n >= 100000 ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
+/**
+ * `code` empty (or unrecognised) renders a bare number — the collection API is the only source
+ * here that knows a currency, and guessing ₹ mislabels a sub-org that collects in USD/GBP.
+ * Locale stays en-IN so compact notation reads as L/Cr.
+ */
+const money = (n: number, code?: string | null): string => {
+    const notation = n >= 100000 ? 'compact' : 'standard';
+    const currency = code?.trim().toUpperCase() || '';
+    if (isRealCurrency(currency)) {
+        try {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency,
+                maximumFractionDigits: 0,
+                notation,
+            }).format(n);
+        } catch {
+            /* fall through to the plain-number form below */
+        }
     }
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0, notation }).format(n);
 };
+
+// Outstanding fees come from the sub-org finance API, which carries no currency at all, so they
+// follow the institute's resolved currency (see `resolveInstituteCurrency`). Collected has a real
+// per-payment currency from the collection summary and uses that instead.
 
 const nfmt = (n: number) => n.toLocaleString('en-IN');
 
@@ -78,8 +95,11 @@ export default function SubOrgSelfStatsWidget() {
         retry: false,
     });
 
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const instituteCurrency = resolveInstituteCurrency(instituteDetails);
+
     // All-time collected fees for this sub-org (needs the collection-summary
-    // backend deployed; shows ₹0 until then).
+    // backend deployed; shows 0 until then).
     const { data: collection } = useQuery({
         queryKey: ['sub-org-self-collection', subOrgId, instituteId],
         queryFn: () =>
@@ -134,7 +154,7 @@ export default function SubOrgSelfStatsWidget() {
         {
             key: 'collected',
             label: 'Collected',
-            value: inr(collected),
+            value: money(collected, collection?.currency),
             subtitle: 'Fees received',
             visual: {
                 Icon: Coins,
@@ -146,10 +166,10 @@ export default function SubOrgSelfStatsWidget() {
         {
             key: 'outstanding',
             label: 'Outstanding',
-            value: inr(outstanding),
+            value: money(outstanding, instituteCurrency),
             subtitle: 'Fees due',
             visual: {
-                Icon: CurrencyInr,
+                Icon: Money,
                 iconBg: 'bg-amber-100',
                 iconColor: 'text-amber-600',
                 cardBg: 'bg-gradient-to-br from-amber-50/60 to-white',

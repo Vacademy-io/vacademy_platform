@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    getTemplatesByTypeQuery,
+    getWhatsAppTemplatesForPreviewQuery,
     getWorkflowRawQuery,
+    syncWhatsAppTemplatesFromMeta,
     updateNodeTemplate,
     WorkflowRawNode,
 } from '@/services/workflow-service';
@@ -14,9 +15,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import {
     FloppyDisk,
     ArrowCounterClockwise,
+    CaretDown,
+    CaretRight,
     CheckCircle,
     Warning,
     BracketsCurly,
@@ -99,14 +103,20 @@ function normalEditableSections(configText: string): {
         const settings = points.some(
             (row) =>
                 row.compute === undefined &&
-                (typeof row.value === 'string' || isNestedStringMap(row.value))
+                (typeof row.value === 'string' ||
+                    isNestedStringMap(row.value) ||
+                    isFlatObjectList(row.value))
         );
         const vars =
             cfg.templateVars && typeof cfg.templateVars === 'object' && !Array.isArray(cfg.templateVars)
                 ? (cfg.templateVars as Record<string, string>)
                 : null;
+        // A send node counts as configurable when the admin can edit wording, and
+        // as worth showing when it at least names a template (they get to read
+        // what goes out, even if every value is auto-filled).
         const message =
-            !!vars && Object.values(vars).some((v) => !String(v ?? '').trim().startsWith('#'));
+            (!!vars && Object.values(vars).some((v) => !isAutoFilledVar(v))) ||
+            typeof cfg.templateName === 'string';
         const params =
             cfg.prebuiltKey && cfg.params && typeof cfg.params === 'object' && !Array.isArray(cfg.params)
                 ? (cfg.params as Record<string, unknown>)
@@ -183,6 +193,114 @@ function QueryParamsEditor({
                             spellCheck={false}
                             className="h-8 max-w-48 text-xs"
                         />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * True for a repeatable list of flat records — e.g. learner-screen buttons,
+ * each carrying text, url and colour fields.
+ */
+function isFlatObjectList(value: unknown): boolean {
+    if (!Array.isArray(value) || value.length === 0) return false;
+    return value.every(
+        (entry) =>
+            entry &&
+            typeof entry === 'object' &&
+            !Array.isArray(entry) &&
+            Object.values(entry as Record<string, unknown>).every(
+                (v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+            )
+    );
+}
+
+/**
+ * Repeatable-rows editor for a list of flat records (buttons, links, …). The
+ * admin can edit every field, add as many rows as they like, and remove any —
+ * no JSON, no developer view needed.
+ */
+function ObjectListEditor({
+    label,
+    items,
+    onChange,
+}: {
+    label: string;
+    items: Array<Record<string, string | number | boolean>>;
+    onChange: (next: Array<Record<string, string | number | boolean>>) => void;
+}) {
+    const fields = Object.keys(items[0] ?? {});
+    const blankRow = () =>
+        fields.reduce<Record<string, string | number | boolean>>((acc, f) => {
+            const sample = items[0]?.[f];
+            acc[f] = typeof sample === 'boolean' ? true : typeof sample === 'number' ? 0 : '';
+            return acc;
+        }, {});
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2">
+            <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-600">
+                    {label}
+                    <span className="ml-1.5 text-caption font-normal text-neutral-400">
+                        add as many as you need — an empty link hides that entry
+                    </span>
+                </p>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 text-caption text-neutral-500"
+                    onClick={() => onChange([...items, blankRow()])}
+                >
+                    <Plus size={12} /> Add
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {items.map((item, index) => (
+                    <div
+                        key={index}
+                        className="flex flex-wrap items-center gap-2 rounded border border-neutral-100 p-2"
+                    >
+                        {fields.map((field) => (
+                            <label key={field} className="flex items-center gap-1">
+                                <span className="text-caption text-neutral-500">
+                                    {humanizeFieldName(field)}
+                                </span>
+                                <Input
+                                    value={String(item[field] ?? '')}
+                                    onChange={(e) =>
+                                        onChange(
+                                            items.map((row, i) =>
+                                                i === index
+                                                    ? {
+                                                          ...row,
+                                                          [field]:
+                                                              typeof row[field] === 'boolean'
+                                                                  ? e.target.value.trim().toLowerCase() === 'true'
+                                                                  : typeof row[field] === 'number'
+                                                                    ? Number(e.target.value) || 0
+                                                                    : e.target.value,
+                                                      }
+                                                    : row
+                                            )
+                                        )
+                                    }
+                                    spellCheck={false}
+                                    className="h-8 w-44 text-xs"
+                                />
+                            </label>
+                        ))}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 shrink-0 px-2 text-neutral-400 hover:text-red-600"
+                            onClick={() => onChange(items.filter((_, i) => i !== index))}
+                            title="Remove"
+                        >
+                            <Trash size={14} />
+                        </Button>
                     </div>
                 ))}
             </div>
@@ -329,6 +447,20 @@ function OutputDataPointsEditor({
         const isCompute = point.compute !== undefined;
         // Two-level string maps (e.g. a day → slot → link schedule) get a grid
         // editor; other structured values point to the raw JSON editor.
+        if (!isCompute && isFlatObjectList(point.value)) {
+            return (
+                <ObjectListEditor
+                    key={index}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'items')
+                            : humanizeFieldName(point.fieldName ?? 'items')
+                    }
+                    items={point.value as Array<Record<string, string | number | boolean>>}
+                    onChange={(next) => updateRow(index, { value: next })}
+                />
+            );
+        }
         if (!isCompute && isNestedStringMap(point.value)) {
             return (
                 <NestedMapGridEditor
@@ -429,7 +561,10 @@ function OutputDataPointsEditor({
     // In the simple view, hide the panel entirely when there is nothing a
     // non-technical admin can safely change here.
     const normalEditable = textEntries.filter(
-        ({ p }) => typeof p.value === 'string' || isNestedStringMap(p.value)
+        ({ p }) =>
+            typeof p.value === 'string' ||
+            isNestedStringMap(p.value) ||
+            isFlatObjectList(p.value)
     );
     if (!devMode && normalEditable.length === 0) return null;
 
@@ -481,10 +616,25 @@ function OutputDataPointsEditor({
  * up front; values starting with '#' are SpEL formulas and live in the advanced
  * fold. Writes into the same config text as the raw JSON editor.
  */
+/**
+ * True when a template variable is filled in by the system rather than typed by
+ * the admin. Two forms mean "not message text":
+ *   • a formula — starts with '#' (SpEL);
+ *   • a bare field name like "name" or "chargeDate" — the send handler looks
+ *     these up on the learner record before falling back to a literal.
+ * Anything with a space or punctuation is real message text and stays editable.
+ */
+function isAutoFilledVar(value: unknown): boolean {
+    const trimmed = String(value ?? '').trim();
+    if (trimmed.startsWith('#')) return true;
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed);
+}
+
 /** Minimal shape of a WhatsApp template as served by the templates API. */
 type WhatsAppTemplateInfo = {
     name: string;
     content?: string;
+    status?: string;
     dynamic_parameters?: string;
 };
 
@@ -515,7 +665,7 @@ function TemplateBodyPreview({
                 if (!match) return <span key={i}>{segment}</span>;
                 const key = match[1] ?? '';
                 const value = vars[key];
-                const isFormula = String(value ?? '').trim().startsWith('#');
+                const isFormula = isAutoFilledVar(value);
                 if (value != null && !isFormula && String(value).length > 0) {
                     return (
                         <span key={i} className="rounded bg-primary-50 px-1 font-medium text-primary-600">
@@ -538,11 +688,15 @@ function TemplateVarsEditor({
     onChange,
     devMode,
     templates,
+    onSyncTemplates,
+    syncing,
 }: {
     configText: string;
     onChange: (next: string) => void;
     devMode: boolean;
     templates: WhatsAppTemplateInfo[];
+    onSyncTemplates?: () => void;
+    syncing?: boolean;
 }) {
     let parsed: Record<string, unknown> | null = null;
     try {
@@ -563,9 +717,50 @@ function TemplateVarsEditor({
     if (!parsed || !vars) return null;
 
     const cfg = parsed;
+    const template = templates.find((t) => t.name === cfg.templateName);
+    // Which variables does the approved template actually use? Read from its own
+    // body — never a hardcoded list — so editing the template in WhatsApp (adding
+    // a {{7}}, dropping a {{4}}) is reflected here as soon as it is synced.
+    const templateKeys = template?.content
+        ? Array.from(template.content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g))
+              .map((m) => m[1] ?? '')
+              .filter((k, i, all) => all.indexOf(k) === i)
+        : [];
+    // A variable the template needs but this step does not supply. The send would
+    // fail at run time ("Missing required template variable"), so surface it here.
+    const missingKeys = templateKeys.filter((k) => !(k in vars));
+    // Only approved templates can actually be sent on, so those are the choices —
+    // plus whatever this step already points at, so the value is never lost.
+    const approvedNames = templates
+        .filter((t) => (t.status ?? '').toUpperCase() === 'APPROVED')
+        .map((t) => t.name)
+        .sort((a, b) => a.localeCompare(b));
+    const templateChoices =
+        typeof cfg.templateName === 'string' &&
+        cfg.templateName &&
+        !approvedNames.includes(cfg.templateName)
+            ? [cfg.templateName, ...approvedNames]
+            : approvedNames;
+    const unusedKeys =
+        templateKeys.length > 0 ? Object.keys(vars).filter((k) => !templateKeys.includes(k)) : [];
+
     const writeVar = (key: string, value: string) =>
         onChange(
             JSON.stringify({ ...cfg, templateVars: { ...vars, [key]: value } }, null, 2)
+        );
+    const addMissingVars = () =>
+        onChange(
+            JSON.stringify(
+                {
+                    ...cfg,
+                    templateVars: {
+                        ...vars,
+                        ...Object.fromEntries(missingKeys.map((k) => [k, ''])),
+                    },
+                },
+                null,
+                2
+            )
         );
     const writeField = (field: string, value: string) =>
         onChange(JSON.stringify({ ...cfg, [field]: value }, null, 2));
@@ -573,10 +768,10 @@ function TemplateVarsEditor({
     const entries = Object.entries(vars).sort(([a], [b]) =>
         a.localeCompare(b, undefined, { numeric: true })
     );
-    const textVars = entries.filter(([, v]) => !String(v ?? '').trim().startsWith('#'));
-    const formulaVars = entries.filter(([, v]) => String(v ?? '').trim().startsWith('#'));
+    const textVars = entries.filter(([, v]) => !isAutoFilledVar(v));
+    const formulaVars = entries.filter(([, v]) => isAutoFilledVar(v));
 
-    if (!devMode && textVars.length === 0) return null;
+    if (!devMode && textVars.length === 0 && typeof cfg.templateName !== 'string') return null;
 
     const renderVar = ([key, value]: [string, string]) => (
         <div key={key} className="flex items-start gap-2">
@@ -616,17 +811,105 @@ function TemplateVarsEditor({
                             className="h-8 flex-1 font-mono text-xs"
                         />
                     ) : (
-                        <span className="text-xs text-neutral-600">{cfg.templateName}</span>
+                        // Simple view: pick from the institute's approved templates. The
+                        // list is whatever WhatsApp has approved — never a fixed set — and
+                        // the current value stays selectable even if it is not in the list
+                        // (e.g. not synced yet), so opening this screen can't blank it.
+                        <MyDropdown
+                            currentValue={cfg.templateName}
+                            dropdownList={templateChoices}
+                            handleChange={(value) => writeField('templateName', value)}
+                            placeholder="Choose a WhatsApp template"
+                            className="h-8 flex-1 text-xs"
+                            contentClassName="max-h-72 overflow-y-auto"
+                        />
                     )}
                 </div>
             )}
-            {/* Full message preview: the approved template body with this node's
-                variable values substituted live. */}
-            <TemplateBodyPreview
-                template={templates.find((t) => t.name === cfg.templateName)}
-                vars={vars}
-            />
+            {/* Full message preview: the template body with this node's variable
+                values substituted live. When the body is unknown here, say so —
+                showing bare {{1}} boxes with no explanation reads as a bug. */}
+            {(() => {
+                if (template?.content) {
+                    return <TemplateBodyPreview template={template} vars={vars} />;
+                }
+                if (typeof cfg.templateName !== 'string' || !cfg.templateName) return null;
+                return (
+                    <div className="mb-2 flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3">
+                        <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-warning-500" />
+                        <div className="flex-1 text-xs text-warning-700">
+                            <p className="font-medium">Message preview unavailable</p>
+                            <p className="mt-0.5 text-warning-600">
+                                {template
+                                    ? 'This WhatsApp template has no body text stored here yet.'
+                                    : 'This WhatsApp template was created in Meta and has not been imported yet.'}{' '}
+                                The message still sends normally — only the preview is missing. Import
+                                your templates to see the full text with your values filled in.
+                            </p>
+                            {onSyncTemplates && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 h-7 gap-1.5 text-xs"
+                                    disabled={syncing}
+                                    onClick={onSyncTemplates}
+                                >
+                                    <ArrowCounterClockwise size={12} />
+                                    {syncing ? 'Importing…' : 'Import templates from WhatsApp'}
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
+            {/* The template changed under this step: it now uses variables this step
+                does not fill in. Sends would fail, so make it fixable in one click. */}
+            {missingKeys.length > 0 && (
+                <div className="mb-2 flex items-start gap-2 rounded-md border border-danger-200 bg-danger-50 p-3">
+                    <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-danger-500" />
+                    <div className="flex-1 text-xs text-danger-700">
+                        <p className="font-medium">
+                            This template needs {missingKeys.length} more{' '}
+                            {missingKeys.length === 1 ? 'value' : 'values'}
+                        </p>
+                        <p className="mt-0.5 text-danger-600">
+                            The WhatsApp template uses{' '}
+                            {missingKeys.map((k) => `{{${k}}}`).join(', ')}, but this step
+                            doesn&apos;t provide {missingKeys.length === 1 ? 'it' : 'them'}. Messages
+                            will fail to send until {missingKeys.length === 1 ? 'it is' : 'they are'}{' '}
+                            filled in.
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 h-7 gap-1.5 text-xs"
+                            onClick={addMissingVars}
+                        >
+                            <Plus size={12} />
+                            Add {missingKeys.length === 1 ? 'it' : 'them'}
+                        </Button>
+                    </div>
+                </div>
+            )}
+            {unusedKeys.length > 0 && (
+                <p className="mb-2 text-caption text-neutral-400">
+                    Not used by this template any more:{' '}
+                    {unusedKeys.map((k) => `{{${k}}}`).join(', ')} — safe to leave or clear.
+                </p>
+            )}
             <div className="space-y-2">{textVars.map(renderVar)}</div>
+            {!devMode && textVars.length === 0 && (
+                <p className="text-caption text-neutral-500">
+                    This message&apos;s wording is fixed by the approved WhatsApp template. The
+                    highlighted parts above are filled in per learner when it sends.
+                </p>
+            )}
+            {!devMode && formulaVars.length > 0 && (
+                <p className="mt-2 text-caption text-neutral-400">
+                    Filled in automatically:{' '}
+                    {formulaVars.map(([key]) => `{{${key}}}`).join(', ')}
+                </p>
+            )}
             {devMode && formulaVars.length > 0 && (
                 <details className="mt-2">
                     <summary className="cursor-pointer text-caption text-neutral-400">
@@ -644,11 +927,19 @@ function NodeConfigEditorCard({
     node,
     devMode,
     templates,
+    collapsed,
+    onToggleCollapsed,
+    onSyncTemplates,
+    syncingTemplates,
 }: {
     workflowId: string;
     node: WorkflowRawNode;
     devMode: boolean;
     templates: WhatsAppTemplateInfo[];
+    collapsed: boolean;
+    onToggleCollapsed: () => void;
+    onSyncTemplates: () => void;
+    syncingTemplates: boolean;
 }) {
     const queryClient = useQueryClient();
 
@@ -746,13 +1037,36 @@ function NodeConfigEditorCard({
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white">
-            {/* Card header */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-3">
+            {/* Card header — click anywhere to collapse/expand */}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onToggleCollapsed}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onToggleCollapsed();
+                    }
+                }}
+                className={`flex cursor-pointer select-none flex-wrap items-center gap-2 px-4 py-3 ${
+                    collapsed ? '' : 'border-b border-neutral-100'
+                }`}
+            >
+                {collapsed ? (
+                    <CaretRight size={14} className="shrink-0 text-neutral-400" />
+                ) : (
+                    <CaretDown size={14} className="shrink-0 text-neutral-400" />
+                )}
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-500">
                     {node.node_order}
                 </span>
                 <span className="text-lg">{nodeMeta?.icon ?? '⚙️'}</span>
                 <span className="font-medium text-neutral-800">{node.node_name}</span>
+                {collapsed && isDirty && (
+                    <span className="rounded-full bg-warning-50 px-2 py-0.5 text-caption text-warning-600">
+                        unsaved
+                    </span>
+                )}
                 {devMode && (
                     <Badge variant="outline" className="text-[10px] font-medium text-neutral-600">
                         {nodeMeta?.label ?? node.node_type}
@@ -771,8 +1085,8 @@ function NodeConfigEditorCard({
                 )}
             </div>
 
-            {/* Card body */}
-            <div className="space-y-4 p-4">
+            {/* Card body — hidden while collapsed (state and unsaved edits survive) */}
+            <div className={collapsed ? 'hidden' : 'space-y-4 p-4'}>
                 {/* Node metadata row */}
                 <div className={devMode ? 'grid grid-cols-1 gap-3 sm:grid-cols-3' : 'hidden'}>
                     <div>
@@ -840,6 +1154,8 @@ function NodeConfigEditorCard({
                     onChange={setConfigText}
                     devMode={devMode}
                     templates={templates}
+                    onSyncTemplates={onSyncTemplates}
+                    syncing={syncingTemplates}
                 />
                 <QueryParamsEditor configText={configText} onChange={setConfigText} devMode={devMode} />
                 {!devMode && !hasSimpleSettings && (
@@ -960,11 +1276,20 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
     // Approved WhatsApp templates — used to render full message previews in the
     // Message content panels (body text with variables substituted).
     const { data: instituteDetails } = useQuery(useInstituteQuery());
+    const instituteId = instituteDetails?.id ?? '';
     const { data: whatsappTemplates } = useQuery({
-        ...getTemplatesByTypeQuery(instituteDetails?.id ?? '', 'WHATSAPP'),
-        enabled: !!instituteDetails?.id,
+        ...getWhatsAppTemplatesForPreviewQuery(instituteId),
+        enabled: !!instituteId,
     });
     const templates: WhatsAppTemplateInfo[] = (whatsappTemplates ?? []) as WhatsAppTemplateInfo[];
+    const queryClient = useQueryClient();
+    // Templates authored directly in Meta are unknown here until synced, which
+    // is why a message can show its variables but no body.
+    const syncTemplates = useMutation({
+        mutationFn: () => syncWhatsAppTemplatesFromMeta(instituteId),
+        onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: ['WHATSAPP_TEMPLATES_PREVIEW', instituteId] }),
+    });
     // Simple view by default; the developer toggle persists across visits.
     const [devMode, setDevMode] = useState(
         () => localStorage.getItem('workflow-config-dev-mode') === 'true'
@@ -974,6 +1299,28 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
         setDevMode(next);
         localStorage.setItem('workflow-config-dev-mode', String(next));
     };
+    // Collapsed cards, by node id. Long workflows (a node per day) start folded
+    // so the page reads as an index; short ones stay open.
+    const [collapsedIds, setCollapsedIds] = useState<Set<string> | null>(null);
+    const nodeIds = useMemo(
+        () => (data?.nodes ?? []).map((n) => n.node_template_id),
+        [data]
+    );
+    const effectiveCollapsed = useMemo(() => {
+        if (collapsedIds) return collapsedIds;
+        return nodeIds.length > 5 ? new Set(nodeIds) : new Set<string>();
+    }, [collapsedIds, nodeIds]);
+    const toggleCollapsed = (id: string) =>
+        setCollapsedIds(() => {
+            const next = new Set(effectiveCollapsed);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    const allCollapsed = nodeIds.length > 0 && nodeIds.every((id) => effectiveCollapsed.has(id));
 
     if (isLoading) {
         return (
@@ -1032,6 +1379,16 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     variant="outline"
                     size="sm"
                     className="shrink-0 gap-1.5"
+                    onClick={() => setCollapsedIds(allCollapsed ? new Set<string>() : new Set(nodeIds))}
+                    title={allCollapsed ? 'Expand every step' : 'Collapse every step'}
+                >
+                    {allCollapsed ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                    {allCollapsed ? 'Expand all' : 'Collapse all'}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
                     onClick={toggleDevMode}
                 >
                     <BracketsCurly size={14} />
@@ -1046,6 +1403,10 @@ export function WorkflowConfigTab({ workflowId }: { workflowId: string }) {
                     node={node}
                     devMode={devMode}
                     templates={templates}
+                    collapsed={effectiveCollapsed.has(node.node_template_id)}
+                    onToggleCollapsed={() => toggleCollapsed(node.node_template_id)}
+                    onSyncTemplates={() => syncTemplates.mutate()}
+                    syncingTemplates={syncTemplates.isPending}
                 />
             ))}
         </div>

@@ -8,6 +8,7 @@ import {
     getAssessmentDetails,
     getQuestionDataForSection,
 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
+import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { DotIcon, DotIconOffline } from '@/svgs';
@@ -183,6 +184,7 @@ const AssessmentActions = ({
 
 const AssessmentDetailsComponent = () => {
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
+    const { canEdit } = useAssessmentActionVisibility();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const { data: assessmentDetails, isLoading } = useSuspenseQuery(
         getAssessmentDetails({
@@ -371,7 +373,7 @@ const AssessmentDetailsComponent = () => {
                                 </span>
                             </TabsTrigger>
                         </TabsList>
-                        {selectedTab !== 'overview' && selectedTab !== 'submissions' && (
+                        {canEdit && selectedTab !== 'overview' && selectedTab !== 'submissions' && (
                             <MyButton
                                 type="button"
                                 scale="large"

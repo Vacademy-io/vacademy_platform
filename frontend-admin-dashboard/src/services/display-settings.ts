@@ -5,6 +5,7 @@ import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY,
     CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
+    DEFAULT_ASSESSMENT_ACTION_SETTINGS,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { StorageKey } from '@/constants/storage/storage';
@@ -484,6 +485,26 @@ function mergeDisplayWithDefaults(
         showEnrolledStudentCount:
             incoming?.courseListCard?.showEnrolledStudentCount ??
             defCourseListCard.showEnrolledStudentCount,
+    };
+
+    // Assessment action visibility (create / edit / delete). Defaults ON for
+    // every role. This pass-through is load-bearing: a field missing here is
+    // dropped on every read AND on the post-save cache write, so the toggle
+    // would appear to save and then silently revert.
+    const defAssessmentPage = defaults.assessmentPage || DEFAULT_ASSESSMENT_ACTION_SETTINGS;
+    merged.assessmentPage = {
+        showCreateAssessment:
+            incoming?.assessmentPage?.showCreateAssessment ??
+            defAssessmentPage.showCreateAssessment ??
+            true,
+        showEditAssessment:
+            incoming?.assessmentPage?.showEditAssessment ??
+            defAssessmentPage.showEditAssessment ??
+            true,
+        showDeleteAssessment:
+            incoming?.assessmentPage?.showDeleteAssessment ??
+            defAssessmentPage.showDeleteAssessment ??
+            true,
     };
 
     const defCourseCreation = defaults.courseCreation || {

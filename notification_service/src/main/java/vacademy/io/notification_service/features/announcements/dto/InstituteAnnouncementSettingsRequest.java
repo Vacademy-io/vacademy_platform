@@ -56,6 +56,13 @@ public class InstituteAnnouncementSettingsRequest {
 
         @Valid
         private vacademy.io.notification_service.features.chat.dto.ChatSettings chat;
+
+        /**
+         * Copy-recipient (CC/BCC) config for transactional email. Must stay declared here or
+         * convertRequestToMap silently drops it on every settings save.
+         */
+        @Valid
+        private vacademy.io.notification_service.features.send.dto.EmailCcSettings emailCc;
     }
     
     @Data

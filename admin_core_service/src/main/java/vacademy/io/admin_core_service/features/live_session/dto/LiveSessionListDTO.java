@@ -38,7 +38,8 @@ public class LiveSessionListDTO {
     private String meetingLink;
     private String registrationFormLinkForPublicSessions;
     private String timezone;
-    private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
+    // Single object or list of objects — see LiveSessionStep1RequestDTO#learnerButtonConfig.
+    private Object learnerButtonConfig;
     private String defaultClassLink;
     private String defaultClassName;
     private String linkType;
@@ -52,7 +53,7 @@ public class LiveSessionListDTO {
             Date meetingDate, Time startTime, Time lastEntryTime, String recurrenceType,
             String accessLevel, String title, String subject, String meetingLink,
             String registrationFormLinkForPublicSessions, String timezone,
-            LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig,
+            Object learnerButtonConfig,
             String defaultClassLink, String defaultClassName, String linkType) {
         this.sessionId = sessionId;
         this.waitingRoomTime = waitingRoomTime;

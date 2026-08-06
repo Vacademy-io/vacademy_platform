@@ -1,8 +1,16 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
-import { useState, useEffect } from 'react';
-import { Key, Copy, Check, Shield, MonitorPlay, Envelope } from '@phosphor-icons/react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+    Key,
+    Copy,
+    Check,
+    Shield,
+    MonitorPlay,
+    Envelope,
+    PencilSimple,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
@@ -14,13 +22,15 @@ import {
 } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY,
+    CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type LearnerManagementSettings,
 } from '@/types/display-settings';
 import { isUserAdmin } from '@/utils/userDetails';
 import { getLearnerPortalAccess, sendResetPasswordEmail } from '@/services/learner-portal-access';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { BatchPicker } from '../BatchPicker';
+import { EditCredentialsDialog } from './edit-credentials-dialog';
 
 export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -33,19 +43,34 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
     const { data: credentials, isLoading: isCredentialsLoading } = useStudentCredentails({
         userId: userId || '',
     });
-    const password = credentials?.password || (isCredentialsLoading ? 'Loading...' : 'password not found');
+    const password =
+        credentials?.password || (isCredentialsLoading ? 'Loading...' : 'password not found');
+    const [isEditCredentialsOpen, setIsEditCredentialsOpen] = useState(false);
+    // Set on a successful rename so the card reflects it straight away —
+    // `selectedStudent` comes from the list row and keeps the old value until
+    // that query refetches. Stored WITH the user it belongs to and matched
+    // during render rather than cleared in an effect: an effect only runs after
+    // the render that switched learners, so the new learner's card would show
+    // the previous learner's username for a frame.
+    const [renamed, setRenamed] = useState<{ userId: string; username: string } | null>(null);
     // Submission-tab rows don't carry `username`; fall back to the credentials
     // API (which returns it) so the field isn't stuck on "N/A".
-    const username = selectedStudent?.username || credentials?.username || '';
+    const username =
+        (renamed && renamed.userId === userId ? renamed.username : '') ||
+        selectedStudent?.username ||
+        credentials?.username ||
+        '';
 
     // For multi-enrollment learners: admin picks which batch's package the portal redirect /
     // reset-password email is scoped to. Defaults to the row's primary (latest) ps_id.
     // Falls back to the legacy single field when the new array isn't populated.
-    const enrollmentPsIds: string[] = (selectedStudent?.all_package_session_ids?.length
-        ? selectedStudent.all_package_session_ids
-        : selectedStudent?.package_session_id
-          ? [selectedStudent.package_session_id]
-          : []) as string[];
+    const enrollmentPsIds: string[] = (
+        selectedStudent?.all_package_session_ids?.length
+            ? selectedStudent.all_package_session_ids
+            : selectedStudent?.package_session_id
+              ? [selectedStudent.package_session_id]
+              : []
+    ) as string[];
     const [selectedPsId, setSelectedPsId] = useState<string>(enrollmentPsIds[0] ?? '');
     useEffect(() => {
         setSelectedPsId(enrollmentPsIds[0] ?? '');
@@ -56,7 +81,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         const fetchLearnerSettings = async () => {
             const isAdmin = isUserAdmin();
             const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
-    const roleKey = getActiveRoleDisplaySettingsKey();
+            const roleKey = getActiveRoleDisplaySettingsKey();
 
             const cachedSettings = getDisplaySettingsFromCache(roleKey);
             const settings =
@@ -70,6 +95,17 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
 
         fetchLearnerSettings();
     }, []);
+
+    // Editing credentials is an admin capability by default; teachers and custom
+    // roles only get it if an admin turns it on for them in Display Settings.
+    // The `??` matters: institutes whose saved settings blob predates this flag
+    // have no key at all, and an admin must still see the button.
+    //
+    // isUserAdmin() reads a cookie and decodes the JWT on every call, so it is
+    // resolved once rather than on each render — the viewer's role cannot change
+    // while this component is mounted.
+    const viewerIsAdmin = useMemo(() => isUserAdmin(), []);
+    const canEditCredentials = learnerSettings?.allowEditCredentials ?? viewerIsAdmin;
 
     const handleCopy = async (text: string, fieldName: string) => {
         try {
@@ -105,10 +141,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
 
         try {
             toast.loading('Accessing learner portal...');
-            const response = await getLearnerPortalAccess(
-                selectedStudent.user_id,
-                packageId
-            );
+            const response = await getLearnerPortalAccess(selectedStudent.user_id, packageId);
 
             if (response.redirect_url) {
                 // Open the redirect URL in a new tab
@@ -167,89 +200,119 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                 label="Open portal for"
             />
 
-            {/* Account Credentials Section */}
-            {learnerSettings?.allowViewPassword && (
+            {/* Account Credentials Section.
+                Rendered when the viewer may see the credentials OR change them —
+                those are separate permissions, and gating the whole card on
+                "view" alone would swallow the Edit button for a role that was
+                granted edit without view. The values below stay behind the view
+                flag; only the Edit action is behind the edit flag. */}
+            {(learnerSettings?.allowViewPassword || canEditCredentials) && (
                 <div className="group rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-primary-50/30 p-3 transition-all duration-200 hover:scale-[1.01] hover:border-primary-200/50 hover:shadow-md">
                     <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="rounded-md bg-gradient-to-br from-primary-50 to-primary-100 p-1 transition-transform duration-200 group-hover:scale-105">
                                 <Key className="size-3.5 text-primary-600" />
                             </div>
-                            <h3 className="group-hover:text-primary-700 text-xs font-semibold text-neutral-700 transition-colors duration-200">
+                            <h3 className="text-xs font-semibold text-neutral-700 transition-colors duration-200 group-hover:text-primary-700">
                                 Account Credentials
                             </h3>
                         </div>
 
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="small"
-                            disable={false}
-                            onClick={() => {
-                                if (selectedStudent) {
-                                    openIndividualShareCredentialsDialog(selectedStudent);
-                                }
-                            }}
-                            className="h-auto min-h-0 cursor-pointer px-2 py-1 text-2xs"
-                            style={{ pointerEvents: 'auto', zIndex: 10 }}
-                        >
-                            <Shield className="mr-1 size-2.5" />
-                            Share
-                        </MyButton>
+                        <div className="flex items-center gap-1.5">
+                            {canEditCredentials && userId && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    disable={false}
+                                    onClick={() => setIsEditCredentialsOpen(true)}
+                                    className="h-auto min-h-0 cursor-pointer px-2 py-1 text-2xs"
+                                    style={{ pointerEvents: 'auto', zIndex: 10 }}
+                                >
+                                    <PencilSimple className="mr-1 size-2.5" />
+                                    Edit
+                                </MyButton>
+                            )}
+
+                            {/* Sharing mails the password out, so it belongs to the
+                                view permission, not the edit one. */}
+                            {learnerSettings?.allowViewPassword && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    disable={false}
+                                    onClick={() => {
+                                        if (selectedStudent) {
+                                            openIndividualShareCredentialsDialog(selectedStudent);
+                                        }
+                                    }}
+                                    className="h-auto min-h-0 cursor-pointer px-2 py-1 text-2xs"
+                                    style={{ pointerEvents: 'auto', zIndex: 10 }}
+                                >
+                                    <Shield className="mr-1 size-2.5" />
+                                    Share
+                                </MyButton>
+                            )}
+                        </div>
                     </div>
 
                     <div className="space-y-1">
                         {/* Username */}
-                        <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                <span className="font-medium text-neutral-600">Username: </span>
-                                <span className="group/value relative inline-flex items-center text-neutral-800">
-                                    <span>{username || 'N/A'}</span>
-                                    {username && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                username && handleCopy(username, 'Username');
-                                            }}
-                                            className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                            style={{ pointerEvents: 'auto' }}
-                                        >
-                                            {copiedField === 'Username' ? (
-                                                <Check className="size-3 text-green-600" />
-                                            ) : (
-                                                <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                            )}
-                                        </button>
-                                    )}
-                                </span>
+                        {learnerSettings?.allowViewPassword && (
+                            <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
+                                <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
+                                <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
+                                    <span className="font-medium text-neutral-600">Username: </span>
+                                    <span className="group/value relative inline-flex items-center text-neutral-800">
+                                        <span>{username || 'N/A'}</span>
+                                        {username && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    username && handleCopy(username, 'Username');
+                                                }}
+                                                className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
+                                                style={{ pointerEvents: 'auto' }}
+                                            >
+                                                {copiedField === 'Username' ? (
+                                                    <Check className="size-3 text-green-600" />
+                                                ) : (
+                                                    <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
+                                                )}
+                                            </button>
+                                        )}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Password */}
-                        <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                <span className="font-medium text-neutral-600">Password: </span>
-                                <span className="group/value relative inline-flex items-center text-neutral-800">
-                                    <span>{password}</span>
-                                    {password && password !== 'password not found' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCopy(password, 'Password')}
-                                            className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                            style={{ pointerEvents: 'auto' }}
-                                        >
-                                            {copiedField === 'Password' ? (
-                                                <Check className="size-3 text-green-600" />
-                                            ) : (
-                                                <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                            )}
-                                        </button>
-                                    )}
-                                </span>
+                        {learnerSettings?.allowViewPassword && (
+                            <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
+                                <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
+                                <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
+                                    <span className="font-medium text-neutral-600">Password: </span>
+                                    <span className="group/value relative inline-flex items-center text-neutral-800">
+                                        <span>{password}</span>
+                                        {password && password !== 'password not found' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopy(password, 'Password')}
+                                                className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
+                                                style={{ pointerEvents: 'auto' }}
+                                            >
+                                                {copiedField === 'Password' ? (
+                                                    <Check className="size-3 text-green-600" />
+                                                ) : (
+                                                    <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
+                                                )}
+                                            </button>
+                                        )}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -317,8 +380,19 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                 )}
             </div>
 
+            {canEditCredentials && userId && (
+                <EditCredentialsDialog
+                    open={isEditCredentialsOpen}
+                    onOpenChange={setIsEditCredentialsOpen}
+                    userId={userId}
+                    currentUsername={username}
+                    onUpdated={(newUsername) => setRenamed({ userId, username: newUsername })}
+                />
+            )}
+
             {/* Info when no settings enabled */}
             {!learnerSettings?.allowViewPassword &&
+                !canEditCredentials &&
                 !learnerSettings?.allowPortalAccess &&
                 !learnerSettings?.allowSendResetPasswordMail && (
                     <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-12">

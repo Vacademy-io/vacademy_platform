@@ -89,6 +89,14 @@ export function CallAllWithAiButton({
             });
         },
         onSuccess: (res) => {
+            // dispatched=false means nothing was queued (e.g. every eligible lead was
+            // already AI-called inside the cooldown). Reporting that as success left the
+            // user believing calls were going out when none were.
+            if (!res.dispatched) {
+                toast.warning(res.message || 'No AI calls were placed');
+                setOpen(false);
+                return;
+            }
             toast.success(res.message || `Queued ${res.eligible} AI call(s)`);
             setOpen(false);
             // Live progress: names for the rows we know (selected scope has them all;

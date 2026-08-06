@@ -19,4 +19,6 @@ public class AdminDetailsDTO {
     private String userId;
     private String name;
     private String role;
+    /** Contact email from the admin's student profile. Null when the profile carries none. */
+    private String email;
 }

@@ -189,7 +189,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -454,7 +454,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -732,7 +732,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -993,7 +993,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR

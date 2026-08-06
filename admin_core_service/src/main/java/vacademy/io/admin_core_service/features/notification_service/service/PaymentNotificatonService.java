@@ -186,7 +186,7 @@ public class PaymentNotificatonService {
                         .body(emailBody)
                         .subject(subject)
                         .notificationType(CommunicationType.EMAIL.name())
-                        .source("PAYMENT_CONFIRMATION")
+                        .source(NotificationEventType.PAYMENT_CONFIRMATION.getValue())
                         .sourceId(StringUtils.hasText(invoiceNumber) ? invoiceNumber : userDTO.getId())
                         .users(recipients)
                         .build();
@@ -197,6 +197,9 @@ public class PaymentNotificatonService {
                 notificationDTO.setBody(emailBody);
                 notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
                 notificationDTO.setSubject(subject);
+                // Mirrors the attachment path above. Without a source the send carries no event
+                // key, so institute-configured CC/BCC copies can never match this trigger.
+                notificationDTO.setSource(NotificationEventType.PAYMENT_CONFIRMATION.getValue());
 
                 NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
                 notificationToUserDTO.setUserId(userDTO.getId());

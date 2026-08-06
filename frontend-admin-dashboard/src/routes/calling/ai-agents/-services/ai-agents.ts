@@ -51,7 +51,10 @@ export function previewLang(language?: string): string {
 export function voicePreviewUrl(agent: AiAgent, text: string): string {
     const params = new URLSearchParams({
         text: text.trim() || DEFAULT_SAMPLE_TEXT,
-        voice: (agent.voice || 'priya').trim().toLowerCase(),
+        // NOT lowercased: Google voice ids are exact resource names
+        // (hi-IN-Chirp3-HD-Achird), and a lowercased one is rejected — the
+        // preview would then fail or, worse, be served by the fallback engine.
+        voice: (agent.voice || 'priya').trim(),
         lang: previewLang(agent.language),
         pace: String(agent.pace ?? 1.0),
         // The preview must synthesise on the SAME engine the call will use —

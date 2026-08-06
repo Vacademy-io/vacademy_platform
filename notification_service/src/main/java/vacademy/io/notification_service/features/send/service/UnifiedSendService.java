@@ -34,6 +34,7 @@ public class UnifiedSendService implements SendChannelRouter {
     private final BatchProcessorService batchProcessorService;
     private final NotificationTemplateRepository notificationTemplateRepository;
     private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
+    private final EmailCcResolver emailCcResolver;
 
     private static final int SYNC_THRESHOLD = 100;
 
@@ -381,6 +382,25 @@ public class UnifiedSendService implements SendChannelRouter {
             }
         }
 
+        // Resolve copy (CC/BCC) recipients ONCE before the loop — this hits the settings table,
+        // so resolving per-recipient would issue one query per learner on a bulk blast.
+        // An explicit opts.cc overrides the institute config for this single send.
+        List<String> copyRecipients = List.of();
+        String copyMode = "BCC";
+        if (opts.getCc() != null && !opts.getCc().isEmpty()) {
+            copyRecipients = opts.getCc();
+            copyMode = "CC".equalsIgnoreCase(opts.getCcMode()) ? "CC" : "BCC";
+        } else {
+            EmailCcResolver.CopyRecipients resolved =
+                    emailCcResolver.resolve(request.getInstituteId(), opts.getSource());
+            if (!resolved.isEmpty()) {
+                copyRecipients = resolved.cc();
+                copyMode = resolved.mode();
+            }
+        }
+        final List<String> finalCopyRecipients = copyRecipients;
+        final String finalCopyMode = copyMode;
+
         // Optional rate limiting for bulk sends (e.g., announcements)
         com.google.common.util.concurrent.RateLimiter rateLimiter = null;
         if (opts.getRateLimitPerSecond() != null && opts.getRateLimitPerSecond() > 0) {
@@ -448,7 +468,8 @@ public class UnifiedSendService implements SendChannelRouter {
                         }
                     }
                     emailService.sendAttachmentEmail(email, subject, "unified-send", body,
-                            attachmentMap, request.getInstituteId(), emailType);
+                            attachmentMap, request.getInstituteId(), emailType,
+                            finalCopyRecipients, finalCopyMode);
                 } else if (isEngagementEngineSend(request)) {
                     // Engine sends carry attribution: source → notification_log.source,
                     // sourceId → correlation_id (action id), userId → user attribution
@@ -457,10 +478,12 @@ public class UnifiedSendService implements SendChannelRouter {
                             ENGAGEMENT_ENGINE_SOURCE, body,
                             request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
                             opts.getSourceId(),
-                            userId != null && !userId.contains("@") ? userId : null);
+                            userId != null && !userId.contains("@") ? userId : null,
+                            finalCopyRecipients, finalCopyMode);
                 } else {
                     emailService.sendHtmlEmail(email, subject, "unified-send", body,
-                            request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType);
+                            request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
+                            null, null, finalCopyRecipients, finalCopyMode);
                 }
 
                 results.add(UnifiedSendResponse.RecipientResult.builder()

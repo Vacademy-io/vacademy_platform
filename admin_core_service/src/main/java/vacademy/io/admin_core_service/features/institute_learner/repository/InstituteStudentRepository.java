@@ -52,6 +52,26 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   @Query("UPDATE Student s SET s.guardianUserId = :guardianUserId WHERE s.userId = :userId")
   void updateGuardianUserId(@Param("userId") String userId, @Param("guardianUserId") String guardianUserId);
 
+  /**
+   * Re-points the denormalized username after auth_service changed
+   * {@code users.username}. Bulk-by-userId for the same reason as
+   * {@link #updateGuardianUserId}: one user can own several student rows, and
+   * every one of them carries its own copy. The older profile-edit path
+   * ({@code LearnerService.updateLearnerDetail}) uses {@code findTopByUserId}
+   * and so only ever fixed the most recent row — a rename that went through
+   * that path alone left the other rows showing a username that can no longer
+   * log in.
+   *
+   * <p>Indexed by {@code student_unique UNIQUE (user_id, username)}, whose
+   * leading column is user_id, so this stays an index scan.
+   *
+   * @return number of student rows updated
+   */
+  @Modifying
+  @Transactional
+  @Query("UPDATE Student s SET s.username = :username WHERE s.userId = :userId")
+  int updateUsernameByUserId(@Param("userId") String userId, @Param("username") String username);
+
   @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
       +
       "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +

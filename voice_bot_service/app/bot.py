@@ -82,7 +82,8 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
 from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
-from .turntake import mid_reply_action, ABSORB
+from .turntake import (mid_reply_action, is_carrier_announcement,
+                       is_audio_check, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -131,9 +132,11 @@ class TranscriptCollector(FrameProcessor):
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
-                 gate_enabled=None, interrupt_on_vad=None, recently_cut=None):
+                 gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
+                 diag=None):
         super().__init__()
         self._outcome = outcome
+        self._diag = diag
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -170,6 +173,10 @@ class TranscriptCollector(FrameProcessor):
         # spoken twice back-to-back on a live call.
         self._last_text = ""
         self._last_text_t = 0.0
+        # Flips on the first transcript that is NOT a network announcement.
+        self._heard_real_user = False
+        # Consecutive bare "hello?"s from the caller (reset by anything else).
+        self._audio_checks = 0
         s = get_settings()
         self._filler_phrases = list(filler_phrases if filler_phrases is not None
                                     else s.filler_phrases)
@@ -196,6 +203,26 @@ class TranscriptCollector(FrameProcessor):
                 and frame.text and frame.text.strip()):
             text = frame.text.strip()
             now = time.time()
+            # The OPERATOR's recorded message is not the callee. Record it (the
+            # answering-machine detector reads these markers) then stop: it must
+            # not stamp transcript_t (which would make _greet_when_ready skip our
+            # opening), must not interrupt, and above all must not reach the LLM.
+            # On call 77cb4b47 it did all three — "Your call has been forwarded to
+            # voicemail." became the first user message and conditioned EVERY
+            # generation for the next 2.5 minutes.
+            #
+            # Only before the callee has actually said something: after that, a
+            # match is far more likely to be the caller quoting us than the network.
+            if not self._heard_real_user and is_carrier_announcement(text):
+                self._outcome.transcript.append({"role": "user", "text": text})
+                if self._diag is not None:
+                    self._diag.bump("carrier_announcements")
+                logger.info("turn-gate: carrier announcement %r — not the callee, "
+                            "dropping from context", text[:48])
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
+            self._heard_real_user = True
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
@@ -261,12 +288,36 @@ class TranscriptCollector(FrameProcessor):
                         # after their "haan". run_llm=True: this is the ONLY
                         # place that regenerates, and it fires solely for
                         # acknowledgments, so it cannot loop on real answers.
+                        #
+                        # Duck-only (resume the held audio instead of
+                        # regenerating) would be the cleaner answer here and is
+                        # NOT available: measured on the deployed image
+                        # 2026-08-06, INTERRUPT_ON_VAD=false gives 1.92s of
+                        # talk-over against 0.52s with it on — the founder's
+                        # original "the bot takes ages to stop". So: cancel
+                        # fast, then be careful about what we say next.
+                        if is_audio_check(text):
+                            self._audio_checks += 1
+                        else:
+                            self._audio_checks = 0
+                        if self._audio_checks >= 2:
+                            # Twice in a row means the line is genuinely bad.
+                            # Re-delivering the sentence a third time is what
+                            # made call 77cb4b47 unlistenable: cut -> "hello?"
+                            # -> cut -> "hello?", four times in eleven seconds.
+                            # Say one short thing and then STOP talking.
+                            cue = ("[They have said hello twice now — they are "
+                                   "not hearing you properly. Say ONE short "
+                                   "sentence asking whether they can hear you, "
+                                   "then stop. Do NOT repeat your question, do "
+                                   "NOT restart your pitch, do NOT re-greet.]")
+                        else:
+                            cue = ("[They just acknowledged you — carry on "
+                                   "from where you were interrupted, in one "
+                                   "short sentence. Do not restart or "
+                                   "re-greet.]")
                         await self.push_frame(LLMMessagesAppendFrame(
-                            messages=[{"role": "user", "content":
-                                       "[They just acknowledged you — carry on "
-                                       "from where you were interrupted, in one "
-                                       "short sentence. Do not restart or "
-                                       "re-greet.]"}],
+                            messages=[{"role": "user", "content": cue}],
                             run_llm=True), direction)
                     return
                 self._on_transcript()
@@ -280,6 +331,7 @@ class TranscriptCollector(FrameProcessor):
                 # so its played text is committed (prevents the verbatim
                 # re-opening seen on 8e1e00ad). The transcript is then forwarded
                 # below as a fresh, normal turn.
+                self._audio_checks = 0
                 logger.info("turn-gate: real barge-in %r — interrupting reply "
                             "(ducked=%s)", text[:40], ducked)
                 await self.broadcast_interruption()
@@ -1788,7 +1840,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      backchannel_extra=settings.backchannel_extra,
                                      gate_enabled=lambda: settings.duck_enabled,
                                      interrupt_on_vad=lambda: settings.interrupt_on_vad,
-                                     recently_cut=_recently_cut)
+                                     recently_cut=_recently_cut, diag=diag)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
@@ -2028,6 +2080,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if _n:
                 logger.warning("diagnostics: %d caller answer(s) never reached the model "
                                "corr=%s %s", _n, corr, _samples[:5])
+            # Did the caller hear the same sentence over and over? (REPLY_LOOP)
+            diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
+            if diag.max_reply_restarts >= 2:
+                logger.warning("diagnostics: bot restarted the same reply %dx in a row "
+                               "corr=%s", diag.max_reply_restarts, corr)
         except Exception:
             logger.exception("diagnostics: answer reconciliation failed corr=%s", corr)
         for _t in [watchdog_task, *_bg_tasks]:

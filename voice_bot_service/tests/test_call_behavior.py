@@ -1436,3 +1436,109 @@ def test_language_switch_on_request_is_permanent():
     assert "ON REQUEST, THE SWITCH IS PERMANENT" in p
     assert "WHOLE rest of the call" in p
     assert "no Devanagari" in p
+
+
+# ── call 77cb4b47 (2026-08-06): replay the real transcripts through the gate ──
+class _Rec:
+    """Captures everything the collector pushes downstream."""
+
+    def __init__(self):
+        self.frames = []
+        self.interruptions = 0
+
+    def cues(self):
+        out = []
+        for f in self.frames:
+            for m in getattr(f, "messages", []) or []:
+                out.append(m.get("content") or "")
+        return out
+
+
+def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: bot_speaking,
+        fillers_armed=lambda: False,
+        bot_stopped_t=bot_stopped_t or (lambda: 0.0),
+        gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True,      # what production actually runs
+        filler_phrases=[],
+    )
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+
+    async def _broadcast():
+        rec.interruptions += 1
+
+    tc.push_frame = _push
+    tc.broadcast_interruption = _broadcast
+    return tc
+
+
+async def _feed(tc, text):
+    from pipecat.frames.frames import TranscriptionFrame
+    f = TranscriptionFrame(text=text, user_id="u", timestamp="t")
+    # Bypass pipecat's base setup (needs a running task manager); this test is
+    # about OUR gate logic, which lives entirely after the super() call.
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(f, b.FrameDirection.DOWNSTREAM)
+
+
+async def _noop_super(self, frame, direction):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_carrier_announcement_never_reaches_the_model():
+    """Verbatim Sarvam finals from the start of call 77cb4b47. These made the
+    bot skip its opening AND became the first user message in the LLM context,
+    where they conditioned every generation for the next 2.5 minutes."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    await _feed(tc, "The person you're trying to reach is not available.")
+    assert rec.frames == [], "carrier audio must not be forwarded downstream"
+    assert rec.interruptions == 0, "the network must not barge in on us"
+    # ...but it must still be in the transcript, or LIKELY_MACHINE goes blind.
+    assert len(tc._outcome.transcript) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_hello_loop_breaks_on_the_second_hello():
+    """The loop, verbatim: cut -> 'Hello.' -> cut -> 'Hello.' -> ... The first
+    hello asks the model to carry on; the SECOND must stop it re-delivering the
+    sentence at all, which is what made the call unlistenable."""
+    rec = _Rec()
+    # The bot spoke (and was cut) between each hello — that is what stops the
+    # 4-second dedupe from swallowing the repeats, and it is exactly what the
+    # live log shows at 08:27:02.7 / 08:27:05.1 / 08:27:13.3.
+    tc = _replay_collector(rec, bot_stopped_t=lambda: time.time())
+    await _feed(tc, "haan ji bol raha hoon")     # a real turn first
+    rec.frames.clear()
+    rec.interruptions = 0                        # that turn's barge-in is fine
+
+    await _feed(tc, "Hello.")
+    first = rec.cues()
+    assert any("carry on" in c for c in first), first
+    assert rec.interruptions == 0, "an absorbed hello must not be a barge-in"
+
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    second = rec.cues()
+    assert any("hear you" in c for c in second), second
+    assert any("Do NOT repeat your question" in c for c in second), second
+
+
+@pytest.mark.asyncio
+async def test_a_real_answer_clears_the_hello_streak():
+    """Otherwise one stray hello early in a call would arm the escalation for
+    the rest of it."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_stopped_t=lambda: time.time())
+    await _feed(tc, "Hello.")
+    await _feed(tc, "sixty eight percent aaye the")   # real answer -> interrupts
+    assert tc._audio_checks == 0
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    assert any("carry on" in c for c in rec.cues()), "streak did not reset"

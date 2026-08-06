@@ -23,6 +23,7 @@ prevent. ``src`` marks whether a fault is MEASURED or INFERRED.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import difflib
 from typing import Any, Dict, List, Optional
 
 # Bump when a threshold or a fault definition changes. Stored with every call so
@@ -51,11 +52,19 @@ PROMPT_UNFILLED = "PROMPT_UNFILLED"
 # LIKELY_MACHINE while the REAL story — "we never said a word" — appeared
 # nowhere in the panel. A whole class of outage was invisible; now it is not.
 BOT_SILENT = "BOT_SILENT"
+# The bot kept re-delivering a reply it had just been cut off on. Added
+# 2026-08-06 from call 77cb4b47, where the founder heard the first second of the
+# SAME question four times in eleven seconds and told the bot so on the line
+# ("आपकी आवाज़ कट हो रही है बार-बार"). Every existing panel read fine: TTS TTFB
+# 0.18s, LLM 0.46s, no stalls, "every caller answer reached the agent". The one
+# thing that was actually broken — that the caller heard the same sentence over
+# and over and never heard the end of it — had no counter at all.
+REPLY_LOOP = "REPLY_LOOP"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
-    BOT_SILENT,
+    BOT_SILENT, REPLY_LOOP,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -64,9 +73,9 @@ ALL_FAULTS = (
 # "Voice synthesis stalled" while the actual story was that the caller repeated
 # "hybrid model" four times and we never once transcribed it.
 HEADLINE_PRIORITY = (
-    CRASH, BOT_SILENT, STT_DEAF, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR,
-    FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED,
-    PROMPT_UNFILLED,
+    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, TTS_WEDGE, REPLY_UNPLAYED,
+    ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM,
+    TRANSFER_FAILED, PROMPT_UNFILLED,
 )
 
 GREEN, AMBER, RED = "GREEN", "AMBER", "RED"
@@ -123,6 +132,15 @@ class CallDiagnostics:
     ducks: int = 0
     duck_absorbs: int = 0
     duck_timeout_resumes: int = 0
+    # Operator recordings ("forwarded to voicemail") filtered out of the LLM
+    # context. NOTE the name must match bump()'s argument EXACTLY — bump() is
+    # getattr/setattr with a bare except, so a typo silently counts nothing.
+    carrier_announcements: int = 0
+    # Consecutive times the bot re-delivered a reply it had just been cut off
+    # on. 1-2 is normal recovery; a run of them is the restart loop that made
+    # call 77cb4b47 unlistenable.
+    reply_restarts: int = 0
+    max_reply_restarts: int = 0
 
     # ── caller/agent shape (feeds the machine heuristic) ──
     user_turns: int = 0
@@ -221,6 +239,46 @@ def _norm_answer(text: str) -> str:
 _CONTAIN_MIN_CHARS = 4
 
 
+def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82) -> int:
+    """PURE. Longest run of consecutive bot turns that said the SAME thing.
+
+    Post-hoc rather than frame-plumbed on purpose: the played transcript already
+    records exactly what the CALLER heard, which is the thing that matters. If
+    the bot starts "Shreyash ji, main pooch raha tha ki Raman ke last annual
+    exam..." four times without ever reaching the end, the caller heard the same
+    second of audio four times (call 77cb4b47).
+
+    FUZZY, not exact-prefix. The first version of this compared a 24-character
+    head and would have scored that very call as ZERO, because the model
+    re-rendered one of the four as "main puch raha tha" instead of "main pooch
+    raha tha" — a restart the caller cannot even hear the difference in. A
+    detector that misses the case it was built for is worse than none, so
+    similarity it is.
+
+    Short bot turns (fillers, "Hmm…", one-word acks) are SKIPPED without
+    breaking the run: they legitimately repeat, and on the live call a "Hmm…"
+    landed in the middle of the loop. Skipping keeps the run intact; resetting
+    on them hid it.
+    """
+    heads: List[str] = []
+    for entry in transcript or []:
+        if (entry or {}).get("role") != "assistant":
+            continue
+        text = " ".join(((entry or {}).get("text") or "").split()).casefold()
+        if len(text) < 24:
+            continue
+        heads.append(text[:120])
+    best = run = 0
+    prev = None
+    for head in heads:
+        same = prev is not None and difflib.SequenceMatcher(
+            None, prev, head).ratio() >= threshold
+        run = run + 1 if same else 1
+        prev = head
+        best = max(best, run)
+    return best
+
+
 def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     """PURE. Which caller answers never reached the model?
 
@@ -316,6 +374,13 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     if d.user_turns >= 1 and d.bot_turns == 0 and d.tts_chars == 0:
         fire(BOT_SILENT, RED)
 
+    # Re-delivering a cut-off reply once is normal recovery. Three in a row is
+    # the loop: the caller is hearing the same opening words and never the end.
+    if d.max_reply_restarts >= 3:
+        fire(REPLY_LOOP, RED)
+    elif d.max_reply_restarts == 2:
+        fire(REPLY_LOOP, AMBER)
+
     if d.tts_stall_cap_hit or d.tts_stalls >= 2 or (d.tts_stalls >= 1 and d.tts_silent_generations >= 1):
         fire(TTS_WEDGE, RED)
     elif d.tts_stalls == 1 or d.tts_wedges >= 1 or d.tts_letterless_skipped >= 1:
@@ -407,6 +472,7 @@ _HEADLINE_TEXT = {
     TRANSFER_FAILED: "Human transfer was requested but failed",
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
     BOT_SILENT: "The agent never spoke — the caller heard nothing",
+    REPLY_LOOP: "The agent kept restarting the same reply",
 }
 
 
@@ -450,6 +516,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "ducks": d.ducks,
                 "duckAbsorbs": d.duck_absorbs,
                 "duckTimeoutResumes": d.duck_timeout_resumes,
+                "carrierAnnouncements": d.carrier_announcements,
+                "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
                 "nudges": d.nudges,

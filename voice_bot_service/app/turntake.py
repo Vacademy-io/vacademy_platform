@@ -29,11 +29,20 @@ from __future__ import annotations
 ABSORB = "absorb"
 INTERRUPT = "interrupt"
 
-# Affirmative acknowledgments only. NOT here, deliberately:
+# Affirmative acknowledgments and audio-checks. NOT here, deliberately:
 #   * negations ("nahi", "no") — an objection must stop the pitch;
-#   * "hello"/"haan?" — a caller saying hello mid-reply has LOST the audio and
-#     interrupting is the only honest response;
 #   * content words — one-word answers ("IGCSE", "Monday") are real turns.
+#
+# "hello" USED to be excluded here, on the reasoning that a caller saying hello
+# mid-reply has lost the audio and interrupting is the only honest response.
+# Call 77cb4b47 (2026-08-06) disproved that. Interrupting does not restore their
+# audio — it cancels the sentence, and the model then re-asks the SAME question
+# from the top. The founder heard the first second of "Shreyash ji, main pooch
+# raha tha ki Raman ke last annual exam mein kitne marks aaye the?" four times
+# in eleven seconds, said "आपकी आवाज़ कट हो रही है बार-बार", and the loop was
+# self-feeding: cut -> caller says "hello?" -> cut -> caller says "hello?".
+# Absorbing lets the held reply RESUME, so the caller finally hears the rest of
+# the sentence they were asking for. That is the only outcome that ends the loop.
 # Devanagari and romanized forms both listed: saaras/saarika emit either script
 # depending on model + mode, and the caller doesn't get to choose which.
 _BACKCHANNEL_WORDS = frozenset({
@@ -50,6 +59,9 @@ _BACKCHANNEL_WORDS = frozenset({
     "sir", "sar", "madam", "mam", "maam", "bhaiya",
     # English
     "ok", "okay", "okey", "kk", "yes", "yeah", "yah", "ya", "yup", "yep",
+    # Audio-checks: "are you there / can you hear me". A resumed sentence
+    # answers these; a cancelled-and-restarted one does not.
+    "hello", "helo", "hallo", "hlo", "hey", "हेलो", "हैलो", "हलो",
     "right", "correct", "sure", "fine", "good", "great", "cool", "alright",
     "go", "on", "ahead", "continue", "carry",
 })
@@ -100,3 +112,69 @@ def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
         if w not in vocab:
             return INTERRUPT
     return ABSORB
+
+
+# ── carrier announcements ──────────────────────────────────────────────────
+# The network, not a person. On call 77cb4b47 the operator played "Your call has
+# been forwarded to voicemail. The person you're trying to reach is not
+# available." BEFORE the founder picked up, and the bot treated it as the callee
+# speaking. Three things went wrong at once, all from that one mis-read:
+#   * the scripted opening was SKIPPED ("callee spoke first"), so the call began
+#     with silence and the founder said "hello?" twice into it;
+#   * it counted as a barge-in, cancelling the reply that was starting;
+#   * worst, it became the FIRST USER MESSAGE and stayed in the LLM context for
+#     the whole 2.5-minute call — every single generation for the rest of the
+#     call was conditioned on being told it had reached a voicemail box.
+#
+# Substring match on lowercased text, so partial finals ("...forwarded to
+# voicemai") still match. Kept deliberately narrow: these are fixed operator
+# recordings, and a human saying one of these sentences on a sales call is not a
+# thing that happens.
+_CARRIER_PHRASES = (
+    # English (Airtel / Jio / Vi / BSNL + generic)
+    "forwarded to voicemail", "call has been forwarded", "leave a message after",
+    "after the tone", "after the beep", "record your message",
+    "the person you're trying to reach", "the person you are trying to reach",
+    "is not available", "is currently busy", "the number you have dialled",
+    "the number you have dialed", "the subscriber you have dialled",
+    "the subscriber you have dialed", "is switched off", "out of coverage",
+    "please try again later", "call cannot be completed", "temporarily out of service",
+    "is unreachable", "not reachable", "incoming call facility",
+    # Hindi
+    "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
+    "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",
+)
+
+
+def is_carrier_announcement(text: str) -> bool:
+    """True when a transcript is the OPERATOR's recorded message, not the callee.
+
+    Callers of this must not feed the text to the LLM, must not let it count as
+    "the callee spoke first", and must not let it interrupt the bot — but SHOULD
+    still keep it in the call transcript, because the answering-machine detector
+    reads exactly these markers to raise LIKELY_MACHINE.
+    """
+    t = (text or "").casefold()
+    if not t.strip():
+        return False
+    return any(p in t for p in _CARRIER_PHRASES)
+
+
+# ── audio-checks ───────────────────────────────────────────────────────────
+# "hello?" mid-reply is its own thing: not consent to carry on (a backchannel)
+# and not a new question, but the caller checking whether the line is alive.
+# It gets absorbed like a backchannel, but the CALLER'S SECOND one in a row
+# means the first response did not work and repeating the sentence again will
+# not either — see TranscriptCollector, which switches to a short "can you hear
+# me?" and then stops talking.
+_AUDIO_CHECK_WORDS = frozenset({
+    "hello", "helo", "hallo", "hlo", "hey", "हेलो", "हैलो", "हलो",
+})
+
+
+def is_audio_check(text: str, max_words: int = 3) -> bool:
+    """True for a bare "hello?"-style line-check (in any of our scripts)."""
+    ws = _words(text)
+    if not ws or len(ws) > max_words:
+        return False
+    return any(w in _AUDIO_CHECK_WORDS for w in ws)

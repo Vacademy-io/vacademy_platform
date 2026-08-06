@@ -6,7 +6,7 @@ The word-list decisions are the product behavior the founder signed off
 The asymmetry under test: when unsure, INTERRUPT — wrongly stopping the bot
 costs a moment; wrongly steamrolling the caller costs the call.
 """
-from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+from app.turntake import mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement
 from app.callstate import (
     CallState, WatchdogConfig, watchdog_decide, apply_decision,
     NONE, DUCK_RESUME, CAP_FAREWELL, ARM_STOP, ORPHAN_ASK, NUDGE,
@@ -64,8 +64,15 @@ def test_interrupts_questions():
 def test_interrupts_content_words():
     # One-word REAL answers — the exact class pipecat's min-words path deleted
     # (live losses: IGCSE, Symbiosis, Monday). These must become real turns.
+    #
+    # "hello"/"हैलो" were in this list until 2026-08-06 and were MOVED to the
+    # absorb set on purpose: see test_hello_mid_reply_absorbs_so_the_sentence_
+    # can_resume. Interrupting on them cost call 77cb4b47 — the reply was
+    # cancelled, the model re-asked the same question, the caller said "hello?"
+    # at the silence, and round it went. "रुको"/"suniye" (stop / listen) stay
+    # here: those really are instructions to stop.
     for t in ("IGCSE", "Symbiosis", "Monday", "अगर आप रिकॉर्ड योर।",
-              "मुझे दो minute दीजिए", "hello", "हैलो", "रुको", "suniye"):
+              "मुझे दो minute दीजिए", "रुको", "suniye"):
         assert mid_reply_action(t) == INTERRUPT, t
 
 
@@ -158,3 +165,37 @@ def test_default_term_map_is_longest_first():
     lens = [len(k) for k, _ in Settings().rumik_term_map]
     assert lens == sorted(lens, reverse=True)
     assert ("लाइव क्लासेस", "Live Classes") in Settings().rumik_term_map
+
+
+# ── call 77cb4b47 (2026-08-06): the restart loop and its trigger ───────────
+def test_hello_mid_reply_absorbs_so_the_sentence_can_resume():
+    """The founder heard the same question four times in eleven seconds because
+    every "hello?" cancelled the reply and the model re-asked from the top.
+    Interrupting never restored their audio; resuming the held sentence does."""
+    for word in ("hello", "Hello.", "हेलो", "hello hello", "haan hello"):
+        assert mid_reply_action(word) == ABSORB, word
+
+
+def test_a_real_question_mid_reply_still_interrupts():
+    """Absorbing "hello" must not swallow actual questions — "क्या पूछा आपने?"
+    on the same call WAS a real turn and had to stop the bot."""
+    assert mid_reply_action("क्या पूछा आपने?") == INTERRUPT
+    assert mid_reply_action("hello, fees kitni hai?") == INTERRUPT
+    assert mid_reply_action("nahi") == INTERRUPT
+
+
+def test_carrier_announcements_are_not_the_callee():
+    """Verbatim from the Sarvam finals on call 77cb4b47 — including the
+    truncated form, since partial finals are what actually arrive."""
+    for t in ("Your call has been forwarded to voicemail.",
+              "Your call has been forwarded to voicemai",
+              "The person you're trying to reach is not available.",
+              "The subscriber you have dialled is currently busy.",
+              "आप जिस नंबर पर संपर्क कर रहे हैं वह इस समय उपलब्ध नहीं है।"):
+        assert is_carrier_announcement(t), t
+
+
+def test_real_callers_are_not_mistaken_for_the_network():
+    for t in ("Haan ji main parent bol raha hoon", "Raman", "Class eighth mein hai",
+              "Hello", "fees kitni hogi?", "68 percent aaye the"):
+        assert not is_carrier_announcement(t), t

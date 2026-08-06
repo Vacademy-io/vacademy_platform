@@ -389,3 +389,70 @@ def test_bot_silent_never_fires_on_an_unanswered_dial():
 def test_bot_silent_quiet_on_a_healthy_call():
     d = dg.CallDiagnostics(user_turns=5, bot_turns=5, tts_chars=800)
     assert dg.BOT_SILENT not in dg.verdict(d)["faults"]
+
+
+# ── REPLY_LOOP (call 77cb4b47, 2026-08-06) ────────────────────────────────
+_REAL_LOOP = [
+    "Hello? Kya aap sun paa rahe hain?",
+    "Shreyash ji, main pooch raha tha ki Raman ke last annual exam mein kitne marks aaye the?",
+    "Shreyash ji, main puch raha tha ki Raman ke last annual exam mein kitne marks aaye the?",
+    "Shreyash ji, main pooch raha tha ki Raman ke last annual exam mein kitne marks aaye the?",
+    "Hmm…",
+    "Shreyash ji, main pooch raha tha ki Raman ke last annual exam mein kitne marks aaye the?",
+]
+
+
+def test_max_reply_restarts_catches_the_call_it_was_built_for():
+    """Verbatim bot utterances from the Mumbai box log, 08:27:00.9-08:27:14.4.
+    An exact-prefix version of this scored ZERO here (the model rendered one as
+    'main puch' instead of 'main pooch') and a 'Hmm…' in the middle reset the
+    run — both had to be handled or the detector was decorative."""
+    t = [{"role": "assistant", "text": x} for x in _REAL_LOOP]
+    assert dg.max_reply_restarts(t) == 4
+
+
+def test_a_normal_conversation_scores_one():
+    t = [{"role": "assistant", "text": x} for x in [
+        "Theek hai, Raman abhi kis class mein hai?",
+        "Eighth class mein hai, theek hai. Last annual exam mein uske kitne marks aaye the?",
+        "Achha, maths aur science dono mein dikkat hai. 60-75% sabse common situation hai.",
+    ]]
+    assert dg.max_reply_restarts(t) == 1
+
+
+def test_reply_loop_fault_fires_red_on_that_call():
+    diag = dg.CallDiagnostics()
+    diag.max_reply_restarts = 4
+    v = dg.verdict(diag)
+    assert v["faults"][dg.REPLY_LOOP] == dg.RED
+    assert dg._HEADLINE_TEXT[dg.REPLY_LOOP]
+
+
+def test_every_bump_call_site_names_a_real_counter():
+    """bump() is getattr/setattr inside a bare except: a misspelled counter
+    counts NOTHING, raises nothing, and every test still passes. This bit for
+    real on 2026-08-06 — the new carrier counter was written camelCase at the
+    call site against a snake_case field and a green suite said nothing.
+
+    So read the ACTUAL call sites out of bot.py rather than restating a list
+    here, which would just be a second place to make the same typo."""
+    import pathlib
+    import re
+    src = (pathlib.Path(__file__).resolve().parents[1] / "app" / "bot.py").read_text()
+    names = set(re.findall(r'\.bump\(\s*["\']([A-Za-z_]+)["\']', src))
+    assert names, "found no bump() call sites — the regex broke, not the code"
+    diag = dg.CallDiagnostics()
+    for name in sorted(names):
+        before = getattr(diag, name, None)
+        assert before is not None, f"bot.py bumps {name!r} but no such counter exists"
+        diag.bump(name)
+        assert getattr(diag, name) == before + 1, name
+
+
+def test_carrier_and_restart_counters_reach_the_payload():
+    diag = dg.CallDiagnostics()
+    diag.carrier_announcements = 2
+    diag.max_reply_restarts = 4
+    p = dg.to_payload(diag)
+    assert p["turnTaking"]["carrierAnnouncements"] == 2
+    assert p["turnTaking"]["maxReplyRestarts"] == 4

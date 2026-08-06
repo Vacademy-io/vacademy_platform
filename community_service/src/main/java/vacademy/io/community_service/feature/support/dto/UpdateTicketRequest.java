@@ -30,4 +30,14 @@ public class UpdateTicketRequest {
     private List<AttachmentDto> attachments;
     /** True when {@code attachments} should be applied (allows clearing them with an empty list). */
     private boolean attachmentsSet;
+
+    /**
+     * The institute-side person who reported the issue. Editable so tickets logged before a
+     * reporter was captured can be attributed retroactively and start notifying on reply.
+     * Applied only when {@code reportedBySet} is true, so a blank email can clear it.
+     */
+    private String reportedByUserId;
+    private String reportedByName;
+    private String reportedByEmail;
+    private boolean reportedBySet;
 }

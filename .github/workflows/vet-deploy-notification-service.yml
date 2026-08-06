@@ -122,6 +122,8 @@ jobs:
             "MAIL_PORT=${{ secrets.MAIL_PORT }}" \
             "AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }}" \
             "AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}" \
+            "SES_SENDER_SMTP_USERNAME=${{ secrets.AWS_MAIL_USERNAME }}" \
+            "SES_SENDER_SMTP_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}" \
             "SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }}" \
             "WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
             "WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }}" \

@@ -107,10 +107,16 @@ export function CallLogPage() {
     const refresh = async () => {
         setIsRefreshing(true);
         try {
+            // 'crm-call-' rather than 'crm-call-log-': the disposition vocabulary
+            // ('crm-call-disposition-*') is cached for 5 minutes and is now sourced
+            // from AI Calling settings + the AI-agent registry, so adding a custom
+            // outcome over in Settings must be one Refresh away from showing up in
+            // the filter — not a five-minute wait. Every 'crm-call-' key belongs to
+            // this page.
             await queryClient.invalidateQueries({
                 predicate: (q) =>
                     typeof q.queryKey[0] === 'string' &&
-                    (q.queryKey[0] as string).startsWith('crm-call-log'),
+                    (q.queryKey[0] as string).startsWith('crm-call-'),
             });
         } finally {
             setIsRefreshing(false);

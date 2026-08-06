@@ -503,7 +503,6 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                 >
                   Login
                 </button>
-                <span className="text-xs text-gray-500 text-center">If already registered</span>
               </div>
             )}
 

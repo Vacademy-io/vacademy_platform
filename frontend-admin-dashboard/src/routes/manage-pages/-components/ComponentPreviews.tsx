@@ -40,7 +40,14 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
     // 150+ courses; rendering them all made the editor unusable (and misrepresented
     // what a visitor actually sees, which is one paginated page at a time).
     const perPage = Number(props.pageSize) > 0 ? Math.floor(Number(props.pageSize)) : allMappings.length;
-    const mappings = allMappings.slice(0, perPage);
+    // Mirrors the learner rule exactly: an uncapped carousel stops at
+    // railMaxCards (default 12, 0 = every course) and ends with a link to the
+    // product page. Without this the canvas showed all 127 cards for a rail a
+    // visitor sees 12 of — the editor would be lying about the live page.
+    const previewIsCarousel = props.layout === 'carousel';
+    const railCap = props.railMaxCards === undefined ? 12 : Math.max(Number(props.railMaxCards) || 0, 0);
+    const railCapped = previewIsCarousel && !(Number(props.pageSize) > 0) && railCap > 0;
+    const mappings = allMappings.slice(0, railCapped ? Math.min(railCap, perPage) : perPage);
     const hiddenCount = allMappings.length - mappings.length;
     const totalPages = perPage > 0 ? Math.ceil(allMappings.length / perPage) : 1;
 
@@ -110,8 +117,10 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                 // Mirror the learner rule: sentinel level/session names are
                 // placeholders, not information.
                 const SENTINELS = new Set(['default', 'none', 'null', 'undefined', '']);
-                const chips = [m.level_name, m.session_name]
-                    .filter((c: any) => c && !SENTINELS.has(String(c).trim().toLowerCase()));
+                const tagChips = String(m.tags || '').split(',').map((t) => t.trim()).filter(Boolean);
+                const chips = [...tagChips, m.level_name, m.session_name]
+                    .filter((c: any) => c && !SENTINELS.has(String(c).trim().toLowerCase()))
+                    .slice(0, 3);
                 const price = m.payment_plan?.actual_price;
                 const mrp = m.payment_plan?.elevated_price;
                 return (
@@ -139,21 +148,32 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                                 )}
                             </div>
                         )}
-                        <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm mt-auto w-full justify-center">
-                            {props.ctaLabel || 'Enrol now'}
-                        </span>
+                        {/* Mirrors the learner card: browse CTA beside the buy CTA. */}
+                        <div className="mt-auto flex flex-wrap gap-2">
+                            {props.showViewCourse !== false && (
+                                <span className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm flex-1 justify-center">
+                                    {props.viewCourseLabel || 'View course'}
+                                </span>
+                            )}
+                            <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center">
+                                {props.ctaLabel || 'Enrol now'}
+                            </span>
+                        </div>
                     </div>
                 );
             })}
         </div>
         {hiddenCount > 0 && (
             <p className="mt-4 text-center text-caption text-catalogue-text-muted">
-                + {hiddenCount} more course(s) — visitors page through {totalPages} pages
-                {isCarousel
-                    ? ', scrolling each row sideways'
-                    : props.scrollable
-                      ? ', scrolling inside the section'
-                      : ''}.
+                {railCapped
+                    ? `+ ${hiddenCount} more course(s) — the row ends with a card linking to the full product page.`
+                    : `+ ${hiddenCount} more course(s) — visitors page through ${totalPages} pages${
+                          isCarousel
+                              ? ', scrolling each row sideways'
+                              : props.scrollable
+                                ? ', scrolling inside the section'
+                                : ''
+                      }.`}
             </p>
         )}
         </>
@@ -375,11 +395,33 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+// Mirrors isPlaceholderImage() in the learner HeroSectionComponent: template
+// seed paths and raw media-id tokens never resolve to a real image. Returns the
+// usable url, or '' when the value can't render.
+const usableBgImage = (url?: unknown): string => {
+    const trimmed = typeof url === 'string' ? url.trim() : '';
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return '';
+    if (trimmed.includes('/api/placeholder/')) return '';
+    if (trimmed.startsWith('/assets/')) return '';
+    if (['course_banner_media_id', 'course_preview_image_media_id', 'thumbnail_file_id'].includes(trimmed)) return '';
+    if (trimmed.includes('_') && !trimmed.includes('http') && !trimmed.includes('/')) return '';
+    return trimmed;
+};
+
 const HeroSectionPreview: React.FC<P> = ({ props }) => {
     const isSplit = props.layout !== 'centered';
     const collage: string[] = (props.right?.imageCollage ?? []).filter(Boolean);
     const hasCollage = collage.length > 0;
     const tags: string[] = (props.left?.tags ?? []).filter(Boolean);
+
+    // The learner renderer gives a usable background image priority over the
+    // background color. Previewing the color unconditionally is what made an
+    // authored color look applied here while the live page ignored it, so keep
+    // the same precedence on the canvas.
+    const bgImage = usableBgImage(props.backgroundImage);
+    const surfaceStyle: React.CSSProperties = bgImage
+        ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } // design-lint-ignore: page-builder background image
+        : { backgroundColor: props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */ };
 
     const visibleButtons = (props.left?.buttons ?? []).filter((b: any) => b?.text?.trim());
     const visibleChips = (props.statChips ?? []).filter(
@@ -468,7 +510,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
         return (
             <section
                 className="w-full overflow-hidden"
-                style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}
+                style={surfaceStyle}
             >
                 <div className="mx-auto flex max-w-6xl items-stretch gap-6 px-8 py-10">
                     <div className="flex flex-1 flex-col justify-center">{textBlock}</div>
@@ -507,7 +549,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
     return (
         <section
             className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'}`}
-            style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}
+            style={surfaceStyle}
         >
             <div className={`mx-auto max-w-6xl ${isSplit ? 'grid grid-cols-2 gap-8 items-center' : 'flex flex-col items-center gap-4'}`}>
                 {textBlock}

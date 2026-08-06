@@ -23,6 +23,15 @@ import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import type { Campaign } from './AiCallingSettings';
 
+import {
+    FALLBACK_VOICES,
+    TTS_MODELS,
+    patchForModelChange,
+    resolveTtsModel,
+    voicesForModel,
+} from '@/routes/calling/ai-agents/-services/tts-catalog';
+import type { TtsModelId, VoiceOption } from '@/routes/calling/ai-agents/-services/tts-catalog';
+
 /** Wire shape of an AI agent (Vacademy AI persona) — mirrors backend AiAgentDTO. */
 export interface AiAgent {
     id?: string;
@@ -44,24 +53,14 @@ export interface AiAgent {
     temperature?: number;
     /** Optional booking page this agent auto-books on when a call yields a meeting request. */
     bookingPageId?: string;
+    /**
+     * TTS engine: 'rumik' (default, included in the base rate) or 'sarvam'
+     * (+4 credits/min). Omitting it on save KEEPS the stored engine, so an older
+     * client cannot reprice an agent by not sending the field.
+     */
+    ttsModel?: string;
 }
 
-interface VoiceOption {
-    id: string;
-    gender: string;
-    model: string;
-}
-
-/** Fallback when the catalog endpoint is unreachable — Bulbul v3 speakers. */
-const FALLBACK_VOICES: VoiceOption[] = [
-    ...['ritu', 'priya', 'neha', 'pooja', 'simran', 'kavya', 'ishita', 'shreya',
-        'roopa', 'tanya', 'shruti', 'suhani', 'kavitha', 'rupali']
-        .map((id) => ({ id, gender: 'female', model: 'bulbul:v3' })),
-    ...['shubh', 'aditya', 'rahul', 'rohan', 'amit', 'dev', 'ratan', 'varun', 'manan',
-        'sumit', 'kabir', 'aayan', 'ashutosh', 'advait', 'anand', 'tarun', 'sunny',
-        'mani', 'gokul', 'vijay', 'mohit', 'rehan', 'soham']
-        .map((id) => ({ id, gender: 'male', model: 'bulbul:v3' })),
-];
 
 /** Expressiveness presets → Bulbul v3 temperature. */
 const EXPRESSIVENESS_OPTIONS: { label: string; value: string; temperature?: number }[] = [
@@ -108,7 +107,9 @@ function blankAgent(instituteId: string): AiAgent {
         enabled: true,
         direction: 'OUTBOUND',
         language: 'hinglish',
-        voice: 'priya',
+        // See TtsVoiceCatalog.NEW_AGENT_DEFAULT.
+        ttsModel: 'rumik',
+        voice: 'ira',
         openingLine: '',
         systemPrompt: '',
         extractionQuestions: [],
@@ -166,7 +167,11 @@ export function AiAgentsCard({
         },
         staleTime: 24 * 60 * 60 * 1000,
     });
-    const voices = voicesQuery.data ?? FALLBACK_VOICES;
+    const allVoices = voicesQuery.data ?? FALLBACK_VOICES;
+    // Engine decides the palette — the two share no voice names, so offering all of
+    // them would let someone pick a voice that mutes every call.
+    const ttsModel = editing ? resolveTtsModel(editing) : 'google';
+    const voices = voicesForModel(allVoices, ttsModel);
 
     const stopPreview = () => {
         audioRef.current?.pause();
@@ -176,7 +181,8 @@ export function AiAgentsCard({
 
     const playPreview = (agent: AiAgent) => {
         stopPreview();
-        const voice = (agent.voice || 'priya').trim().toLowerCase();
+        // Case preserved on purpose: Google voice ids are exact resource names.
+        const voice = (agent.voice || 'priya').trim();
         const params = new URLSearchParams({
             text: sampleText.trim() || DEFAULT_SAMPLE_TEXT,
             voice,
@@ -184,6 +190,11 @@ export function AiAgentsCard({
             pace: String(agent.pace ?? 1.0),
         });
         if (agent.temperature != null) params.set('temperature', String(agent.temperature));
+        // Audition on the SAME engine the call will use. Without this the tester
+        // always synthesised through Sarvam, so picking any other engine here
+        // auditioned a voice the caller would never hear (and a non-Sarvam voice
+        // name makes the preview fail outright).
+        params.set('model', resolveTtsModel(agent));
         const audio = new Audio(`${BASE_URL}/voice-bot-service/preview.mp3?${params.toString()}`);
         audioRef.current = audio;
         setPreviewState('loading');
@@ -365,6 +376,35 @@ export function AiAgentsCard({
                                 />
                             </div>
                             <div className="space-y-1.5">
+                                <Label>Voice engine</Label>
+                                <Select
+                                    value={ttsModel}
+                                    onValueChange={(v) =>
+                                        patch(
+                                            patchForModelChange(
+                                                v as TtsModelId,
+                                                editing?.voice,
+                                                allVoices
+                                            )
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {TTS_MODELS.map((m) => (
+                                            <SelectItem key={m.id} value={m.id}>
+                                                {m.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
+                                </p>
+                            </div>
+                            <div className="space-y-1.5">
                                 <Label>Voice</Label>
                                 <Select
                                     value={editing.voice ?? ''}
@@ -408,8 +448,10 @@ export function AiAgentsCard({
                                     }
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    0.5–2.0. Sarvam recommends 1.0–1.1 for sales calls; above 1.2
-                                    starts to sound rushed.
+                                    0.5–2.0. 1.0–1.1 suits sales calls; above 1.2 starts to sound
+                                    rushed.{ttsModel === 'rumik'
+                                        ? ' Rumik has no numeric speed control, so this steers its delivery in words — the average pace lands where you set it, but individual sentences vary a little.'
+                                        : ''}
                                 </p>
                             </div>
                             <div className="space-y-1.5">

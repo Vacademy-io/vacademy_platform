@@ -111,6 +111,7 @@ import { ChapterDripConditionDialog } from './ChapterDripConditionDialog';
 import { AddSubjectForm } from '../subjects/-components/add-subject.tsx/add-subject-form';
 import { AddModulesForm } from '../subjects/modules/-components/add-modules.tsx/add-modules-form';
 import { AddChapterForm } from '../subjects/modules/chapters/-components/chapter-material/add-chapters/add-chapter-form';
+import { getAuthoredChapterDescription } from '@/constants/study-library/content-description';
 import { MyDialog } from '@/components/design-system/dialog';
 import Planning from '../subjects/-components/planning';
 import Activity from '../subjects/-components/activity';
@@ -257,6 +258,22 @@ const ThumbnailImage = ({
     );
 };
 
+/**
+ * Description line on a Content Structure folder card (module / chapter).
+ * Renders nothing when the author never entered one.
+ */
+const FolderDescription = ({ description }: { description?: string | null }) => {
+    const text = (description ?? '').trim();
+
+    if (!text) return null;
+
+    return (
+        <p className="mt-1 line-clamp-2 break-words text-xs text-gray-600" title={text}>
+            {text}
+        </p>
+    );
+};
+
 export const CourseStructureDetails = ({
     selectedSession,
     selectedLevel,
@@ -387,6 +404,10 @@ export const CourseStructureDetails = ({
     const showAddModule = roleDisplay?.coursePage?.showAddModule !== false;
     const showAddChapter = roleDisplay?.coursePage?.showAddChapter !== false;
     const showAddSlide = roleDisplay?.coursePage?.showAddSlide !== false;
+    // Module / chapter descriptions on the Content Structure folder cards.
+    // Visible unless Course Settings → Course View & Display turns them off.
+    const showContentDescription =
+        courseSettings?.courseViewSettings?.showContentDescriptions !== false;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
@@ -3918,6 +3939,13 @@ export const CourseStructureDetails = ({
                                                         </p>
                                                     )}
 
+                                                {/* Module Description */}
+                                                {showContentDescription && (
+                                                    <FolderDescription
+                                                        description={mod.module.description}
+                                                    />
+                                                )}
+
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (
                                                     <div className="absolute right-2 top-2 flex gap-1">
@@ -4049,6 +4077,13 @@ export const CourseStructureDetails = ({
                                                             Module {modIdx + 1}
                                                         </p>
                                                     )}
+
+                                                {/* Module Description */}
+                                                {showContentDescription && (
+                                                    <FolderDescription
+                                                        description={mod.module.description}
+                                                    />
+                                                )}
 
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (
@@ -4186,6 +4221,15 @@ export const CourseStructureDetails = ({
                                                         Chapter {chIdx + 1}
                                                     </p>
                                                 )}
+
+                                            {/* Chapter Description */}
+                                            {showContentDescription && (
+                                                <FolderDescription
+                                                    description={getAuthoredChapterDescription(
+                                                        ch.chapter.description
+                                                    )}
+                                                />
+                                            )}
 
                                             {/* Edit and Delete Buttons */}
                                             {canEditStructure && (
@@ -4341,6 +4385,15 @@ export const CourseStructureDetails = ({
                                                     </p>
                                                 )}
 
+                                            {/* Chapter Description */}
+                                            {showContentDescription && (
+                                                <FolderDescription
+                                                    description={getAuthoredChapterDescription(
+                                                        ch.chapter.description
+                                                    )}
+                                                />
+                                            )}
+
                                             {/* Edit and Delete Buttons */}
                                             {canEditStructure && (
                                                 <div className="absolute right-2 top-2 flex gap-1">
@@ -4495,6 +4548,13 @@ export const CourseStructureDetails = ({
                                                             Chapter {chIdx + 1}
                                                         </p>
                                                     )}
+
+                                                {/* Chapter Description */}
+                                                <FolderDescription
+                                                    description={getAuthoredChapterDescription(
+                                                        ch.chapter.description
+                                                    )}
+                                                />
 
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (

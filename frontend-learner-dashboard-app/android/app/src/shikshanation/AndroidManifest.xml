@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".MainActivity">
+            <!-- Shiksha Nation only. The shared course catalogue link
+                 (https://shiksha-nation.vacademy.io/course-collect) had no
+                 matching intent filter, so Android handed it to the browser
+                 instead of the app. Scoped to this flavor so the other
+                 white-labels keep their existing deep-link surface. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="${DEEP_LINK_HOST}"
+                    android:pathPrefix="/course-collect"
+                />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

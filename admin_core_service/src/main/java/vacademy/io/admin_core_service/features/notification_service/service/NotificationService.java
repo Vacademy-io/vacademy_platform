@@ -36,6 +36,17 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
+    /**
+     * Past this recipient count the bridge methods queue the send to
+     * notification-service's durable batch processor instead of letting it send
+     * inline. An inline send loops one provider call per recipient, so a
+     * multi-recipient send routinely outlives InternalClientUtils' 30s read
+     * timeout — the caller then sees a ResourceAccessException (surfacing as a
+     * 511) while delivery keeps running server-side, and any transaction the
+     * caller was in gets rolled back. Mirrors AudienceService's threshold.
+     */
+    private static final int ASYNC_SEND_THRESHOLD = 10;
+
     // ==================== Unified Send API ====================
 
     /**
@@ -91,6 +102,7 @@ public class NotificationService {
                 .instituteId(instituteId)
                 .channel("EMAIL")
                 .recipients(recipients)
+                .forceAsync(recipients.size() > ASYNC_SEND_THRESHOLD)
                 .options(UnifiedSendRequest.SendOptions.builder()
                         .emailSubject(dto.getSubject())
                         .emailBody(dto.getBody())

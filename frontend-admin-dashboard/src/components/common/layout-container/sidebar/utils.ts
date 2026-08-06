@@ -21,6 +21,8 @@ import {
     Code,
     UserList,
     Notebook,
+    PhoneCall,
+    ChatCircleDots,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -505,6 +507,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'recent-leads',
             },
             {
+                subItem: 'Lead Board',
+                subItemLink: '/audience-manager/lead-board',
+                subItemId: 'lead-board',
+            },
+            {
                 subItem: 'Follow-ups',
                 subItemLink: '/audience-manager/follow-ups',
                 subItemId: 'follow-ups',
@@ -538,6 +545,37 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Reports',
                 subItemLink: '/audience-manager/reports',
                 subItemId: 'lead-reports',
+            },
+        ],
+    },
+    {
+        // Everything voice: the call history, the AI personas that make/take calls,
+        // and the two settings screens that configure them (deep-linked into the
+        // Settings tab shell so there's one source of truth for those forms).
+        icon: PhoneCall,
+        title: 'Calling',
+        id: 'calling',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Call Log',
+                subItemLink: '/audience-manager/call-log',
+                subItemId: 'calling-call-log',
+            },
+            {
+                subItem: 'AI Agents',
+                subItemLink: '/calling/ai-agents',
+                subItemId: 'calling-ai-agents',
+            },
+            {
+                subItem: 'Calling Settings',
+                subItemLink: '/settings?selectedTab=telephony',
+                subItemId: 'calling-settings',
+            },
+            {
+                subItem: 'AI Calling Settings',
+                subItemLink: '/settings?selectedTab=aiCalling',
+                subItemId: 'calling-ai-settings',
             },
         ],
     },
@@ -742,6 +780,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         title: 'Doubt Management',
         id: 'doubt-management',
         to: '/study-library/doubt-management',
+        category: 'LMS',
+    },
+    {
+        icon: ChatCircleDots,
+        title: 'Student AI',
+        id: 'student-ai',
+        to: '/study-library/student-ai',
         category: 'LMS',
     },
     {

@@ -94,6 +94,21 @@ export const getFormFields = async (
     return res.data;
 };
 
+/**
+ * Fallback: resolve a Page by its ID when the picker is empty.
+ * Business-owned Pages granted via Facebook Login for Business don't appear in
+ * /me/accounts for regular users, but are still fetchable by ID. The admin pastes
+ * the Page ID (shown in Meta's connect dialog) and we add it to the session.
+ */
+export const resolvePageById = async (sessionKey: string, pageId: string): Promise<MetaPage> => {
+    const res = await authenticatedAxiosInstance.post(
+        `${BASE}/session/${sessionKey}/pages/resolve`,
+        null,
+        { params: { pageId } }
+    );
+    return res.data;
+};
+
 /** Step 4a: List lead gen forms for a page (after page selection). */
 export const listPageForms = async (
     sessionKey: string,

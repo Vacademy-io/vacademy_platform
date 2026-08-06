@@ -5,21 +5,13 @@ import { Receipt, CalendarBlank, WarningCircle } from '@phosphor-icons/react';
 import { getSubOrgFinanceDetail } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getValidSelectedSubOrgId, getFacultyAccessData } from '@/lib/auth/facultyAccessUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { formatInstituteMoney, resolveInstituteCurrency } from '@/utils/institute-currency';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const inr = (n: number): string => {
-    try {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0,
-            notation: n >= 100000 ? 'compact' : 'standard',
-        }).format(n);
-    } catch {
-        return `₹${Math.round(n).toLocaleString('en-IN')}`;
-    }
-};
+// The sub-org's plan/dues amounts carry no currency of their own, so they follow the institute's
+// resolved currency and render unsymbolled when it cannot be determined (never a guessed ₹).
 
 const toTime = (v: string | number | null | undefined): number | null => {
     if (v == null) return null;
@@ -51,6 +43,9 @@ export default function SubOrgActivityDuesWidget() {
         staleTime: 60_000,
         retry: false,
     });
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const currency = resolveInstituteCurrency(instituteDetails);
+    const money = (n: number) => formatInstituteMoney(n, currency);
 
     if (!subOrgId || isError) return null;
 
@@ -83,9 +78,9 @@ export default function SubOrgActivityDuesWidget() {
                         <div className="text-xs font-medium text-neutral-500">Plan payment</div>
                         <div className="mt-0.5 flex items-baseline gap-1.5">
                             <span className="text-xl font-semibold tabular-nums text-neutral-900">
-                                {inr(planPaid)}
+                                {money(planPaid)}
                             </span>
-                            <span className="text-xs text-neutral-500">of {inr(planTotal)}</span>
+                            <span className="text-xs text-neutral-500">of {money(planTotal)}</span>
                         </div>
                         <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
                             <div
@@ -104,7 +99,7 @@ export default function SubOrgActivityDuesWidget() {
                                 Outstanding
                             </span>
                             <span className="font-semibold tabular-nums text-neutral-900">
-                                {inr(outstanding)}
+                                {money(outstanding)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between text-xs">

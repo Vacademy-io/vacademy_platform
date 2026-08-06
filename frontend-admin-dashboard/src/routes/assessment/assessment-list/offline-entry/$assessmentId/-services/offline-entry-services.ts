@@ -1,6 +1,8 @@
 import {
     GET_ADMIN_PARTICIPANTS,
     GET_BATCH_DETAILS_URL,
+    OFFLINE_ATTACH_FILES,
+    OFFLINE_BULK_IMPORT,
     OFFLINE_CREATE_ATTEMPT,
     OFFLINE_CREATE_AND_SUBMIT,
     OFFLINE_SUBMIT_RESPONSES,
@@ -9,7 +11,10 @@ import {
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     DirectMarksSubmitRequest,
+    OfflineAttachmentsRequest,
     OfflineAttemptCreateResponse,
+    OfflineBulkImportRequest,
+    OfflineBulkImportResponse,
     OfflineResponseSubmitRequest,
 } from '../-utils/types';
 
@@ -220,6 +225,48 @@ export const submitOfflineResponses = async (
         method: 'POST',
         url: OFFLINE_SUBMIT_RESPONSES,
         params: { assessmentId, attemptId, instituteId },
+        data,
+    });
+    return response?.data;
+};
+
+/**
+ * Attaches the scanned answer sheet / checked copy / report PDFs to an attempt.
+ *
+ * Note this does NOT reuse manual-evaluation's submit/marks (which also carries a
+ * `file_id`): that endpoint recomputes total_marks from the questions in its
+ * payload, so calling it just to carry a file id would wipe the marks the offline
+ * entry has already calculated.
+ */
+export const attachOfflineFiles = async (
+    assessmentId: string,
+    attemptId: string,
+    instituteId: string,
+    data: OfflineAttachmentsRequest
+): Promise<string> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: OFFLINE_ATTACH_FILES,
+        params: { assessmentId, attemptId, instituteId },
+        data,
+    });
+    return response?.data;
+};
+
+/**
+ * One bulk pass: total marks + already-uploaded sheet file ids for many students.
+ * The PDFs are uploaded to storage client-side first, so this stays a single JSON
+ * request no matter how many sheets the batch contains.
+ */
+export const bulkImportOfflineEntries = async (
+    assessmentId: string,
+    instituteId: string,
+    data: OfflineBulkImportRequest
+): Promise<OfflineBulkImportResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: OFFLINE_BULK_IMPORT,
+        params: { assessmentId, instituteId },
         data,
     });
     return response?.data;

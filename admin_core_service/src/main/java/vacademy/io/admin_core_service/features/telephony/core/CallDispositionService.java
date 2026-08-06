@@ -66,6 +66,24 @@ public class CallDispositionService {
         return catalogRepo.findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(instituteId);
     }
 
+    /**
+     * Active call-outcomes WITHOUT the lazy seed — for readers that merely display the
+     * vocabulary (the Call Log's disposition filter), not ones that let a counsellor
+     * apply an outcome.
+     *
+     * <p>Seeding is guarded by a count, so two concurrent first-access callers can both
+     * see zero and both insert, and the second loses to
+     * {@code uk_cdc_institute_key}. The Call Log loads the picker catalog and the
+     * filter vocabulary in the same tick, which would make exactly that pair of
+     * concurrent callers — so only the picker path seeds. On a never-used institute
+     * the filter is briefly AI-outcomes-only, which is precisely the vocabulary its
+     * (zero) calls could carry anyway.
+     */
+    @Transactional(readOnly = true)
+    public List<CallDispositionCatalog> listForInstituteWithoutSeeding(String instituteId) {
+        return catalogRepo.findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(instituteId);
+    }
+
     private void seedDefaults(String instituteId) {
         List<LeadStatus> statuses = leadStatusRepository
                 .findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(instituteId);

@@ -18,6 +18,20 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
         List<UserRole> findByUser(User user);
 
+        /**
+         * Institute ids a user holds any role in. Used to evict exactly the
+         * {@code authUserDetails} entries for that user after a username change —
+         * the cache key is {@code username + '_' + instituteId}, so without this
+         * the only option is an allEntries clear, which on the Redis cache
+         * manager means a keyspace scan over every cached user.
+         *
+         * <p>Deliberately a projection, not {@code user.getRoles()}: the caller
+         * runs outside a transaction (it must not hold a DB connection across the
+         * fan-out HTTP call), where touching that lazy collection is unsafe.
+         */
+        @Query("SELECT DISTINCT ur.instituteId FROM UserRole ur WHERE ur.user.id = :userId AND ur.instituteId IS NOT NULL")
+        List<String> findDistinctInstituteIdsByUserId(@Param("userId") String userId);
+
         @Query("""
                             SELECT ur FROM UserRole ur
                             JOIN ur.role r
@@ -69,6 +83,24 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                         @Param("instituteId") String instituteId,
                         @Param("roleNames") List<String> roleNames,
                         @Param("statuses") List<String> statuses);
+
+        /**
+         * ACTIVE role UUIDs a user holds in one institute.
+         *
+         * <p>Needed because role-keyed institute settings (e.g. ROLE_DISPLAY_SETTINGS) are
+         * keyed by role UUID, while the JWT only carries role NAMES — so a request-time
+         * lookup of "which role config applies to this caller" has to resolve ids here.
+         */
+        @Query("""
+                            SELECT ur.role.id FROM UserRole ur
+                            WHERE ur.user.id = :userId
+                              AND ur.instituteId = :instituteId
+                              AND ur.status = 'ACTIVE'
+                              AND ur.role.id IS NOT NULL
+                        """)
+        List<String> findActiveRoleIdsByUserIdAndInstituteId(
+                        @Param("userId") String userId,
+                        @Param("instituteId") String instituteId);
 
         @Query("""
                             SELECT CASE WHEN COUNT(u) > 0 THEN TRUE ELSE FALSE END

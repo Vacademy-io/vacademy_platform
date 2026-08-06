@@ -10,11 +10,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             title: 'My Platform',
             backgroundColor: '#4F46E5', // design-lint-ignore: page-builder template default color
             textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            // Nav items use `route` (the learner header resolves it against the
+            // catalogue), NOT `url`.
             navigation: [
-                { label: 'Home', url: '/', openInSameTab: true },
-                { label: 'Courses', url: '#courses', openInSameTab: true },
+                { label: 'Home', route: '', openInSameTab: true },
+                { label: 'Courses', route: 'courses', openInSameTab: true },
             ],
-            ctaButton: { enabled: true, text: 'Enroll Now', url: '' },
+            // authLinks is what the learner header ACTUALLY renders on the right
+            // (login / signup / Get Started / campaign-form popups). `ctaButton`
+            // was the legacy shape and is dead in the renderer — it stayed in
+            // this template long after, so AI-composed headers taught the wrong
+            // field and produced headers with no working buttons.
+            authLinks: [
+                { label: 'Login', route: 'login' },
+            ],
         },
     },
 
@@ -754,6 +763,11 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             showViewAll: true,
             viewAllLabel: 'See all',
             ctaLabel: 'Enrol now',
+            // Second CTA per card: browse the course details page first. Its
+            // enrol button re-enters this product page's checkout, so both
+            // paths converge on the same funnel.
+            showViewCourse: true,
+            viewCourseLabel: 'View course',
             showImage: true,
             showChips: true,
             showDescription: true,
@@ -762,6 +776,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             // Product pages can carry 150+ courses (book stores especially), so
             // paginate by default; 0 renders every course with no pager.
             pageSize: 9,
+            // Only applies to a 'carousel' layout with pageSize 0 — how many
+            // cards the row holds before it ends with a link to the product
+            // page. 0 puts every course in the row.
+            railMaxCards: 12,
             showSearch: true,
             scrollable: false,
             scrollMaxHeight: 640,

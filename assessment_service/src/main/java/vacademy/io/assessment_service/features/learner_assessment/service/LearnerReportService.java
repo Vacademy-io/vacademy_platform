@@ -17,6 +17,7 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.Stud
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager;
@@ -25,7 +26,13 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentU
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
+import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.*;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.AssessmentOverviewSnapshot;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.LeaderBoardSnapshot;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.MarksRankSnapshot;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.SectionAggregateSnapshot;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.SectionSnapshot;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -76,6 +83,9 @@ public class LearnerReportService {
 
     @Autowired
     private vacademy.io.assessment_service.features.client.AdminCoreServiceClient adminCoreServiceClient;
+
+    @Autowired
+    private QuestionAssessmentSectionMappingService questionAssessmentSectionMappingService;
 
     private static final int TOP_RANKS_COUNT = 2;
     private static final int SURROUNDING_WINDOW = 3;
@@ -203,28 +213,89 @@ public class LearnerReportService {
     /**
      * Core comparison data builder — cached for 15 minutes per attempt.
      * Reused by both the API endpoint and PDF generation.
+     *
+     * Re-expressed (PR2, bulk report export) as loadClassContext +
+     * buildComparisonFromContext. Signature and @Cacheable are unchanged —
+     * six call sites depend on both (see ARCHITECTURE.md §5.2 / X5):
+     * the /comparison endpoint, the learner PDF, the AI-report PDF, the
+     * release flow, AssessmentDataEnrichmentService.addComparisonContext, and
+     * StudentAnalysisInternalService (admin_core v2 student report, via HMAC).
+     *
+     * Self-invocation note: loadClassContext/buildComparisonFromContext below
+     * are plain `this.` calls, which is correct — neither carries
+     * @Cacheable/@Async/@Transactional, so no proxy is required. If either
+     * ever gains such an annotation, route the call through the `self` field
+     * instead (do not silently rely on `this.`).
      */
     @Cacheable(value = "comparisonData", key = "#assessmentId + ':' + #attemptId")
     public StudentComparisonDto buildComparisonData(String userId, String assessmentId,
                                                      String attemptId, String instituteId) {
-        // Get overview stats
-        AssessmentOverviewDto overview = studentAttemptRepository.findAssessmentOverviewDetails(assessmentId, instituteId);
-        if (overview == null) return null;
+        ReportClassContext ctx = loadClassContext(assessmentId, instituteId);
+        if (ctx == null || ctx.getOverview() == null) return null; // preserves prior null-on-missing-overview behaviour
+        return buildComparisonFromContext(ctx, attemptId, userId);
+    }
 
-        // Get student's own overall detail
-        ParticipantsQuestionOverallDetailDto studentDetail = studentAttemptRepository
-                .findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
-        if (studentDetail == null) return null;
+    /**
+     * Builds the assessment-wide (class-level) context once. ~7 queries plus
+     * two best-effort external calls (option distribution, branding). Not
+     * @Transactional — each call is a discrete, fully-materialised repository
+     * read/HTTP call; wrapping them in one transaction would hold a DB
+     * connection across the branding HTTP round trip (plan C1).
+     *
+     * Not cached — the Spring cache is evicted wholesale on every attempt
+     * update (plan C11), which makes it unusable as job-scoped state for the
+     * bulk export worker. Callers that want caching go through
+     * buildComparisonData, which is @Cacheable per-attempt.
+     */
+    public ReportClassContext loadClassContext(String assessmentId, String instituteId) {
+        AssessmentOverviewDto overviewProjection = studentAttemptRepository
+                .findAssessmentOverviewDetails(assessmentId, instituteId);
+        if (overviewProjection == null) {
+            return ReportClassContext.builder()
+                    .assessmentId(assessmentId)
+                    .instituteId(instituteId)
+                    .build();
+        }
+        AssessmentOverviewSnapshot overview = AssessmentOverviewSnapshot.from(overviewProjection);
 
-        // Get marks distribution
-        List<MarksRankDto> marksDistribution = studentAttemptRepository.findMarkRankForAssessment(assessmentId, instituteId);
+        List<MarksRankDto> marksDistributionRaw = studentAttemptRepository
+                .findMarkRankForAssessment(assessmentId, instituteId);
+        List<MarksRankDto> marksDistribution = marksDistributionRaw.stream()
+                .map(m -> (MarksRankDto) MarksRankSnapshot.from(m))
+                .collect(Collectors.toList());
 
-        // Get leaderboard for smart contextual window
-        List<LeaderBoardDto> fullLeaderboard = studentAttemptRepository
+        List<LeaderBoardDto> fullLeaderboardRaw = studentAttemptRepository
                 .findLeaderBoardForAssessmentAndInstituteId(assessmentId, instituteId, List.of("ACTIVE"));
-        SmartLeaderboardDto smartLeaderboard = buildSmartLeaderboard(fullLeaderboard, userId);
+        List<LeaderBoardDto> fullLeaderboard = fullLeaderboardRaw.stream()
+                .map(l -> (LeaderBoardDto) LeaderBoardSnapshot.from(l))
+                .collect(Collectors.toList());
 
-        // Compute highest/lowest marks (null-safe)
+        StructuralData structural = loadStructuralData(assessmentId, instituteId);
+        List<SectionSnapshot> sections = structural.sections();
+        Map<String, SectionAggregateSnapshot> sectionAggregation = structural.sectionAggregation();
+
+        String assessmentName = assessmentRepository.findById(assessmentId).map(Assessment::getName).orElse(null);
+
+        ReportBrandingDto branding = null;
+        try {
+            branding = adminCoreServiceClient.getReportBranding(instituteId);
+        } catch (Exception e) {
+            log.warn("[report-context] Failed to fetch report branding for institute {}: {}", instituteId, e.getMessage());
+        }
+
+        // Derive total marks from section totals — same fallback as the
+        // pre-PR2 per-student derivation (sum > 0 ? sum : 100.0).
+        double totalMarksSum = sections.stream()
+                .mapToDouble(s -> s.totalMarks() != null ? s.totalMarks() : 0.0)
+                .sum();
+        Double totalMarks = totalMarksSum > 0 ? totalMarksSum : 100.0;
+
+        double classAccuracy = 0.0;
+        if (overview.getTotalParticipants() != null && overview.getTotalParticipants() > 0
+                && overview.getAverageMarks() != null && totalMarks > 0) {
+            classAccuracy = Math.max(0.0, Math.min(100.0, (overview.getAverageMarks() / totalMarks) * 100.0));
+        }
+
         Double highestMarks = 0.0;
         Double lowestMarks = 0.0;
         if (!marksDistribution.isEmpty()) {
@@ -234,37 +305,116 @@ public class LearnerReportService {
             lowestMarks = last != null ? last : 0.0;
         }
 
-        // Build section-wise comparison (also used to derive total marks)
-        List<SectionComparisonDto> sectionComparisons = buildSectionComparison(assessmentId, attemptId, instituteId);
+        return ReportClassContext.builder()
+                .assessmentId(assessmentId)
+                .instituteId(instituteId)
+                .assessmentName(assessmentName)
+                .overview(overview)
+                .marksDistribution(marksDistribution)
+                .fullLeaderboard(fullLeaderboard)
+                .sectionAggregation(sectionAggregation)
+                .totalMarks(totalMarks)
+                .classAccuracy(Math.round(classAccuracy * 10.0) / 10.0)
+                .highestMarks(highestMarks)
+                .lowestMarks(lowestMarks)
+                .branding(branding)
+                .sections(sections)
+                .questionOrderByQuestionAndSection(structural.questionOrderByQuestionAndSection())
+                .optionDistribution(structural.optionDistribution())
+                .build();
+    }
 
-        // Derive total marks from section totals (avoids extra DB query)
-        double totalMarksSum = sectionComparisons.stream()
-                .mapToDouble(s -> s.getSectionTotalMarks() != null ? s.getSectionTotalMarks() : 0.0)
-                .sum();
-        Double totalMarks = totalMarksSum > 0 ? totalMarksSum : 100.0;
+    /**
+     * The @JsonIgnore'd, non-snapshotted part of {@link ReportClassContext}:
+     * sections, question order, and option distribution. Immutable for a
+     * published assessment and cheap to re-query (plan §6.3 / ARCHITECTURE.md
+     * §9), so this is deliberately factored out — the bulk-export worker calls
+     * it directly on resume ({@code ReportZipExportService.hydrateNonSnapshotted})
+     * instead of paying for the full 7-query + 2-HTTP-call
+     * {@link #loadClassContext} just to discard the snapshotted half.
+     */
+    public StructuralData loadStructuralData(String assessmentId, String instituteId) {
+        List<Section> sectionEntities = sectionRepository.findByAssessmentIdAndStatusNotIn(assessmentId, List.of("DELETED"));
+        List<String> sectionIds = sectionEntities.stream().map(Section::getId).collect(Collectors.toList());
+        List<SectionSnapshot> sections = sectionEntities.stream()
+                .map(s -> new SectionSnapshot(s.getId(), s.getName(), s.getTotalMarks(), s.getCutOffMarks(), s.getSectionOrder()))
+                .collect(Collectors.toList());
 
-        // Compute accuracy
-        int correctCount = studentDetail.getCorrectAttempt() != null ? studentDetail.getCorrectAttempt() : 0;
-        int wrongCount = studentDetail.getWrongAttempt() != null ? studentDetail.getWrongAttempt() : 0;
-        int partialCount = studentDetail.getPartialCorrectAttempt() != null ? studentDetail.getPartialCorrectAttempt() : 0;
-        int skippedCount = studentDetail.getSkippedCount() != null ? studentDetail.getSkippedCount() : 0;
-        int totalQuestions = correctCount + wrongCount + partialCount + skippedCount;
-        // Accuracy is marks-based (achieved / total) so partially-correct answers
-        // — e.g. coding questions graded on hidden test cases — get proportional
-        // credit instead of counting as fully wrong. Clamped to [0,100] because
-        // negative marking can push achieved marks below zero.
+        Map<String, SectionAggregateSnapshot> sectionAggregation = new HashMap<>();
+        if (!sectionIds.isEmpty()) {
+            List<Object[]> aggregations = questionWiseMarksRepository
+                    .findSectionWiseAggregation(assessmentId, instituteId, sectionIds);
+            for (Object[] row : aggregations) {
+                SectionAggregateSnapshot snap = SectionAggregateSnapshot.from(row);
+                sectionAggregation.put(snap.sectionId(), snap);
+            }
+        }
+
+        Map<String, Integer> questionOrderByQuestionAndSection = new HashMap<>();
+        if (!sectionIds.isEmpty()) {
+            List<QuestionAssessmentSectionMapping> mappings = questionAssessmentSectionMappingService
+                    .getQuestionAssessmentSectionMappingBySectionIds(sectionIds);
+            questionOrderByQuestionAndSection.putAll(buildQuestionOrderMap(mappings));
+        }
+
+        Map<String, Map<String, Double>> optionDistribution = new HashMap<>();
+        try {
+            optionDistribution = self.computeOptionDistribution(assessmentId);
+        } catch (Exception e) {
+            log.warn("[report-context] Failed to compute option distribution for assessment {}: {}", assessmentId, e.getMessage());
+        }
+
+        return new StructuralData(sections, sectionAggregation, questionOrderByQuestionAndSection, optionDistribution);
+    }
+
+    public record StructuralData(List<SectionSnapshot> sections,
+                                  Map<String, SectionAggregateSnapshot> sectionAggregation,
+                                  Map<String, Integer> questionOrderByQuestionAndSection,
+                                  Map<String, Map<String, Double>> optionDistribution) {
+    }
+
+    // Same merge rule as AssessmentParticipantsManager.buildQuestionOrderMap (PR1,
+    // X8): findByQuestionIdAndSectionId is ORDER BY created_at DESC LIMIT 1, but
+    // the bulk loader is unordered/undeduped, so ties are broken on greatest
+    // createdAt to reproduce that pick.
+    private static Map<String, Integer> buildQuestionOrderMap(List<QuestionAssessmentSectionMapping> mappings) {
+        Map<String, QuestionAssessmentSectionMapping> newest = new HashMap<>();
+        for (QuestionAssessmentSectionMapping m : mappings) {
+            if (m.getQuestion() == null || m.getSection() == null) continue;
+            String key = ReportClassContext.mappingKey(m.getQuestion().getId(), m.getSection().getId());
+            newest.merge(key, m, (a, b) -> {
+                Date da = a.getCreatedAt();
+                Date db = b.getCreatedAt();
+                if (da == null) return b;
+                if (db == null) return a;
+                return db.after(da) ? b : a;
+            });
+        }
+        Map<String, Integer> out = new HashMap<>(newest.size() * 2);
+        newest.forEach((k, m) -> out.put(k, m.getQuestionOrder()));
+        return out;
+    }
+
+    /**
+     * Per-student comparison, given an already-loaded class context. 2 queries
+     * (student overall detail + student's own question-wise marks for section
+     * comparison). Not cached — the caller already holds the context.
+     */
+    public StudentComparisonDto buildComparisonFromContext(ReportClassContext ctx, String attemptId, String userId) {
+        ParticipantsQuestionOverallDetailDto studentDetail = studentAttemptRepository
+                .findParticipantsQuestionOverallDetails(ctx.getAssessmentId(), ctx.getInstituteId(), attemptId);
+        if (studentDetail == null) return null;
+
+        SmartLeaderboardDto smartLeaderboard = buildSmartLeaderboard(ctx.getFullLeaderboard(), userId);
+
+        List<SectionComparisonDto> sectionComparisons = buildSectionComparisonFromContext(ctx, attemptId);
+
+        Double totalMarks = ctx.getTotalMarks();
+
         double studentMarksAchieved = studentDetail.getAchievedMarks() != null ? studentDetail.getAchievedMarks() : 0.0;
         double studentAccuracy = totalMarks != null && totalMarks > 0
                 ? Math.max(0.0, Math.min(100.0, (studentMarksAchieved * 100.0) / totalMarks))
                 : 0.0;
-
-        // Class accuracy uses the same marks-based definition and denominator so it
-        // is directly comparable to the student's accuracy.
-        double classAccuracy = 0.0;
-        if (overview.getTotalParticipants() != null && overview.getTotalParticipants() > 0
-                && overview.getAverageMarks() != null && totalMarks != null && totalMarks > 0) {
-            classAccuracy = Math.max(0.0, Math.min(100.0, (overview.getAverageMarks() / totalMarks) * 100.0));
-        }
 
         return StudentComparisonDto.builder()
                 .startTime(studentDetail.getStartTime())
@@ -273,15 +423,15 @@ public class LearnerReportService {
                 .studentPercentile(studentDetail.getPercentile())
                 .studentMarks(studentDetail.getAchievedMarks())
                 .totalMarks(totalMarks)
-                .totalParticipants(overview.getTotalParticipants())
-                .averageMarks(overview.getAverageMarks())
-                .highestMarks(highestMarks)
-                .lowestMarks(lowestMarks)
-                .averageDuration(overview.getAverageDuration())
+                .totalParticipants(ctx.getOverview() != null ? ctx.getOverview().getTotalParticipants() : null)
+                .averageMarks(ctx.getOverview() != null ? ctx.getOverview().getAverageMarks() : null)
+                .highestMarks(ctx.getHighestMarks())
+                .lowestMarks(ctx.getLowestMarks())
+                .averageDuration(ctx.getOverview() != null ? ctx.getOverview().getAverageDuration() : null)
                 .studentDuration(studentDetail.getCompletionTimeInSeconds())
                 .studentAccuracy(Math.round(studentAccuracy * 10.0) / 10.0)
-                .classAccuracy(Math.round(classAccuracy * 10.0) / 10.0)
-                .marksDistribution(marksDistribution)
+                .classAccuracy(ctx.getClassAccuracy())
+                .marksDistribution(ctx.getMarksDistribution())
                 .sectionWiseComparison(sectionComparisons)
                 .leaderboard(smartLeaderboard)
                 .build();
@@ -305,23 +455,13 @@ public class LearnerReportService {
                                                         String attemptId, String instituteId) {
         AssessmentUserRegistration registration = validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
 
-        // Check if a pre-generated PDF exists
-        Optional<StudentAttempt> attemptOpt = studentAttemptRepository.findById(attemptId);
-        if (attemptOpt.isPresent() && attemptOpt.get().getReportPdfFileId() != null) {
-            try {
-                byte[] cachedPdf = fileService.getFileFromFileId(attemptOpt.get().getReportPdfFileId());
-                if (cachedPdf != null && cachedPdf.length > 0) {
-                    return ResponseEntity.ok()
-                            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
-                            .contentType(MediaType.APPLICATION_PDF)
-                            .body(cachedPdf);
-                }
-            } catch (Exception e) {
-                // Cached file unavailable, fall through to generate on-the-fly
-            }
-        }
-
-        // Generate on-the-fly if no cached PDF
+        // Always render fresh. There IS a pre-generated PDF on the attempt
+        // (report_pdf_file_id, produced at result-release time for the email
+        // attachment), but it is frozen with whatever report branding existed
+        // back then — serving it meant an institute could change its logo/theme
+        // and every already-released assessment kept the old (usually default)
+        // look forever. The generation below is the same builder, so the only
+        // cost of re-rendering is CPU on an explicit user download.
         StudentReportOverallDetailDto reportDetail = assessmentParticipantsManager
                 .createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
 
@@ -335,7 +475,7 @@ public class LearnerReportService {
             optionDist = self.computeOptionDistribution(assessmentId);
         } catch (Exception ignored) {}
 
-        // Fetch report branding
+        // Fetch report branding (null => the builder falls back to defaults)
         ReportBrandingDto branding = null;
         try {
             branding = adminCoreServiceClient.getReportBranding(instituteId);
@@ -477,24 +617,14 @@ public class LearnerReportService {
     }
 
     /**
-     * Builds section-wise comparison data using aggregated queries (no N+1).
+     * Builds section-wise comparison data from an already-loaded class context
+     * (sections + per-section class aggregation). Only the per-student query
+     * (findByStudentAttemptId) and the per-section arithmetic run here — the
+     * class-wide aggregation is hoisted into loadClassContext (plan C4/C5).
      */
-    private List<SectionComparisonDto> buildSectionComparison(String assessmentId, String attemptId, String instituteId) {
-        List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessmentId, List.of("DELETED"));
+    private List<SectionComparisonDto> buildSectionComparisonFromContext(ReportClassContext ctx, String attemptId) {
+        List<SectionSnapshot> sections = ctx.getSections();
         if (sections == null || sections.isEmpty()) return Collections.emptyList();
-
-        List<String> sectionIds = sections.stream().map(Section::getId).collect(Collectors.toList());
-
-        // Single aggregation query for class averages per section
-        List<Object[]> aggregations = questionWiseMarksRepository
-                .findSectionWiseAggregation(assessmentId, instituteId, sectionIds);
-
-        // Map sectionId -> [avgMarks, maxMarks, totalCorrect, totalQuestions]
-        Map<String, Object[]> aggMap = new HashMap<>();
-        for (Object[] row : aggregations) {
-            String sectionId = (String) row[0];
-            aggMap.put(sectionId, row);
-        }
 
         // Fetch all student marks once and group by section (avoids N+1)
         List<QuestionWiseMarks> allStudentMarks = questionWiseMarksRepository.findByStudentAttemptId(attemptId);
@@ -502,40 +632,43 @@ public class LearnerReportService {
                 .filter(qwm -> qwm.getSection() != null)
                 .collect(Collectors.groupingBy(qwm -> qwm.getSection().getId()));
 
+        Map<String, SectionAggregateSnapshot> aggMap = ctx.getSectionAggregation() != null
+                ? ctx.getSectionAggregation() : Collections.emptyMap();
+
         List<SectionComparisonDto> comparisons = new ArrayList<>();
 
-        for (Section section : sections) {
-            List<QuestionWiseMarks> studentSectionMarks = marksBySectionId.getOrDefault(section.getId(), Collections.emptyList());
+        for (SectionSnapshot section : sections) {
+            List<QuestionWiseMarks> studentSectionMarks = marksBySectionId.getOrDefault(section.id(), Collections.emptyList());
             double studentSectionTotal = studentSectionMarks.stream()
                     .mapToDouble(QuestionWiseMarks::getMarks)
                     .sum();
-            Double sectionMax = section.getTotalMarks() != null ? section.getTotalMarks() : 0.0;
+            Double sectionMax = section.totalMarks() != null ? section.totalMarks() : 0.0;
             // Marks-based section accuracy so partial credit (e.g. coding on hidden
             // tests) is reflected. Clamped for negative marking.
             double studentAccuracy = sectionMax > 0
                     ? Math.max(0.0, Math.min(100.0, (studentSectionTotal * 100.0) / sectionMax))
                     : 0.0;
 
-            // Class data from aggregation
+            // Class data from the snapshotted aggregation
             double classAvg = 0.0;
             double classHighestMarks = 0.0;
             double classAccuracy = 0.0;
-            Object[] agg = aggMap.get(section.getId());
+            SectionAggregateSnapshot agg = aggMap.get(section.id());
             if (agg != null) {
-                classAvg = agg[1] != null ? ((Number) agg[1]).doubleValue() : 0.0;
-                classHighestMarks = agg[2] != null ? ((Number) agg[2]).doubleValue() : 0.0;
+                classAvg = agg.avgMarks() != null ? agg.avgMarks() : 0.0;
+                classHighestMarks = agg.maxMarks() != null ? agg.maxMarks() : 0.0;
                 classAccuracy = sectionMax > 0
                         ? Math.max(0.0, Math.min(100.0, (classAvg * 100.0) / sectionMax))
                         : 0.0;
             }
 
-            Double sectionTotalMarks = section.getTotalMarks() != null ? section.getTotalMarks() : 0.0;
-            Double cutOff = section.getCutOffMarks();
+            Double sectionTotalMarks = section.totalMarks() != null ? section.totalMarks() : 0.0;
+            Double cutOff = section.cutOffMarks();
             boolean passed = cutOff != null && studentSectionTotal >= cutOff;
 
             comparisons.add(SectionComparisonDto.builder()
-                    .sectionId(section.getId())
-                    .sectionName(section.getName())
+                    .sectionId(section.id())
+                    .sectionName(section.name())
                     .studentMarks(studentSectionTotal)
                     .sectionTotalMarks(sectionTotalMarks)
                     .sectionAverageMarks(Math.round(classAvg * 10.0) / 10.0)
@@ -569,7 +702,9 @@ public class LearnerReportService {
             // Get branding
             ReportBrandingDto branding = ReportBrandingDto.builder().build();
             try {
-                branding = adminCoreServiceClient.getReportBranding(instituteId);
+                // null means "couldn't read branding" — keep the defaults rather than NPE downstream.
+                ReportBrandingDto fetched = adminCoreServiceClient.getReportBranding(instituteId);
+                if (fetched != null) branding = fetched;
             } catch (Exception e) {
                 log.warn("Failed to fetch branding for AI report PDF: {}", e.getMessage());
             }

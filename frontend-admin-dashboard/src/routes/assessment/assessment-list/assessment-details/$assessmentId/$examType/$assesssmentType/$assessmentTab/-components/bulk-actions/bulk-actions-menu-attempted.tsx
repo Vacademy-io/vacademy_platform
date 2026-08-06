@@ -18,9 +18,14 @@ interface BulkActionsMenuProps {
     selectedStudentIds: string[];
     selectedStudents: SubmissionStudentData[];
     trigger: ReactNode;
+    onExportReports?: () => void;
 }
 
-export const BulkActionsMenuAttempted = ({ selectedStudents, trigger }: BulkActionsMenuProps) => {
+export const BulkActionsMenuAttempted = ({
+    selectedStudents,
+    trigger,
+    onExportReports,
+}: BulkActionsMenuProps) => {
     const {
         openBulkProvideReattemptDialog,
         openBulkProvideRevaluateAssessmentDialog,
@@ -105,6 +110,14 @@ export const BulkActionsMenuAttempted = ({ selectedStudents, trigger }: BulkActi
                     >
                         Release Result
                     </DropdownMenuItem>
+                    {onExportReports && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={onExportReports}
+                        >
+                            Export Reports (ZIP)
+                        </DropdownMenuItem>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
         </>

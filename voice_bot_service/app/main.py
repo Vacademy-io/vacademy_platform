@@ -17,6 +17,7 @@ import base64
 import contextlib
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -31,6 +32,7 @@ from fastapi.responses import PlainTextResponse
 from . import admin_core
 from .bot import CallOutcome, run_bot
 from .config import get_settings
+from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
 
 logging.basicConfig(level=logging.INFO,
@@ -202,7 +204,14 @@ async def _ensure_cached(text: str, voice: str, lang: str) -> str | None:
     return path
 
 
-def _serve_mp3(path: str, *, touch: bool = False) -> Response:
+def _serve_audio(path: str, media_type: str, *, touch: bool = False) -> Response:
+    """Same delivery contract as _serve_mp3 (full-body 200, LRU touch, 404 on an
+    eviction race) for a non-mp3 container. Rumik previews are WAV because Rumik
+    streams raw PCM and we carry no mp3 encoder."""
+    return _serve_mp3(path, touch=touch, media_type=media_type)
+
+
+def _serve_mp3(path: str, *, touch: bool = False, media_type: str = "audio/mpeg") -> Response:
     # Plain 200 with the FULL body (NOT FileResponse/206): FreeSWITCH's mod_httapi
     # fetches the whole file and plays SILENCE on a 206 partial response. Content is a
     # 44.1 kHz MPEG-1 MP3 (the only profile Plivo's decoder plays).
@@ -224,7 +233,7 @@ def _serve_mp3(path: str, *, touch: bool = False) -> Response:
         # Raced by the eviction thread between the caller's exists-check and here;
         # a 404 lets Plivo fall through to its <Speak> fallback rather than 500.
         return Response(status_code=404)
-    return Response(content=body, media_type="audio/mpeg",
+    return Response(content=body, media_type=media_type,
                     headers={"Cache-Control": "public, max-age=31536000",
                              "Content-Length": str(len(body))})
 
@@ -265,6 +274,110 @@ async def tts(
     return _serve_mp3(path)
 
 
+def _cache_write(path: str, data: bytes) -> bool:
+    """Atomic cache write; False means "serve inline instead" (never 500)."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        logger.exception("preview: cache write failed")
+        return False
+
+
+def _google_tts_mp3(text: str, voice: str, pace: float) -> bytes:
+    """One-shot Google Cloud TTS -> MP3. Blocking client, so callers push it to a
+    thread. Deliberately NOT reusing the pipecat service: that is a pipeline
+    component whose lifecycle assumes a live call.
+
+    44.1 kHz on purpose: Plivo only plays MPEG-1 layer III, and 8 kHz forces
+    MPEG-2.5 which it renders as SILENCE (the same trap the IVR /tts route hit)."""
+    s = get_settings()
+    try:
+        from google.cloud import texttospeech
+        from google.oauth2 import service_account
+        raw = s.vertex_credentials_json.strip()
+        if raw:
+            creds = service_account.Credentials.from_service_account_info(json.loads(raw))
+        else:
+            creds = service_account.Credentials.from_service_account_file(
+                s.vertex_credentials_path.strip() or "/etc/vertex-sa.json")
+        client = texttospeech.TextToSpeechClient(credentials=creds)
+        name = (voice or s.google_tts_voice).strip() or s.google_tts_voice
+        # "hi-IN-Chirp3-HD-Achird" -> language "hi-IN"
+        lang_code = "-".join(name.split("-")[:2]) if name.count("-") >= 2 else s.google_tts_language
+        resp = client.synthesize_speech(
+            input=texttospeech.SynthesisInput(text=text),
+            voice=texttospeech.VoiceSelectionParams(language_code=lang_code, name=name),
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                sample_rate_hertz=44100,
+                speaking_rate=max(0.25, min(4.0, pace)),
+            ),
+        )
+        return resp.audio_content or b""
+    except Exception:
+        logger.exception("preview: google tts failed voice=%s", voice)
+        return b""
+
+
+async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> bytes:
+    """One-shot Smallest.ai Lightning synthesis over its websocket -> WAV bytes.
+
+    Protocol probe-verified 2026-08-05: one JSON message with flush=True returns
+    base64 PCM chunks in `data.audio`, terminated by status="complete"."""
+    import base64
+    import io
+    import wave
+    s = get_settings()
+    try:
+        import websockets
+    except ImportError:
+        logger.error("preview: websockets missing for smallest")
+        return b""
+    pcm = bytearray()
+    try:
+        async with websockets.connect(
+                "wss://api.smallest.ai/waves/v1/tts/live",
+                additional_headers={"Authorization": f"Bearer {s.smallest_api_key}"},
+                open_timeout=15) as ws:
+            await ws.send(json.dumps({
+                "text": text, "voice_id": (voice or s.smallest_voice).strip(),
+                "model": model, "language": "hi",
+                "sample_rate": s.smallest_sample_rate, "output_format": "pcm",
+                "speed": max(0.5, min(2.0, pace)), "continue": False, "flush": True,
+            }))
+            while True:
+                msg = await asyncio.wait_for(ws.recv(), timeout=20)
+                if isinstance(msg, (bytes, bytearray)):
+                    pcm += msg
+                    continue
+                ev = json.loads(msg)
+                chunk = (ev.get("data") or {}).get("audio")
+                if chunk:
+                    pcm += base64.b64decode(chunk)
+                status = ev.get("status")
+                if status in ("complete", "error"):
+                    if status == "error":
+                        logger.warning("preview: smallest error %s", str(ev)[:200])
+                    break
+    except Exception:
+        logger.exception("preview: smallest tts failed voice=%s model=%s", voice, model)
+        return b""
+    if not pcm:
+        return b""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(s.smallest_sample_rate)
+        w.writeframes(bytes(pcm))
+    return buf.getvalue()
+
+
 @router.get("/preview.mp3")
 async def preview(
     text: str = Query(..., max_length=300),
@@ -272,6 +385,7 @@ async def preview(
     lang: str = Query("hi-IN", max_length=8),
     pace: float = Query(1.0, ge=0.5, le=2.0),
     temperature: float | None = Query(None, ge=0.01, le=2.0),
+    model: str = Query("sarvam", max_length=24),
 ):
     """Voice tester for the admin AI-Agents editor: speak a short sample text in any
     Bulbul speaker at a chosen pace/expressiveness, so admins can A/B voices before
@@ -282,6 +396,87 @@ async def preview(
     voice+pace-aware key. Text is capped hard: this is a public endpoint spending
     Sarvam credits — cache + cap bound the cost (same exposure class as /tts)."""
     s = get_settings()
+    # Route to the SAME engine the agent will use on a call. Without this the admin
+    # auditions a Sarvam voice and the caller hears Rumik (or, for a Rumik voice
+    # name, Sarvam 400s and the tester just fails) — an audition that lies about
+    # what ships is worse than no audition.
+    engine = (model or "").strip().lower()
+
+    if engine.startswith("google") or engine.startswith("chirp"):
+        # Google Cloud TTS audition. Chirp3-HD is the founder's pick; the voice
+        # name IS locale-prefixed (hi-IN-Chirp3-HD-Achird), so no language param
+        # is needed and a wrong-vendor name fails loudly instead of substituting.
+        key = hashlib.sha1(
+            f"pv|google|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
+        if not os.path.exists(path):
+            audio = await asyncio.to_thread(_google_tts_mp3, text, voice, pace)
+            if not audio:
+                return Response(status_code=502)
+            if not _cache_write(path, audio):
+                return Response(content=audio, media_type="audio/mpeg")
+            await _evict_tts_cache_async()
+        return _serve_mp3(path)
+
+    if engine.startswith("smallest") or engine.startswith("lightning"):
+        # Smallest.ai Lightning audition. Its palettes are PER-MODEL and the API
+        # hard-rejects a cross-model voice, so pass the model through: an admin
+        # auditioning a _pro voice must hit _pro, or the preview lies.
+        if not s.smallest_api_key:
+            logger.warning("preview: smallest requested but SMALLEST_API_KEY unset")
+            return Response(status_code=503)
+        sm_model = s.smallest_model
+        if ":" in engine:
+            cand = engine.split(":", 1)[1].strip()
+            if cand:
+                sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+        key = hashlib.sha1(
+            f"pv|{sm_model}|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+        # Lightning streams raw PCM over its websocket; wrap as WAV (same reason
+        # as the Rumik path — no mp3 encoder in this image).
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            raw = await _smallest_tts_wav(text, voice, sm_model, pace)
+            if not raw:
+                return Response(status_code=502)
+            if not _cache_write(path, raw):
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
+
+    is_rumik = engine.startswith("rumik") or engine.startswith("silk") \
+        or engine.startswith("mulberry")
+    if is_rumik:
+        if not s.rumik_api_key:
+            logger.warning("preview: rumik requested but RUMIK_API_KEY unset")
+            return Response(status_code=503)
+        # pace MUST be in the cache key. Without it the first pace previewed for a
+        # given voice+text is served forever, so moving the slider appears to do
+        # nothing — which is indistinguishable from the steering being broken.
+        pace_desc = rumik_pace_description(pace)
+        key = hashlib.sha1(
+            f"pv|rumik|{voice}|{pace_desc}|{text}".encode("utf-8")).hexdigest()
+        # .wav, not .mp3: Rumik streams raw PCM and we do not carry an mp3 encoder.
+        # The route name is historical; the Content-Type is what browsers obey.
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            from .providers import rumik_synthesize_wav
+            raw = await rumik_synthesize_wav(text, voice, s.rumik_api_key,
+                                             session=app.state.http_session,
+                                             description=pace_desc)
+            if not raw:
+                return Response(status_code=502)
+            try:
+                os.makedirs(s.tts_cache_dir, exist_ok=True)
+                tmp = f"{path}.{os.getpid()}.tmp"
+                with open(tmp, "wb") as f:
+                    f.write(raw)
+                os.replace(tmp, path)
+            except Exception:
+                logger.exception("preview: cache write failed")
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
     key = hashlib.sha1(
         f"pv|{s.sarvam_tts_model}|{voice}|{lang}|{pace}|{temperature}|{text}".encode("utf-8")
     ).hexdigest()
@@ -502,16 +697,63 @@ async def answer(
     return PlainTextResponse(xml, media_type="application/xml")
 
 
+def _cap_audio_lead(output, max_lead: float) -> bool:
+    """Stop pushing audio into Plivo faster than it can play it.
+
+    pipecat's websocket output paces at TWICE real time (send_interval =
+    chunk_duration / 2) to keep the far end's buffer full. For a browser that is
+    fine. For a phone call it is the reason barge-in feels broken: Plivo ends up
+    holding ~half the reply, and DuckGate can only withhold audio it has not sent
+    yet — live call d6e82def logged "dropping 0 held frame(s)" on an interrupt
+    because the entire reply was already inside Plivo, still playing.
+
+    Replaces the pacing clock with: burst until `max_lead` seconds of cushion
+    exist, then track real time. Falling behind (slow TTS, a busy loop) re-primes
+    the cushion instead of accumulating debt, so this cannot cause a stall it
+    would not otherwise have.
+
+    Returns False if the transport internals differ from the pinned pipecat, in
+    which case we leave the stock behaviour alone rather than break audio.
+    """
+    try:
+        chunk_secs = output.audio_chunk_size / (output.sample_rate * 2)
+    except Exception:
+        logger.warning("audio pacing: cannot read chunk size — leaving pipecat default")
+        return False
+    if chunk_secs <= 0:
+        return False
+    state = {"t0": None, "sent": 0.0}
+
+    async def _paced_sleep():
+        now = time.monotonic()
+        if state["t0"] is None:
+            state["t0"] = now
+        lead = state["sent"] - (now - state["t0"])
+        if lead < 0:
+            # Behind real time (TTS slower than playback, or the loop was busy):
+            # re-anchor so the next chunks re-prime the cushion.
+            state["t0"], state["sent"], lead = now, 0.0, 0.0
+        elif lead > max_lead:
+            await asyncio.sleep(lead - max_lead)
+        state["sent"] += chunk_secs
+
+    output._write_audio_sleep = _paced_sleep      # noqa: SLF001 - deliberate
+    logger.info("audio pacing: lead capped at %.2fs (chunk %.0fms)",
+                max_lead, chunk_secs * 1000)
+    return True
+
+
 @router.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     """One live call. Plivo connects here per the <Stream> URL; we wire the
     socket into Pipecat and run the conversation."""
     # Imported here so /health and /answer work even while heavy audio deps load.
-    from pipecat.audio.vad.silero import SileroVADAnalyzer
-    from pipecat.audio.vad.vad_analyzer import VADParams
+    # pipecat 1.4: transports.network is gone (→ transports.websocket.fastapi),
+    # and the VAD moved off the transport onto the user aggregator (bot.py owns
+    # it now, with the telephony min_volume tuning).
     from pipecat.runner.utils import parse_telephony_websocket
     from pipecat.serializers.plivo import PlivoFrameSerializer
-    from pipecat.transports.network.fastapi_websocket import (
+    from pipecat.transports.websocket.fastapi import (
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
     )
@@ -604,14 +846,26 @@ async def ws_endpoint(websocket: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                # stop_secs below the 0.8 default: how much silence ends the caller's
-                # turn — the single biggest chunk of perceived response latency.
-                vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(stop_secs=s.vad_stop_secs)
-                ),
+                # pipecat 1.4: NO vad_analyzer here — the VAD (with the telephony
+                # min_volume=0.35 tuning from live call 8e1e00ad) lives on the
+                # user aggregator in bot.run_bot, alongside Smart Turn v3.
                 serializer=serializer,
             ),
         )
+
+        # Bound how much audio Plivo may hold ahead of playback — the barge-in
+        # fix (see _cap_audio_lead). Applied after the transport exists but
+        # before the pipeline runs, and re-applied on StartFrame because
+        # pipecat's start() recomputes its own interval.
+        if s.audio_max_lead_secs > 0:
+            _out = transport.output()
+            _orig_start = _out.start
+
+            async def _start_then_cap(frame, _o=_out, _s=_orig_start):
+                await _s(frame)
+                _cap_audio_lead(_o, s.audio_max_lead_secs)
+
+            _out.start = _start_then_cap
 
         # The outcome is owned HERE (not inside run_bot) so a mid-pipeline crash
         # still leaves a reportable object — a lost report strands the paused

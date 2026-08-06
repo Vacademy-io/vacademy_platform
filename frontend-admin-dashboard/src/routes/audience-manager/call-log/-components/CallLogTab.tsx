@@ -15,7 +15,9 @@
  *      tab-local filter bar (status / direction / type / provider / disposition
  *      / number / lead name / has-recording).
  *   3. Paginated call table — status pill, AI/human badge, inline recording
- *      playback, and a per-row quick-disposition that syncs lead status.
+ *      playback, and a per-row quick-disposition that syncs lead status. Admins
+ *      additionally get a per-row health dot opening the technical post-mortem
+ *      for AI calls (see ./CallHealth.tsx).
  *   4. Export — CSV / XLSX of the current filtered view (server-rendered).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -48,7 +50,9 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { CallIntelligencePanel, useCallIntelligenceEnabled } from '@/components/shared/leads';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
 import { fetchCreditEstimate } from '@/services/ai-credits/get-ai-credits';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -61,19 +65,24 @@ import {
     callLogMetricsKey,
     callLogSearchKey,
     dispositionCatalogKey,
+    dispositionOptionsKey,
     exportCallLog,
     fetchCallDetail,
     fetchCallLog,
     fetchCallMetrics,
     fetchDispositionCatalog,
+    fetchDispositionFilterOptions,
     fetchRecordingUrl,
     isCallLogEndpointMissing,
+    normalizeDispositionKey,
+    rowCallHealth,
     toMillis,
     type CallLogFilters,
     type CallLogScope,
     type CallRow,
     type DispositionOption,
 } from '../-services/call-log-service';
+import { CallHealthCell, CallHealthSheet } from './CallHealth';
 
 /** Scope passed in by the page (date window + RBAC narrowing), same shape the Reports tabs used. */
 export interface CallLogTabProps {
@@ -140,9 +149,20 @@ const STATUS_TONE: Record<string, string> = {
 
 /**
  * Statuses where a "why did it end this way" popover earns its place — the call
- * didn't simply connect and complete. COMPLETED never shows it.
+ * didn't simply connect and complete.
  */
 const DETAILABLE_STATUSES = new Set(['FAILED', 'BUSY', 'NO_ANSWER', 'CANCELLED']);
+
+/**
+ * Whether the status pill doubles as a details affordance. Status alone used to
+ * decide this, which meant a COMPLETED call could never be inspected — and most
+ * AI calls complete, including the ones where the caller sat through 10s of
+ * silence. A call that reported a technical verdict has something to say
+ * regardless of how it ended, so it earns the affordance too.
+ */
+function isDetailable(row: CallRow): boolean {
+    return DETAILABLE_STATUSES.has(row.status) || rowCallHealth(row) != null;
+}
 
 /**
  * Build the minimal {@link StudentTable} the shared lead side-sheet needs from a
@@ -191,12 +211,24 @@ export default function CallLogTab({
     const intelEnabled = useCallIntelligenceEnabled();
     const [intelTarget, setIntelTarget] = useState<CallRow | null>(null);
 
+    // Per-call technical health (AI calls). Admin-only: the panel speaks in
+    // internal failure language ("TTS socket wedge", "answers discarded"), which
+    // is the right vocabulary for whoever debugs the agent and the wrong one for
+    // a counsellor working their list. Same gate the rest of the admin-only
+    // affordances use — the server re-checks on the detail endpoint.
+    const canSeeCallHealth = isAdminForInstitute(instituteId);
+    const [healthTarget, setHealthTarget] = useState<CallRow | null>(null);
+
     // Tab-local filters.
     const [direction, setDirection] = useState<string>(ALL);
     const [callType, setCallType] = useState<string>(ALL);
     const [providerType, setProviderType] = useState<string>(ALL);
     const [status, setStatus] = useState<string>(ALL);
-    const [dispositionKey, setDispositionKey] = useState<string>(ALL);
+    // Multi-select: the search endpoint takes a list, and "show me Callback OR
+    // Callback Requested OR Demo Booked" is the normal way this vocabulary is used —
+    // it has as many entries as the institute has AI outcomes, so one-at-a-time
+    // means one page load per outcome.
+    const [dispositionKeys, setDispositionKeys] = useState<string[]>([]);
     const [leadName, setLeadName] = useState('');
     const [toNumber, setToNumber] = useState('');
     const [chip, setChip] = useState<'NONE' | 'MISSED' | 'CALLBACKS'>('NONE');
@@ -208,7 +240,7 @@ export default function CallLogTab({
             callType: callType === ALL ? undefined : (callType as CallLogFilters['callType']),
             providerType: providerType === ALL ? undefined : providerType,
             statuses: status === ALL ? undefined : [status],
-            dispositionKeys: dispositionKey === ALL ? undefined : [dispositionKey],
+            dispositionKeys: dispositionKeys.length ? dispositionKeys : undefined,
             leadName: leadName.trim() || undefined,
             toNumber: toNumber.trim() || undefined,
             missedInbound: chip === 'MISSED' || undefined,
@@ -216,7 +248,7 @@ export default function CallLogTab({
             sortBy: 'TIME',
             sortDirection: 'DESC',
         }),
-        [direction, callType, providerType, status, dispositionKey, leadName, toNumber, chip]
+        [direction, callType, providerType, status, dispositionKeys, leadName, toNumber, chip]
     );
 
     // Any filter / scope change resets to the first page.
@@ -226,9 +258,20 @@ export default function CallLogTab({
     const retryUnlessMissing = (failureCount: number, error: unknown) =>
         !isCallLogEndpointMissing(error) && failureCount < 2;
 
+    // Two disposition vocabularies, deliberately: the catalog is what a counsellor may
+    // SET (the apply endpoint accepts nothing else), while the filter must also offer
+    // the AI outcomes — configured in Settings → AI Calling and by the institute's AI
+    // agents — because that's what the Disposition column actually shows for AI calls.
     const catalogQuery = useQuery({
         queryKey: dispositionCatalogKey(instituteId),
         queryFn: () => fetchDispositionCatalog(instituteId),
+        enabled: !!instituteId,
+        staleTime: 5 * 60 * 1000,
+        retry: retryUnlessMissing,
+    });
+    const dispositionOptionsQuery = useQuery({
+        queryKey: dispositionOptionsKey(instituteId),
+        queryFn: () => fetchDispositionFilterOptions(instituteId),
         enabled: !!instituteId,
         staleTime: 5 * 60 * 1000,
         retry: retryUnlessMissing,
@@ -263,7 +306,15 @@ export default function CallLogTab({
     }
 
     const metrics = metricsQuery.data;
-    const dispositions = catalogQuery.data ?? [];
+    // Picker options: catalog only, and defensively re-filtered — an older cached
+    // response, or a backend that starts folding AI outcomes into /dispositions, must
+    // never put an unsettable option in front of a counsellor.
+    const dispositions = (catalogQuery.data ?? []).filter((d) => d.settable !== false);
+    const dispositionOptions = dispositionOptionsQuery.data ?? dispositions;
+    /** Normalized outcome key → the vocabulary's label, so a row reads like the filter. */
+    const dispositionLabels = new Map(
+        dispositionOptions.map((d) => [normalizeDispositionKey(d.disposition_key), d.label])
+    );
     const data = searchQuery.data;
     const rows = data?.content ?? [];
 
@@ -326,11 +377,14 @@ export default function CallLogTab({
                     ]} />
                     <FilterSelect label="Provider" value={providerType} onChange={setProviderType} options={PROVIDER_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} />
                     <FilterSelect label="Status" value={status} onChange={setStatus} options={TELEPHONY_CALL_STATUSES.map((s) => ({ value: s, label: humanizeCallStatus(s) }))} />
-                    <FilterSelect
+                    <FilterMultiSelect
                         label="Disposition"
-                        value={dispositionKey}
-                        onChange={setDispositionKey}
-                        options={dispositions.map((d) => ({ value: d.disposition_key, label: d.label }))}
+                        selected={dispositionKeys}
+                        onChange={setDispositionKeys}
+                        options={dispositionOptions.map((d) => ({
+                            value: d.disposition_key,
+                            label: d.label,
+                        }))}
                     />
                 </div>
             </section>
@@ -365,6 +419,14 @@ export default function CallLogTab({
                                         <th className="py-2 pr-3">Dir</th>
                                         <th className="py-2 pr-3">Type</th>
                                         <th className="py-2 pr-3">Status</th>
+                                        {canSeeCallHealth && (
+                                            <th
+                                                className="py-2 pr-3"
+                                                title="Technical verdict from the AI voice agent"
+                                            >
+                                                Health
+                                            </th>
+                                        )}
                                         <th className="py-2 pr-3 text-right">Duration</th>
                                         <th className="py-2 pr-3">Counsellor</th>
                                         <th className="py-2 pr-3">Disposition</th>
@@ -419,6 +481,15 @@ export default function CallLogTab({
                                             <td className="py-2.5 pr-3">
                                                 <StatusCell instituteId={instituteId} row={r} />
                                             </td>
+                                            {canSeeCallHealth && (
+                                                <td className="py-2.5 pr-3">
+                                                    <CallHealthCell
+                                                        instituteId={instituteId}
+                                                        row={r}
+                                                        onOpen={() => setHealthTarget(r)}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="py-2.5 pr-3 text-right text-neutral-700">
                                                 {fmtDuration(r.duration_seconds)}
                                             </td>
@@ -426,7 +497,11 @@ export default function CallLogTab({
                                                 {r.counsellor_name || '—'}
                                             </td>
                                             <td className="py-2.5 pr-3">
-                                                <DispositionCell row={r} onEdit={() => setDispositionTarget(r)} />
+                                                <DispositionCell
+                                                    row={r}
+                                                    labels={dispositionLabels}
+                                                    onEdit={() => setDispositionTarget(r)}
+                                                />
                                             </td>
                                             <td className="py-2.5 pr-3">
                                                 <RecordingCell instituteId={instituteId} row={r} />
@@ -474,6 +549,15 @@ export default function CallLogTab({
 
             {/* Transcript + AI intelligence dialog (credits-gated) */}
             <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
+
+            {/* Call health — technical post-mortem side sheet (admin-only) */}
+            {canSeeCallHealth && (
+                <CallHealthSheet
+                    instituteId={instituteId}
+                    call={healthTarget}
+                    onClose={() => setHealthTarget(null)}
+                />
+            )}
             </div>
 
             {/* Shared lead side-sheet — opens to the Lead Profile tab. */}
@@ -581,6 +665,40 @@ function FilterSelect({
     );
 }
 
+/**
+ * Multi-select sibling of {@link FilterSelect} — same caption-above-control shape,
+ * but the control is the shared CRM combobox: type-to-search plus as many outcomes
+ * as the user wants in one query. Empty selection = no filter, exactly like `ALL`.
+ */
+function FilterMultiSelect({
+    label,
+    selected,
+    onChange,
+    options,
+}: {
+    label: string;
+    selected: string[];
+    onChange: (v: string[]) => void;
+    options: Array<{ value: string; label: string }>;
+}) {
+    return (
+        <div className="flex flex-col gap-1">
+            <Label className="text-xs text-neutral-600">{label}</Label>
+            <MultiSelectFilter
+                label="All"
+                options={options}
+                selected={selected}
+                onChange={onChange}
+                placeholder={`Search ${label.toLowerCase()}…`}
+                // twMerge lets these win over the component's default h-10 / w-44,
+                // so the trigger lines up with the FilterSelect boxes beside it.
+                widthClass="h-9 w-40"
+                showSelectedLabel
+            />
+        </div>
+    );
+}
+
 // ── Cell renderers ─────────────────────────────────────────────────────────
 
 function DirectionBadge({ direction }: { direction: string }) {
@@ -647,7 +765,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  */
 function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow }) {
     const [open, setOpen] = useState(false);
-    const detailable = DETAILABLE_STATUSES.has(row.status);
+    const detailable = isDetailable(row);
 
     const detailQuery = useQuery({
         queryKey: callDetailKey(instituteId, row.id),
@@ -725,14 +843,28 @@ function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow })
     );
 }
 
-function DispositionCell({ row, onEdit }: { row: CallRow; onEdit: () => void }) {
+function DispositionCell({
+    row,
+    labels,
+    onEdit,
+}: {
+    row: CallRow;
+    /** Normalized outcome key → vocabulary label, so the cell reads like the filter. */
+    labels: Map<string, string>;
+    onEdit: () => void;
+}) {
     // Human-set disposition takes precedence; otherwise show the AI disposition (read-only).
     const current = row.disposition_key || row.ai_disposition;
+    // Same normalization the filter matches on, so "Not_Interested" and
+    // "NOT_INTERESTED" render as the one option the dropdown offers.
+    const label = current
+        ? (labels.get(normalizeDispositionKey(current)) ?? humanizeCallStatus(current))
+        : null;
     return (
         <div className="flex items-center gap-2">
-            {current ? (
+            {label ? (
                 <span className="inline-flex whitespace-nowrap rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
-                    {humanizeCallStatus(current)}
+                    {label}
                 </span>
             ) : (
                 <span className="text-xs text-neutral-400">—</span>

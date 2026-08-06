@@ -113,6 +113,24 @@ public class AiCallResult {
     @Column(name = "metadata", columnDefinition = "jsonb")
     private Map<String, Object> metadata;
 
+    /**
+     * Verbatim per-call technical diagnostics from the end-of-call report (V416) —
+     * health verdict, fault codes, TTS/LLM/STT latency, playout + turn-taking truth.
+     * Kept whole so a health verdict can be re-derived across history when the bot's
+     * rulesVersion changes. Null = the report carried none (NOT "healthy").
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "diagnostics", columnDefinition = "jsonb")
+    private Map<String, Object> diagnostics;
+
+    /** GREEN / AMBER / RED, derived from {@link #diagnostics} at ingest. Null = not measured. */
+    @Column(name = "diag_health", length = 8)
+    private String diagHealth;
+
+    /** Comma-joined fault codes ("DEAD_AIR,TTS_WEDGE") — denormalised so fleet triage is a cheap LIKE. */
+    @Column(name = "diag_faults", columnDefinition = "TEXT")
+    private String diagFaults;
+
     @Column(name = "callback")
     private Boolean callback;
 

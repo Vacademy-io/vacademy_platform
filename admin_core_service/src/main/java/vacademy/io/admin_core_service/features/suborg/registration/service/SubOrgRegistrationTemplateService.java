@@ -20,8 +20,11 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteTerminologyService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteTerminologyService.Terms;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
+import vacademy.io.admin_core_service.features.suborg.service.SubOrgNaming;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.CreateRegistrationTemplateDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CustomFieldFacetDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationFacetsDTO;
@@ -72,6 +75,7 @@ public class SubOrgRegistrationTemplateService {
     private final SubOrgRegistrationRepository registrationRepository;
     private final CustomFieldValuesRepository customFieldValuesRepository;
     private final StudentSessionInstituteGroupMappingRepository ssigmRepository;
+    private final InstituteTerminologyService instituteTerminologyService;
 
     /**
      * A custom field becomes a filter only if it has at most this many distinct
@@ -155,8 +159,11 @@ public class SubOrgRegistrationTemplateService {
                     invite.getId(), option.getId(), option.getType());
         } else {
             // FREE (P0 path): fresh FREE option+plan backs every PSLIPO row.
+            // The invite's own name is admin-supplied (request.getName()) and left alone;
+            // only these system-minted option/plan labels follow the institute's terminology.
+            Terms terms = instituteTerminologyService.forInstitute(instituteId);
             option = new PaymentOption();
-            option.setName("Sub-Org Registration: " + request.getName());
+            option.setName(SubOrgNaming.registrationPaymentOptionName(terms, request.getName()));
             option.setType(PaymentOptionType.FREE.name());
             option.setTag("DEFAULT");
             option.setStatus(StatusEnum.ACTIVE.name());
@@ -164,7 +171,7 @@ public class SubOrgRegistrationTemplateService {
             option = paymentOptionRepository.save(option);
 
             PaymentPlan plan = new PaymentPlan();
-            plan.setName("Sub-Org Registration Plan");
+            plan.setName(SubOrgNaming.registrationPaymentPlanName(terms));
             plan.setStatus(StatusEnum.ACTIVE.name());
             plan.setActualPrice(0);
             plan.setElevatedPrice(0);

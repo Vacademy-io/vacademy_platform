@@ -75,6 +75,16 @@ public class UnifiedSendRequest {
         private String pushBody;
         private Map<String, String> pushData;
         private Integer rateLimitPerSecond;
+
+        /**
+         * Explicit copy recipients for EMAIL sends. Null/empty means "use the institute's
+         * configured emailCc block", which notification-service resolves from {@link #source}.
+         */
+        private List<String> cc;
+
+        /** "CC" (visible) or "BCC" (hidden). Defaults to BCC when unset. */
+        private String ccMode;
+
         private String source;
         private String sourceId;
     }

@@ -30,6 +30,7 @@ import {
     hasFacultyPermission,
     getFacultyAccessData,
 } from '@/lib/auth/facultyAccessUtils';
+import { useCourseListStateStore } from '../-stores/course-list-state-store';
 
 import { useDeleteCourse } from '@/services/study-library/course-operations/delete-course';
 import { toast } from 'sonner';
@@ -169,7 +170,12 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         null
     );
 
-    const [page, setPage] = useState(0);
+    // Browsing state (page / filters / search / sort) is kept in a module-level
+    // store instead of component state: opening a course unmounts this component,
+    // so `useState` used to reset the applied filters and drop the user back on
+    // page 1 when they navigated back. See course-list-state-store.ts.
+    const page = useCourseListStateStore((s) => s.page);
+    const setPage = useCourseListStateStore((s) => s.setPage);
     const [loading, setLoading] = useState({
         allCourses: true,
         authoredCourses: true,
@@ -247,11 +253,27 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             });
     }, [roles]);
 
+    const authoredSearchValue = useCourseListStateStore((s) => s.authoredSearchValue);
+    const setAuthoredSearchValue = useCourseListStateStore((s) => s.setAuthoredSearchValue);
+    const selectedFilters = useCourseListStateStore((s) => s.filters);
+    const setSelectedFilters = useCourseListStateStore((s) => s.setFilters);
+    const sortBy = useCourseListStateStore((s) => s.sortBy);
+    const setSortBy = useCourseListStateStore((s) => s.setSortBy);
+    const searchValue = useCourseListStateStore((s) => s.searchValue);
+    const setSearchValue = useCourseListStateStore((s) => s.setSearchValue);
+    const clearAllCoursesFilters = useCourseListStateStore((s) => s.clearAllCoursesFilters);
+    const resetCourseListState = useCourseListStateStore((s) => s.resetCourseListState);
+
     // Handle tab change with URL sync
     const handleTabChange = (
         newTab: 'AuthoredCourses' | 'AllCourses' | 'CourseInReview' | 'CourseApproval'
     ) => {
+        if (newTab === selectedTab) return;
         setSelectedTab(newTab);
+        // Deliberately switching tabs is the one navigation that starts a fresh
+        // browse: drop filters, search and page for every tab. Coming back from a
+        // course keeps them (the store outlives this component).
+        resetCourseListState();
         // Update URL with new tab
         navigate({
             to: '/study-library/courses',
@@ -259,28 +281,6 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             replace: true, // Replace current history entry instead of adding new one
         });
     };
-    const [authoredSearchValue, setAuthoredSearchValue] = useState('');
-    const [selectedFilters, setSelectedFilters] = useState<AllCourseFilters>(() => {
-        const filters = getAccessiblePackageFilters();
-        return {
-            status: ['ACTIVE'],
-            level_ids: [],
-            tag: [],
-            faculty_ids: [],
-            search_by_name: '',
-            min_percentage_completed: 0,
-            max_percentage_completed: 100,
-            sort_columns: { created_at: 'DESC' },
-            package_ids: filters?.package_ids || [],
-            package_session_ids: filters?.package_session_ids || [],
-            package_session_filter: null,
-            session_ids: [],
-            package_view: true,
-        };
-    });
-
-    const [sortBy, setSortBy] = useState('oldest');
-    const [searchValue, setSearchValue] = useState('');
 
     // Removed getAllCoursesMutation - now using React Query directly
 
@@ -362,23 +362,10 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         }
     };
 
+    // Only the explicit "Clear" button wipes the filters (and with them the
+    // search box and the page index) — nothing else resets them implicitly.
     const handleClearAll = () => {
-        setSelectedFilters({
-            status: ['ACTIVE'],
-            level_ids: [],
-            tag: [],
-            faculty_ids: [],
-            search_by_name: '',
-            min_percentage_completed: 0,
-            max_percentage_completed: 100,
-            sort_columns: { created_at: 'DESC' },
-            package_ids: [],
-            package_session_ids: [],
-            package_session_filter: null,
-            session_ids: [],
-            package_view: true,
-        });
-        setSearchValue('');
+        clearAllCoursesFilters();
     };
 
     const handleApply = () => {
@@ -569,6 +556,17 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             setLoading((l) => ({ ...l, allCourses: false }));
         }
     }, [fetchedAllCoursesData]);
+
+    // The page index is intentionally kept when filters/search change, but a
+    // narrower result set can leave it past the last page — which renders an
+    // empty grid instead of the matches. Snap back to the last real page only
+    // in that out-of-range case.
+    useEffect(() => {
+        const totalPages = fetchedAllCoursesData?.totalPages ?? 0;
+        if (selectedTab === 'AllCourses' && totalPages > 0 && page >= totalPages) {
+            setPage(totalPages - 1);
+        }
+    }, [fetchedAllCoursesData, page, selectedTab, setPage]);
 
     useEffect(() => {
         if (fetchedAuthoredCoursesData) {

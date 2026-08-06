@@ -36,7 +36,12 @@ public class LeadFilterDTO {
     private Boolean isUnassigned;           // True = only unassigned leads
 
     // ── Pipeline status filter ──
-    private String leadStatusId;            // Filter by lead_status.id (custom pipeline stage)
+    // Comma-separated lead_status.status_key values (matched against the catalog key,
+    // falling back to user_lead_profile.conversion_status for legacy leads). The
+    // sentinel __NO_STATUS__ additionally matches leads with no status at all
+    // (lead_status_id NULL and no profile conversion_status) - the "No status"
+    // column on the Lead Board.
+    private String leadStatusId;
 
     // ── Status Filters ──
     private java.util.List<String> overallStatuses;    // ENQUIRY, APPLICATION, ADMITTED, etc.

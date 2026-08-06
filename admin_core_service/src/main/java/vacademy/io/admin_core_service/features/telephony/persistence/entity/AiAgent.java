@@ -42,9 +42,29 @@ public class AiAgent {
     @Column(name = "language", length = 32)
     private String language;
 
-    /** Sarvam Bulbul voice id. */
+    /**
+     * Voice id — from the palette of whichever engine {@link #ttsModel} selects.
+     * The two palettes share NO names (Sarvam: priya/shubh/...; Rumik: ira/adam/...),
+     * and they fail differently on a wrong one: Sarvam 400s (no audio), Rumik quietly
+     * substitutes its default voice (a voice nobody chose, with Hindi verb gender
+     * conjugated for the one they did). AiAgentService settles voice and engine
+     * together; the bot drops cross-vendor names defensively too.
+     */
     @Column(name = "voice", length = 64)
     private String voice;
+
+    /**
+     * TTS engine: {@code rumik} (Silk Mulberry 1.5, the default for new agents) or
+     * {@code sarvam} (bulbul:v3). Priced: see ai_tts_model_pricing — Sarvam carries
+     * a +4 credits/min surcharge because it costs 6x per character.
+     *
+     * <p>V421 backfilled every pre-existing agent to 'sarvam' explicitly. NULL is
+     * only reachable for a row written outside AiAgentService, and both the billing
+     * lookup and the bot treat NULL as 'sarvam' — the two fallbacks must stay in
+     * lockstep or we would bill an engine we did not use.
+     */
+    @Column(name = "tts_model", length = 32)
+    private String ttsModel;
 
     @Column(name = "opening_line", columnDefinition = "TEXT")
     private String openingLine;

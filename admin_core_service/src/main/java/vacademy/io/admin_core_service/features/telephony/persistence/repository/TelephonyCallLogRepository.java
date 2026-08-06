@@ -59,6 +59,27 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
                                                 @Param("since") java.sql.Timestamp since);
 
     /**
+     * Bulk-campaign cooldown guard: every lead in this institute that already had an AI
+     * call placed since {@code since}. The caller intersects this against its own lead
+     * list in memory — deliberately institute-wide rather than an {@code IN (:userIds)}
+     * over the audience, because the window is minutes (so this returns a handful of
+     * rows) while a big audience would bind thousands of parameters.
+     *
+     * <p>Complements {@link #existsRecentByInstituteUserProvider}, which collapses
+     * near-simultaneous duplicates over a ~30s window; this one covers the far longer
+     * "don't re-dial the list you just dialled" campaign window.
+     */
+    @Query("""
+            SELECT DISTINCT t.userId FROM TelephonyCallLog t
+            WHERE t.instituteId = :instituteId
+              AND t.createdAt >= :since
+              AND t.providerType IN :aiProviders
+            """)
+    List<String> findAiCalledUserIdsSince(@Param("instituteId") String instituteId,
+                                          @Param("since") java.sql.Timestamp since,
+                                          @Param("aiProviders") List<String> aiProviders);
+
+    /**
      * Prior VACADEMY_AI dial attempts to the same lead in a recent window,
      * excluding the current call. Feeds the bot's {@code callRetry} (the
      * classifier's exhaustion counter — Aavtaar sends its own, our bot can't
@@ -187,6 +208,12 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
      * stored on the outbound row ({@code to_number}). Returns the counsellor
      * and lead user id together so the caller can attribute the call without
      * a second lookup.
+     *
+     * <p>AI-placed rows are excluded. counsellor_user_id on those is the person who
+     * <i>started</i> the AI campaign, not someone who ever spoke to the lead, so
+     * counting them would ring the campaign starter for every lead on a bulk list —
+     * overriding the human the lead actually talked to, which is the whole point of
+     * this strategy. "Last counsellor" here means last HUMAN conversation.
      */
     @Query(value = """
             SELECT counsellor_user_id, user_id, response_id
@@ -194,6 +221,7 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             WHERE institute_id = :instituteId
               AND direction = 'OUTBOUND'
               AND counsellor_user_id IS NOT NULL
+              AND provider_type NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK')
               AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:leadPhone, '[^0-9]', '', 'g'), 10)
             ORDER BY created_at DESC

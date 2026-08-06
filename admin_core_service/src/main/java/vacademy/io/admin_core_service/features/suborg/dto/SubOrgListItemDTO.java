@@ -37,6 +37,10 @@ public class SubOrgListItemDTO {
     /** Active learner-seat count; null total = no cap configured. */
     private Long usedSeats;
     private Integer totalSeats;
+    /** Distinct ACTIVE learners enrolled under this sub-org (admins excluded) — the same
+     *  population {@code usedSeats} bills against, surfaced separately so the list can show
+     *  a "Learners" column independent of whether a seat cap is configured. */
+    private Long learnerCount;
     private String inviteCode;
     private String shortUrl;
     private Timestamp createdAt;

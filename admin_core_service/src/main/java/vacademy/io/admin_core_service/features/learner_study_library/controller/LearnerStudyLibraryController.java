@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.learner_study_library.controller
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerChapterSlidesDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
@@ -55,6 +56,18 @@ public class LearnerStudyLibraryController {
     @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "Accept-Language"})
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId, user));
+    }
+
+    /**
+     * Bulk form of {@code /slides}: learner slides for every chapter of the
+     * package session in one round trip, grouped per chapter. Replaces the
+     * per-chapter request storm the course-details page used to fire (one GET
+     * per chapter — hundreds on large courses).
+     */
+    @GetMapping("/slides-by-package-session")
+    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "X-Package-Session-Id", "Accept-Language"})
+    public ResponseEntity<List<LearnerChapterSlidesDTO>> getLearnerSlidesByPackageSession(@RequestParam String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlidesByPackageSession(packageSessionId, user));
     }
 
     /**

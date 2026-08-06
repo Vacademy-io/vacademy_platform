@@ -60,6 +60,7 @@
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
+		12AD9106DDA4265C98D16D1F /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		14E8D273FC7A03FCCF0B9EEE /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		159478D4A77785769B1BB798 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		193FC5F69363BA2D76BD043E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -72,9 +73,11 @@
 		1AAA00072F25A00000000007 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		1AAA00082F25A00000000008 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		31170A8D66EED80E34866581 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		46A7B0ECA8980A28B0BD1018 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		475FB3FCE38A042F08A9CFB1 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		49FAB1FA9EFE4D4829783A68 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
+		4BBDA3A872CA19A3467D84F3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -82,21 +85,28 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		506C1B40C8D810C9A093A73F /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5196ADBA4C84E9586D75D263 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		5F9B7DDE407A109105FCE883 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		661F44D6FD6CD47A777FAC1F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		6A06DF9587F957C47E506E6C /* LaunchScreenHCCA.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */; };
 		6C4154AC2C76E90C80F8FAF0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */; };
 		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
 		74B8DD78D6B5433D776E4F60 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		8096B6932B8C76CF811F7345 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		92CF6E9FD15192700D5BAD2F /* Pods_Edzumo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */; };
+		96554FD5C2B79909CAF44F19 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		974474857A30479F153356F6 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		A105E8843376451BD5F73DE4 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		A7D6712AA2A1334E27616C2D /* Pods_ZOE_Edtech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */; };
 		AB74E2C5E5FB1BA34C8B492A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
 		C27B4B808CE5938482E862F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */; };
+		C2B8C112621143C004BC58B9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		C314EA5A6665CB1D512B6D35 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		C709BBC5AB4FC0E8400F5DBB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		C83D4A360236AA28C273203D /* Pods_Sadbhavana.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */; };
@@ -127,9 +137,11 @@
 		0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ZOE Edtech.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA00092F25A00000000009 /* Uplift Teacher Training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Uplift Teacher Training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA000A2F25A0000000000A /* Enark-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Enark-Info.plist"; sourceTree = "<group>"; };
 		1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "EnarkGoogleService-Info.plist"; sourceTree = "<group>"; };
+		1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ZOE Edtech.release.xcconfig"; path = "Pods/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech.release.xcconfig"; sourceTree = "<group>"; };
 		21216D9D311F8C984BCE098F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.debug.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.debug.xcconfig"; sourceTree = "<group>"; };
 		2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.debug.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.debug.xcconfig"; sourceTree = "<group>"; };
@@ -139,6 +151,8 @@
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sadbhavana.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		33EFFB28CF0D60C91479D913 /* Pods-Shiksha Nation.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.debug.xcconfig"; sourceTree = "<group>"; };
+		3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ZOE Edtech.debug.xcconfig"; path = "Pods/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech.debug.xcconfig"; sourceTree = "<group>"; };
+		46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_ZOE_Edtech.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_HCCA_Learning.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.release.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.release.xcconfig"; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -150,6 +164,7 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.debug.xcconfig"; sourceTree = "<group>"; };
+		5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D00BA17496ED7B5FE48F90F /* Pods-Uplift Teacher Training.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.release.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.release.xcconfig"; sourceTree = "<group>"; };
@@ -238,6 +253,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		28BA79FAE87FFD845E0909B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5196ADBA4C84E9586D75D263 /* Foundation.framework in Frameworks */,
+				A7D6712AA2A1334E27616C2D /* Pods_ZOE_Edtech.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -296,6 +320,7 @@
 				302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */,
 				920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */,
 				4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */,
+				46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -323,6 +348,7 @@
 				F7EDAE46632198A5419A6D84 /* GoogleServiceConfigs */,
 				295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */,
 				E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */,
+				5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -339,6 +365,7 @@
 				0E0D4B0E2FC2CB0100E29BEC /* Edzumo.app */,
 				2AD8C058D1A8D73C46386616 /* Sadbhavana.app */,
 				B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */,
+				18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -391,6 +418,8 @@
 				CC4F4A08331896C84D488EFF /* Pods-Chanakya IAS Academy.release.xcconfig */,
 				4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */,
 				2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */,
+				1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */,
+				3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
@@ -539,6 +568,25 @@
 			productReference = 1AAA00092F25A00000000009 /* Uplift Teacher Training.app */;
 			productType = "com.apple.product-type.application";
 		};
+		3A2DF063AB452C2097ED392D /* ZOE Edtech */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 70A03836DD843FF94F407E34 /* Build configuration list for PBXNativeTarget "ZOE Edtech" */;
+			buildPhases = (
+				9205CD15C99F3E5E12821A5D /* [CP] Check Pods Manifest.lock */,
+				30C7A2F1DDA2F2755A2C1DB9 /* Sources */,
+				28BA79FAE87FFD845E0909B5 /* Frameworks */,
+				33291F7E375B94D582497A53 /* Resources */,
+				EC75CC646923B0879060A00B /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "ZOE Edtech";
+			productName = "ZOE Edtech";
+			productReference = 18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */;
+			productType = "com.apple.product-type.application";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -659,6 +707,7 @@
 				0E0D4AFC2FC2CB0100E29BEC /* Edzumo */,
 				CC8C5DDFADE1C48862D95C96 /* Sadbhavana */,
 				9E04A32BBEABFC7C87A4B817 /* HCCA Learning */,
+				3A2DF063AB452C2097ED392D /* ZOE Edtech */,
 			);
 		};
 /* End PBXProject section */
@@ -763,6 +812,20 @@
 				1AAA00062F25A00000000006 /* capacitor.config.json in Resources */,
 				1AAA00072F25A00000000007 /* Main.storyboard in Resources */,
 				1AAA00082F25A00000000008 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		33291F7E375B94D582497A53 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31170A8D66EED80E34866581 /* LaunchScreen.storyboard in Resources */,
+				12AD9106DDA4265C98D16D1F /* public in Resources */,
+				C2B8C112621143C004BC58B9 /* Assets.xcassets in Resources */,
+				B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */,
+				96554FD5C2B79909CAF44F19 /* Main.storyboard in Resources */,
+				A105E8843376451BD5F73DE4 /* config.xml in Resources */,
+				4BBDA3A872CA19A3467D84F3 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1030,6 +1093,28 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		9205CD15C99F3E5E12821A5D /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-ZOE Edtech-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		9473481F56F9EE5800E95381 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1178,6 +1263,21 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		EC75CC646923B0879060A00B /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -1234,6 +1334,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		30C7A2F1DDA2F2755A2C1DB9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8096B6932B8C76CF811F7345 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1606,6 +1714,55 @@
 			};
 			name = Release;
 		};
+		3013FC9BE777CA42F4DE1A26 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
+				INFOPLIST_KEY_CFBundleName = "ZOE Edtech";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		39E0D923D47FEE5EA242BB0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
+				INFOPLIST_KEY_CFBundleName = "ZOE Edtech";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1941,6 +2098,15 @@
 			buildConfigurations = (
 				8FAD3E6D9F474C2A34E5D8CD /* Release */,
 				88223AC5F01A0FE52196297F /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		70A03836DD843FF94F407E34 /* Build configuration list for PBXNativeTarget "ZOE Edtech" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3013FC9BE777CA42F4DE1A26 /* Release */,
+				39E0D923D47FEE5EA242BB0D /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

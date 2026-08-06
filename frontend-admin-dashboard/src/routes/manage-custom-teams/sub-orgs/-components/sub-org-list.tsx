@@ -40,6 +40,7 @@ import { buildSubOrgSlug } from '@/routes/manage-suborg-teams/-utils/sub-org-slu
 import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
 
 /** Rows-per-page for the Manage VLEs listing. */
 const SUB_ORG_PAGE_SIZE = 10;
@@ -56,6 +57,7 @@ const SUB_ORG_CSV_HEADERS = [
     'State',
     'Pincode',
     'Status',
+    'Learners',
     'Seats Used',
     'Seats Total',
     'Invite Code',
@@ -83,6 +85,12 @@ export function SubOrgList() {
     const navigate = useNavigate();
 
     const instituteId = getCurrentInstituteId();
+    // Creating a channel partner is an institute-level action, not something scoped
+    // to the ones assigned to you — hide it for roles granted the module via
+    // Display Settings. The rows themselves are already scoped by the backend.
+    // Per-role capabilities (institute admins and sub-org admins always pass).
+    const canCreate = subOrgPermission('canCreate');
+    const canExport = subOrgPermission('canExport');
     // Prefer the institute's white-label learner domain so the invite opens on
     // the institute's own portal; a backend `short_url` (already domain-correct)
     // still wins when present.
@@ -90,7 +98,10 @@ export function SubOrgList() {
     // Fetch the WHOLE list (no page/size): search matches admin email/phone and the
     // status filter matches plan status — enrichment fields that live outside this
     // service's DB, so filtering must happen over the full dataset client-side.
-    const { data, isLoading } = useQuery({
+    // "Whole list" is caller-scoped: the backend returns only the sub-orgs assigned
+    // to the caller unless they're a root user or a true institute admin, so every
+    // filter, facet, page and export below is confined to the assigned set.
+    const { data, isLoading, isError, error } = useQuery({
         queryKey: ['sub-orgs-with-details', instituteId],
         queryFn: () => getSubOrgsWithDetails(instituteId),
         enabled: !!instituteId,
@@ -213,6 +224,7 @@ export function SubOrgList() {
                 o.state,
                 o.pincode,
                 o.plan_status ? humanizeStatus(o.plan_status) : '',
+                o.learner_count ?? o.used_seats ?? '',
                 o.used_seats ?? '',
                 o.total_seats ?? '',
                 o.invite_code,
@@ -232,6 +244,31 @@ export function SubOrgList() {
     };
 
     if (isLoading) return <DashboardLoader />;
+
+    // A failed fetch must NOT fall through to the empty table. React Query leaves `data`
+    // undefined on error, which previously rendered "No <partners> found." — telling an
+    // admin their institute has none when the real cause was a 403 (role not permitted,
+    // or a backend that predates assignment scoping). Two very different problems that
+    // looked identical, so the error is surfaced explicitly.
+    if (isError) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        return (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-danger-200 bg-danger-50 p-8 text-center">
+                <Buildings className="size-8 text-danger-400" />
+                <p className="text-subtitle font-semibold text-danger-700">
+                    Couldn&apos;t load {getTerminologyPlural(
+                        OtherTerms.SubOrg,
+                        SystemTerms.SubOrg
+                    ).toLowerCase()}
+                </p>
+                <p className="text-caption text-danger-600">
+                    {status === 403
+                        ? 'Your role does not have access to this data. Ask an institute admin to check the Display Settings for your role.'
+                        : 'Something went wrong fetching the list. Please retry in a moment.'}
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">
@@ -307,18 +344,22 @@ export function SubOrgList() {
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <MyButton
-                        buttonType="secondary"
-                        onClick={handleExport}
-                        disable={filteredSubOrgs.length === 0}
-                    >
-                        <DownloadSimple className="mr-2 size-4" />
-                        Export CSV
-                    </MyButton>
-                    <MyButton onClick={() => setIsCreateModalOpen(true)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
-                    </MyButton>
+                    {canExport && (
+                        <MyButton
+                            buttonType="secondary"
+                            onClick={handleExport}
+                            disable={filteredSubOrgs.length === 0}
+                        >
+                            <DownloadSimple className="mr-2 size-4" />
+                            Export CSV
+                        </MyButton>
+                    )}
+                    {canCreate && (
+                        <MyButton onClick={() => setIsCreateModalOpen(true)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
+                        </MyButton>
+                    )}
                 </div>
             </div>
 
@@ -341,6 +382,7 @@ export function SubOrgList() {
                             <TableHead>State</TableHead>
                             <TableHead>Pincode</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead>Learners</TableHead>
                             <TableHead>Seats</TableHead>
                             <TableHead>{getTerminology(OtherTerms.Invite, SystemTerms.Invite)}</TableHead>
                         </TableRow>
@@ -348,7 +390,7 @@ export function SubOrgList() {
                     <TableBody>
                         {!subOrgs || subOrgs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} className="h-24 text-center">
+                                <TableCell colSpan={10} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
                                         <Buildings className="h-8 w-8 opacity-50" />
                                         <p>
@@ -411,6 +453,11 @@ export function SubOrgList() {
                                             )}
                                         </TableCell>
                                         <TableCell>
+                                            <span className="text-sm">
+                                                {org.learner_count ?? org.used_seats ?? 0}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
                                             {org.used_seats == null && org.total_seats == null ? (
                                                 <span className="text-sm text-muted-foreground">
                                                     -
@@ -456,7 +503,9 @@ export function SubOrgList() {
                 <MyPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             )}
 
-            <CreateSubOrgModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
+            {canCreate && (
+                <CreateSubOrgModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
+            )}
         </div>
     );
 }

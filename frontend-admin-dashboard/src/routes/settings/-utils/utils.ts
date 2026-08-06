@@ -24,6 +24,7 @@ import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
+import MentorshipSettings from '../-components/MentorshipSettings';
 import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
 import { AutomationSettings } from '../-components/Automations';
 import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
@@ -39,6 +40,7 @@ import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSet
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 import LearnerActivitySettings from '../-components/LearnerActivitySettings';
+import LearnerCredentialSettings from '../-components/LearnerCredentialSettings';
 
 /** Top-level settings navigation categories — order here is display order. */
 export type SettingsDomain =
@@ -236,6 +238,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             domain: 'LMS',
             group: 'Learner Experience',
         },
+        {
+            tab: SettingsTabs.LearnerCredentials,
+            value: 'Learner Credentials',
+            component: LearnerCredentialSettings,
+            domain: 'LMS',
+            group: 'Learner Experience',
+        },
         // ── CRM — Leads & Contacts ───────────────────────────────────────────
         {
             tab: SettingsTabs.LeadSettings,
@@ -350,6 +359,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.Notification,
             value: 'Notification Settings',
             component: NotificationSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        {
+            tab: SettingsTabs.Mentorship,
+            value: 'Mentorship Settings',
+            component: MentorshipSettings,
             domain: 'Communications',
             group: 'Messaging & Automation',
         },

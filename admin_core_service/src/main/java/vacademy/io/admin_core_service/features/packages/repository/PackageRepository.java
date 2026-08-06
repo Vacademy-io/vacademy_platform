@@ -539,19 +539,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) ps_read_time ON ps.id = ps_read_time.package_session_id
 
             WHERE
-                (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                 AND (
-                    :name IS NULL OR
-                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    CAST(:name AS text) IS NULL OR
+                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                     EXISTS (
                         SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                     ) OR
-                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                 )
             GROUP BY
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -577,26 +577,26 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
                                 FROM learner_operation
                                 WHERE source = 'PACKAGE_SESSION'
-                                  AND (:userId IS NULL OR user_id = :userId)
+                                  AND (CAST(:userId AS text) IS NULL OR user_id = :userId)
                                   AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
                                 GROUP BY source_id
                             ) lo ON lo.source_id = ps.id
                             LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
-                                (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                                (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                                 AND (
-                                    :name IS NULL OR
-                                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                                    CAST(:name AS text) IS NULL OR
+                                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                                     EXISTS (
                                         SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                                     ) OR
-                                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                                 )
                             GROUP BY ps.id, lo.total_progress, p.course_setting
                             HAVING COALESCE(lo.total_progress, 0) >= COALESCE(CAST((CAST(NULLIF(p.course_setting, '') AS jsonb) -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage') AS numeric), 80)
@@ -2190,20 +2190,20 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) ps_read_time ON ps.id = ps_read_time.package_session_id
 
             WHERE
-              (:instituteId IS NULL OR pi.institute_id = :instituteId)
+              (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
               AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
               AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
               AND (
-                  :name IS NULL OR
-                  LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                  LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                  CAST(:name AS text) IS NULL OR
+                  LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                  LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                   EXISTS (
                       SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                      WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                      WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                   ) OR
                   /* Note: Ensure fspm has a 'name' column or join to user table if needed */
-                  LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                  LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
               )
 
             GROUP BY
@@ -2228,19 +2228,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                       ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                       AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                     WHERE
-                      (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                      (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
                       AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                       AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                       AND (
-                          :name IS NULL OR
-                          LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                          LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                          CAST(:name AS text) IS NULL OR
+                          LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                          LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                           EXISTS (
                               SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                              WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                              WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                           ) OR
-                          LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                          LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                       )
                     """, nativeQuery = true)
     Page<PackageDetailProjection> getStudentAssignedPackages(
@@ -2567,19 +2567,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
             WHERE
                 p.is_course_published_to_catalaouge = true
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                AND (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                 AND (
-                    :name IS NULL OR
-                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    CAST(:name AS text) IS NULL OR
+                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                     EXISTS (
                         SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                     ) OR
-                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                 )
 
             GROUP BY
@@ -2601,19 +2601,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
                                 p.is_course_published_to_catalaouge = true
-                                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                                AND (CAST(:instituteId AS text) IS NULL OR pi.institute_id = :instituteId)
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                                 AND (
-                                    :name IS NULL OR
-                                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                                    CAST(:name AS text) IS NULL OR
+                                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
+                                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')) OR
                                     EXISTS (
                                         SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                                     ) OR
-                                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%'))
                                 )
                         """, nativeQuery = true)
     Page<PackageDetailProjection> getAllPackagesIrrespectiveOfLearnerOperation(

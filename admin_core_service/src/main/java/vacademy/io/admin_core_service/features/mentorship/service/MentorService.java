@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.booking.repository.BookingInstanc
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
 import vacademy.io.admin_core_service.features.booking.service.BookingPageService;
 import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
@@ -18,10 +19,16 @@ import vacademy.io.admin_core_service.features.mentorship.entity.MentorStudentAs
 import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorStudentAssignmentRepository;
+import vacademy.io.admin_core_service.features.audience.entity.OAuthConnectState;
+import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.dto.google.GoogleAccount;
+import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleAccountStore;
+import vacademy.io.admin_core_service.features.live_session.provider.service.google.GoogleOAuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +51,9 @@ public class MentorService {
     private final BookingPageRepository bookingPageRepository;
     private final BookingInstanceRepository bookingInstanceRepository;
     private final BookingPageService bookingPageService;
+    private final GoogleOAuthService googleOAuthService;
+    private final OAuthConnectStateRepository oAuthConnectStateRepository;
+    private final GoogleAccountStore googleAccountStore;
     private final AuthService authService;
 
     @Transactional
@@ -167,6 +177,80 @@ public class MentorService {
         return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
     }
 
+    /** Mentor self-connects their OWN Google account — returns the consent URL (state carries the mentor id). */
+    public Map<String, String> initiateGoogleConnect(String instituteId, CustomUserDetails user) {
+        Mentor mentor = mentorRepository
+                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
+                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+        OAuthConnectState state = oAuthConnectStateRepository.save(OAuthConnectState.builder()
+                .instituteId(instituteId)
+                .vendor("GOOGLE_OAUTH")
+                .initiatedBy(user.getUserId())
+                .mentorId(mentor.getId())
+                .expiresAt(LocalDateTime.now().plusMinutes(10))
+                .build());
+        return Map.of(
+                "oauth_url", googleOAuthService.buildAuthorizeUrl(state.getId()),
+                "session_key", state.getId());
+    }
+
+    /** The caller's own mentor profile (for the "Connect Google" card in My Mentorship). */
+    public MentorDTO getMyMentorProfile(String instituteId, CustomUserDetails user) {
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
+        int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
+    /**
+     * The caller's own booking page (availability, duration, buffers). Auto-provisions
+     * a default Mon–Fri 9–5 page the first time a mentor opens their availability, so
+     * the editor always has something to edit.
+     */
+    public BookingPageDTO getMyBookingPage(String instituteId, CustomUserDetails user) {
+        Mentor mentor = ensureMyBookingPage(instituteId, user);
+        return bookingPageService.getById(mentor.getBookingPageId(), instituteId);
+    }
+
+    /**
+     * Update ONLY the caller's own booking-page scheduling fields. The request DTO
+     * deliberately excludes host/slug/institute, so a mentor can only change their own
+     * availability — never repoint the page at another host.
+     */
+    public BookingPageDTO updateMyBookingPage(String instituteId, CustomUserDetails user,
+                                              MentorAvailabilityRequest req) {
+        Mentor mentor = ensureMyBookingPage(instituteId, user);
+        BookingPageDTO dto = new BookingPageDTO();
+        dto.setAvailability(req.getAvailability());
+        dto.setDurationMinutes(req.getDurationMinutes());
+        dto.setMinNoticeMinutes(req.getMinNoticeMinutes());
+        dto.setBufferBeforeMinutes(req.getBufferBeforeMinutes());
+        dto.setBufferAfterMinutes(req.getBufferAfterMinutes());
+        dto.setBookingHorizonDays(req.getBookingHorizonDays());
+        dto.setSlotGranularityMinutes(req.getSlotGranularityMinutes());
+        dto.setTimezone(req.getTimezone());
+        dto.setSessionTypes(req.getSessionTypes());
+        dto.setLocationType(req.getLocationType());
+        dto.setCustomMeetingLink(req.getCustomMeetingLink());
+        dto.setAllocateGoogleMeet(req.getAllocateGoogleMeet());
+        return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
+    }
+
+    private Mentor getMyMentorOrThrow(String instituteId, CustomUserDetails user) {
+        return mentorRepository
+                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
+                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+    }
+
+    /** Resolve the caller's mentor row, provisioning a booking page if they don't have one yet. */
+    private Mentor ensureMyBookingPage(String instituteId, CustomUserDetails user) {
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
+        if (slugFor(mentor.getBookingPageId()) == null) {
+            provisionBookingPage(mentor.getId(), instituteId, user);
+            mentor = getMyMentorOrThrow(instituteId, user);
+        }
+        return mentor;
+    }
+
     public MentorDashboardDTO dashboard(String instituteId) {
         List<MentorDTO> mentors = list(instituteId);
         List<MentorStudentAssignment> active =
@@ -220,6 +304,16 @@ public class MentorService {
         return counts;
     }
 
+    /** The connected Google account's email for display; null when unset/unknown. */
+    private String googleEmailFor(String accountId) {
+        if (accountId == null || accountId.isBlank()) return null;
+        try {
+            return googleAccountStore.findById(accountId).map(GoogleAccount::getOrganizerEmail).orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Resolve a mentor's booking-page slug (for the learner Book flow); null when unset/deleted. */
     String slugFor(String bookingPageId) {
         if (bookingPageId == null || bookingPageId.isBlank()) return null;
@@ -256,6 +350,9 @@ public class MentorService {
                 .bio(m.getBio())
                 .bookingPageId(m.getBookingPageId())
                 .bookingPageSlug(slugFor(m.getBookingPageId()))
+                .googleAccountId(m.getGoogleAccountId())
+                .googleConnected(m.getGoogleAccountId() != null && !m.getGoogleAccountId().isBlank())
+                .googleEmail(googleEmailFor(m.getGoogleAccountId()))
                 .status(m.getStatus())
                 .assignedStudentCount(assignedCount)
                 .name(u != null ? u.getFullName() : null)

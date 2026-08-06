@@ -1,12 +1,13 @@
-# 0.0.95 verified against every module path this service imports (review 2026-07-01):
-# services.sarvam.stt.SarvamSTTService (first shipped in 0.0.93), aggregators
-# llm_context + llm_response_universal, transports.network.fastapi_websocket,
-# runner.utils.parse_telephony_websocket, serializers.plivo. Bumping the pin
-# requires re-verifying those paths — they have moved between pipecat versions
-# (0.0.79 lacks Sarvam STT entirely; 1.x moved the transports package).
-# The `sarvam` extra is REQUIRED: pipecat's sarvam/stt.py imports the `sarvamai`
-# SDK at module load and the service dies at boot without it (verified in prod logs).
-pipecat-ai[silero,websocket,sarvam,google]==0.0.95
+# pipecat 1.4.0 — the founder POC's proven pin (sales-poc-ai). Verified against
+# every module path this service imports (migration audit 2026-08-05, see memory
+# pipecat14-migration): services.sarvam.stt/tts (native mode/language/reconnect),
+# services.google.stt + services.google.vertex.llm, aggregators llm_context +
+# llm_response_universal (owns VAD + UserTurnStrategies + Smart Turn + idle),
+# transports.websocket.fastapi (transports.network is GONE), serializers.plivo,
+# runner.utils.parse_telephony_websocket, audio.turn.smart_turn.local_smart_turn_v3
+# (no extra needed; model baked into the image — see Dockerfile).
+# `local` extra deliberately absent: it drags pyaudio/portaudio (desktop only).
+pipecat-ai[silero,websocket,sarvam,google,openai]==1.4.0
 aiohttp>=3.9
 fastapi>=0.115
 uvicorn[standard]>=0.30

@@ -25,7 +25,8 @@ import logging
 import random
 import re
 import time
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -33,14 +34,19 @@ from typing import Any, Dict, List, Optional
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    EndFrame,
     Frame,
+    InterimTranscriptionFrame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
+    TTSAudioRawFrame,
     TTSSpeakFrame,
+    TTSStartedFrame,
+    TTSStoppedFrame,
     TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
@@ -49,19 +55,35 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.audio.interruptions.min_words_interruption_strategy import (
-    MinWordsInterruptionStrategy,
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
+    TurnAnalyzerUserTurnStopStrategy,
+)
+from pipecat.turns.user_turn_strategies import (
+    TranscriptionUserTurnStartStrategy,
+    UserTurnStrategies,
+    VADUserTurnStartStrategy,
 )
 
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
-                        apply_decision, NONE, CANCEL_STARVED, REISSUE_STOP,
-                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
+                        apply_decision, stall_recovery_still_needed, unplayed_confirmed,
+                        NONE, CANCEL_STARVED, REISSUE_STOP,
+                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
+                        HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
+from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
+from .turntake import (mid_reply_action, is_carrier_announcement,
+                       is_audio_check, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +112,10 @@ class CallOutcome:
     # Set by main.py when run_bot raises: the report must say "failed", not
     # "no-answer" — a crash is our fault and must never read as the lead's.
     crashed: bool = False
+    crash_detail: Optional[str] = None
+    # Per-call technical diagnostics (app/diagnostics.CallDiagnostics). Owned by
+    # run_bot; None when the pipeline died before setup.
+    diagnostics: Any = None
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -104,13 +130,50 @@ class TranscriptCollector(FrameProcessor):
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
-                 fillers_armed=None, bot_stopped_t=None):
+                 fillers_armed=None, bot_stopped_t=None, duck=None,
+                 on_absorb=None, backchannel_extra=frozenset(),
+                 gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
+                 diag=None, in_machine_window=None, reply_in_flight=None,
+                 bot_spoke_once=None):
         super().__init__()
         self._outcome = outcome
+        self._diag = diag
+        # True only while an operator/voicemail recording is still plausible.
+        # This was a LATCH ("have we heard a real caller yet?") and the latch is
+        # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
+        # complete final "Add the tone.", that one miss flipped the latch, and
+        # the two unmistakable announcements that followed ("Please record your
+        # message.", "When you have finished recording you may hang up.") were
+        # then treated as the caller and cut our opening three times. A clock
+        # cannot be flipped by a single bad transcript.
+        self._in_machine_window = in_machine_window or (lambda: False)
+        self._reply_in_flight = reply_in_flight or (lambda: False)
+        self._bot_spoke_once = bot_spoke_once or (lambda: True)
+        # Have we already identified this line as a machine greeting?
+        self._carrier_seen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
-        self._on_transcript = on_transcript or (lambda: None)
+        self._on_transcript = on_transcript or (lambda backchannel=False: None)
+        # Turn-gate (see DuckGate): for ANY final that lands mid-reply, THIS
+        # processor is the decision point — it sits before aggregators.user(),
+        # so an absorbed backchannel never reaches the aggregator that would
+        # delete it or run the LLM on it. Deliberately NOT gated on a duck
+        # having happened: on live call 8e1e00ad Silero's volume gate missed the
+        # caller entirely (no VAD onset → no duck), STT still transcribed them,
+        # and pipecat's emulated path deleted the words while the bot talked on.
+        # The words themselves are the trigger of last resort.
+        self._duck = duck
+        self._gate_enabled = gate_enabled or (lambda: duck is not None)
+        self._interrupt_on_vad = interrupt_on_vad or (lambda: False)
+        # True while a reply cancelled moments ago could still be picked up.
+        self._recently_cut = recently_cut or (lambda: False)
+
+        async def _noop_absorb(text):
+            return None
+
+        self._on_absorb = on_absorb or _noop_absorb
+        self._backchannel_extra = frozenset(backchannel_extra)
         # Fillers only AFTER the bot has completed its first real utterance: during
         # the setup dead-air callers say "hello? hello?" and a filler was the FIRST
         # thing they ever heard ("starts with Hmm" — live complaint).
@@ -124,6 +187,8 @@ class TranscriptCollector(FrameProcessor):
         # spoken twice back-to-back on a live call.
         self._last_text = ""
         self._last_text_t = 0.0
+        # Consecutive bare "hello?"s from the caller (reset by anything else).
+        self._audio_checks = 0
         s = get_settings()
         self._filler_phrases = list(filler_phrases if filler_phrases is not None
                                     else s.filler_phrases)
@@ -141,12 +206,61 @@ class TranscriptCollector(FrameProcessor):
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
-        if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
+        # FINAL transcriptions only. pipecat 1.4's Google STT emits
+        # InterimTranscriptionFrame (a TranscriptionFrame subclass) continuously —
+        # treating interims as turns would spam the transcript, the dedupe window
+        # and the turn-gate. Interims exist for the turn-stop strategy, not us.
+        if (isinstance(frame, TranscriptionFrame)
+                and not isinstance(frame, InterimTranscriptionFrame)
+                and frame.text and frame.text.strip()):
             text = frame.text.strip()
             now = time.time()
+            # The OPERATOR's recorded message is not the callee. Record it (the
+            # answering-machine detector reads these markers) then stop: it must
+            # not stamp transcript_t (which would make _greet_when_ready skip our
+            # opening), must not interrupt, and above all must not reach the LLM.
+            # On call 77cb4b47 it did all three — "Your call has been forwarded to
+            # voicemail." became the first user message and conditioned EVERY
+            # generation for the next 2.5 minutes.
+            #
+            # Only before the callee has actually said something: after that, a
+            # match is far more likely to be the caller quoting us than the network.
+            if self._in_machine_window() and is_carrier_announcement(text):
+                self._outcome.transcript.append({"role": "user", "text": text})
+                if self._diag is not None:
+                    self._diag.bump("carrier_announcements")
+                logger.info("turn-gate: carrier announcement %r — not the callee, "
+                            "dropping from context", text[:48])
+                self._carrier_seen = True
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
+            # Once we KNOW the line is playing a recording, the scraps between
+            # its recognisable sentences are that same recording. Call 38536b71
+            # died on a single one: 'तो।' — one word, no phrase match, so it
+            # counted as the callee and _greet_when_ready skipped our opening
+            # again (greetPath "callee_spoke_first"), even though the four real
+            # announcements around it were all filtered correctly.
+            #
+            # Deliberately narrow: only BEFORE we have spoken (after that the
+            # caller is answering us and every word matters), only 1-2 word
+            # scraps, and never an audio-check — "hello" in this window is the
+            # human picking up mid-greeting, which is the one thing here we
+            # must not swallow.
+            if (self._carrier_seen and self._in_machine_window()
+                    and not self._bot_spoke_once()
+                    and len(text.split()) <= 2 and not is_audio_check(text)):
+                self._outcome.transcript.append({"role": "user", "text": text})
+                if self._diag is not None:
+                    self._diag.bump("carrier_announcements")
+                logger.info("turn-gate: machine-greeting scrap %r — dropping", text[:32])
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
+            ducked = self._duck is not None and self._duck.is_ducked()
             if (text.casefold() == self._last_text and now - self._last_text_t < 4.0
                     and self._bot_stopped_t() < self._last_text_t):
                 logger.info("transcript dedupe: dropping repeat %r", text[:30])
@@ -155,16 +269,121 @@ class TranscriptCollector(FrameProcessor):
                 # can't treat a heard-and-dropped repeat as a swallowed utterance
                 # and apologise "I couldn't hear you" (deep-review A1).
                 self._on_transcript()
+                if ducked:
+                    # A dropped repeat must still release the held reply, or the
+                    # duck sits until the watchdog timeout for no reason.
+                    await self._on_absorb(None)
                 return
             self._last_text = text.casefold()
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._on_activity(user=True)
-            self._on_transcript()
+            # Mid-reply = a reply is audibly playing, OR held by a duck. NOT
+            # "ducked" by itself: ducked with nothing held and the bot quiet
+            # means the reply ENDED during the hold — a backchannel then is an
+            # answer to its closing question, not an interruption. When the VAD
+            # missed the onset (no duck — the 8e1e00ad failure mode) the bot is
+            # still speaking, so is_bot_speaking() carries the trigger.
+            # "Mid-reply" now includes JUST-CUT, because interrupting at VAD
+            # onset means the bot is already silent by the time the words arrive
+            # (~1.5s later, STT). Without this the absorb path could never fire
+            # and every "haan" ended the bot's turn — measured on the probe: the
+            # model answered the acknowledgment from a standing start instead of
+            # finishing its sentence.
+            mid_reply = self._gate_enabled() and (
+                self._is_bot_speaking()
+                or (self._duck is not None and self._duck.has_pending_audio())
+                or self._recently_cut()
+                # ...or the reply exists but has not reached the line yet.
+                or self._reply_in_flight())
+            if mid_reply:
+                if text.startswith("["):
+                    # Synthetic noise cue mid-reply: nothing to answer, nothing
+                    # worth interrupting — release any hold and move on.
+                    self._on_transcript(backchannel=True)
+                    await self._on_absorb(None)
+                    return
+                if mid_reply_action(
+                        text, extra_backchannels=self._backchannel_extra) == ABSORB:
+                    # "Absorb but never lose" (founder decision 2026-08-05): the
+                    # reply continues (resumes if held) AND the ack still reaches
+                    # the LLM context — run_llm omitted, so no generation. The
+                    # aggregator never sees this turn, so pipecat's min-words and
+                    # emulated-VAD paths cannot delete it (ANSWER_DELETED).
+                    self._on_transcript(backchannel=True)
+                    logger.info("turn-gate: absorbed backchannel %r "
+                                "(ducked=%s, cut=%s)", text[:30], ducked,
+                                self._interrupt_on_vad())
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": text}]), direction)
+                    await self._on_absorb(text)
+                    if self._interrupt_on_vad():
+                        # The VAD onset already cancelled the reply, and a
+                        # cancelled reply cannot be un-cancelled — so ask for the
+                        # rest of it instead of leaving the caller in silence
+                        # after their "haan". run_llm=True: this is the ONLY
+                        # place that regenerates, and it fires solely for
+                        # acknowledgments, so it cannot loop on real answers.
+                        #
+                        # Duck-only (resume the held audio instead of
+                        # regenerating) would be the cleaner answer here and is
+                        # NOT available: measured on the deployed image
+                        # 2026-08-06, INTERRUPT_ON_VAD=false gives 1.92s of
+                        # talk-over against 0.52s with it on — the founder's
+                        # original "the bot takes ages to stop". So: cancel
+                        # fast, then be careful about what we say next.
+                        if is_audio_check(text):
+                            self._audio_checks += 1
+                        else:
+                            self._audio_checks = 0
+                        if self._audio_checks >= 2:
+                            # Twice in a row means the line is genuinely bad.
+                            # Re-delivering the sentence a third time is what
+                            # made call 77cb4b47 unlistenable: cut -> "hello?"
+                            # -> cut -> "hello?", four times in eleven seconds.
+                            # Say one short thing and then STOP talking.
+                            cue = ("[They have said hello twice now — they are "
+                                   "not hearing you properly. Say ONE short "
+                                   "sentence asking whether they can hear you, "
+                                   "then stop. Do NOT repeat your question, do "
+                                   "NOT restart your pitch, do NOT re-greet.]")
+                        else:
+                            cue = ("[They just acknowledged you — carry on "
+                                   "from where you were interrupted, in one "
+                                   "short sentence. Do not restart or "
+                                   "re-greet.]")
+                        await self.push_frame(LLMMessagesAppendFrame(
+                            messages=[{"role": "user", "content": cue}],
+                            run_llm=True), direction)
+                    return
+                self._on_transcript()
+                # Real barge-in. If ducked, the line is already silent and this
+                # makes it formal; if the VAD missed the onset the bot is STILL
+                # TALKING and this is what finally stops it — late beats never.
+                # broadcast_interruption (the 1.4 API) pushes InterruptionFrame
+                # both directions from HERE: downstream it cancels the in-flight
+                # generation, drops any held tail in DuckGate and clears Plivo's
+                # buffer; the aggregator closes the assistant turn as interrupted
+                # so its played text is committed (prevents the verbatim
+                # re-opening seen on 8e1e00ad). The transcript is then forwarded
+                # below as a fresh, normal turn.
+                self._audio_checks = 0
+                logger.info("turn-gate: real barge-in %r — interrupting reply "
+                            "(ducked=%s)", text[:40], ducked)
+                await self.broadcast_interruption()
+            elif ducked:
+                # The reply finished while we were ducked (nothing held, bot
+                # quiet): this is just a normal turn — release the duck flag
+                # and let the aggregator answer it.
+                self._on_transcript()
+                await self._on_absorb(None)
+            else:
+                self._on_transcript()
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
             if (self._filler_phrases and not self._is_bot_speaking()
+                    and not (self._duck is not None and self._duck.is_ducked())
                     and self._fillers_armed()
                     and not text.startswith("[")     # synthetic cue, not real speech
                     and random.random() < self._filler_probability):
@@ -199,6 +418,112 @@ class PlayedTranscriptRecorder(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class DuckGate(FrameProcessor):
+    """Between TTS and transport.output(): instant-stop barge-in ("ducking").
+
+    THE PROBLEM (founder, 2026-08-05: "when the human talks the bot takes ages
+    to stop"): with interruption_strategies set, pipecat 0.0.95 defers ALL
+    interruption handling to the user aggregator, which only decides after the
+    caller's turn fully ENDS — utterance + VAD stop + STT final + aggregation
+    wait ≈ 2.5-4s of the bot talking over the caller. And a turn under the word
+    minimum is silently discarded (ANSWER_DELETED on 67% of calls).
+
+    THE FIX: the moment the caller audibly starts speaking over a reply
+    (UserStartedSpeakingFrame is a SystemFrame — it jumps every queue), this
+    gate HOLDS the reply's frames instead of forwarding them to the transport.
+    The transport paces audio in real time (write_audio_frame emulates an audio
+    device), so holding here silences the line within one Plivo jitter buffer
+    (~200-300ms). Then TranscriptCollector decides on the caller's words:
+    backchannel → resume() (the reply continues mid-sentence, nothing lost);
+    real speech → a formal InterruptionFrame arrives here and drops the held
+    tail (the caller already heard silence, not talk-over). A voiced sound with
+    no words at all (cough) is resumed by the watchdog's DUCK_RESUME.
+
+    Holds LLMFullResponseStart/End and TTSStarted/Stopped ALONGSIDE audio and
+    text deliberately: the assistant aggregator downstream brackets its context
+    commit on those frames, and letting an End overtake its held text would
+    commit an empty assistant turn (the A2 repeat class all over again).
+    """
+
+    _HOLDABLE = (TTSAudioRawFrame, TTSTextFrame, TTSStartedFrame, TTSStoppedFrame,
+                 LLMFullResponseStartFrame, LLMFullResponseEndFrame)
+
+    def __init__(self, enabled, is_bot_speaking, on_duck, on_unduck, diag,
+                 on_interrupt=None):
+        super().__init__()
+        self._enabled = enabled
+        self._is_bot_speaking = is_bot_speaking
+        self._on_duck = on_duck
+        self._on_unduck = on_unduck
+        self._on_interrupt = on_interrupt or (lambda: None)
+        self._diag = diag
+        self._held: deque = deque()
+        self._ducked = False
+        # Bumped on every duck/interrupt so a resume() that lost the race to a
+        # NEW duck (system frames run out-of-band) stops flushing and stays held.
+        self._gen = 0
+
+    def is_ducked(self) -> bool:
+        return self._ducked
+
+    def has_pending_audio(self) -> bool:
+        return bool(self._held)
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            # Stamp WHEN the reply died, so a backchannel whose words land after
+            # the cut can still be answered with "carry on" instead of the model
+            # replying to a bare "haan" from a standing start.
+            self._on_interrupt()
+            # The reply is formally dead — the held tail must never play.
+            if self._held or self._ducked:
+                logger.info("duck: interruption — dropping %d held frame(s)",
+                            len(self._held))
+            self._held.clear()
+            self._gen += 1
+            if self._ducked:
+                self._ducked = False
+                self._on_unduck()
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, UserStartedSpeakingFrame):
+            if (self._enabled() and not self._ducked
+                    and (self._is_bot_speaking() or self._held)):
+                self._ducked = True
+                self._gen += 1
+                self._diag.bump("ducks")
+                self._on_duck()
+                logger.info("duck: caller speaking over reply — holding bot audio")
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, EndFrame) and (self._ducked or self._held):
+            # A graceful stop is draining the pipeline; a held farewell must
+            # play BEFORE the line closes, not be leapfrogged by the EndFrame.
+            await self.resume("end_frame")
+            await self.push_frame(frame, direction)
+            return
+        if (self._ducked and direction == FrameDirection.DOWNSTREAM
+                and isinstance(frame, self._HOLDABLE)):
+            self._held.append(frame)
+            return
+        await self.push_frame(frame, direction)
+
+    async def resume(self, reason: str = ""):
+        """Release the held reply, in order. Safe to call when not ducked."""
+        if not self._ducked and not self._held:
+            return
+        gen = self._gen
+        n = 0
+        while self._held and self._gen == gen:
+            await self.push_frame(self._held.popleft(), FrameDirection.DOWNSTREAM)
+            n += 1
+        if self._gen == gen and self._ducked:
+            self._ducked = False
+            self._on_unduck()
+        logger.info("duck: resumed (%s) — released %d held frame(s)", reason, n)
+
+
 class TtfbObserver:
     """Corr-tagged per-turn latency telemetry. pipecat already computes per-service
     TTFB (enable_metrics=True) but only logs it uncorrelated at DEBUG inside the
@@ -206,7 +531,7 @@ class TtfbObserver:
     line per service per turn tagged with the call corr, so 'replies were slow on
     that call' is answerable from docker logs:  grep 'ttfb corr=<id>'."""
 
-    def __init__(self, corr: str):
+    def __init__(self, corr: str, diag=None):
         from pipecat.observers.base_observer import BaseObserver
 
         outer = self
@@ -230,11 +555,31 @@ class TtfbObserver:
                             if isinstance(d, TTFBMetricsData) and d.value:
                                 logger.info("ttfb corr=%s service=%s value=%.3f",
                                             outer._corr, d.processor, d.value)
+                                # Same numbers, now CARRIED (not just logged) so
+                                # "replies were slow on that call" is answerable
+                                # from the UI instead of docker logs.
+                                proc = (d.processor or "").lower()
+                                if outer._diag is not None:
+                                    # ORDER MATTERS: "ResilientSarvamSTTService"
+                                    # lowercases to "...sarvamsttservice", which
+                                    # CONTAINS the substring "tts" (s-TTS-ervice).
+                                    # Testing "tts" first filed every STT latency
+                                    # into the TTS bucket and produced a false
+                                    # SLOW_TTS on a live call. "ttsservice" never
+                                    # contains "stt", so checking stt first is
+                                    # unambiguous both ways.
+                                    if "stt" in proc:
+                                        outer._diag.sample("stt_ttfb", d.value)
+                                    elif "tts" in proc:
+                                        outer._diag.sample("tts_ttfb", d.value)
+                                    elif "llm" in proc or "vertex" in proc or "google" in proc:
+                                        outer._diag.sample("llm_ttfb", d.value)
                 except Exception:
                     pass
 
         self._corr = corr
         self._seen: list = []
+        self._diag = diag
         self.observer = _Obs()
 
 
@@ -245,6 +590,7 @@ class SentinelGate(FrameProcessor):
     pipeline after the final utterance finished playing."""
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
+                 on_reply_start=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
                  transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
@@ -254,6 +600,7 @@ class SentinelGate(FrameProcessor):
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
+        self._on_reply_start = on_reply_start or (lambda: None)
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -275,6 +622,18 @@ class SentinelGate(FrameProcessor):
         # dropped from the model's context (verbatim repeats / re-asking, deep-
         # review A2, verified against the wheel). Swallow exactly that one End.
         self._swallow_next_end = False
+        # Injected by run_bot: disarms the audio-stall stamp when a reply dies
+        # before playout (see the InterruptionFrame branch).
+        self._on_interrupted_cb = None
+        # Per-response end latch; promoted to outcome.end_requested only when the
+        # response ENDS, so a marker seen mid-stream cannot make a later,
+        # unrelated response close the call.
+        self._end_this_response = False
+        # True once the line is genuinely closing. After this an end intent can no
+        # longer be revoked.
+        self._stop_armed = False
+        self._defer_stop_cb = None
+        self._clear_end_pending_cb = None
 
     def set_task(self, task: PipelineTask):
         self._task = task
@@ -282,22 +641,74 @@ class SentinelGate(FrameProcessor):
     def set_arm_stop(self, arm_stop):
         self._arm_stop = arm_stop
 
+    def set_on_interrupted(self, cb):
+        self._on_interrupted_cb = cb
+
+    def set_end_hooks(self, defer_stop, clear_end_pending):
+        """Wire the revocable close: defer_stop starts the grace, and
+        clear_end_pending cancels it when the caller re-engages."""
+        self._defer_stop_cb = defer_stop
+        self._clear_end_pending_cb = clear_end_pending
+
+    def _defer_stop(self) -> None:
+        if self._defer_stop_cb is not None:
+            try:
+                self._defer_stop_cb()
+            except Exception:
+                logger.exception("sentinel: defer-stop hook failed")
+        elif self._task is not None:
+            # No hook wired (older caller): fall back to the old immediate close
+            # rather than never closing at all.
+            self._stop_armed = True
+
+    def _clear_end_pending(self) -> None:
+        if self._clear_end_pending_cb is not None:
+            try:
+                self._clear_end_pending_cb()
+            except Exception:
+                pass
+
+    def _on_interrupted(self) -> None:
+        if self._on_interrupted_cb is not None:
+            try:
+                self._on_interrupted_cb()
+            except Exception:
+                logger.exception("sentinel: on_interrupted callback failed")
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, InterruptionFrame):
-            if self._response_active:
-                # The LLM task is being cancelled mid-stream; its finally will
-                # still emit one orphan End — mark it for swallowing (A2).
-                self._swallow_next_end = True
+            # pipecat 1.4: the assistant aggregator closes the turn itself on
+            # interruption (interrupted=True) — the 0.0.95 `_started` underflow
+            # this swallow shielded (deep-review A2) does not exist here, and
+            # eating a legitimate End would now corrupt turn accounting. The
+            # flag machinery stays for the response-local bookkeeping below.
             # Stale hold-back/utterance from the aborted response must not bleed
             # into the next one (deep-review B6).
             self._buffer = ""
             self._response_active = False
+            # Disarm the audio-stall stamp. It is otherwise cleared ONLY on a
+            # bot-speaking transition (set_bot_speaking), so a reply killed
+            # BEFORE playout — no BotStarted, no BotStopped — leaves it armed and
+            # the watchdog "recovers" by re-speaking a reply the caller
+            # deliberately interrupted. 6-13% of generations die pre-playout.
+            self._on_interrupted()
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            self._on_reply_start()
+            # A bot generating a fresh reply is NOT closing. Live call ee8e2168:
+            # the bot said goodbye, the caller re-engaged with "Yes, I can", the
+            # bot asked "May I know a convenient date and time?" — and the stale
+            # call-scoped end latch dropped the line before they could answer,
+            # losing the booking. Revoke while the line is still open.
+            if self._outcome.end_requested and not self._stop_armed:
+                self._outcome.end_requested = False
+                self._clear_end_pending()
+                logger.info("sentinel: end intent superseded by a new response corr=%s",
+                            self._outcome.corr)
             # A NEW response begins — any expected orphan End never arrived (or
             # was consumed upstream); swallowing this response's End instead
             # would corrupt the aggregator bracket the OTHER way.
@@ -313,7 +724,10 @@ class SentinelGate(FrameProcessor):
                 self._outcome.transfer_requested = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
             if END_MARKER in self._buffer:
-                self._outcome.end_requested = True
+                # PER-RESPONSE latch. Promoted to outcome.end_requested only when
+                # this response ENDS — a marker seen mid-stream must not make a
+                # later, unrelated response close the call.
+                self._end_this_response = True
                 self._buffer = self._buffer.replace(END_MARKER, "")
             emit, self._buffer = self._split_safe(self._buffer)
             if emit:
@@ -334,8 +748,11 @@ class SentinelGate(FrameProcessor):
                     # ending instead hung up on exactly the callers who asked for one.
                     self._outcome.transfer_requested = True
                 elif self._buffer.startswith("<<"):
-                    self._outcome.end_requested = True
+                    self._end_this_response = True
                 self._buffer = ""
+            if self._end_this_response:
+                self._outcome.end_requested = True
+                self._end_this_response = False
             self._response_active = False
             self._flush_utterance()
             if self._swallow_next_end:
@@ -395,14 +812,23 @@ class SentinelGate(FrameProcessor):
                     self._flush_utterance()
                     await self.push_frame(TTSSpeakFrame(self._transfer_fail_closing), direction)
                     return
-            if (self._outcome.end_requested or self._outcome.transfer_requested) and self._task:
-                logger.info("sentinel: stopping call corr=%s (transfer=%s end=%s)",
-                            self._outcome.corr, self._outcome.transfer_requested,
-                            self._outcome.end_requested)
+            if self._outcome.transfer_requested and self._task:
+                # Transfer closes immediately — the caller is waiting to be put
+                # through, and a grace period here is dead air.
+                logger.info("sentinel: stopping call corr=%s (transfer=True)",
+                            self._outcome.corr)
+                self._stop_armed = True
                 if self._arm_stop is not None:
                     await self._arm_stop()
                 else:
                     await self._task.stop_when_done()
+            elif self._outcome.end_requested and self._task and not self._stop_armed:
+                # The farewell has finished playing. Hold the line open briefly:
+                # the watchdog closes it after end_grace_secs, and ANY real word
+                # from the caller cancels the close instead (on_transcript).
+                logger.info("sentinel: farewell played — closing after grace corr=%s",
+                            self._outcome.corr)
+                self._defer_stop()
             return
 
         await self.push_frame(frame, direction)
@@ -452,11 +878,145 @@ _MALE_VOICES = {
     "abhilash", "karun", "hitesh",
     # bulbul:v1 male (legacy)
     "amol", "amartya", "arvind", "neel", "vian",
+    # Rumik Silk Mulberry 1.5 male presets. These MUST be here: this set is the
+    # only thing that makes the LLM write masculine Hindi verb endings, and a
+    # Rumik agent on "adam" would otherwise say "kar rahi hoon" in a male voice.
+    "lucas", "noah", "theo", "adam",
 }
+# Google + Smallest male voices are UNIONED into this set right after their
+# palettes are defined below — same reason as the Rumik note above: this set is
+# the ONLY thing that makes the LLM write masculine Hindi verb endings.
+
+# Rumik Mulberry 1.5 female presets, kept explicit rather than inferred from the
+# male set's complement — _voice_gender defaults unknown names to female, so an
+# unlisted female voice is harmless, but naming them documents the real palette
+# for the picker and catches a typo'd voice at review time.
+_RUMIK_FEMALE_VOICES = {
+    "emma", "mia", "sophia", "ava", "ira", "siya", "aisha", "zoya",
+}
+_RUMIK_MALE_VOICES = {"lucas", "noah", "theo", "adam"}
+RUMIK_VOICES = _RUMIK_FEMALE_VOICES | _RUMIK_MALE_VOICES
+
+# ── Google Cloud TTS (hi-IN) ────────────────────────────────────────────────
+# Curated from the live list_voices API (46 hi-IN voices; 30 Chirp3-HD). Kept to
+# a shortlist so the Python palette and Java TtsVoiceCatalog can stay in
+# agreement — a mismatch there is what silently substitutes a caller's voice.
+# Gender comes from Google's own ssml_gender, NOT from the name: "Achird" and
+# "Achernar" are male and female respectively and nothing in the string says so.
+_GOOGLE_MALE_VOICES = {
+    "hi-in-chirp3-hd-achird", "hi-in-chirp3-hd-charon", "hi-in-chirp3-hd-fenrir",
+    "hi-in-chirp3-hd-orus", "hi-in-chirp3-hd-puck", "hi-in-chirp3-hd-schedar",
+    "hi-in-neural2-b", "hi-in-neural2-c", "hi-in-wavenet-b", "hi-in-wavenet-c",
+}
+_GOOGLE_FEMALE_VOICES = {
+    "hi-in-chirp3-hd-achernar", "hi-in-chirp3-hd-aoede", "hi-in-chirp3-hd-kore",
+    "hi-in-chirp3-hd-leda", "hi-in-chirp3-hd-zephyr", "hi-in-chirp3-hd-sulafat",
+    "hi-in-neural2-a", "hi-in-neural2-d", "hi-in-wavenet-a", "hi-in-wavenet-d",
+}
+GOOGLE_VOICES = _GOOGLE_MALE_VOICES | _GOOGLE_FEMALE_VOICES
+
+# ── Smallest.ai Lightning ───────────────────────────────────────────────────
+# From the live get_voices catalog, Hindi-tagged Indian-accent voices only.
+# ⚠️ The palettes are PER-MODEL and do not overlap: the API hard-rejects a
+# cross-model voice ("Voice 'devansh' is not available on the
+# lightning_v3.1_pro model") — i.e. a mute call. lightning_v3.1 is our default,
+# so its names lead; the _pro names are listed separately for the picker.
+_SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis"}
+_SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
+_SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
+_SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
+SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
+
+# One place where every engine's male voices land, so _voice_gender works for
+# all four. Missing a name here means a male voice speaking feminine Hindi —
+# the #1 immersion complaint from live calls.
+_MALE_VOICES |= _GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
+
+
+def _engine_of(model: str) -> str:
+    """Normalize a stored tts_model into one of our four engine ids."""
+    m = (model or "").strip().lower()
+    if m.startswith(("rumik", "silk")):
+        return "rumik"
+    if m.startswith(("google", "chirp")):
+        return "google"
+    if m.startswith(("smallest", "lightning")):
+        return "smallest"
+    return "sarvam"
+
+
+# Per-engine defaults + palettes, so adding a 5th engine is one table row rather
+# than a new branch in three functions.
+_ENGINE_DEFAULT_VOICE = {
+    "sarvam": "priya",
+    "rumik": "ira",
+    # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
+    "google": "hi-IN-Chirp3-HD-Achird",
+    "smallest": "devansh",
+}
+
+
+def _engine_palette(engine: str):
+    return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
+            "smallest": SMALLEST_VOICES}.get(engine)
+
+
+def _default_voice_for(agent) -> str:
+    """Provider default voice. Grammar follows it via _voice_gender, so the
+    default and the prompt's verb endings can never disagree."""
+    return _ENGINE_DEFAULT_VOICE.get(_engine_of(_agent_tts_model(agent)), "priya")
 
 
 def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
+
+
+def _agent_tts_model(agent) -> str:
+    """Which TTS vendor this agent speaks through.
+
+    Explicit agent config wins; otherwise the env default. Institutes created
+    before the picker existed have no tts_model, and they are billed at the
+    Sarvam rate, so they must KEEP Sarvam — silently moving a paying institute
+    to a different-sounding voice is not a config change, it is a product change.
+    """
+    m = (agent.get("tts_model") or "").strip().lower()
+    return m or get_settings().tts_model
+
+
+def _agent_voice(agent):
+    """The configured voice, dropped if it belongs to the other vendor's palette.
+
+    Voice names do not cross vendors, and the two engines fail DIFFERENTLY when you
+    send the wrong one (both probed against the live APIs):
+
+      * Sarvam REJECTS an unknown speaker outright ("Speaker 'x' is not compatible
+        with model bulbul:v3", HTTP 400) — so a Rumik name on a Sarvam agent means
+        no audio at all.
+      * Rumik SILENTLY SUBSTITUTES its default voice. It returned 184 KB of clean
+        audio for "priya". So the call is not mute — it is worse in a quieter way:
+        the caller hears a voice nobody chose, and because the LLM's Hindi verb
+        gender was conjugated for the CONFIGURED voice, a male-configured agent can
+        end up speaking masculine Hindi in a female voice.
+
+    Either way the stored name is not usable, so fall back to the provider default,
+    which at least keeps voice and grammar consistent with each other.
+    """
+    voice = (agent.get("voice") or "").strip()
+    if not voice:
+        return None
+    engine = _engine_of(_agent_tts_model(agent))
+    palette = _engine_palette(engine)
+    low = voice.lower()
+    if palette is not None:
+        # Engine with a known palette: the voice MUST be in it.
+        return voice if low in palette else None
+    # Sarvam has no enumerated palette here (dozens of speakers across bulbul
+    # versions), so instead reject anything that clearly belongs elsewhere.
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES):
+        if low in other:
+            return None
+    return voice
 
 
 def _as_float(v) -> float | None:
@@ -487,8 +1047,24 @@ _STT_LANGS = {
     "telugu": ("te-IN", "Telugu"),
     "kannada": ("kn-IN", "Kannada"),
     "malayalam": ("ml-IN", "Malayalam"),
-    "odia": ("or-IN", "Odia"),
+    # Sarvam spells Odia "od-IN", NOT the ISO "or-IN" — verified against the
+    # SDK's own Literal. The ISO form is rejected, so Odia agents failed.
+    "odia": ("od-IN", "Odia"),
+    "oriya": ("od-IN", "Odia"),
 }
+
+
+def _agent_stt_mode(agent) -> str:
+    """Sarvam saaras `mode` for this agent.
+
+    codemix keeps a Hinglish caller's code-switched words as they were spoken.
+    The alternatives both lose information: transcribe with a hi-IN pin turned
+    ENGLISH callers into Devanagari ("इफ यू रिकॉर्ड योर नेम"), and translate
+    forces everyone into English so the model can no longer tell what language
+    the caller actually used.
+    """
+    raw = (agent.get("language") or "").strip().lower()
+    return "codemix" if raw in ("hinglish", "hindi-english", "hi-en") else "transcribe"
 
 
 def _agent_language(agent) -> tuple[str | None, str]:
@@ -521,6 +1097,27 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
 
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_ ]+?)\s*\}\}")
 
+# Author-written placeholder names -> the lead-field names they should resolve
+# against. EXACT alias match only (never fuzzy): a wrong name in a sentence is
+# worse than a neutral one. Key = the field names to look up, value = the
+# {{placeholders}} that mean it.
+_PLACEHOLDER_SYNONYMS: Dict[tuple, set] = {
+    ("child name", "children name", "student name", "kid name", "child"): {
+        "child_name", "children_name", "student_name", "kid_name", "child",
+        "childs_name", "child name", "student name",
+    },
+    ("parent name", "guardian name", "father name", "mother name"): {
+        "parent_name", "guardian_name", "father_name", "mother_name",
+        "parent name", "guardian name",
+    },
+}
+
+# The lead IS the parent on these campaigns, so these may fall back to leadName.
+# Deliberately NOT every *_name key — see _fill_placeholders step 3.
+_PARENT_ALIASES = {
+    "parent_name", "guardian_name", "parent name", "guardian name", "contact_name",
+}
+
 
 def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
     """First non-blank lead custom field matching any of `names` (case-insensitive)."""
@@ -532,7 +1129,7 @@ def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
     return None
 
 
-def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
+def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     """Substitute the author's {{placeholders}} with real call values BEFORE the model
     sees the prompt. Left literal, `{{institute_name}}` etc. reach the model, which then
     improvises or fills them wrong (observed: {{institute_name}} became our account's
@@ -542,6 +1139,7 @@ def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
     if not text or "{{" not in text:
         return text
     lead_name = context.get("leadName")
+    agent_cfg = context.get("agent") or {}
     values = {
         "lead_name": lead_name or "aap",
         "name": lead_name or "aap",
@@ -552,9 +1150,70 @@ def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
         "lead_source_line": "",
         "booked_slot": _lead_field(context, "slot", "booked slot", "demo slot") or "",
     }
+    # Date/time placeholders. A live agent's prompt used {{day}}, {{date}} and
+    # {{time}} and every one rendered EMPTY (seen in a real call's diagnostics:
+    # promptUnfilled ["day","date","time"]) — so the model was handed blanks
+    # exactly where it needed to know "now", which is what the booking flow
+    # depends on to resolve "tomorrow". Same tz rule as _now_line: the agent's
+    # configured timezone, else Asia/Kolkata.
+    _tz = (agent_cfg.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        _now = datetime.now(ZoneInfo(_tz))
+    except Exception:
+        _now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    values.update({
+        "day": _now.strftime("%A"),
+        "today": _now.strftime("%A, %-d %B %Y"),
+        "date": _now.strftime("%-d %B %Y"),
+        "time": _now.strftime("%-I:%M %p"),
+        "datetime": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "now": _now.strftime("%A, %-d %B %Y, %-I:%M %p"),
+        "tomorrow": (_now + timedelta(days=1)).strftime("%A, %-d %B %Y"),
+        "year": _now.strftime("%Y"),
+        "month": _now.strftime("%B"),
+    })
 
     def repl(m: "re.Match[str]") -> str:
-        return values.get(m.group(1).strip().lower(), "")
+        key = m.group(1).strip().lower()
+        # 1) A known key.
+        if key in values:
+            return values[key]
+        # 2) The author's own field name, matched against the lead's captured
+        #    fields (casefold + '_'<->' '), plus the common name synonyms. This is
+        #    the fix for a 100% silent failure: the whitelist previously returned
+        #    "" for ANY unknown key, so a prompt written with {{child_name}} /
+        #    {{parent_name}} rendered as "with , whose child  studies" on all
+        #    141/141 calls of that agent (2026-07-29 forensics).
+        direct = _lead_field(context, key, key.replace("_", " "))
+        if direct:
+            return direct
+        for canon, aliases in _PLACEHOLDER_SYNONYMS.items():
+            if key in aliases:
+                hit = _lead_field(context, *canon)
+                if hit:
+                    return hit
+                break
+        # 3) The person we are CALLING is the parent/guardian, so an unresolved
+        #    {{parent_name}} is the lead themselves. Scoped to this alias set on
+        #    purpose — a blanket "*name -> lead_name" would also fire for
+        #    {{school_name}} / {{child_name}} and speak the wrong person's name.
+        if key in _PARENT_ALIASES and lead_name:
+            return lead_name
+        # 4) Give up — but LOUDLY, so this can never be silent again.
+        #    NO generic "*name -> lead_name" fallback: `endswith("name")` also
+        #    matches {{school_name}}, {{agent_name}}, {{child_name}}, so an
+        #    unresolved key would make the bot call the SCHOOL (or the child) by
+        #    the parent's name. A hole in the sentence is bad; confidently
+        #    speaking the wrong person's name is worse.
+        logger.warning("prompt placeholder %r unresolved — rendering empty", key)
+        # `sink` is passed per-call (never a module global): up to 10 calls run
+        # concurrently in one process and a shared buffer would cross-contaminate.
+        if sink is not None:
+            try:
+                sink(key)
+            except Exception:
+                pass
+        return ""
 
     return _PLACEHOLDER_RE.sub(repl, text)
 
@@ -578,6 +1237,14 @@ def _clean_opening(text: str) -> str:
     out = " ".join(lines)
     out = out.replace("**", "").replace("*", "").replace("`", "")
     out = re.sub(r"\s+", " ", out).strip()
+    # Authors wrap the line in quotes ('"Hi, this is Avni…"'). Spoken, a stray
+    # quote is at best silent; worse, a clause that ends up holding ONLY the
+    # closing quote is rejected by Sarvam and wedges the TTS socket open-but-dead
+    # (see providers.has_word_char). Strip a matched wrapping pair, then any
+    # leftover edge quotes.
+    if len(out) >= 2 and out[0] in '"“”‘’\'' and out[-1] in '"“”‘’\'':
+        out = out[1:-1].strip()
+    out = out.strip('"“”‘’\'').strip()
     return out[:600]
 
 
@@ -605,7 +1272,7 @@ def _now_line(context: Dict[str, Any]) -> str:
     )
 
 
-def build_system_prompt(context: Dict[str, Any]) -> str:
+def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
     extraction = agent.get("extractionQuestions") or []
@@ -613,7 +1280,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     name = agent.get("name") or "the assistant"
     stt_tag, lang_label = _agent_language(agent)
     is_english = stt_tag == "en-IN"
-    gender = _voice_gender(agent.get("voice"))
+    # _agent_voice, not agent["voice"]: if the name was dropped as belonging to
+    # the other vendor we speak with the provider default, so the grammar has to
+    # match THAT voice, not the discarded config.
+    gender = _voice_gender(_agent_voice(agent) or _default_voice_for(agent))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
     now_line = _now_line(context)
 
@@ -739,7 +1409,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "it in under 8 words."
     )
 
-    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
+    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context, sink=sink)
 
     # Pieces the bot knows that NO agent prompt can — kept in BOTH paths:
     # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
@@ -758,6 +1428,39 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
             "deti hoon'. NEVER write Hindi words in Latin letters."
         )
+        # Rumik reads Devanagari-transliterated English as gibberish — live call
+        # 8e1e00ad: the model wrote 'लाइव क्लासेस' and the caller heard 'लव असेस'
+        # (founder: "it pronounced many words poorly"). Sarvam bulbul handles
+        # either script, so this stays Rumik-only to leave legacy agents alone.
+        if _agent_tts_model(agent) == "rumik":
+            script_rule += (
+                "\n- EVERY English-origin word — product and class names included — must be in "
+                "English letters, never Devanagari transliteration: write 'Live Classes', "
+                "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
+                "for Hindi words ONLY; if a word is English, spell it in English."
+            )
+    # REGISTER. Founder, after hearing live calls: "everything is highly formal
+    # Hindi... words that in general are not used". Measured across two days of
+    # calls: 198 uses of literary vocabulary — प्रदर्शन 37x, पूछताछ 28x, अकादमिक
+    # 14x, अवधारणा 12x. It is translationese: the authored script is English and
+    # the model renders it into textbook Hindi, which no counsellor speaks and
+    # which the TTS also stumbles over. The pairs below are the actual offenders
+    # from those transcripts, not invented examples — concrete swaps steer a
+    # model far better than "be conversational".
+    plain_hindi_rule = "" if is_english else (
+        "SPEAK PHONE HINDI, NOT TEXTBOOK HINDI. Use the words a real counsellor "
+        "says out loud. Where the everyday word IS English, use the English word — "
+        "that is how people actually speak; it is not a mistake. Say: performance "
+        "(never प्रदर्शन), enquiry (never पूछताछ), academic (never अकादमिक/शैक्षणिक), "
+        "concepts (never अवधारणाएँ), annual exam (never वार्षिक परीक्षा), tracking "
+        "(never निगरानी), counsellor (never सलाहकार), problem/difficulty (never "
+        "कठिनाई), structured (never संरचित), suitable / सही रहेगा (never उपयुक्त), "
+        "guidance (never मार्गदर्शन), tests (never परीक्षण), doubts (never संदेह), "
+        "fees (never शुल्क), scholarship (never छात्रवृत्ति), lectures (never "
+        "व्याख्यान), parents / माता-पिता (never अभिभावक), option (never विकल्प), "
+        "score किया (never अंक प्राप्त किए). If a word would sound odd from a "
+        "shopkeeper or a parent on a phone call, do not use it."
+    )
     # The caller HEARS every character — markdown becomes spoken garbage (a live call
     # read out its own bullet list). And a short first clause reaches the ear sooner
     # (TTS synthesizes the first chunk while the rest streams).
@@ -842,7 +1545,13 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "or one odd/garbled transcript line, is NEVER a cue to switch — treat it as a mis-hear. "
         "Switch languages only if the caller explicitly asks, or speaks 3+ consecutive full "
         "sentences in the other language. If your instructions define their own language "
-        "rules, those take precedence."
+        "rules, those take precedence.\n"
+        "ON REQUEST, THE SWITCH IS PERMANENT: if the caller asks for a language at any point "
+        "(\u2018English mein baat karo\u2019, \u2018can you speak in English\u2019, "
+        "\u2018Hindi mein boliye\u2019), switch on your VERY NEXT sentence and stay there for "
+        "the WHOLE rest of the call. Never drift back \u2014 not for one line, not because they "
+        "later use a word of the other language, not after an interruption. If they ask for "
+        "English, speak plain English only: no Hindi words, no Devanagari."
     )
     lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
     fields_line = _lead_fields_line(context)
@@ -858,6 +1567,27 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
                          + ", ".join(dispositions)) if dispositions else "")
 
+    # When a scripted opening is configured we SPEAK IT VERBATIM before the model
+    # ever runs. Authored prompts are usually a call SCRIPT whose first block is
+    # that very introduction (Shiksha Nation's is written as "Bot: Hi! I'm Ameet
+    # calling from…"), so without this the model reads the script from the top and
+    # delivers the introduction a second time — which is exactly what callers heard.
+    # Naming the opening verbatim also gives LANGUAGE STABILITY something to anchor
+    # to on the first turn, when the model has no previous turns of its own.
+    opening_line = _clean_opening(_fill_placeholders(
+        (agent.get("openingLine") or "").strip(), context))
+    already_said_rule = ""
+    if opening_line:
+        already_said_rule = (
+            "ALREADY SPOKEN — do not repeat: this call has ALREADY opened with exactly "
+            f"\"{opening_line}\" It has been said. NEVER introduce yourself, your name or "
+            "your company again, and never restart your script from the top, no matter what "
+            "the caller says (including a bare 'hello' mid-call — that means they are "
+            "checking the line is alive, so simply continue). Resume from the point in your "
+            "instructions that comes AFTER the introduction. Keep speaking the SAME LANGUAGE "
+            "as that opening unless the caller clearly asks for another one."
+        )
+
     # An agent whose author wrote a real prompt (opening choreography, identity rules,
     # language + conversation rules) is AUTHORITATIVE. Piling the generic scaffolding on
     # top DUPLICATES it and — via intent_line's "introduce yourself" vs a "confirm
@@ -870,8 +1600,9 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
             "pacing and conversation rules — follow them exactly. Greet and introduce yourself "
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
-            "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
-            "opening — never reply with just a bare greeting word.",
+            "caller speaks first at the very START of the call, your FIRST reply IS your "
+            "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
+            already_said_rule,
             now_line,
             greeting_rule,
             name_sanity_rule,
@@ -885,6 +1616,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             language_stability_rule,
             f"{gender_line} {addressee_line}",
             script_rule,
+            plain_hindi_rule,
             plain_speech_rule,
             fast_open_rule,
             one_step_rule,
@@ -901,6 +1633,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        already_said_rule,
         now_line,
         greeting_rule,
         name_sanity_rule,
@@ -915,6 +1648,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
         script_rule,
+        plain_hindi_rule,
         plain_speech_rule,
         fast_open_rule,
         one_step_rule,
@@ -950,38 +1684,52 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
 async def run_bot(transport, corr: str, context: Dict[str, Any],
                   outcome: CallOutcome, *, aiohttp_session) -> CallOutcome:
     """Run one call end-to-end on an already-connected Plivo <Stream> transport.
-    Mutates the caller-owned CallOutcome in place (crash-safe reporting)."""
+    Mutates the caller-owned CallOutcome in place (crash-safe reporting).
+
+    pipecat 1.4 architecture (migration 2026-08-05): the USER AGGREGATOR owns the
+    VAD, the turn strategies (Smart Turn v3 semantic end-of-turn) and the idle
+    clock. Interruptions are OURS to drive: turn-start strategies are constructed
+    with enable_interruptions=False so a VAD onset never hard-cancels a reply —
+    DuckGate holds the audio instantly and the turn-gate then absorbs a
+    backchannel or commits a real interruption (founder decision: "absorb but
+    never lose"). The 0.0.95 watchdog shrinks to spend/stop/duck enforcement;
+    nudges and idle-hangup ride the aggregator's on_user_turn_idle event."""
     _run_bot_t0 = time.time()
     settings = get_settings()
     agent = context.get("agent") or {}
 
-    # Idle/pacing state shared between the processors and the watchdog. The idle
-    # clock only escalates while the bot is NOT speaking (TTS playout is real-time
-    # and much slower than token generation), and only USER activity re-arms the
-    # nudge — otherwise the nudge's own audio resets it and hangup never escalates.
-    # Explicit state machine (see app/callstate.py — field docs + transition
-    # contract live there; dict-style access kept for the frame callbacks).
     flags = CallState(t=time.time())
+    diag = diag_mod.CallDiagnostics()
+    outcome.diagnostics = diag
 
     def on_activity(user: bool = True):
-        # VAD blips reset the idle CLOCK but no longer re-arm the nudge: on lines
-        # with breathing/hold-music the re-arm made the hangup escalation
-        # unreachable — the bot nudged every ~10s until the duration cap
-        # (deep-review A10). Real words re-arm it in on_transcript below.
         flags["t"] = time.time()
 
     def set_bot_speaking(speaking: bool):
+        if speaking:
+            flags["unplayed_pending_t"] = 0.0
+        if speaking and not flags["bot_speaking"]:
+            _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            if _last:
+                diag.sample("dead_air", max(0.0, time.time() - _last))
+            diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
-        # Clear the pending-audio stamp on BOTH transitions: audio starting means
-        # no stall; audio STOPPING means the response played (a clause stamped
-        # mid-playout must not read as "never heard" — the false-fire mechanism
-        # behind the 2026-07-27 repeat-3x incident, deep-review B1).
         flags["tts_gen_t"] = 0.0
         if not speaking:
             flags["bot_stopped_t"] = time.time()
             flags["bot_spoke_once"] = True
 
     def set_user_speaking(speaking: bool):
+        if speaking and not flags["user_speaking"]:
+            _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
+            if _last:
+                diag.sample("dead_air", max(0.0, time.time() - _last))
+            if flags["bot_speaking"]:
+                diag.bump("barge_ins")
+        elif not speaking and flags["user_speaking"]:
+            _dur = time.time() - (flags["user_started_t"] or time.time())
+            if _dur > diag.longest_user_secs:
+                diag.longest_user_secs = _dur
         flags["user_speaking"] = speaking
         if speaking:
             flags["user_started_t"] = time.time()
@@ -989,9 +1737,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["user_stopped_t"] = time.time()
 
     stt_lang, _ = _agent_language(agent)
-    # Operational utterances (nudge, closings, fillers) in the AGENT's language — an
-    # English call getting a hardcoded Hindi "kya aap sun paa rahe hain?" both jars the
-    # caller and hands the model a Hindi context line to drift onto.
     eng = stt_lang == "en-IN"
     nudge_text = ("Hello? Are you still there?" if eng
                   else "Hello? Kya aap sun paa rahe hain?")
@@ -1007,58 +1752,150 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                      "Dhanyavaad, aapka din shubh ho!")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
-    # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
-    # reads as an answer right before a stall is worse than no filler (heard live).
     eng_fillers = ("Hmm…",)
-    # Bias STT toward the agent's own name so a caller repeating it ("aapka naam Aarushi
-    # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
-    # a wrong name — the #1 way the agent "forgets" its name mid-call.
+
     stt_bias = (agent.get("name") or "").strip() or None
-    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
-    # Voiced-but-wordless caller turns ("hmm"/"okay" that STT finalizes EMPTY)
-    # become a minimal synthetic backchannel so the conversation continues instead
-    # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
-    # the bot is quiet, and never in the opening seconds (greet owns those).
-    _call_t0 = time.time()
-    if hasattr(stt, "set_backchannel_gate"):
-        stt.set_backchannel_gate(
-            lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
-    # to_thread: on Vertex the constructor performs a SYNCHRONOUS service-account
-    # OAuth round-trip (~1-2s). Run per-call setup off the event loop so other
-    # LIVE calls' audio doesn't glitch while this one dials (part of the measured
-    # 3.2s StartFrame gap; lifespan pre-warm covers the import cost).
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
+                    mode=_agent_stt_mode(agent))
+    # to_thread: Vertex constructors do a SYNCHRONOUS service-account OAuth
+    # round-trip; keep it off the loop so concurrent calls' audio never glitches.
     llm = await asyncio.to_thread(build_llm)
-    tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
+    tts = build_tts(settings.sample_rate, voice=_agent_voice(agent),
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
-                    temperature=_as_float(agent.get("temperature")))
-    # Audio-stall watchdog stamp: run_tts marks "audio pending"; BotStartedSpeaking
-    # clears it. MUST be wired after tts exists (a pre-assignment hasattr(tts, …)
-    # here crashed EVERY call with UnboundLocalError on 2026-07-27).
+                    temperature=_as_float(agent.get("temperature")),
+                    tts_model=_agent_tts_model(agent))
+    for _svc in (stt, tts):
+        if hasattr(_svc, "set_diagnostics"):
+            _svc.set_diagnostics(diag)
+    diag.tts_vendor = (getattr(tts, "model_name", "")
+                       or str(getattr(getattr(tts, "_settings", None), "model", "") or "")
+                       or type(tts).__name__)
+    if hasattr(tts, "set_credits_callback"):
+        tts.set_credits_callback(
+            lambda credits, secs, chars=0: diag.note_tts_spend(credits, secs, chars))
     if hasattr(tts, "set_generate_callback"):
         def _stamp_generate():
-            # Only stamp while the bot is QUIET: a clause generated mid-playout is
-            # part of an already-playing response, not a potentially-stalled one.
             if flags["tts_gen_t"] == 0.0 and not flags["bot_speaking"]:
                 flags["tts_gen_t"] = time.time()
         tts.set_generate_callback(_stamp_generate)
 
     llm_context = LLMContext(
-        messages=[{"role": "system", "content": build_system_prompt(context)}]
+        messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
+    )
+
+    # ── 1.4 turn machinery: VAD + Smart Turn v3 + idle, all on the aggregator ──
+    # Telephony VAD tuning carries over from the 0.0.95 fixes: min_volume 0.35
+    # (pipecat's 0.6 default made the VAD stone-deaf to phone-leg callers on live
+    # call 8e1e00ad — the single worst finding of the migration's test calls).
+    vad = SileroVADAnalyzer(params=VADParams(
+        stop_secs=settings.vad_stop_secs,
+        start_secs=settings.vad_start_secs,
+        confidence=settings.vad_confidence,
+        min_volume=settings.vad_min_volume,
+    ))
+    turn_strategies = UserTurnStrategies(
+        # enable_interruptions=False on BOTH start strategies: a bare VAD onset
+        # (cough, backchannel) must never hard-cancel a reply. DuckGate silences
+        # the line instantly; the turn-gate decides on the words.
+        start=[
+            # enable_interruptions=True — MEASURED DECISION, reversed from the
+            # duck-only design. Holding audio in DuckGate cannot stop the bot
+            # quickly, because by the time the caller speaks the reply has
+            # already flowed PAST the duck into pipecat's output queue and
+            # Plivo's buffer; live call d6e82def logged "dropping 0 held
+            # frame(s)" on an interrupt for exactly this reason. Only a flush
+            # empties those, and the duck could only flush after the STT final
+            # arrived — 0.8-1.6s later. Probed talk-over was 1.96s.
+            # A native interruption at VAD onset flushes both immediately.
+            # Backchannels are still not lost: the turn-gate appends them to the
+            # context, and _resume_after_backchannel below has the bot pick up
+            # its sentence, because a cancelled reply cannot be un-cancelled.
+            VADUserTurnStartStrategy(enable_interruptions=settings.interrupt_on_vad,
+                                     enable_user_speaking_frames=True),
+            # Interims must NOT interrupt on their own: Google STT streams them
+            # continuously, and the VAD onset above already covers the stop.
+            TranscriptionUserTurnStartStrategy(use_interim=True,
+                                               enable_interruptions=False),
+        ],
+        stop=[
+            TurnAnalyzerUserTurnStopStrategy(
+                turn_analyzer=LocalSmartTurnAnalyzerV3(
+                    params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs))),
+        ],
     )
     aggregators = LLMContextAggregatorPair(
         llm_context,
-        # Default 0.5s waits for late transcript fragments AFTER the VAD already
-        # decided the turn ended — with Saaras finals typically beating the VAD
-        # window, most of it is dead air the caller hears before every reply.
-        user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=vad,
+            user_turn_strategies=turn_strategies,
+            user_idle_timeout=settings.idle_timeout_secs,
+        ),
     )
 
-    def on_transcript():
+    def on_transcript(backchannel: bool = False):
         flags["transcript_t"] = time.time()
-        # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
+        if not backchannel and flags["end_pending_since"] != 0.0:
+            flags["end_pending_since"] = 0.0
+            outcome.end_requested = False
+            logger.info("sentinel: caller re-engaged after farewell — call continues corr=%s", corr)
+        flags["deaf_streak"] = 0
         flags["orphan_used"] = False
-        flags["nudged"] = False
+        if not backchannel:
+            flags["nudged"] = False
+            flags["nudge_count"] = 0
+
+    def _on_duck():
+        flags["ducked_since"] = time.time()
+
+    def _on_unduck():
+        flags["ducked_since"] = 0.0
+
+    def _on_interrupt():
+        flags["last_cut_t"] = time.time()
+
+    def _recently_cut() -> bool:
+        return (flags["last_cut_t"] > 0
+                and time.time() - flags["last_cut_t"] <= settings.backchannel_carry_secs)
+
+    duck = DuckGate(enabled=lambda: settings.duck_enabled,
+                    is_bot_speaking=lambda: flags["bot_speaking"],
+                    on_duck=_on_duck, on_unduck=_on_unduck, diag=diag,
+                    on_interrupt=_on_interrupt)
+
+    async def _absorb(text):
+        if text is not None:
+            diag.bump("duck_absorbs")
+        await duck.resume("backchannel" if text is not None else "no_content")
+
+    def _on_reply_start():
+        flags["reply_started_t"] = time.time()
+
+    def _reply_in_flight() -> bool:
+        """True from the LLM starting a reply until that reply is off the line.
+
+        Exists for the ~0.5-1.0s hole between "the LLM began composing" and
+        "the bot is audible". Call bc84958c: Sarvam split one answer into two
+        finals 0.85s apart, the second landed in that hole, the turn-gate saw a
+        quiet bot and let it through as a brand-new turn, and the bot delivered
+        its ENTIRE Marks Improvement pitch TWICE — about 40 seconds of it. The
+        caller asked, on the line, "फिर से repeat क्यों कर रहे हैं आप".
+
+        The second final was not a barge-in either: it arrived through
+        TranscriptionUserTurnStartStrategy, which has interruptions disabled, so
+        nothing cancelled the first reply.
+
+        Time-capped so a generation that dies without ever reaching playout
+        cannot mute the caller's turns for the rest of the call.
+        """
+        st = flags["reply_started_t"]
+        if not st or flags["bot_speaking"]:
+            return False        # is_bot_speaking() already covers the audible case
+        return (flags["bot_stopped_t"] < st
+                and (time.time() - st) < settings.reply_inflight_grace_secs)
+
+    def _in_machine_window() -> bool:
+        return (time.time() - _run_bot_t0) < settings.machine_greeting_window_secs
 
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
@@ -1066,10 +1903,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      filler_phrases=eng_fillers if eng else None,
                                      on_transcript=on_transcript,
                                      fillers_armed=lambda: flags["bot_spoke_once"],
-                                     bot_stopped_t=lambda: flags["bot_stopped_t"])
+                                     bot_stopped_t=lambda: flags["bot_stopped_t"],
+                                     duck=duck, on_absorb=_absorb,
+                                     backchannel_extra=settings.backchannel_extra,
+                                     gate_enabled=lambda: settings.duck_enabled,
+                                     interrupt_on_vad=lambda: settings.interrupt_on_vad,
+                                     recently_cut=_recently_cut, diag=diag,
+                                     in_machine_window=_in_machine_window,
+                                     reply_in_flight=_reply_in_flight,
+                                     bot_spoke_once=lambda: flags["bot_spoke_once"])
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
+                            on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
     pipeline = Pipeline([
@@ -1080,6 +1926,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         llm,
         sentinel,
         tts,
+        duck,
         transport.output(),
         played_transcript,
         aggregators.assistant(),
@@ -1091,45 +1938,65 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             audio_in_sample_rate=settings.sample_rate,
             audio_out_sample_rate=settings.sample_rate,
             enable_metrics=True,
-            # Barge-in: when the caller starts speaking, cancel the bot's TTS and let their
-            # turn be heard — a real conversation, not the bot talking over an interrupting
-            # caller. Was unset (no interruption), which caused the overlaps on live calls.
-            allow_interruptions=True,
-            # ...but require ≥2 words to interrupt, so a single stray sound, a cough, or a
-            # backchannel ("haan", "hmm", "achha") does NOT cancel the bot mid-sentence and
-            # derail it. A real correction (more words) still barges in immediately.
-            interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
-        observers=[TtfbObserver(corr).observer],
+        observers=[TtfbObserver(corr, diag).observer],
     )
     sentinel.set_task(task)
 
-    async def _greet_when_ready():
-        """Open the call like a person would. On OUTBOUND the callee has already said
-        'hello' when they picked up, so we SPEAK FIRST after a short beat — long enough
-        not to clip their 'hello', short enough to avoid the dead-air / 'double hello'
-        that makes an agent feel robotic (the old 2s wait was the culprit). If the callee
-        says something substantive in that beat (e.g. 'kaun?'), their turn drives the
-        LLM's reply and we don't also open. flags['t'] advances on the first transcribed
-        user speech, so t > connect_t means the callee spoke.
+    cap_minutes = float(agent.get("maxCallMinutes") or 0) or settings.max_call_minutes_default
+    cap_secs = cap_minutes * 60.0
 
-        The opening itself: if the agent set an explicit openingLine, speak it verbatim
-        (instant, pre-scripted — good for a fixed compliance line). Otherwise let the LLM
-        generate the opening from the system prompt (warm, in-persona, uses the lead's
-        name) — the SAME path that already runs when a caller speaks first, so it's
-        proven. A bare scripted 'Hello' spoken straight to TTS is what felt robotic."""
-        # Fill {{placeholders}} + strip script artifacts BEFORE speaking: admins paste
-        # whole scripts into the field — a live call read '# VACADEMY AI – INTRODUCTION
-        # SPEECH … (Wait for confirmation) … {{lead_name}}' aloud, verbatim.
+    async def _begin_stop():
+        if flags["stopping_since"] is None:
+            flags["stopping_since"] = time.time()
+            await task.stop_when_done()
+
+    sentinel.set_arm_stop(_begin_stop)
+
+    def _note_killed_before_playout():
+        # Suspicion only — unplayed_confirmed() turns it into a fact if silence
+        # outlasts the confirm window (95% of these replies play anyway).
+        if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
+            if flags["unplayed_pending_t"] == 0.0:
+                flags["unplayed_pending_t"] = time.time()
+    sentinel.set_on_interrupted(_note_killed_before_playout)
+
+    def _defer_stop():
+        if flags["end_pending_since"] == 0.0:
+            flags["end_pending_since"] = time.time()
+
+    def _clear_end_pending():
+        flags["end_pending_since"] = 0.0
+
+    sentinel.set_end_hooks(_defer_stop, _clear_end_pending)
+
+    # ── idle: the aggregator's clock replaces the 0.0.95 watchdog nudges ──
+    # NOTE for 1.4: TTSSpeakFrame text IS captured into the assistant context by
+    # the aggregator (verified in the POC — manual context appends double-add).
+    @aggregators.user().event_handler("on_user_turn_idle")
+    async def _on_idle(_agg, *_args):
+        if flags["stopping_since"] is not None or flags["ducked_since"] > 0:
+            return
+        if flags["nudge_count"] < settings.max_nudges:
+            flags["nudge_count"] += 1
+            diag.bump("nudges")
+            logger.info("idle: nudge %d corr=%s", flags["nudge_count"], corr)
+            await task.queue_frames([TTSSpeakFrame(nudge_text)])
+        else:
+            diag.idle_hangup = True
+            logger.info("idle: hangup corr=%s", corr)
+            outcome.end_requested = True
+            await task.queue_frames([TTSSpeakFrame(idle_farewell)])
+            await _begin_stop()
+
+    async def _greet_when_ready():
+        """Open like a person: on OUTBOUND speak first after a short beat unless
+        the callee already said something substantive (their turn then drives the
+        LLM). Scripted openings are spoken directly — NO manual context append on
+        1.4, the assistant aggregator captures spoken text itself."""
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
-        # Base beat, then EXTEND while the callee is audibly speaking: a Sarvam
-        # final physically cannot arrive inside 0.8s (VAD stop + server endpointing
-        # ≈1.2s minimum), so the old transcript check was dead code and the opening
-        # talked OVER callers who answered with a sentence (deep-review A9). Wait
-        # out their utterance (cap 2.5s) so the final can land and drive the
-        # proven caller-spoke-first LLM path instead.
         while time.time() - connect_t < settings.greet_delay_secs:
             if flags["transcript_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
@@ -1138,31 +2005,40 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         while (time.time() - connect_t < 2.5
                and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
             if flags["transcript_t"] > connect_t + 0.05:
+                diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
         if opening:
-            # Append to the LLM CONTEXT as well as speaking: a TTSSpeakFrame is consumed
-            # by the TTS and its text NEVER reaches the assistant aggregator (verified in
-            # pipecat 0.0.95 source), so the model didn't know it had already greeted and
-            # re-greeted from scratch on the caller's first reply — the observed
-            # double/triple-greeting. run_llm omitted => append only, no generation.
+            diag.greet_path = "scripted"
+            diag.greet_delay_secs = round(time.time() - _run_bot_t0, 2)
             logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
-            # transcript entry comes from PlayedTranscriptRecorder at PLAYOUT
-            # (A3) — pre-crediting here recorded openings the caller never heard.
+            # Record the opening in the LLM context OURSELVES, and tell pipecat
+            # not to (append_to_context=False) so there is exactly one copy.
+            #
+            # pipecat 1.4 does commit TTSSpeakFrame utterances — but only when
+            # the utterance COMPLETES: the turn opens on TTSStartedFrame and is
+            # committed at the end. A caller who speaks over the opening cancels
+            # that commit, and the model is then left with NO record that it
+            # ever introduced itself. Measured on the live pipeline: uninterrupted
+            # the context held the opening; interrupted at +4s it held only
+            # (system, user, assistant-reply) and the reply re-introduced the
+            # agent from scratch. That is both of the founder's complaints in one
+            # mechanism — the re-delivered intro, AND the language flip, because
+            # LANGUAGE STABILITY anchors on "your own previous turns" and there
+            # were none.
+            #
+            # Trade-off, deliberate: if the caller cuts the opening short, the
+            # context claims slightly more than the caller heard. Believing it
+            # said a bit too much is far cheaper than re-delivering the whole
+            # introduction, and the played transcript (PlayedTranscriptRecorder)
+            # still records the truth for the report.
             await task.queue_frames([
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
-                TTSSpeakFrame(opening)])
+                TTSSpeakFrame(opening, append_to_context=False)])
         else:
-            # No scripted line → LLM opens. Seed a synthetic caller 'Hello?' into the LLM
-            # context (NOT our saved transcript) and run: this reproduces the exact
-            # proven caller-spoke-first path, so the model reliably emits its persona
-            # opening instead of us hoping it generates from a system-only context.
+            diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)
-            # Bracketed CUE, not a synthetic "Hello?": seeding a fake caller hello
-            # taught the model that hello earns hello back — live calls opened with a
-            # "Hello"/"Ji"/"Hello" ping-pong for two wasted rounds before the real
-            # opening. A stage cue makes it deliver the scripted opening directly.
             await task.queue_frames([LLMMessagesAppendFrame(
                 messages=[{"role": "user", "content":
                            "[The call has just connected and the person is on the line. "
@@ -1170,9 +2046,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                            "specify — do not just say 'hello'.]"}],
                 run_llm=True)])
 
-    # Tracked so run_bot's finally can cancel it — an orphaned greet task on a
-    # pipeline that died during setup would queue frames into a cancelled task
-    # (noisy) and hold its closure alive.
     _bg_tasks: list = []
 
     @transport.event_handler("on_client_connected")
@@ -1183,89 +2056,80 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     async def _on_disconnected(_transport, _client):
         await task.cancel()
 
-    cap_minutes = float(agent.get("maxCallMinutes") or 0) or settings.max_call_minutes_default
-    cap_secs = cap_minutes * 60.0
-
-    async def _begin_stop():
-        if flags["stopping_since"] is None:
-            flags["stopping_since"] = time.time()
-            await task.stop_when_done()
-
-    # Wired HERE, after _begin_stop exists — a forward reference at sentinel
-    # construction time would NameError on every call (same class of bug as the
-    # 2026-07-27 tts-before-assignment outage).
-    sentinel.set_arm_stop(_begin_stop)
-
     async def watchdog():
-        """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
-        by the timeline harness) + bookkeeping + I/O execution here."""
+        """1-second tick, SLIMMED for 1.4: spend cap, graceful-stop enforcement,
+        end-grace, duck resume and unplayed confirmation. Idle/nudge/orphan/deaf
+        machinery moved to the aggregator's turn events — their branches are
+        disabled via the sentinel values below (the pure decision fn and its
+        timeline harness stay authoritative for what remains)."""
+        _OFF = 1e9
         cfg = WatchdogConfig(
             connected_at=outcome.connected_at,
             cap_secs=cap_secs,
-            idle_timeout_secs=settings.idle_timeout_secs,
-            stall_recovery_enabled=settings.stall_recovery_enabled,
+            idle_timeout_secs=_OFF,                       # aggregator owns idle
+            stall_recovery_enabled=False,                 # native TTS reconnect in 1.4
             graceful_stop_deadline_secs=_GRACEFUL_STOP_DEADLINE_SECS,
+            stall_after_secs=settings.stall_after_secs,
+            stall_max_recoveries=settings.stall_max_recoveries,
+            stop_reissue_every_secs=settings.stop_reissue_every_secs,
+            orphan_min_utterance_secs=settings.orphan_min_utterance_secs,
+            orphan_window_secs=(settings.orphan_window_lo_secs,
+                                settings.orphan_window_hi_secs),
+            orphan_bot_quiet_secs=settings.orphan_bot_quiet_secs,
+            orphan_connect_grace_secs=_OFF,               # orphan re-ask retired
+            orphan_transcript_lookback_secs=settings.orphan_transcript_lookback_secs,
+            max_nudges=settings.max_nudges,
+            no_words_timeout_secs=_OFF,                   # dead-air clock retired
+            unplayed_confirm_secs=settings.unplayed_confirm_secs,
+            end_grace_secs=settings.end_grace_secs,
+            max_deaf_streak=settings.max_deaf_streak,
+            duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
+            duck_max_hold_secs=settings.duck_max_hold_secs,
         )
-        repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
-                       "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
         while True:
             await asyncio.sleep(1.0)
             now = time.time()
+            if unplayed_confirmed(flags, now, cfg):
+                flags["unplayed_pending_t"] = 0.0
+                diag.bump("replies_never_played")
+                logger.warning("reply never reached the caller corr=%s "
+                               "(no audio %.1fs after it was cut)",
+                               corr, cfg.unplayed_confirm_secs)
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
             if d.kind == NONE:
+                continue
+            if d.kind == ARM_STOP:
+                logger.info("sentinel: grace elapsed (%.1fs) — closing the line corr=%s",
+                            d.detail, corr)
+                sentinel._stop_armed = True
+                await _begin_stop()
                 continue
             if d.kind == CANCEL_STARVED:
                 logger.warning("graceful stop starved — cancelling corr=%s", corr)
                 await task.cancel()
                 return
             if d.kind == REISSUE_STOP:
-                # A barge-in DRAINS queued frames including the EndFrame (A7).
                 await task.stop_when_done()
                 continue
+            if d.kind == DUCK_RESUME:
+                diag.bump("duck_timeout_resumes")
+                logger.info("duck: voiced but wordless for %.1fs — resuming reply corr=%s",
+                            d.detail, corr)
+                await duck.resume("watchdog_timeout")
+                continue
             if d.kind == CAP_FAREWELL:
+                diag.cap_farewell = True
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
+                await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue
-            if d.kind == STALL_RECOVER:
-                logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
-                             "reconnecting TTS + regenerating", corr, d.detail,
-                             flags["stall_recoveries"])
-                try:
-                    await tts._disconnect()
-                    await tts._connect()
-                except Exception as ex:
-                    logger.warning("tts stall reconnect failed corr=%s: %s", corr, ex)
-                await task.queue_frames([LLMMessagesAppendFrame(
-                    messages=[{"role": "user", "content":
-                        "[Audio glitch: the caller could NOT hear your last reply. "
-                        "Answer their last message again, briefly — do not mention the glitch.]"}],
-                    run_llm=True)])
-                continue
-            if d.kind == ORPHAN_ASK:
-                logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
-                            corr, d.detail)
-                await task.queue_frames([
-                    LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
-                    TTSSpeakFrame(repeat_line)])
-                continue
-            if d.kind == NUDGE:
-                # Context-append too: TTSSpeakFrame text never reaches the LLM
-                # context — without it the model can't react to "haan sun raha hoon".
-                await task.queue_frames([
-                    LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
-                    TTSSpeakFrame(nudge_text)])
-                continue
-            if d.kind == IDLE_HANGUP:
-                # Speak a brief closing BEFORE dropping — a silent hangup read as
-                # "disconnected without a proper close" (live feedback).
-                logger.info("idle hangup corr=%s", corr)
-                outcome.end_requested = True
-                await task.queue_frames([TTSSpeakFrame(idle_farewell)])
-                await _begin_stop()
+            # Retired branches (idle/orphan/stall/deaf) are disabled by config;
+            # reaching one means the sentinel values above were changed — say so.
+            logger.warning("watchdog: unexpected decision %s corr=%s", d.kind, corr)
 
     watchdog_task = asyncio.create_task(watchdog())
     try:
@@ -1275,8 +2139,34 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         await runner.run(task)
     finally:
         outcome.ended_at = time.time()
-        # AWAITED cancellation (not fire-and-forget): retrieves the task result so
-        # a watchdog crash is logged instead of vanishing as a pending-task warning.
+        # RECONCILE: which caller answers never reached the model? (Ground truth
+        # for ANSWER_DELETED; join-aware — see diagnostics.reconcile_answers.)
+        try:
+            _delivered = [m.get("content") or "" for m in llm_context.get_messages()
+                          if isinstance(m, dict) and m.get("role") == "user"]
+            # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
+            # those markers) but are deliberately NOT in the context — so they
+            # are not "answers the model never saw". Without this exclusion the
+            # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
+            # 14029bd6's panel read "2 caller answers were discarded", quoting
+            # the voicemail system back at us.
+            _heard = [t.get("text") or "" for t in outcome.transcript
+                      if t.get("role") == "user"
+                      and not (t.get("text") or "").lstrip().startswith("[")
+                      and not is_carrier_announcement(t.get("text") or "")]
+            _n, _samples = diag_mod.reconcile_answers(_heard, _delivered)
+            diag.answers_deleted = _n
+            diag.answers_deleted_samples = _samples
+            if _n:
+                logger.warning("diagnostics: %d caller answer(s) never reached the model "
+                               "corr=%s %s", _n, corr, _samples[:5])
+            # Did the caller hear the same sentence over and over? (REPLY_LOOP)
+            diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
+            if diag.max_reply_restarts >= 2:
+                logger.warning("diagnostics: bot restarted the same reply %dx in a row "
+                               "corr=%s", diag.max_reply_restarts, corr)
+        except Exception:
+            logger.exception("diagnostics: answer reconciliation failed corr=%s", corr)
         for _t in [watchdog_task, *_bg_tasks]:
             _t.cancel()
             try:
@@ -1285,13 +2175,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 pass
             except Exception:
                 logger.exception("teardown: background task died corr=%s", corr)
-        # Best-effort SDK teardown: STT holds a per-call AsyncSarvamAI whose
-        # underlying httpx.AsyncClient the pipeline never closes — leaked per
-        # call. (TTS reuses the app-level aiohttp session; its websocket is
-        # closed by the pipeline's own End/Cancel path.) Shape verified against
-        # the pinned wheels 2026-07-27: _sarvam_client._client_wrapper
-        # .httpx_client (fern AsyncHttpClient, NO aclose) .httpx_client (the
-        # real httpx.AsyncClient, has aclose). Every step is defensive.
+        # Best-effort SDK teardown (defensive getattr chain — harmless if the
+        # 1.4 services shape differs; they own their sockets natively now).
         for _svc in (stt, tts):
             _sdk = getattr(_svc, "_sarvam_client", None) or getattr(_svc, "_client", None)
             _httpx = getattr(getattr(_sdk, "_client_wrapper", None), "httpx_client", None)

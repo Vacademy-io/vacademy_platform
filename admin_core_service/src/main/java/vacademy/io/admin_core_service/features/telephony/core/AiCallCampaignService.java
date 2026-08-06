@@ -16,6 +16,8 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -82,9 +84,24 @@ public class AiCallCampaignService {
      *  ALL institutes: one campaign must not starve everyone else's calls. */
     public static final int MAX_PARALLEL = 3;
 
+    /** Providers that place AI-agent calls — the dial the cooldown de-duplicates.
+     *  Keep in sync with the AI implementations of {@code AiOutboundCaller}. */
+    private static final List<String> AI_PROVIDERS =
+            List.of(ProviderType.AAVTAAR, ProviderType.VACADEMY_AI, ProviderType.MOCK);
+
+    /**
+     * @param actorUserId the admin/counsellor who started the run. Stamped on every
+     *        call this campaign places as {@code counsellor_user_id} — outbound rows
+     *        are documented (V320) as "the actor who placed the call (always set)",
+     *        and the call-log scope filter only rescues an unowned row when it is
+     *        INBOUND. Passing null here left bulk calls owned by nobody, so a scoped
+     *        counsellor could not see her own campaign in the log while the same
+     *        lead dialled one-by-one showed up fine.
+     */
     public StartResult startForAudience(String instituteId, String audienceId, boolean dryRun,
                                         String campaignIdOverride, String preferredNumberId,
-                                        List<String> responseIds, Integer parallelRequested) {
+                                        List<String> responseIds, Integer parallelRequested,
+                                        String actorUserId) {
         AiCallingSettingsPojo settings = settingsService.get(instituteId);
         if (!settings.isEnabled()) {
             throw new VacademyException("AI calling is disabled for this institute.");
@@ -119,34 +136,83 @@ public class AiCallCampaignService {
         }
 
         // Dry run: report the counts the confirm dialog needs, WITHOUT placing any calls.
+        // Reports RAW eligibility on purpose. The cooldown below is a dispatch-time
+        // guard, NOT an eligibility rule — subtracting it here returned eligible=0 for
+        // the whole cooldown window, and the confirm button disables itself on
+        // eligible === 0 and renders "no contact number" copy. One campaign therefore
+        // left the list looking permanently broken for five minutes.
         if (dryRun) {
             return new StartResult(leads.size(), refs.size(), false,
                     refs.size() + " eligible lead(s) will be called.");
         }
 
-        // Idempotency: claim this audience for the cooldown window. The per-lead 30s
-        // dedup can't catch a re-fire of the SAME list started minutes later (each lead
-        // would be dialed a second time — double spend), so gate the whole run here. An
-        // atomic conditional UPDATE, so two concurrent/re-fired starts can't both win.
-        if (audienceRepository.tryClaimAiCampaign(audienceId, bulkCooldownSec) == 0) {
-            throw new VacademyException(
-                    "A bulk AI call for this list was started in the last few minutes — "
-                    + "please wait before starting another.");
+        // Cooldown, applied PER LEAD. The real guarantee we owe is "no lead is dialled
+        // twice by a re-fire" — not "this audience is frozen". The audience-level claim
+        // below can't tell "call these 10 checked leads" from "call the whole list", so
+        // it locked a counsellor out for the full window after working one small
+        // selection. Dropping leads already AI-dialled inside the window keeps the
+        // anti-double-spend guarantee while letting a DIFFERENT selection through, and
+        // it also stops a follow-up whole-list run from re-dialling the subset that was
+        // just called (which the audience claim alone never covered).
+        List<LeadRef> callable = dropRecentlyAiCalled(instituteId, refs);
+        int skippedRecent = refs.size() - callable.size();
+        if (callable.isEmpty()) {
+            // Logged, not silent: "nothing dialled" must be explainable from the logs.
+            log.info("ai-call bulk: audience={} all {} eligible lead(s) already AI-called "
+                    + "within the {}s cooldown — nothing dispatched", audienceId, refs.size(), bulkCooldownSec);
+            return new StartResult(leads.size(), 0, false,
+                    "Every eligible lead here was already AI-called in the last few minutes.");
+        }
+
+        // Idempotency for a WHOLE-LIST run: claim this audience for the cooldown window.
+        // An atomic conditional UPDATE, so two concurrent/re-fired starts can't both win.
+        // Subset runs deliberately don't claim — they're guarded per lead above, and
+        // claiming here is what blocked the next selection from the same list.
+        boolean claimed = false;
+        if (scope == null) {
+            if (audienceRepository.tryClaimAiCampaign(audienceId, bulkCooldownSec) == 0) {
+                throw new VacademyException(
+                        "A bulk AI call for this list was started in the last few minutes — "
+                        + "please wait before starting another.");
+            }
+            claimed = true;
         }
 
         try {
             // The refs are plain records (snapshot) — safe to hand to another thread;
             // no managed JPA entities cross the boundary.
             dispatchExecutor.execute(() -> dispatch(instituteId, audienceId, campaignId,
-                    preferredNumberId, refs, parallel));
+                    preferredNumberId, callable, parallel, actorUserId));
         } catch (RejectedExecutionException rej) {
+            // Nothing was dispatched, so the claim must not outlive the attempt —
+            // otherwise this list is locked for the full cooldown having placed no calls.
+            if (claimed) audienceRepository.releaseAiCampaignClaim(audienceId);
             throw new VacademyException("Too many AI bulk campaigns are running right now — try again shortly.");
         }
 
-        log.info("ai-call bulk: audience={} total={} eligible={} dispatched async (pace={}ms)",
-                audienceId, leads.size(), refs.size(), paceMs);
-        return new StartResult(leads.size(), refs.size(), true,
-                "Queued " + refs.size() + " AI calls; outcomes will arrive via the webhook.");
+        log.info("ai-call bulk: audience={} total={} eligible={} callable={} dispatched async (pace={}ms)",
+                audienceId, leads.size(), refs.size(), callable.size(), paceMs);
+        return new StartResult(leads.size(), callable.size(), true,
+                "Queued " + callable.size() + " AI calls"
+                + (skippedRecent > 0
+                        ? " (" + skippedRecent + " skipped — already called in the last few minutes)"
+                        : "")
+                + "; outcomes will arrive via the webhook.");
+    }
+
+    /**
+     * Drop leads that already received an AI call inside the campaign cooldown window,
+     * so a re-fire (whole list or overlapping selection) never dials — or bills — the
+     * same lead twice.
+     */
+    private List<LeadRef> dropRecentlyAiCalled(String instituteId, List<LeadRef> refs) {
+        if (bulkCooldownSec <= 0) return refs;
+        java.sql.Timestamp since = java.sql.Timestamp.from(
+                java.time.Instant.now().minusSeconds(bulkCooldownSec));
+        Set<String> recentlyCalled = new HashSet<>(
+                callLogRepo.findAiCalledUserIdsSince(instituteId, since, AI_PROVIDERS));
+        if (recentlyCalled.isEmpty()) return refs;
+        return refs.stream().filter(r -> !recentlyCalled.contains(r.userId())).toList();
     }
 
     /** Grace before a never-terminal call stops occupying a parallel slot (webhook
@@ -166,10 +232,11 @@ public class AiCallCampaignService {
      * shed the overflow — callers got "busy" instead of a queued call.
      */
     private void dispatch(String instituteId, String audienceId, String campaignId,
-                          String preferredNumberId, List<LeadRef> refs, int parallel) {
+                          String preferredNumberId, List<LeadRef> refs, int parallel,
+                          String actorUserId) {
         Deque<LeadRef> queue = new ArrayDeque<>(refs);
         Map<String, Long> inFlight = new LinkedHashMap<>(); // callLogId -> dialedAtMs
-        int placed = 0, failed = 0;
+        int placed = 0, failed = 0, skipped = 0;
         try {
             while (!queue.isEmpty() || !inFlight.isEmpty()) {
                 // Reap finished/stuck calls to free window slots.
@@ -198,8 +265,30 @@ public class AiCallCampaignService {
                     req.setCampaignId(campaignId);
                     req.setPreferredNumberId(preferredNumberId);
                     try {
-                        var resp = aiCallService.placeCall(req, null);
-                        placed++;
+                        // Actor-owned, exactly like the one-off "Click to AI call" path —
+                        // so the starter (and their manager, via hierarchy scope) sees
+                        // these rows in the call log.
+                        // BULK_MANUAL: a person picked these leads and pressed Call, so the
+                        // already-assigned guard must not apply — on a counsellor's own
+                        // list EVERY lead is assigned to her, which silently reduced the
+                        // whole campaign to zero dials while still reporting "Queued N".
+                        // The daily cap and the duplicate window still apply: bounding a
+                        // fan-out is exactly what those two are for.
+                        var resp = aiCallService.placeCall(req, actorUserId, CallTrigger.BULK_MANUAL);
+                        // Only a call the provider accepted is "placed". The 30s dedup
+                        // returns dispatched=false with no call-log row, and a provider
+                        // rejection returns a FAILED row — counting either as placed made
+                        // the DONE line claim calls that never happened, which is exactly
+                        // the number you reach for when asking "why did only some leads
+                        // get called?". In-flight tracking is unchanged: a FAILED row is
+                        // terminal and frees its slot on the next poll either way.
+                        if (resp != null && resp.isDispatched()) {
+                            placed++;
+                        } else if (resp != null && !isBlank(resp.getCallLogId())) {
+                            failed++;
+                        } else {
+                            skipped++;
+                        }
                         if (resp != null && !isBlank(resp.getCallLogId())) {
                             inFlight.put(resp.getCallLogId(), System.currentTimeMillis());
                         }
@@ -219,8 +308,8 @@ public class AiCallCampaignService {
             Thread.currentThread().interrupt();
             log.warn("ai-call bulk: interrupted for audience {} after {} placed", audienceId, placed);
         }
-        log.info("ai-call bulk DONE: audience={} eligible={} placed={} failed={} parallel={}",
-                audienceId, refs.size(), placed, failed, parallel);
+        log.info("ai-call bulk DONE: audience={} eligible={} placed={} failed={} skipped={} parallel={}",
+                audienceId, refs.size(), placed, failed, skipped, parallel);
     }
 
     /**

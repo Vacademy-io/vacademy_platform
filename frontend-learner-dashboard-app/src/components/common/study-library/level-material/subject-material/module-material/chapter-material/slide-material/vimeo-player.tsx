@@ -905,26 +905,44 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
     player.setVolume(newVolume / 100);
   };
 
-  const toggleFullscreen = () => {
+  // Mirrors the YouTube player's fullscreen handling: iPhone Safari has no
+  // Fullscreen API on generic elements (requestFullscreen is undefined, so
+  // calling it throws a synchronous TypeError that no .catch() can see), and
+  // requestFullscreen() also rejects when the browser refuses — blocked by
+  // Permissions Policy in an embed, or without a qualifying user gesture.
+  // Feature-detect first, and fall back to the CSS pseudo-fullscreen overlay.
+  const toggleFullscreen = async () => {
     if (!playerContainerRef.current) return;
 
-    if (!document.fullscreenElement) {
-      // requestFullscreen() rejects (with a TypeError) when the browser refuses —
-      // e.g. fullscreen blocked by Permissions Policy in an embedded context, or
-      // without a qualifying user gesture. Catch it so it doesn't bubble up as an
-      // unhandled promise rejection (surfaced to Sentry).
-      playerContainerRef.current.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-      }).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
         setIsFullscreen(false);
-      }).catch(() => {});
-    }
-  };
+        return;
+      }
 
-  const togglePseudoFullscreen = () => {
-    setIsPseudoFullscreen(!isPseudoFullscreen);
+      if (isPseudoFullscreen) {
+        setIsPseudoFullscreen(false);
+        return;
+      }
+
+      const elem = playerContainerRef.current;
+      const isIOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const canNativeFullscreen =
+        !!document.fullscreenEnabled && typeof elem.requestFullscreen === "function";
+
+      if (canNativeFullscreen && !isIOS) {
+        await elem.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        setIsPseudoFullscreen(true);
+      }
+    } catch {
+      // Last resort — keep the control usable even if the native API refused.
+      setIsPseudoFullscreen((prev) => !prev);
+    }
   };
 
   useEffect(() => {

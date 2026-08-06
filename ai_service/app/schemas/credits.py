@@ -62,6 +62,15 @@ class CreditGrantRequest(BaseModel):
     """Request to grant credits to an institute."""
     amount: Decimal = Field(..., gt=0, description="Amount of credits to grant (must be positive)")
     description: Optional[str] = Field(None, description="Reason for granting credits")
+    acting_user_id: Optional[str] = Field(
+        None,
+        description=(
+            "Super admin the adjustment is attributed to. Honored ONLY on the "
+            "X-Internal-Service-Token path, where the calling service has already "
+            "verified the user is a root admin. JWT callers are attributed from "
+            "their token and this field is ignored."
+        ),
+    )
 
 
 class CreditGrantResponse(BaseModel):

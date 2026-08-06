@@ -125,6 +125,12 @@ public class AssessmentParticipantsManager {
     @Autowired
     private CacheManager cacheManager;
 
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.ReportPdfRenderService reportPdfRenderService;
+
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.ReportPdfUploadService reportPdfUploadService;
+
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user,
             AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId,
@@ -802,20 +808,110 @@ public class AssessmentParticipantsManager {
                 .findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
 
         return StudentReportOverallDetailDto.builder()
-                .allSections(generateStudentReport(mappings, attemptId))
+                .allSections(generateStudentReport(mappings, attemptId, buildQuestionOrderMap(mappings)))
                 .questionOverallDetailDto(questionOverallDetailDto)
                 .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
-                .responseFileId(extractResponseFileId(studentAttempt.get().getAttemptData()))
+                .responseFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "fileId"))
+                .reportFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "reportFileId"))
                 .build();
     }
 
-    // The attempt stores the learner's uploaded answer file id inside its
-    // attemptData JSON (key "fileId"). Parse it defensively for "view submitted".
-    private String extractResponseFileId(String attemptData) {
+    /**
+     * Context-aware overload (PR2, bulk report export): reuses the
+     * already-loaded {@code ctx.sections} and
+     * {@code ctx.questionOrderByQuestionAndSection} instead of re-querying
+     * them per student (plan C4). Only {@code findById(attemptId)} and
+     * {@code findParticipantsQuestionOverallDetails} run here.
+     *
+     * <p>The 3-arg overload above deliberately keeps its own body rather than
+     * delegating to this one — delegating would force every existing caller
+     * (AdminExportManager per-student download, both LearnerReportService
+     * entry points) to pay for a full loadClassContext, which is a latency
+     * regression for those call sites (ARCHITECTURE.md §5.2, assumption A4).
+     */
+    public StudentReportOverallDetailDto createStudentReportDetailResponse(
+            vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext ctx,
+            String attemptId, String instituteId) {
+        Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
+        if (studentAttempt.isEmpty())
+            throw new VacademyException("Attempt Not Found");
+
+        ParticipantsQuestionOverallDetailDto questionOverallDetailDto = studentAttemptRepository
+                .findParticipantsQuestionOverallDetails(ctx.getAssessmentId(), instituteId, attemptId);
+
+        return StudentReportOverallDetailDto.builder()
+                .allSections(generateStudentReportFromContext(ctx, attemptId))
+                .questionOverallDetailDto(questionOverallDetailDto)
+                .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
+                .responseFileId(extractAttemptDataFileId(studentAttempt.get().getAttemptData(), "fileId"))
+                .build();
+    }
+
+    private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReportFromContext(
+            vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext ctx, String attemptId) {
+        List<vacademy.io.assessment_service.features.learner_assessment.dto.context.SectionSnapshot> sections = ctx.getSections();
+        if (CollectionUtils.isEmpty(sections)) {
+            return new HashMap<>();
+        }
+        Map<String, Integer> orderByKey = ctx.getQuestionOrderByQuestionAndSection();
+
+        Map<String, List<StudentReportAnswerReviewDto>> result = new HashMap<>();
+        for (vacademy.io.assessment_service.features.learner_assessment.dto.context.SectionSnapshot section : sections) {
+            String sectionId = section.id();
+            List<String> questionIds = orderByKey.keySet().stream()
+                    .filter(k -> k.endsWith('#' + sectionId))
+                    .map(k -> k.substring(0, k.length() - sectionId.length() - 1))
+                    .toList();
+            result.put(sectionId, getQuestionReviewForAttempt(sectionId, questionIds, attemptId, orderByKey));
+        }
+        return result;
+    }
+
+    // PR1 (bulk report export, C3 fix): the mappings are already bulk-loaded above
+    // (getQuestionAssessmentSectionMappingBySectionIds). Build a lookup keyed by
+    // "questionId#sectionId" so buildStudentReportReview no longer re-queries
+    // getMappingById once per question per student.
+    //
+    // Semantics caveat (must be preserved): getMappingById ->
+    // findByQuestionIdAndSectionId is `ORDER BY created_at DESC LIMIT 1`, but this
+    // bulk loader is unordered and undeduped. The merge below picks the greatest
+    // createdAt for a given (question, section) pair so the replacement is
+    // behaviour-identical when duplicate mapping rows exist.
+    private static String questionOrderMapKey(String questionId, String sectionId) {
+        return questionId + '#' + sectionId;
+    }
+
+    private static Map<String, Integer> buildQuestionOrderMap(List<QuestionAssessmentSectionMapping> mappings) {
+        if (CollectionUtils.isEmpty(mappings)) {
+            return new HashMap<>();
+        }
+        Map<String, QuestionAssessmentSectionMapping> newest = new HashMap<>();
+        for (QuestionAssessmentSectionMapping m : mappings) {
+            if (m.getQuestion() == null || m.getSection() == null) {
+                continue;
+            }
+            String key = questionOrderMapKey(m.getQuestion().getId(), m.getSection().getId());
+            newest.merge(key, m, (a, b) -> {
+                Date da = a.getCreatedAt();
+                Date db = b.getCreatedAt();
+                if (da == null) return b;
+                if (db == null) return a;
+                return db.after(da) ? b : a;
+            });
+        }
+        Map<String, Integer> out = new HashMap<>(newest.size() * 2);
+        newest.forEach((k, m) -> out.put(k, m.getQuestionOrder()));
+        return out;
+    }
+
+    // The attempt stores admin-attached file ids inside its attemptData JSON —
+    // "fileId" (the learner's submitted answer sheet, for "view submitted") and
+    // "reportFileId" (an uploaded result report). Parse defensively.
+    private String extractAttemptDataFileId(String attemptData, String key) {
         if (attemptData == null || attemptData.isBlank()) return null;
         try {
             Map<String, Object> jsonMap = new ObjectMapper().readValue(attemptData, Map.class);
-            Object fileId = jsonMap.get("fileId");
+            Object fileId = jsonMap.get(key);
             return fileId != null ? fileId.toString() : null;
         } catch (Exception e) {
             return null;
@@ -823,7 +919,7 @@ public class AssessmentParticipantsManager {
     }
 
     private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReport(
-            List<QuestionAssessmentSectionMapping> mappings, String attemptId) {
+            List<QuestionAssessmentSectionMapping> mappings, String attemptId, Map<String, Integer> orderByKey) {
         if (CollectionUtils.isEmpty(mappings)) {
             return new HashMap<>();
         }
@@ -838,12 +934,12 @@ public class AssessmentParticipantsManager {
         return sectionToQuestionsMap.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> getQuestionReviewForAttempt(entry.getKey(), entry.getValue(), attemptId)));
+                        entry -> getQuestionReviewForAttempt(entry.getKey(), entry.getValue(), attemptId, orderByKey)));
 
     }
 
     private List<StudentReportAnswerReviewDto> getQuestionReviewForAttempt(String sectionId, List<String> questionIds,
-            String attemptId) {
+            String attemptId, Map<String, Integer> orderByKey) {
         if (CollectionUtils.isEmpty(questionIds)) {
             return Collections.emptyList();
         }
@@ -856,21 +952,27 @@ public class AssessmentParticipantsManager {
         }
 
         return questionWiseMarksList.stream()
-                .map(this::buildStudentReportReview)
+                .map(qwm -> buildStudentReportReview(qwm, orderByKey))
                 .filter(Objects::nonNull) // Remove any null results
                 .toList();
     }
 
-    private StudentReportAnswerReviewDto buildStudentReportReview(QuestionWiseMarks questionWiseMarks) {
+    private StudentReportAnswerReviewDto buildStudentReportReview(QuestionWiseMarks questionWiseMarks,
+            Map<String, Integer> orderByKey) {
         try {
             if (questionWiseMarks == null || questionWiseMarks.getQuestion() == null) {
                 return null; // Avoid throwing an exception, instead return null to filter later
             }
 
-            QuestionAssessmentSectionMapping questionAssessmentSectionMapping = questionAssessmentSectionMappingService
-                    .getMappingById(questionWiseMarks.getQuestion().getId(), questionWiseMarks.getSection().getId());
-            if (Objects.isNull(questionAssessmentSectionMapping))
+            String mappingKey = questionOrderMapKey(questionWiseMarks.getQuestion().getId(),
+                    questionWiseMarks.getSection().getId());
+            Integer questionOrder = orderByKey.get(mappingKey);
+            if (questionOrder == null) {
+                // Preserves pre-PR1 behaviour: getMappingById returned null, an explicit
+                // exception fired, and the catch below swallowed it — the question was
+                // silently dropped from the report by the caller's filter(Objects::nonNull).
                 throw new VacademyException("Section and Question Mapping Not Found");
+            }
 
             Question currentQuestion = questionWiseMarks.getQuestion();
             // H: Guard against null textData
@@ -910,11 +1012,11 @@ public class AssessmentParticipantsManager {
                             currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
                     .questionName(questionHtml)
                     .questionType(questionType)
-                    .questionOrder(questionAssessmentSectionMapping.getQuestionOrder())
+                    .questionOrder(questionOrder)
                     .correctOptions(currentQuestion.getAutoEvaluationJson())
                     .studentResponseOptions(questionWiseMarks.getResponseJson())
                     .answerStatus(questionWiseMarks.getStatus())
-                    .mark(questionWiseMarks.getMarks())
+                    .mark(questionWiseMarks.getMarks()) // primitive double on the entity; null-safe by construction
                     .explanationId(currentQuestion.getExplanationTextData() != null
                             ? currentQuestion.getExplanationTextData().getId()
                             : null)
@@ -928,7 +1030,16 @@ public class AssessmentParticipantsManager {
                     .evaluationSource(questionWiseMarks.getMarksSource())
                     .build();
         } catch (Exception e) {
-            // G: Return null instead of empty DTO — caller filters nulls
+            // G: Return null instead of empty DTO — caller filters nulls.
+            // Previously swallowed with no log line, so a dropped question was
+            // invisible. Now surfaced at WARN so a missing question in a report
+            // can be traced back to a specific attempt/question.
+            log.warn("[report] Dropping question {} from report for attempt {}: {}",
+                    questionWiseMarks != null && questionWiseMarks.getQuestion() != null
+                            ? questionWiseMarks.getQuestion().getId() : "unknown",
+                    questionWiseMarks != null && questionWiseMarks.getStudentAttempt() != null
+                            ? questionWiseMarks.getStudentAttempt().getId() : "unknown",
+                    e.getMessage(), e);
             return null;
         }
     }
@@ -1069,24 +1180,25 @@ public class AssessmentParticipantsManager {
             handleParticipantsReportCreationForManualAssessment(attemptList, assessment, instituteId);
             return;
         }
-        // Fetch report branding once for the institute
-        vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto branding = null;
-        try {
-            branding = adminCoreServiceClient.getReportBranding(instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to fetch report branding for institute {}: {}", instituteId, e.getMessage());
-        }
-        final vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto finalBranding = branding;
 
-        // Pre-compute option distribution once for the entire assessment (shared across all students)
-        java.util.Map<String, java.util.Map<String, Double>> optionDist = null;
-        try {
-            optionDist = learnerReportService.computeOptionDistribution(assessment.getId());
-        } catch (Exception e) {
-            log.warn("Failed to compute option distribution for assessment {}: {}", assessment.getId(), e.getMessage());
-        }
+        // PR2 (bulk report export): one loadClassContext call replaces the
+        // separate branding + option-distribution prefetch above, AND removes
+        // the class-wide query duplication that used to happen again inside
+        // buildComparisonData for every attempt (plan C4/C5).
+        vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext ctx =
+                learnerReportService.loadClassContext(assessment.getId(), instituteId);
 
-        final java.util.Map<String, java.util.Map<String, Double>> finalOptionDist = optionDist;
+        // NOTE (C9, partially addressed): the release flow still accumulates
+        // rendered PDFs in memory to hand to AssessmentReportNotificationService,
+        // which reads directly from the byte[] map for the email attachment.
+        // Fully eliminating the in-memory map requires changing that service's
+        // contract to fetch bytes per-email from file_id instead — a larger,
+        // separately-reviewable change left for a follow-up (see PR2 notes in
+        // ASSESSMENT_BULK_REPORT_EXPORT_ARCHITECTURE.md §6, step 18). What IS
+        // fixed here: no more duplicate per-student class-wide queries, no more
+        // duplicated HTML/PDF generation code (now shared via
+        // ReportPdfRenderService), and a failed upload no longer silently
+        // leaves report_pdf_file_id unset (ReportPdfUploadService throws).
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
             try {
@@ -1098,64 +1210,29 @@ public class AssessmentParticipantsManager {
                     return;
                 }
 
-                // Generate student report details
-                StudentReportOverallDetailDto studentReportOverallDetailDto = createStudentReportDetailResponse(
-                        assessment.getId(), attempt.getId(), instituteId);
+                // Generate student report details (ctx-aware: reuses sections/question order)
+                StudentReportOverallDetailDto studentReportOverallDetailDto =
+                        createStudentReportDetailResponse(ctx, attempt.getId(), instituteId);
 
-                // Build comparison data for rich PDF
+                // Build comparison data for rich PDF (ctx-aware: reuses class aggregates)
                 String userId = attempt.getRegistration() != null ? attempt.getRegistration().getUserId() : null;
                 vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto comparison = null;
                 try {
-                    comparison = learnerReportService.buildComparisonData(
-                            userId, assessment.getId(), attempt.getId(), instituteId);
+                    comparison = learnerReportService.buildComparisonFromContext(ctx, attempt.getId(), userId);
                 } catch (Exception e) {
                     log.warn("Failed to build comparison for attempt {}: {}", attempt.getId(), e.getMessage());
                 }
 
-                // Convert report to rich HTML with comparison data and branding
-                String studentReportHtml = htmlBuilderService.generateStudentReportHtml(
-                        assessment.getName(), studentReportOverallDetailDto, comparison, finalOptionDist, finalBranding);
+                // Render HTML -> PDF via the shared render service (no duplicated logic)
+                byte[] participantPdfReport = reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
 
-                // Convert HTML report to PDF
-                ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-                ConverterProperties converterProperties = new ConverterProperties();
-                HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
-
-                // Convert the PDF stream to a byte array
-                byte[] participantPdfReport = pdfOutputStream.toByteArray();
-
-                // Upload PDF to storage and cache the file ID
+                // Upload PDF to storage and cache the file ID. Throws on failure —
+                // caught below so one student's upload failure doesn't stop the batch.
                 try {
                     String fileName = "report_" + attempt.getId() + ".pdf";
-                    Map<String, String> presignedData = fileService.getPresignedUploadUrl(
-                            fileName, "application/pdf", "ASSESSMENT_REPORT", assessment.getId());
-                    String fileId = presignedData.get("id");
-                    String uploadUrl = presignedData.get("url");
-
-                    // PUT the PDF bytes to the presigned S3 URL
-                    java.net.URL url = new java.net.URL(uploadUrl);
-                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("PUT");
-                    conn.setDoOutput(true);
-                    conn.setRequestProperty("Content-Type", "application/pdf");
-                    conn.setRequestProperty("Content-Length", String.valueOf(participantPdfReport.length));
-                    try (java.io.OutputStream os = conn.getOutputStream()) {
-                        os.write(participantPdfReport);
-                        os.flush();
-                    }
-                    int responseCode = conn.getResponseCode();
-                    if (responseCode == 200 || responseCode == 201) {
-                        attempt.setReportPdfFileId(fileId);
-                        log.info("Uploaded report PDF for attempt {}, fileId: {}", attempt.getId(), fileId);
-                    } else {
-                        String errorBody = "";
-                        try (java.io.InputStream errStream = conn.getErrorStream()) {
-                            if (errStream != null) errorBody = new String(errStream.readAllBytes());
-                        } catch (Exception ignored) {}
-                        log.warn("S3 upload returned {} for attempt {}. URL: {}, Error: {}",
-                                responseCode, attempt.getId(), uploadUrl, errorBody);
-                    }
-                    conn.disconnect();
+                    String fileId = reportPdfUploadService.upload(participantPdfReport, fileName, "ASSESSMENT_REPORT", assessment.getId());
+                    attempt.setReportPdfFileId(fileId);
+                    log.info("Uploaded report PDF for attempt {}, fileId: {}", attempt.getId(), fileId);
                 } catch (Exception e) {
                     log.warn("Failed to upload PDF for attempt {}: {}", attempt.getId(), e.getMessage());
                 }

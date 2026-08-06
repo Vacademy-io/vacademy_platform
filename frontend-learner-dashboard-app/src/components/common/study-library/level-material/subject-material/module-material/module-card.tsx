@@ -9,6 +9,7 @@ import { toTitleCase } from "@/lib/utils";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { useTranslation } from "react-i18next";
+import { useShowContentDescriptions } from "@/hooks/use-content-descriptions";
 
 export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
 
@@ -16,6 +17,8 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
     const router = useRouter();
     const { open } = useSidebar();
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+    const showDescription = useShowContentDescriptions();
+    const description = showDescription ? module.module.description?.trim() : "";
 
     const handleCardClick = (e: React.MouseEvent) => {
         if (
@@ -82,9 +85,16 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                             <div>{getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}</div>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                            <div className="text-caption text-neutral-500">{module.module.description}</div>
-                        </div>
+                        {description && (
+                            <div className="flex items-center justify-between">
+                                <div
+                                    className="line-clamp-2 break-words text-caption text-neutral-500"
+                                    title={description}
+                                >
+                                    {description}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={module.percentage_completed} />

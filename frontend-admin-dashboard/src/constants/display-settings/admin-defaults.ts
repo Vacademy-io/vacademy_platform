@@ -5,6 +5,7 @@ import type {
     SidebarTabConfig,
     DashboardWidgetConfig,
 } from '@/types/display-settings';
+import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
 const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
@@ -192,6 +193,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
     courseListCard: {
         showEnrolledStudentCount: false,
     },
+    assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,
@@ -247,11 +249,31 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
         showApprovalToggle: true,
+        // ON for admins, OFF for every other role (see teacher/custom defaults).
+        // Changing credentials signs the learner out, so it stays an admin
+        // capability unless an admin explicitly grants it to another role.
+        allowEditCredentials: true,
     },
     studentManagementActions: {
         showEnrollButton: true,
         showInviteButton: true,
         customButtons: [],
+    },
+    subOrganizations: {
+        // Off by default for every role — institutes opt in from Display Settings.
+        // Keeps parity with the sidebar sub-item, which also ships hidden.
+        moduleEnabled: false,
+        // No channel partners granted at role level by default.
+        assignedSubOrgIds: [],
+        // Read-only out of the box; admins opt each write capability in per role.
+        permissions: {
+            canCreate: false,
+            canEditConfig: false,
+            canManageTeam: false,
+            canViewFinance: true,
+            canManageFinance: false,
+            canExport: true,
+        },
     },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',

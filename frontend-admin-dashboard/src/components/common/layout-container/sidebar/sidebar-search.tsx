@@ -24,6 +24,7 @@ import { SidebarItemsType } from '@/types/layout-container/layout-container-type
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { LockKey, GearSix } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
+import { parseSidebarLink } from './helper';
 import { SETTINGS_TAB_ICONS } from './sidebar-panel';
 import {
     getAvailableSettingsTabs,
@@ -121,7 +122,10 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                 route: to,
                 category: (category as 'CRM' | 'LMS' | 'AI') || 'CRM',
             });
-            navigate({ to });
+            // Sidebar links may carry a query ("/settings?selectedTab=…"); the
+            // router only honours it when it's passed as `search`.
+            const { to: path, search } = parseSidebarLink(to);
+            navigate({ to: path, search });
             onOpenChange(false);
         },
         [navigate, onOpenChange]

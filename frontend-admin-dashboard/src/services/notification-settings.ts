@@ -79,7 +79,91 @@ export type NotificationSettings = {
         type: string;
     }>;
     firebase?: FirebaseSettings;
+    emailCc?: EmailCcSettings;
 };
+
+// Copy-recipient (CC/BCC) config, persisted under institute-settings `settings.emailCc`.
+// Mirrors the backend EmailCcSettings DTO — keys must match its JSON shape EXACTLY or the
+// block is dropped when the settings map is rewritten on save.
+export type EmailCcSettings = {
+    enabled: boolean;
+    /** 'BCC' hides copies from the learner; 'CC' makes them visible on the email. */
+    mode: 'CC' | 'BCC';
+    /** Applied to every ENABLED trigger, in addition to that trigger's own list. */
+    global_cc: string[];
+    triggers: Record<string, { enabled: boolean; cc: string[] }>;
+};
+
+/**
+ * Triggers that can carry copies today.
+ *
+ * ONLY list events whose sender actually stamps a matching `source` on the outgoing send —
+ * the backend resolver matches on that string, so an unstamped event would render a control
+ * here that silently does nothing. Verified against each sender before being added.
+ *
+ * Known gaps needing a source stamp before they can be listed: live-class emails (all six
+ * variants share a generic "ADMIN_CORE" source) and enquiry/invite emails (routed through
+ * sendGenericHtmlMailViaUnified, which hardcodes source to "html-email").
+ */
+export const EMAIL_CC_TRIGGERS: Array<{ key: string; label: string; description: string }> = [
+    {
+        key: 'LEARNER_ENROLL',
+        label: 'Course enrollment',
+        description: 'Sent when a learner is enrolled, including login credentials.',
+    },
+    {
+        key: 'PAYMENT_CONFIRMATION',
+        label: 'Payment confirmation',
+        description: 'Sent when a payment is captured.',
+    },
+    {
+        key: 'INVOICE',
+        label: 'Invoice',
+        description: 'Invoice email, with the PDF attached when available.',
+    },
+    {
+        key: 'SCHOOL_FEE_RECEIPT',
+        label: 'School fee receipt',
+        description: 'Receipt issued against a school fee payment.',
+    },
+    {
+        key: 'APPLICATION_FEE_RECEIPT',
+        label: 'Application fee receipt',
+        description: 'Receipt issued against an application fee payment.',
+    },
+    {
+        key: 'CERTIFICATE_ISSUED',
+        label: 'Certificate issued',
+        description: 'Sent when a learner is awarded a certificate.',
+    },
+    {
+        key: 'GUARDIAN_ACCOUNT_CREATED',
+        label: 'Guardian account created',
+        description: 'Credentials sent when a guardian account is created.',
+    },
+    {
+        key: 'TEAM_INVITE',
+        label: 'Team invite',
+        description:
+            'Invitation and reminder emails sent to staff you add to your team, including their login details.',
+    },
+];
+
+export function getDefaultEmailCcSettings(): EmailCcSettings {
+    return { enabled: false, mode: 'BCC', global_cc: [], triggers: {} };
+}
+
+// Merge a possibly-missing/partial block against the defaults so the tab renders for
+// institutes saved before emailCc existed.
+export function mergeEmailCcSettings(partial?: Partial<EmailCcSettings> | null): EmailCcSettings {
+    const defaults = getDefaultEmailCcSettings();
+    return {
+        enabled: partial?.enabled ?? defaults.enabled,
+        mode: partial?.mode ?? defaults.mode,
+        global_cc: partial?.global_cc ?? defaults.global_cc,
+        triggers: partial?.triggers ?? defaults.triggers,
+    };
+}
 
 // App overlay permissions block, persisted under institute-settings
 // `settings.appOverlays`. Keys are snake_case to match the backend JSON shape EXACTLY.

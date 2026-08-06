@@ -8,17 +8,22 @@ import {
     fetchDashboard,
     fetchMenteeCalls,
     fetchMentors,
+    fetchMyBookingPage,
     fetchMyMentees,
+    fetchMyMentorProfile,
+    fetchMySchedule,
     fetchStudentTimeline,
     provisionMentorBookingPage,
     unassignMentee,
     updateMentor,
+    updateMyBookingPage,
 } from '../-services/mentorship-service';
 import type {
     AssignMentorRequest,
     BulkRoundRobinRequest,
     CreateMentorRequest,
     CreateNoteRequest,
+    MentorAvailabilityRequest,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -78,6 +83,46 @@ export const useMyMentees = (instituteId: string | undefined) =>
         enabled: !!instituteId,
         staleTime: 30 * 1000,
     });
+
+export const useMyMentorProfile = (instituteId: string | undefined) =>
+    useQuery({
+        queryKey: ['mentorship-my-mentor-profile', instituteId],
+        queryFn: () => fetchMyMentorProfile(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+        retry: false,
+    });
+
+export const useMySchedule = (
+    instituteId: string | undefined,
+    startDate: string,
+    endDate: string
+) =>
+    useQuery({
+        queryKey: ['mentorship-my-schedule', instituteId, startDate, endDate],
+        queryFn: () => fetchMySchedule(instituteId ?? '', startDate, endDate),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+export const useMyBookingPage = (instituteId: string | undefined) =>
+    useQuery({
+        queryKey: ['mentorship-my-booking-page', instituteId],
+        queryFn: () => fetchMyBookingPage(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+        retry: false,
+    });
+
+export const useUpdateMyBookingPage = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (v: { instituteId: string; data: MentorAvailabilityRequest }) =>
+            updateMyBookingPage(v.instituteId, v.data),
+        onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: ['mentorship-my-booking-page'] }),
+    });
+};
 
 const useInvalidateMentorship = () => {
     const queryClient = useQueryClient();

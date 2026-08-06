@@ -91,14 +91,22 @@ public class InstituteAccessValidator {
      */
     public void requireAdminAccess(CustomUserDetails user, String instituteId) {
         validateUserAccess(user, instituteId);
-        if (user.isRootUser()) {
-            return;
-        }
-        boolean isAdmin = user.getAuthorities() != null && user.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority() != null && a.getAuthority().equalsIgnoreCase("ADMIN"));
-        if (!isAdmin) {
+        if (!isInstituteAdmin(user)) {
             throw new ForbiddenException("Access denied: institute admin role required");
         }
+    }
+
+    /**
+     * Non-throwing form of the ADMIN role test, for endpoints that DEGRADE rather than
+     * reject -- e.g. the Call Log serves a health verdict to any viewer but withholds the
+     * technical detail (which quotes verbatim caller speech) from non-admins.
+     * Assumes membership was already validated by the caller.
+     */
+    public boolean isInstituteAdmin(CustomUserDetails user) {
+        if (user == null) return false;
+        if (user.isRootUser()) return true;
+        return user.getAuthorities() != null && user.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority() != null && a.getAuthority().equalsIgnoreCase("ADMIN"));
     }
 
     private String currentClientIdHeader() {

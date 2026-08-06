@@ -1,9 +1,20 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { TemplateEditorEmail } from '@/components/templates/email/TemplateEditorEmail';
 
-export type CreateTemplateType = 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
+export type CreateTemplateType =
+    | 'EMAIL'
+    | 'WHATSAPP'
+    | 'INVOICE'
+    | 'INVOICE_EMAIL'
+    | 'PAYMENT_CONFIRMATION';
 
-const ALLOWED_TYPES: CreateTemplateType[] = ['EMAIL', 'WHATSAPP', 'INVOICE', 'INVOICE_EMAIL'];
+const ALLOWED_TYPES: CreateTemplateType[] = [
+    'EMAIL',
+    'WHATSAPP',
+    'INVOICE',
+    'INVOICE_EMAIL',
+    'PAYMENT_CONFIRMATION',
+];
 
 export const Route = createFileRoute('/templates/create/')({
     // Optional `type` preselects the template category in the editor (e.g. opening

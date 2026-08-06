@@ -489,6 +489,13 @@ export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
+// Bulk Assessment Report Export (ZIP)
+export const REPORT_ZIP_EXPORT_INITIATE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/initiate`;
+export const REPORT_ZIP_EXPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/status`;
+export const REPORT_ZIP_EXPORT_CONTINUE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/continue`;
+export const REPORT_ZIP_EXPORT_ASSEMBLE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/assemble`;
+export const REPORT_ZIP_EXPORT_RECENT_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/recent`;
+export const REPORT_ZIP_EXPORT_CANCEL_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/cancel`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
 // LOCAL TESTING: submission_status filter only exists on the local build — revert to BASE_URL before merging.
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
@@ -738,6 +745,13 @@ export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get
 export const CONVERT_PDF_TO_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-html`;
 export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
 export const SHARE_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/send-passwords`;
+// Rewrites users.username / password_hash and fans the rename out to every
+// denormalized copy (student.username + four assessment-database tables).
+export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/update-password`;
+// Sends the learner their credentials using whatever template the institute has
+// bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
+export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
+export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
 // Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
 // processing returns 425 so the FE retry loop (onError) re-polls.
 export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;
@@ -1145,6 +1159,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 // Institute scope comes from the auth token — no params
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+// Header / footer / theme — the settings shared by every page.
+export const AI_PAGE_BUILDER_SITE_CHROME = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
@@ -1193,13 +1209,17 @@ export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 export const MENTORSHIP_BASE = `${BASE_URL}/admin-core-service/mentorship/v1`;
 export const MENTORSHIP_MENTORS = `${MENTORSHIP_BASE}/mentors`;
 export const MENTORSHIP_MENTOR_BY_ID = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}`;
-export const MENTORSHIP_MENTOR_BOOKING_PAGE = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/booking-page`;
+export const MENTORSHIP_MENTOR_BOOKING_PAGE = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/booking-page`;
 export const MENTORSHIP_DASHBOARD = `${MENTORSHIP_BASE}/dashboard`;
 export const MENTORSHIP_ASSIGNMENTS = `${MENTORSHIP_BASE}/assignments`;
 export const MENTORSHIP_ASSIGNMENTS_BULK = `${MENTORSHIP_BASE}/assignments/bulk-round-robin`;
 export const MENTORSHIP_ASSIGNMENT_BY_ID = (id: string) => `${MENTORSHIP_BASE}/assignments/${id}`;
 export const MENTORSHIP_MY_MENTEES = `${MENTORSHIP_BASE}/my-mentees`;
 export const MENTORSHIP_MY_MENTORS = `${MENTORSHIP_BASE}/my-mentors`;
+export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profile`;
+export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
+export const MENTORSHIP_MY_BOOKING_PAGE = `${MENTORSHIP_BASE}/my-booking-page`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1287,6 +1307,8 @@ export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;
 export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessment/offline-entry/submit-responses`;
 export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-and-submit`;
+export const OFFLINE_ATTACH_FILES = `${BASE_URL}/assessment-service/assessment/offline-entry/attach-files`;
+export const OFFLINE_BULK_IMPORT = `${BASE_URL}/assessment-service/assessment/offline-entry/bulk-import`;
 
 export const SYNC_MAX_SESSIONS = `${BASE_URL}/auth-service/v1/institute-settings/update-max-sessions`;
 

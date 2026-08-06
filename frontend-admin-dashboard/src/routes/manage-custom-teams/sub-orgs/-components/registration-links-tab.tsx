@@ -48,6 +48,8 @@ import { RegistrationLinkCreateModal } from './registration-link-create-modal';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
 import { buildCsv, downloadCsv, formatDate } from '../../-utils/list-export';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /** Distinct facet values → MultiSelectFilter options (value === label; searchable by label). */
 const toFilterOptions = (values: string[] | undefined) =>
@@ -110,6 +112,9 @@ const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string =>
     );
 
 export function RegistrationLinksTab() {
+    // Institutes rename this concept via Settings → Naming (Channel Partner,
+    // Branch, Franchise, VLE …); user-facing labels must follow that.
+    const subOrgTermPlural = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     // Full detail of the template being edited — presence switches the modal to edit mode.
     const [editTemplate, setEditTemplate] = useState<TemplateDetail | null>(null);
@@ -300,7 +305,8 @@ export function RegistrationLinksTab() {
                                                 <p>No registration links yet.</p>
                                                 <p className="text-xs text-neutral-400">
                                                     Create one to let organizations register
-                                                    themselves as sub-orgs.
+                                                    themselves as{' '}
+                                                    {subOrgTermPlural.toLowerCase()}.
                                                 </p>
                                             </>
                                         )}

@@ -5,7 +5,8 @@
  * Backed by the telephony dashboard endpoints (admin-core-service):
  *   POST /v1/telephony/calls/search        — paginated, RBAC-scoped, filtered
  *   POST /v1/telephony/calls/metrics       — KPI strip + worklist chip badges
- *   GET  /v1/telephony/calls/dispositions  — call-outcome catalog (picker)
+ *   GET  /v1/telephony/calls/dispositions  — call-outcome catalog (picker; settable only)
+ *   GET  /v1/telephony/calls/dispositions/options — full filter vocabulary (catalog + AI)
  *   POST /v1/telephony/calls/{id}/disposition — set a call's outcome
  *   POST /v1/telephony/calls/export        — CSV/XLSX blob
  *   GET  /v1/telephony/calls/{id}/recording — presigned recording URL
@@ -75,9 +76,148 @@ function buildSearchBody(scope: CallLogScope, f: CallLogFilters, page?: number, 
     };
 }
 
+// ── Per-call technical diagnostics (voice-bot contract, rulesVersion 1) ─────
+
+export type CallHealth = 'GREEN' | 'AMBER' | 'RED';
+/** A fault never fires GREEN — it is either a warning or a breakage. */
+export type CallFaultLevel = 'AMBER' | 'RED';
+
+/**
+ * The fault vocabulary is CLOSED and APPEND-ONLY — it mirrors
+ * `voice_bot_service/app/diagnostics.py` (ALL_FAULTS), which is the source of
+ * truth. Renaming a code silently breaks every call already stored, so codes are
+ * only ever added. The order here is also the bot's HEADLINE_PRIORITY, i.e. the
+ * order faults must be shown in.
+ */
+export const CALL_FAULT_CODES = [
+    'CRASH',
+    'TTS_WEDGE',
+    'REPLY_UNPLAYED',
+    'ANSWER_DELETED',
+    'DEAD_AIR',
+    'FALSE_REASK',
+    'LIKELY_MACHINE',
+    'STT_DEAF',
+    'SLOW_TTS',
+    'SLOW_LLM',
+    'TRANSFER_FAILED',
+    'PROMPT_UNFILLED',
+] as const;
+export type CallFaultCode = (typeof CALL_FAULT_CODES)[number];
+
+/**
+ * Verbatim `diagnostics` blob the voice bot posts with its end-of-call report
+ * (see `voice_bot_service/app/diagnostics.py::to_payload`). camelCase inside —
+ * it is stored and re-served exactly as the bot produced it, not re-serialized
+ * through the snake_case telephony contract.
+ *
+ * EVERY field is optional: a call recorded before this shipped, or by a bot
+ * version that predates a key, simply omits it, and the UI must degrade to
+ * "not reported" rather than inventing a value. In particular
+ * `turnTaking.answersDeleted === null` means NOT MEASURED and must never be
+ * rendered as 0 — see the honesty note in the bot module's docstring.
+ */
+export interface CallDiagnostics {
+    rulesVersion?: number | null;
+    health?: CallHealth | null;
+    /** Sorted fault codes. Unknown (newer-bot) codes may appear — render them raw. */
+    faults?: string[] | null;
+    faultLevels?: Record<string, CallFaultLevel> | null;
+    headline?: string | null;
+    headlineText?: string | null;
+    tts?: {
+        letterlessSkipped?: number | null;
+        wedges?: number | null;
+        wedgeReconnects?: number | null;
+        stalls?: number | null;
+        stallCapHit?: boolean | null;
+        silentGenerations?: number | null;
+        ttfbP50?: number | null;
+        ttfbP95?: number | null;
+        ttfbMax?: number | null;
+    } | null;
+    playout?: {
+        repliesGenerated?: number | null;
+        repliesNeverPlayed?: number | null;
+    } | null;
+    turnTaking?: {
+        userTurns?: number | null;
+        botTurns?: number | null;
+        bargeIns?: number | null;
+        orphanReasks?: number | null;
+        orphanFalseReasks?: number | null;
+        nudges?: number | null;
+        idleHangup?: boolean | null;
+        capFarewell?: boolean | null;
+        /** null = NOT MEASURED. Never render as 0. */
+        answersDeleted?: number | null;
+        /** The discarded caller answers, verbatim (bounded to 20 by the bot). */
+        answersDeletedSamples?: string[] | null;
+        answersDeletedSrc?: 'measured' | null;
+    } | null;
+    latency?: {
+        llmTtfbP50?: number | null;
+        llmTtfbP95?: number | null;
+        sttTtfbP50?: number | null;
+        sttTtfbP95?: number | null;
+        deadAirP95?: number | null;
+        deadAirMax?: number | null;
+    } | null;
+    setup?: {
+        greetPath?: string | null;
+        greetDelaySecs?: number | null;
+        setupSecs?: number | null;
+    } | null;
+    machine?: {
+        score?: number | null;
+        markers?: string[] | null;
+        firstUserSecs?: number | null;
+        longestUserSecs?: number | null;
+        /** Always "inferred" in v1 — this is a heuristic, not a measurement. */
+        src?: 'inferred' | null;
+    } | null;
+    infra?: {
+        sttReconnects?: number | null;
+        promptUnfilled?: string[] | null;
+        crash?: string | null;
+        transferRequested?: boolean | null;
+        transferRegistered?: boolean | null;
+    } | null;
+    /** Set (with health = null) when the bot's own payload build failed. */
+    error?: string | null;
+}
+
+/**
+ * The non-sensitive summary of a verdict: `CallDetailDTO.diagHealth/diagFaults`,
+ * which the backend serves to every dashboard viewer (the full blob is gated —
+ * see {@link CallDetail.diagnostics}). Snake_case on the wire like the rest of
+ * the telephony contract; the camelCase spellings are accepted too so the UI
+ * doesn't silently read "not reported" if a payload ever lands unconverted.
+ *
+ * Declared on {@link CallRow} as well, even though the search DTO does not carry
+ * them today: the list reads them opportunistically, so the day the row gains a
+ * verdict the dots light up with no frontend change, and until then the row
+ * simply says "not reported" rather than guessing.
+ */
+export interface CallHealthFields {
+    diag_health?: CallHealth | null;
+    diagHealth?: CallHealth | null;
+    diag_faults?: string[] | null;
+    diagFaults?: string[] | null;
+}
+
+export function rowCallHealth(row: CallHealthFields): CallHealth | null {
+    return row.diag_health ?? row.diagHealth ?? null;
+}
+
+export function rowCallFaults(row: CallHealthFields): string[] {
+    const faults = row.diag_faults ?? row.diagFaults;
+    return Array.isArray(faults) ? faults : [];
+}
+
 // ── Row type (snake_case) ──────────────────────────────────────────────────
 
-export interface CallRow {
+export interface CallRow extends CallHealthFields {
     id: string;
     provider_type: string | null;
     call_type: 'AI' | 'HUMAN';
@@ -182,16 +322,66 @@ export interface DispositionOption {
     color: string | null;
     category: 'CONNECTED' | 'NOT_CONNECTED' | 'CALLBACK' | 'OTHER' | string;
     maps_to_lead_status: boolean;
+    /**
+     * Whether a counsellor may APPLY this outcome. False for AI-sourced outcomes —
+     * they're reported by the agent and only exist to be filtered on; `POST
+     * /{id}/disposition` rejects them. Absent on an older backend ⇒ treat as settable
+     * (that backend only ever returned catalog rows).
+     */
+    settable?: boolean;
+    /** CATALOG | AI_SETTINGS | AI_AGENT | OBSERVED — where the outcome was declared. */
+    source?: string;
 }
 
 export const dispositionCatalogKey = (instituteId: string) =>
     ['crm-call-disposition-catalog', instituteId] as const;
 
+/**
+ * The outcomes a counsellor may SET — `call_disposition_catalog` only. This is the
+ * quick-disposition picker's list and the only vocabulary the apply endpoint accepts.
+ */
 export async function fetchDispositionCatalog(instituteId: string): Promise<DispositionOption[]> {
     const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/dispositions`, {
         params: { instituteId },
     });
     return Array.isArray(data) ? data : [];
+}
+
+// ── GET /dispositions/options (filter vocabulary) ──────────────────────────
+
+export const dispositionOptionsKey = (instituteId: string) =>
+    ['crm-call-disposition-options', instituteId] as const;
+
+/**
+ * The wider vocabulary the Disposition FILTER must offer: the settable catalog plus
+ * the AI outcomes the institute configured in Settings → AI Calling (built-ins,
+ * custom outcomes, assign/stop lists), the ones its AI agents declare, and the ones
+ * its calls have actually returned.
+ *
+ * The catalog alone can't drive this filter: an AI call's outcome lives in
+ * `ai_call_result.disposition` and is never a catalog code, so on an AI-heavy
+ * institute every option matched zero rows.
+ *
+ * Falls back to the catalog when the endpoint isn't deployed yet, so the dropdown
+ * degrades to its old contents instead of emptying.
+ */
+export async function fetchDispositionFilterOptions(
+    instituteId: string
+): Promise<DispositionOption[]> {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/dispositions/options`, {
+            params: { instituteId },
+        });
+        if (Array.isArray(data) && data.length) return data;
+    } catch (error) {
+        if (!isCallLogEndpointMissing(error)) throw error;
+    }
+    return fetchDispositionCatalog(instituteId);
+}
+
+/** Alphanumerics only, upper-cased — mirrors the backend's disposition match key. */
+export function normalizeDispositionKey(raw: string | null | undefined): string {
+    return raw ? raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : '';
 }
 
 // ── POST /{id}/disposition ─────────────────────────────────────────────────
@@ -263,7 +453,7 @@ export interface CallDetailKeyVal {
 }
 
 /** Deep per-call detail — richer than the search row, used by the "more details" popover. */
-export interface CallDetail {
+export interface CallDetail extends CallHealthFields {
     id: string;
     provider_type: string | null;
     direction: 'INBOUND' | 'OUTBOUND' | null;
@@ -278,6 +468,23 @@ export interface CallDetail {
     provider_details: CallDetailKeyVal[];
     /** Verbatim provider webhook body — present only for callers who may unmask numbers. */
     raw_provider_response: string | null;
+    /** Highest-priority fired fault code, e.g. "TTS_WEDGE". */
+    diag_headline?: string | null;
+    /** Human sentence for {@link diag_headline}, written by the bot. */
+    diag_headline_text?: string | null;
+    /** Threshold-set version the verdict was computed under. */
+    diag_rules_version?: number | null;
+    /**
+     * Full technical diagnostics for AI calls. Three ways this is null, and the
+     * UI must tell them apart:
+     *   1. not an AI call / recorded before diagnostics shipped → nothing to show;
+     *   2. the caller lacks VIEW_CALL_NUMBERS — the blob carries verbatim caller
+     *      utterances (`turnTaking.answersDeletedSamples`) and raw crash text, so
+     *      the backend withholds it while still sending the summary fields above;
+     *   3. the backend predates the field entirely.
+     * Absence is never "healthy".
+     */
+    diagnostics?: CallDiagnostics | null;
 }
 
 export const callDetailKey = (instituteId: string, callLogId: string) =>
@@ -290,6 +497,9 @@ export async function fetchCallDetail(instituteId: string, callLogId: string): P
     return {
         ...data,
         provider_details: Array.isArray(data?.provider_details) ? data.provider_details : [],
+        // Explicit so an older backend (no slice 3) resolves to null rather than
+        // `undefined` — the health sheet distinguishes "not reported" from "loading".
+        diagnostics: (data?.diagnostics as CallDiagnostics | undefined) ?? null,
     };
 }
 

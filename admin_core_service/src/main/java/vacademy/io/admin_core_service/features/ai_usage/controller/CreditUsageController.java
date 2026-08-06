@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatMessageRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatbotSessionRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatbotSummary;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ConversationRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatMessageRow;
@@ -39,6 +41,8 @@ import java.util.List;
  *   GET /ai-usage/v1/users/{userId}/logs            one user's paginated deduction log
  *   GET /ai-usage/v1/users/{userId}/conversations   one learner's Student-AI chat sessions
  *   GET /ai-usage/v1/conversations/{id}/messages    full transcript (prompts + AI answers)
+ *   GET /ai-usage/v1/chatbot/summary                Student-AI aggregate data points (Chatbot Analysis)
+ *   GET /ai-usage/v1/chatbot/sessions               institute-wide chats, paginated + searchable
  *
  * Dates are epoch millis; default window is the last 30 days.
  */
@@ -159,6 +163,41 @@ public class CreditUsageController {
             @PathVariable String sessionId) {
         String instituteId = requireInstituteId(request);
         return ResponseEntity.ok(conversationService.sessionMessages(sessionId, instituteId));
+    }
+
+    // ── Chatbot Analysis (LMS -> Student AI -> Chatbot Analysis) ─────────────
+
+    /** Aggregate Student-AI data points for the institute in the window. */
+    @GetMapping("/chatbot/summary")
+    public ResponseEntity<ChatbotSummary> chatbotSummary(
+            HttpServletRequest request,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate) {
+        String instituteId = requireInstituteId(request);
+        return ResponseEntity.ok(conversationService.summary(instituteId, from(startDate), to(endDate)));
+    }
+
+    /**
+     * Institute-wide Student-AI chats, newest activity first. Sessions with no
+     * messages are hidden by default — the learner opened the panel and left.
+     * The transcript for a row comes from /conversations/{sessionId}/messages.
+     */
+    @GetMapping("/chatbot/sessions")
+    public ResponseEntity<Page<ChatbotSessionRow>> chatbotSessions(
+            HttpServletRequest request,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sessionMode,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate,
+            @RequestParam(defaultValue = "true") boolean onlyWithMessages,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        String instituteId = requireInstituteId(request);
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(conversationService.instituteSessions(
+                instituteId, from(startDate), to(endDate), status, sessionMode, search,
+                onlyWithMessages, pageable));
     }
 
     private Timestamp from(Long startDate) {

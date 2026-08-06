@@ -14,8 +14,36 @@ import time
 
 import pytest
 
+import inspect
+import json as _json
+
 import app.bot as b
+import app.diagnostics as dg_mod
 import app.providers as pv
+
+import inspect
+import json as _json
+import os
+
+import app.main as m
+import app.report as rpt
+import app.admin_core as ac
+
+
+class _W3Settings:
+    """Minimal settings stub for token/spool/cache tests."""
+
+    internal_client_secret = "sekrit"
+
+    def __init__(self, tmp=""):
+        self.tts_cache_dir = str(tmp)
+        self.tts_cache_max_files = 4000
+        self.tts_cache_max_bytes = 500 * 1024 * 1024
+
+    @property
+    def report_spool_dir(self):
+        return os.path.join(self.tts_cache_dir, "_report_spool")
+
 
 
 class FakeOutcome:
@@ -100,45 +128,6 @@ def test_stall_stamp_never_set_while_speaking_and_cleared_on_stop():
 
 # ── Ordering invariants (the outage class: forward references in run_bot) ────
 
-def test_run_bot_wiring_order():
-    import inspect
-    src = inspect.getsource(b.run_bot)
-    assert src.index("tts = build_tts") < src.index("set_generate_callback")
-    assert src.index("async def _begin_stop") < src.index("set_arm_stop(_begin_stop)")
-
-
-# ── ClauseFlushAggregator: danda split, tail preservation, no text loss ──────
-
-@pytest.mark.asyncio
-async def test_aggregator_danda_split_and_no_loss():
-    a = pv.ClauseFlushAggregator()
-    outs = []
-    toks = ["जी, मैं आरुषि — वैकैडमी से। ", "क्या मैं आपसे बात कर सकती हूँ?"]
-    for tok in toks:
-        r = await a.aggregate(tok)
-        if r:
-            outs.append(r)
-    assert len(outs) == 2
-    # nothing lost: emitted + remainder == input (modulo whitespace)
-    joined = "".join(outs) + a.text
-    assert joined.replace(" ", "") == "".join(toks).replace(" ", "")
-
-
-@pytest.mark.asyncio
-async def test_aggregator_length_fallback_preserves_text():
-    a = pv.ClauseFlushAggregator()
-    long_text = "word " * 60  # punctuation-less stream
-    outs = []
-    for tok in [long_text[i:i + 20] for i in range(0, len(long_text), 20)]:
-        r = await a.aggregate(tok)
-        if r:
-            outs.append(r)
-    joined = "".join(outs) + a.text
-    assert joined.replace(" ", "") == long_text.replace(" ", "")
-
-
-# ── A6b: failed handoff must speak a fallback, not stop on a broken promise ──
-
 def test_sentinel_has_transfer_fallback():
     sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
     assert sg._transfer_fail_closing
@@ -178,82 +167,6 @@ def test_nudge_cap_and_gating():
 # context → verbatim repeats. The sentinel shields it.)
 
 @pytest.mark.asyncio
-async def test_sentinel_swallows_orphan_end_after_interruption():
-    from pipecat.frames.frames import (
-        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-        LLMTextFrame,
-    )
-    from pipecat.processors.frame_processor import FrameDirection
-
-    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
-    pushed = []
-
-    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
-        pushed.append(frame)
-    sg.push_frame = fake_push
-
-    async def fake_super(self, frame, direction):
-        return
-
-    async def drive(frame):
-        # call SentinelGate.process_frame but stub the super() call chain by
-        # patching the base class method for the duration
-        import unittest.mock as um
-        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
-            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
-
-    # Interrupted stream: text → interruption → orphan End
-    await drive(LLMTextFrame("Hello there"))
-    await drive(InterruptionFrame())
-    await drive(LLMFullResponseEndFrame())
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 0, "orphan End must be swallowed"
-
-    # Healthy next response: Start → text → End must pass through
-    await drive(LLMFullResponseStartFrame())
-    await drive(LLMTextFrame("Next reply."))
-    await drive(LLMFullResponseEndFrame())
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 1, "healthy End must pass"
-
-
-@pytest.mark.asyncio
-async def test_sentinel_new_start_clears_pending_swallow():
-    """If the expected orphan End never arrives, a NEW response's Start must
-    clear the pending swallow so the healthy End isn't eaten instead."""
-    from pipecat.frames.frames import (
-        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-        LLMTextFrame,
-    )
-    from pipecat.processors.frame_processor import FrameDirection
-    import unittest.mock as um
-
-    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
-    pushed = []
-
-    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
-        pushed.append(frame)
-    sg.push_frame = fake_push
-
-    async def fake_super(self, frame, direction):
-        return
-
-    async def drive(frame):
-        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
-            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
-
-    await drive(LLMTextFrame("partial"))
-    await drive(InterruptionFrame())          # pending swallow armed
-    await drive(LLMFullResponseStartFrame())  # new response begins first
-    await drive(LLMTextFrame("healthy reply"))
-    await drive(LLMFullResponseEndFrame())    # must NOT be swallowed
-    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
-    assert len(end_frames) == 1
-
-
-# ── A3: transcripts record what the caller HEARD (playout), not generation ───
-
-@pytest.mark.asyncio
 async def test_played_transcript_records_ttstext_and_merges_clauses():
     from pipecat.frames.frames import TTSTextFrame, TranscriptionFrame
     from pipecat.processors.frame_processor import FrameDirection
@@ -273,14 +186,14 @@ async def test_played_transcript_records_ttstext_and_merges_clauses():
         with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
             await rec.process_frame(frame, FrameDirection.DOWNSTREAM)
 
-    await drive(TTSTextFrame("Hello!"))
-    await drive(TTSTextFrame("Am I speaking with Shreyash?"))
+    await drive(TTSTextFrame("Hello!", aggregated_by="sentence"))
+    await drive(TTSTextFrame("Am I speaking with Shreyash?", aggregated_by="sentence"))
     assert len(o.transcript) == 1                      # consecutive clauses merge
     assert "Hello!" in o.transcript[0]["text"]
     assert "Shreyash" in o.transcript[0]["text"]
 
     o.transcript.append({"role": "user", "text": "yes"})  # caller turn intervenes
-    await drive(TTSTextFrame("Great, thank you."))
+    await drive(TTSTextFrame("Great, thank you.", aggregated_by="sentence"))
     assert o.transcript[-1]["role"] == "assistant"
     assert o.transcript[-1]["text"] == "Great, thank you."
     assert len(o.transcript) == 3
@@ -301,66 +214,6 @@ def test_generation_time_commits_removed():
 
 
 # ── A5: deaf-call detection keys on the receive task, not on exceptions ──────
-
-def test_stt_deaf_detection_is_receive_task_based():
-    """The base run_stt swallows send errors — an exception-based retry is dead
-    code (the original deaf-call incident stayed possible). Detection must key
-    on the receive task having exited."""
-    import inspect
-    src = inspect.getsource(pv.ResilientSarvamSTTService.run_stt)
-    assert "_receive_task" in src and ".done()" in src
-    # the unreachable exception-retry scaffolding must be gone (ignore comments)
-    code_lines = [l for l in src.splitlines() if not l.strip().startswith("#")]
-    assert not any("except Exception" in l for l in code_lines)
-    # reconnect keeps its storm-guard cooldown
-    rsrc = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
-    assert "_RECONNECT_COOLDOWN_SECS" in rsrc
-
-
-# ── B1/Stage E: TTS connect/disconnect serialized; stall recovery re-enabled ──
-
-def test_tts_connect_lock_and_stall_reenabled():
-    import inspect
-    src = inspect.getsource(pv.ResilientSarvamTTSService)
-    assert "_conn_lock" in src
-    # both mutators go through the lock
-    c = src.split("async def _connect")[1].split("async def _disconnect")[0]
-    d = src.split("async def _disconnect")[1]
-    assert "_conn_lock" in c and "_conn_lock" in d
-    # default ON with env kill-switch retained
-    import app.config as cfg
-    import inspect as _i
-    csrc = _i.getsource(cfg)
-    assert 'STALL_RECOVERY_ENABLED", "true"' in csrc
-
-
-# ═══ Wave 3 ═══════════════════════════════════════════════════════════════════
-
-import inspect
-import json as _json
-import os
-
-import app.main as m
-import app.report as rpt
-import app.admin_core as ac
-
-
-class _W3Settings:
-    """Minimal settings stub for token/spool/cache tests."""
-
-    internal_client_secret = "sekrit"
-
-    def __init__(self, tmp=""):
-        self.tts_cache_dir = str(tmp)
-        self.tts_cache_max_files = 4000
-        self.tts_cache_max_bytes = 500 * 1024 * 1024
-
-    @property
-    def report_spool_dir(self):
-        return os.path.join(self.tts_cache_dir, "_report_spool")
-
-
-# ── B4: /ws admission token ──────────────────────────────────────────────────
 
 def test_ws_token_roundtrip_and_rejections(monkeypatch):
     monkeypatch.setattr(m, "get_settings", lambda: _W3Settings())
@@ -677,3 +530,1185 @@ def test_stt_sdk_close_chain_resolves_on_pinned_wheel():
     h = getattr(getattr(sdk, "_client_wrapper", None), "httpx_client", None)
     inner = getattr(h, "httpx_client", h)
     assert callable(getattr(inner, "aclose", None))
+
+
+# ═══ 2026-08-03 "Now" wave ════════════════════════════════════════════════════
+
+import unittest.mock as um
+
+# ── Item 1: the TTS socket wedge (root cause of the founder's 8-10.4s dead air)
+
+def test_has_word_char_predicate():
+    assert not pv.has_word_char('"')
+    assert not pv.has_word_char('  " ')
+    assert not pv.has_word_char("—…!?,.")
+    assert not pv.has_word_char("")
+    assert not pv.has_word_char(None)
+    assert pv.has_word_char('"Okay.')
+    assert pv.has_word_char("SSC")
+    assert pv.has_word_char("क")          # Devanagari counts
+    assert pv.has_word_char("2")
+
+
+def test_clean_opening_strips_wrapping_quotes():
+    assert b._clean_opening('"Hi, this is Avni."') == "Hi, this is Avni."
+    assert b._clean_opening('“Hello there.”') == "Hello there."
+    assert b._clean_opening('Hi there.') == "Hi there."
+    assert pv.has_word_char(b._clean_opening('"Hi."'))
+
+
+# ── Item 3: the glitch cue must not tell the model to shorten unheard content
+
+def test_sentinel_measures_but_never_mutates_stall_stamp_on_interruption():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    intr = src[src.index("InterruptionFrame"):]
+    assert "self._on_interrupted()" in intr[:intr.index("return")]
+    # Wiring must come AFTER sentinel exists (the 2026-07-27 forward-ref class of bug).
+    rb = inspect.getsource(b.run_bot)
+    assert rb.index("sentinel = SentinelGate") < rb.index("sentinel.set_on_interrupted")
+    # The hook must MEASURE ONLY. pipecat pushes an InterruptionFrame on every
+    # Silero onset while the bot is quiet — the wedge window — so mutating the
+    # stamp here (clear OR re-stamp) disarms the founder's own recovery.
+    body = rb[rb.index("def _note_killed_before_playout"):]
+    body = body[:body.index("sentinel.set_on_interrupted")]
+    # Records a SUSPICION only — the counter is incremented later, and only if
+    # the silence outlasts the confirm window (95% of these replies do play).
+    assert 'flags["unplayed_pending_t"] = time.time()' in body
+    assert 'flags["tts_gen_t"] =' not in body, "interruption hook must not mutate the stall stamp"
+
+
+# ── Item 6: prompt placeholders must never render as holes
+
+def test_placeholders_resolve_from_lead_fields():
+    ctx = {"leadName": "Devaki", "leadFields": {"children name": "Kyoto"}}
+    out = b._fill_placeholders("with {{parent_name}}, whose child {{child_name}} studies", ctx)
+    assert out == "with Devaki, whose child Kyoto studies"
+    assert "{{" not in out
+    # The exact live failure: 141/141 prompts read "with , whose child  studies".
+    assert "  " not in out and ", whose child  " not in out
+
+
+def test_placeholder_unknown_key_falls_back_and_warns(caplog):
+    ctx = {"leadName": "Devaki", "leadFields": {}}
+    with caplog.at_level("WARNING"):
+        out = b._fill_placeholders("Hi {{totally_unknown}}!", ctx)
+    assert out == "Hi !"
+    assert any("unresolved" in r.getMessage() for r in caplog.records)
+    # NO generic *_name -> lead_name fallback: endswith("name") also matches
+    # {{school_name}}/{{child_name}}, so it would confidently speak the PARENT's
+    # name as the school's or the child's. A hole beats a wrong name.
+    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi !"
+    assert b._fill_placeholders("child {{child_name}}", ctx) == "child "
+    # …but the person we are CALLING is the parent, so this one does resolve.
+    assert b._fill_placeholders("Hi {{parent_name}}!", ctx) == "Hi Devaki!"
+
+
+def test_known_placeholders_unchanged():
+    ctx = {"leadName": "Devaki", "leadFields": {"institute": "DPS"}}
+    assert b._fill_placeholders("{{lead_name}}", ctx) == "Devaki"
+    assert b._fill_placeholders("{{institute_name}}", ctx) == "DPS"
+
+
+# ── Item 5: a non-conversation can never produce a substantive disposition
+
+class _ConvOutcome:
+    def __init__(self, transcript):
+        self.corr = "c"
+        self.transcript = transcript
+        self.crashed = False
+        self.context = {"agent": {}, "instituteId": "i"}
+        self.connected_at = time.time() - 10
+        self.ended_at = time.time()
+        self.transfer_requested = False
+        self.transfer_registered = False
+
+    def duration_seconds(self):
+        return 10
+
+
+def test_is_conversation_requires_a_real_caller_turn_only():
+    voicemail = _ConvOutcome([
+        {"role": "assistant", "text": "Good morning, this is Avni…"},
+        {"role": "user", "text": "Your call has been forwarded to voicemail."},
+    ])
+    # Voicemail text IS caller text — this gate does NOT catch machines (that is
+    # a separate fix). Asserted so nobody mistakes it for one.
+    assert rpt._is_conversation(voicemail) is True
+    # No caller turn at all -> never a disposition.
+    assert rpt._is_conversation(_ConvOutcome([{"role": "assistant", "text": "Hi"}])) is False
+    assert rpt._is_conversation(_ConvOutcome([
+        {"role": "assistant", "text": "Hi"},
+        {"role": "user", "text": "[unclear sound from the caller]"}])) is False
+    assert rpt._is_conversation(_ConvOutcome([])) is False
+    # CRITICAL: a caller who spoke while OUR audio never played is still a real
+    # conversation — otherwise a terminal refusal becomes a retry and we re-dial
+    # someone who said no.
+    assert rpt._is_conversation(_ConvOutcome([
+        {"role": "user", "text": "not interested, please stop calling"}])) is True
+
+
+@pytest.mark.asyncio
+async def test_no_caller_turn_forces_incomplete_and_skips_analysis(monkeypatch):
+    analysed = []
+
+    async def spy_analyze(o):
+        analysed.append(1)
+        return {"disposition": "Demo_Booked"}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([{"role": "assistant", "text": "Good morning, this is Avni…"}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert analysed == [], "the classifier judged the bot's own monologue"
+    assert posted["disposition"] == "Incomplete"
+    assert posted["status"] == "no-answer"
+
+
+@pytest.mark.asyncio
+async def test_real_conversation_still_analysed(monkeypatch):
+    async def spy_analyze(o):
+        return {"disposition": "Interested"}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([{"role": "assistant", "text": "Which board?"},
+                      {"role": "user", "text": "CBSE"}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert posted["disposition"] == "Interested"
+
+
+def test_watchdog_config_call_names_every_field():
+    """Item 2's real guarantee: run_bot must pass EVERY WatchdogConfig field, so
+    no live turn-taking threshold can silently fall back to a dataclass default
+    with no env knob. (The timeline test only proves the fields are settable.)"""
+    import dataclasses
+    import app.callstate as cs
+    src = inspect.getsource(b.run_bot)
+    call = src[src.index("cfg = WatchdogConfig("):]
+    call = call[:call.index("\n        )")]
+    missing = [f.name for f in dataclasses.fields(cs.WatchdogConfig)
+               if f.name + "=" not in call]
+    assert not missing, f"WatchdogConfig fields not plumbed from Settings: {missing}"
+
+
+def test_machine_markers_cover_devanagari_transliteration():
+    """Sarvam is pinned to hi-IN and TRANSLITERATES English audio, so an English
+    voicemail greeting arrives in Devanagari and matched none of the ASCII
+    markers — that is how a voicemail wrote disposition=Callback onto a real
+    lead (corr e461549e, 2026-08-03)."""
+    class _O:
+        transcript = [{"role": "user",
+                       "text": "इफ यू रिकॉर्ड योर नेम एंड रीज़न फॉर कॉलिंग, "
+                               "आई विल सी इफ दिस पर्सन इज़ अवेलेबल।"}]
+    hits = rpt._machine_markers(_O())
+    assert hits, "Devanagari voicemail greeting must be recognised as a machine"
+
+    class _H:
+        transcript = [{"role": "user", "text": "हाँ जी बोलिए, मैं सुन रहा हूँ"}]
+    assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"
+
+
+def test_kill_hook_stamps_a_suspicion_not_a_count():
+    """The hook must NOT bump the counter directly — 95% of these replies play."""
+    src = inspect.getsource(b.run_bot)
+    hook = src[src.index("def _note_killed_before_playout"):]
+    hook = hook[:hook.index("sentinel.set_on_interrupted")]
+    assert 'flags["unplayed_pending_t"] = time.time()' in hook
+    assert 'diag.bump("replies_never_played")' not in hook, (
+        "counting at the interruption is what made REPLY_UNPLAYED ~95% false"
+    )
+    # Audio arriving must clear the suspicion.
+    speak = src[src.index("def set_bot_speaking"):]
+    speak = speak[:speak.index("def set_user_speaking")]
+    assert 'flags["unplayed_pending_t"] = 0.0' in speak
+    # …and only the confirmed case increments the counter.
+    wd = src[src.index("unplayed_confirmed(flags, now, cfg)"):]
+    assert 'diag.bump("replies_never_played")' in wd[:400]
+
+
+def test_date_time_placeholders_resolve():
+    """A live agent's prompt used {{day}}/{{date}}/{{time}} and all three rendered
+    EMPTY (diagnostics: promptUnfilled ["day","date","time"]) — handing the model
+    blanks exactly where the booking flow needs "now" to resolve "tomorrow"."""
+    ctx = {"leadName": "Devaki", "leadFields": {}, "agent": {"timezone": "Asia/Kolkata"}}
+    out = b._fill_placeholders("It is {{day}}, {{date}} at {{time}}.", ctx)
+    assert "{{" not in out
+    for token in ("day", "date", "time"):
+        assert f"{{{{{token}}}}}" not in out
+    assert out != "It is , at ."
+    assert len(out) > len("It is , at .") + 8
+    # tomorrow is a distinct, non-empty day
+    tmr = b._fill_placeholders("{{tomorrow}}", ctx)
+    assert tmr and tmr != b._fill_placeholders("{{today}}", ctx)
+
+
+def test_agent_language_drives_stt_language_and_mode():
+    assert b._agent_language({"language": "hinglish"})[0] == "hi-IN"
+    assert b._agent_language({"language": "english"})[0] == "en-IN"
+    assert b._agent_stt_mode({"language": "hinglish"}) == "codemix"
+    assert b._agent_stt_mode({"language": "english"}) == "transcribe"
+    assert b._agent_stt_mode({"language": "tamil"}) == "transcribe"
+    # run_bot must actually pass both through.
+    src = inspect.getsource(b.run_bot)
+    assert "mode=_agent_stt_mode(agent)" in src
+
+
+def test_every_language_tag_is_one_sarvam_accepts():
+    """Sarvam spells Odia od-IN, not the ISO or-IN; the ISO form is REJECTED and
+    every Odia agent failed. Pin the whole table against Sarvam's own list."""
+    sarvam = {"bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN",
+              "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN"}
+    ours = {tag for tag, _ in b._STT_LANGS.values()}
+    assert ours <= sarvam, f"Sarvam would reject: {sorted(ours - sarvam)}"
+
+
+def test_end_marker_latches_per_response_not_per_call():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    marker = src[src.index("if END_MARKER in self._buffer"):]
+    marker = marker[:marker.index("emit, self._buffer")]
+    assert "self._end_this_response = True" in marker
+    assert "self._outcome.end_requested = True" not in marker, (
+        "a mid-stream marker must not close the call call-wide"
+    )
+
+
+def test_new_response_revokes_an_unarmed_end_intent():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    start = src[src.index("if isinstance(frame, LLMFullResponseStartFrame)"):]
+    start = start[:start.index("if isinstance(frame, LLMTextFrame)")]
+    assert "self._outcome.end_requested = False" in start
+    assert "not self._stop_armed" in start, "an already-closing line must not be revived"
+
+
+def test_farewell_defers_the_close_and_transfer_does_not():
+    src = inspect.getsource(b.SentinelGate.process_frame)
+    stop = src[src.index("if self._outcome.transfer_requested and self._task"):]
+    stop = stop[:stop.index("await self.push_frame(frame, direction)")] if \
+        "await self.push_frame(frame, direction)" in stop else stop
+    assert "self._defer_stop()" in stop, "the END path must go through the grace"
+    # Transfer still closes immediately — the caller is waiting to be put through.
+    assert stop.index("transfer_requested") < stop.index("_defer_stop()")
+
+
+def test_caller_words_cancel_a_pending_close():
+    src = inspect.getsource(b.run_bot)
+    on_tr = src[src.index("def on_transcript"):]
+    on_tr = on_tr[:on_tr.index("transcript = TranscriptCollector")]
+    assert 'flags["end_pending_since"] = 0.0' in on_tr
+    assert "outcome.end_requested = False" in on_tr
+
+
+# ── Rumik Silk TTS (default provider) ────────────────────────────────────────
+
+def test_rumik_started_flag_is_initialised():
+    """run_tts reads _started. TTSService.start() creates it, but our first
+    utterance can reach run_tts before that — a live e2e caught the FIRST
+    utterance of every call dying with AttributeError."""
+    svc = pv.RumikTTSService.__new__(pv.RumikTTSService)
+    src = inspect.getsource(pv.RumikTTSService.__init__)
+    assert "self._started = False" in src
+
+
+
+def test_rumik_skips_letterless_and_records_credits():
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "has_word_char(text)" in run
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "credits_used" in recv, "the vendor's own meter is the honest cost signal"
+
+
+def test_rumik_implements_the_websocket_contract():
+    """WebsocketService gives connection verification + reconnect-with-backoff
+    only if these exact hooks exist."""
+    for m in ("_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_agent_without_a_tts_model_stays_on_sarvam(monkeypatch):
+    """A billing-relevant switch must never happen by omission. Agents predating
+    the picker pay the Sarvam rate and approved a Sarvam voice."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_tts_model({}) == "sarvam"
+        assert b._agent_tts_model({"tts_model": "rumik"}) == "rumik"
+        assert b._agent_tts_model({"tts_model": " Rumik "}) == "rumik"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_voice_from_the_other_vendors_palette_is_dropped(monkeypatch):
+    """Voice names don't cross vendors, and the failure is asymmetric (both probed
+    live): Sarvam 400s on an unknown speaker (no audio at all), while Rumik quietly
+    substitutes its default voice — so the caller hears a voice nobody picked, with
+    Hindi grammar conjugated for the configured one. Neither is acceptable, so drop
+    the name and use the provider default."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        assert b._agent_voice({"tts_model": "rumik", "voice": "priya"}) is None
+        assert b._agent_voice({"tts_model": "rumik", "voice": "ira"}) == "ira"
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "ira"}) is None
+        assert b._agent_voice({"tts_model": "sarvam", "voice": "priya"}) == "priya"
+        assert b._agent_voice({"voice": "shubh"}) == "shubh"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_rumik_male_voices_get_masculine_hindi_grammar():
+    """Hindi first-person verbs are gendered. A male voice saying "kar rahi hoon"
+    is the #1 immersion breaker, and Rumik's palette shares NO names with
+    Sarvam's — so every Rumik male preset must be in the table."""
+    for v in ("adam", "noah", "theo", "lucas"):
+        assert b._voice_gender(v) == "male", v
+    for v in ("ira", "emma", "mia", "sophia", "ava", "siya", "aisha", "zoya"):
+        assert b._voice_gender(v) == "female", v
+
+
+def test_grammar_follows_the_voice_we_actually_speak_with(monkeypatch):
+    """If the configured voice was dropped as cross-vendor, the grammar must match
+    the fallback voice, not the discarded name."""
+    monkeypatch.delenv("TTS_MODEL", raising=False)
+    pv.get_settings.cache_clear()
+    try:
+        # a Sarvam MALE name left behind on an agent switched to Rumik: we will
+        # speak with Rumik's female default, so grammar must be feminine.
+        a = {"tts_model": "rumik", "voice": "shubh"}
+        assert b._agent_voice(a) is None
+        assert b._voice_gender(b._agent_voice(a)
+                                    or b._default_voice_for(a)) == "female"
+    finally:
+        pv.get_settings.cache_clear()
+
+
+# ── Rumik: the four P0s an adversarial review found, as BEHAVIOURAL tests ─────
+#
+# The test these replace asserted `"_disconnect" not in inspect.getsource(...)` of
+# the override — and passed precisely because the teardown lived in the PARENT
+# class. Grepping source proves what the code says, not what it does. Everything
+# below drives the real methods against a fake socket.
+
+class _FakeSock:
+    """Minimal stand-in for a websockets client connection."""
+
+    def __init__(self, inbound=None):
+        from websockets.protocol import State
+        self.sent = []
+        self.state = State.OPEN
+        self.closed = False
+        self._inbound = list(inbound or [])
+
+    async def send(self, msg):
+        self.sent.append(_json.loads(msg) if msg.startswith("{") else msg)
+
+    async def close(self):
+        from websockets.protocol import State
+        self.closed = True
+        self.state = State.CLOSED
+
+    async def ping(self):
+        return True
+
+    def __aiter__(self):
+        async def gen():
+            for m in self._inbound:
+                yield m
+        return gen()
+
+
+def _rumik_stub(inbound=None):
+    """A RumikTTSService with pipecat's I/O stubbed, ready to drive directly."""
+    svc = pv.RumikTTSService(api_key="rk_test", voice="ira", sample_rate=24000)
+    # pipecat 1.4: create_task requires an initialized TaskManager (0.0.95 let
+    # standalone processors spawn tasks). Route straight to asyncio for tests.
+    svc.create_task = lambda coro, name=None: asyncio.create_task(coro)
+
+    async def _cancel_task(task, timeout=None):
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    svc.cancel_task = _cancel_task
+    svc._websocket = _FakeSock(inbound)
+    svc._sample_rate = 24000
+    pushed = []
+
+    async def push(frame, *a, **k):
+        pushed.append(type(frame).__name__)
+    svc.push_frame = push
+    for m in ("stop_ttfb_metrics", "start_ttfb_metrics", "start_tts_usage_metrics",
+              "stop_all_metrics"):
+        setattr(svc, m, lambda *a, **k: asyncio.sleep(0))
+    return svc, pushed
+
+
+@pytest.mark.asyncio
+async def test_rumik_barge_in_cancels_and_keeps_the_socket():
+    """The whole reason to prefer Rumik. Sarvam has no cancel, so barge-in there
+    closes the socket — the root of 13 stalls in 220 calls. This must send one
+    cancel frame and NOT tear the connection down."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = True
+    torn = []
+    svc._disconnect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+    svc._connect_websocket = lambda: (torn.append(1), asyncio.sleep(0))[1]
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [{"type": "cancel"}], svc._websocket.sent
+    assert not svc._websocket.closed, "barge-in must not close the socket"
+    assert not torn, "must not call the base class's disconnect/reconnect"
+    assert svc._cancels_sent == 1
+
+
+@pytest.mark.asyncio
+async def test_rumik_leaves_the_quiet_window_reply_alone():
+    """pipecat pushes an InterruptionFrame on EVERY VAD onset while the bot is
+    quiet. Our own measurement: 60 of 63 such pre-playout kills went on to play
+    anyway. Cancelling there turns a cough into a lost answer."""
+    svc, _ = _rumik_stub()
+    svc._request_active = True
+    svc._bot_speaking = False
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._websocket.sent == [], "must not cancel while the bot is silent"
+    assert svc._request_active, "the in-flight reply must survive to play"
+
+
+@pytest.mark.asyncio
+async def test_rumik_raises_when_the_peer_closes():
+    """websockets' __aiter__ swallows ConnectionClosedOK, so returning quietly makes
+    pipecat's `while True: await _receive_messages()` spin without ever yielding —
+    starving the event loop for EVERY concurrent call on the box, not just this
+    one. Raising routes into the base's reconnect-with-backoff instead."""
+    svc, _ = _rumik_stub(inbound=[])
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_does_not_raise_on_our_own_teardown():
+    """...but an intentional close at end of call must NOT trigger a reconnect."""
+    svc, _ = _rumik_stub(inbound=[])
+    svc._closing = True
+    await svc._receive_messages()
+
+
+@pytest.mark.asyncio
+async def test_rumik_ends_the_turn_only_after_the_LAST_sentence():
+    """Rumik's socket is request/response and cancels the in-flight request when the
+    next arrives, so sends are serialised. The turn must end when no sentence is
+    still outstanding — gating on queue emptiness ended it while the last sentence
+    was unsent, and 71% of a three-sentence reply reached the caller."""
+    done = _json.dumps({"type": "done", "duration_s": 1.0, "credits_used": 0})
+    svc, pushed = _rumik_stub(inbound=[done, done, done])
+    svc._started = True
+    svc._pending_sends = 3          # three sentences enqueued for one reply
+
+    # The fake stream ending IS a peer close, so the ConnectionError from the
+    # previous test's behaviour is correct here too — consume it and assert on what
+    # happened while the three terminal frames were being processed.
+    with pytest.raises(ConnectionError):
+        await svc._receive_messages()
+
+    assert pushed.count("TTSStoppedFrame") == 1, \
+        f"one Stopped per REPLY, not per sentence: {pushed}"
+    assert svc._pending_sends == 0, "a leaked counter means the turn never ends"
+
+
+@pytest.mark.asyncio
+async def test_rumik_pending_count_cannot_leak_on_abandon():
+    """A stuck positive count means TTSStoppedFrame never fires and the pipeline
+    believes the bot is speaking for the rest of the call."""
+    svc, _ = _rumik_stub()
+    svc._pending_sends = 3
+    svc._bot_speaking = True
+    svc._request_active = True
+    for _ in range(3):
+        svc._send_queue.put_nowait("x")
+
+    await svc._handle_interruption(_DummyInterruption(), None)
+
+    assert svc._pending_sends == 0
+    assert svc._send_queue.empty()
+
+
+def test_rumik_implements_the_hooks_bot_py_duck_types_on():
+    """bot.py wires stall detection through hasattr(). Missing hooks skip SILENTLY,
+    which unplugged stall recovery, TTS_WEDGE and REPLY_UNPLAYED on every Rumik
+    call — on the provider whose justification was fixing stalls."""
+    for m in ("set_diagnostics", "set_generate_callback", "set_credits_callback",
+              "_connect_websocket", "_disconnect_websocket", "_receive_messages"):
+        assert callable(getattr(pv.RumikTTSService, m, None)), f"missing {m}"
+
+
+def test_rumik_stamps_generate_on_send_not_on_done():
+    """A stamp that lands after the audio makes the stall condition unreachable by
+    construction — the masking failure mode with extra steps."""
+    run = inspect.getsource(pv.RumikTTSService.run_tts)
+    assert "_on_generate" in run, "generate stamp must happen in run_tts (on send)"
+    recv = inspect.getsource(pv.RumikTTSService._receive_messages)
+    assert "_on_generate" not in recv, "must NOT stamp from the receive path"
+
+
+class _DummyInterruption:
+    pass
+
+
+def test_rumik_pace_ladder_is_monotonic_and_covers_the_range():
+    """Rumik has no numeric speed control — only prose steering, measured live.
+    The ladder must be monotonic, or a higher pace could produce slower speech."""
+    f = pv.rumik_pace_description
+    # Distinct instruction per band, fastest at the top.
+    fast, rapid, quick, brisk = f(1.4), f(1.1), f(1.0), f(0.9)
+    assert len({fast, rapid, quick, brisk}) == 4, "bands must not collapse"
+    assert f(1.2) == fast, "everything above the top threshold gets the top grade"
+    assert f(0.8) is None, "near-natural pace sends no instruction at all"
+    assert "slow" in f(0.6), "below the floor must explicitly ask for slow"
+    assert f(None) is None, "no pace configured = no steering"
+
+
+def test_rumik_pace_ladder_avoids_the_wording_that_did_nothing():
+    """Measured: 'brisk, upbeat' moved the rate 1% — indistinguishable from no
+    instruction. Only assertive wording ('no pauses') moved it, because the model
+    is modulating PAUSES, not words per second. The fast grades must say so."""
+    for pace in (1.05, 1.15, 1.4):
+        assert "pause" in pv.rumik_pace_description(pace), \
+            f"pace {pace} needs pause-suppressing wording to have any effect"
+
+
+def test_rumik_gets_the_agent_pace_at_all(monkeypatch):
+    """It previously got NO pace: build_tts dropped the agent's value on this path
+    entirely, so the field an admin sets did nothing on Rumik calls."""
+    monkeypatch.setenv("RUMIK_API_KEY", "rk_test_x")
+    pv.get_settings.cache_clear()
+    try:
+        fast = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=1.4)
+        slow = pv.build_tts(8000, voice="ira", aiohttp_session=None,
+                            tts_model="rumik", pace=0.6)
+        assert fast._description != slow._description, "pace must reach the service"
+        assert "slow" in slow._description
+    finally:
+        pv.get_settings.cache_clear()
+
+
+def test_preview_carries_the_same_pace_steering_a_call_would():
+    """A voice tester that auditions a delivery the caller never hears is worse than
+    no tester. Probing the DEPLOYED endpoint caught this: pace 1.1 and pace 0.6
+    returned 7.34s and 7.08s — indistinguishable, because the Rumik preview branch
+    dropped pace entirely."""
+    src = inspect.getsource(m.preview)
+    assert "rumik_pace_description(pace)" in src, "preview must derive the steering"
+    assert "description=pace_desc" in src, "...and pass it to the synthesiser"
+    # And the cache must not serve the first pace forever.
+    assert "{pace_desc}" in src, "pace must be part of the Rumik cache key"
+
+
+def test_rumik_synthesize_wav_accepts_a_description():
+    import inspect as _i
+    sig = _i.signature(pv.rumik_synthesize_wav)
+    assert "description" in sig.parameters
+
+
+# ── pipecat 1.4 migration guards ─────────────────────────────────────────────
+
+def test_sentinel_never_arms_the_orphan_end_swallow_on_14():
+    """1.4's assistant aggregator closes the turn itself on interruption — the
+    0.0.95 `_started`-underflow this swallow shielded does not exist, and eating
+    a legitimate End would corrupt turn accounting. The interruption branch must
+    clear the buffer WITHOUT arming the swallow."""
+    import inspect
+    src = inspect.getsource(b.SentinelGate)
+    i = src.index("InterruptionFrame):")
+    branch = src[i:i + 700]
+    assert "_swallow_next_end = True" not in branch
+    assert 'self._buffer = ""' in branch
+
+
+def test_turn_gate_uses_broadcast_interruption():
+    """The 0.0.95 push_interruption_task_frame_and_wait is deprecated in 1.4
+    (delegates without waiting); the turn-gate must use the real API."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector)
+    assert "broadcast_interruption" in src
+    assert "push_interruption_task_frame_and_wait" not in src
+
+
+def test_build_tts_defaults_to_sarvam_and_rumik_on_request():
+    import inspect
+    src = inspect.getsource(pv.build_tts)
+    # Rumik only on explicit request; Sarvam is the fall-through (founder
+    # decision 2026-08-05 after Mulberry garbled phone-leg Hindi).
+    assert 'startswith("rumik")' in src
+    assert "SarvamTTSService(" in src
+
+
+def test_interims_never_enter_the_transcript():
+    """Google STT (the A/B arm) streams InterimTranscriptionFrames continuously;
+    the collector must act on FINALS only or the dedupe window, the turn-gate
+    and the transcript all drown."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector.process_frame)
+    assert "InterimTranscriptionFrame" in src
+
+
+def test_saaras_v4_is_registered_with_pipecat():
+    """pipecat 1.4's model table stops at saaras:v3 and RAISES on anything else —
+    our production model would have crashed build_stt on every call. Caught by
+    the migration dry-run, never by the suite; pinned here now."""
+    from pipecat.services.sarvam import stt as sarvam_stt
+    assert pv._register_saaras_v4() is True
+    assert "saaras:v4" in sarvam_stt.MODEL_CONFIGS
+    v3 = sarvam_stt.MODEL_CONFIGS["saaras:v3"]
+    v4 = sarvam_stt.MODEL_CONFIGS["saaras:v4"]
+    # v4 must inherit v3's capability shape (language + mode + server VAD).
+    assert v4.supports_language and v4.supports_mode and v4.supports_vad_params
+    assert v4.use_translate_endpoint == v3.use_translate_endpoint
+
+
+def test_stt_settings_follow_the_model_capability_table():
+    """1.4 raises on any field the model doesn't accept, in BOTH directions:
+    saaras:v3/v4 take language+mode but NOT prompt; saaras:v2.5 is the reverse.
+    build_stt must ASK the table, not assume."""
+    import app.config as cfg
+
+    def build(model):
+        cfg.get_settings.cache_clear()
+        orig = os.environ.get("SARVAM_STT_MODEL")
+        os.environ["SARVAM_STT_MODEL"] = model
+        os.environ.setdefault("SARVAM_API_KEY", "sk_test")
+        try:
+            return pv.build_stt(8000, language="hi-IN", bias="Ameet")
+        finally:
+            if orig is None:
+                os.environ.pop("SARVAM_STT_MODEL", None)
+            else:
+                os.environ["SARVAM_STT_MODEL"] = orig
+            cfg.get_settings.cache_clear()
+
+    svc = build("saaras:v4")          # would raise on prompt if we guessed
+    assert svc._settings.model == "saaras:v4"
+    svc25 = build("saaras:v2.5")      # would raise on language if we guessed
+    assert svc25._settings.model == "saaras:v2.5"
+
+
+def test_our_service_overrides_match_their_base_signatures():
+    """THE test that was missing. On the pipecat 1.4 migration, base run_tts
+    became run_tts(text, context_id) while our Rumik override still took (text)
+    — so EVERY reply raised "takes 2 positional arguments but 3 were given" and
+    the bot was mute on the founder's first 1.4 call. The suite passed anyway,
+    because the tests called our override directly with the OLD signature.
+
+    Signature drift in a subclass is invisible to unit tests by construction, so
+    assert compatibility structurally: for every method we override that also
+    exists on a pipecat base class, our version must accept at least as many
+    positional parameters as the base passes.
+    """
+    import inspect
+
+    def positional(fn):
+        try:
+            params = list(inspect.signature(fn).parameters.values())
+        except (TypeError, ValueError):
+            return None
+        return [p for p in params
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+
+    problems = []
+    for svc_cls in (pv.RumikTTSService,):
+        for name, ours in vars(svc_cls).items():
+            if name.startswith("__") or not callable(ours):
+                continue
+            for base in svc_cls.__mro__[1:]:
+                theirs = vars(base).get(name)
+                if theirs is None or not callable(theirs):
+                    continue
+                mine, base_sig = positional(ours), positional(theirs)
+                if mine is None or base_sig is None:
+                    break
+                required_by_base = len(base_sig)
+                accepted_by_us = len(mine)
+                takes_varargs = any(
+                    p.kind == p.VAR_POSITIONAL
+                    for p in inspect.signature(ours).parameters.values())
+                if accepted_by_us < required_by_base and not takes_varargs:
+                    problems.append(
+                        f"{svc_cls.__name__}.{name} accepts {accepted_by_us} "
+                        f"positional args but {base.__name__}.{name} is called "
+                        f"with {required_by_base}")
+                break
+    assert not problems, "; ".join(problems)
+
+
+def test_rumik_run_tts_accepts_the_context_id_pipecat_passes():
+    """Belt to the braces above, on the exact method that broke production."""
+    import inspect
+    params = list(inspect.signature(pv.RumikTTSService.run_tts).parameters)
+    assert params[:3] == ["self", "text", "context_id"], params
+
+
+# ── 4-engine TTS routing (google + smallest added 2026-08-05) ────────────────
+
+def test_engine_detection_covers_every_stored_form():
+    """tts_model values come from the DB and the UI, so accept the variants both
+    can produce — a mis-detected engine sends a voice to the wrong vendor, which
+    is either a hard 400 or (worse) a silent voice substitution."""
+    cases = {
+        "google": "google", "GOOGLE": "google", "chirp3-hd": "google",
+        "smallest": "smallest", "lightning_v3.1": "smallest",
+        "smallest:v3.1_pro": "smallest",
+        "rumik": "rumik", "silk-mulberry": "rumik",
+        "sarvam": "sarvam", "": "sarvam", "bulbul:v3": "sarvam",
+    }
+    for stored, want in cases.items():
+        assert b._engine_of(stored) == want, (stored, b._engine_of(stored))
+
+
+def test_male_voices_include_every_engine_or_hindi_grammar_breaks():
+    """_MALE_VOICES is the ONLY thing that makes the LLM write masculine Hindi
+    verb endings. A male voice missing here speaks "kar rahi hoon" — the #1
+    immersion complaint from live calls."""
+    for v in ("hi-IN-Chirp3-HD-Achird", "hi-IN-Neural2-B", "devansh", "mandar",
+              "shubh", "lucas"):
+        assert b._voice_gender(v) == "male", v
+    for v in ("hi-IN-Chirp3-HD-Achernar", "hi-IN-Neural2-A", "manasi", "priya", "ira"):
+        assert b._voice_gender(v) == "female", v
+
+
+def test_voice_palettes_do_not_leak_across_engines():
+    """Each engine fails differently on a foreign voice (Sarvam 400s, Rumik
+    silently substitutes, Smallest rejects cross-MODEL voices), so a foreign name
+    must resolve to None and let the provider default take over."""
+    assert b._agent_voice({"tts_model": "google", "voice": "hi-IN-Chirp3-HD-Achird"}) \
+        == "hi-IN-Chirp3-HD-Achird"
+    assert b._agent_voice({"tts_model": "google", "voice": "shubh"}) is None
+    assert b._agent_voice({"tts_model": "google", "voice": "devansh"}) is None
+    assert b._agent_voice({"tts_model": "smallest", "voice": "devansh"}) == "devansh"
+    assert b._agent_voice({"tts_model": "smallest", "voice": "ira"}) is None
+    assert b._agent_voice({"tts_model": "sarvam", "voice": "hi-IN-Neural2-B"}) is None
+    assert b._agent_voice({"tts_model": "sarvam", "voice": "shubh"}) == "shubh"
+
+
+def test_engine_defaults_are_real_voices_in_their_own_palette():
+    """A default outside its own palette would be dropped by _agent_voice and
+    silently replaced by the vendor's default — the exact class of bug that made
+    a male-configured agent speak in a female voice."""
+    assert b._default_voice_for({"tts_model": "google"}).lower() in b.GOOGLE_VOICES
+    assert b._default_voice_for({"tts_model": "smallest"}).lower() in b.SMALLEST_VOICES
+    assert b._default_voice_for({"tts_model": "rumik"}).lower() in b.RUMIK_VOICES
+    assert b._default_voice_for({"tts_model": "sarvam"}) == "priya"
+
+
+def test_new_engines_fall_back_to_sarvam_instead_of_going_mute():
+    """Missing creds/keys are a per-deployment reality. A misconfig must degrade
+    to a working call in another voice — never the mute call that the pipecat 1.4
+    signature drift already cost us once."""
+    import inspect
+    src = inspect.getsource(pv.build_tts)
+    google_branch = src[src.index('startswith("google")'):src.index('startswith("smallest")')]
+    assert "except Exception" in google_branch
+    assert "falling back to Sarvam" in google_branch
+    smallest_branch = src[src.index('startswith("smallest")'):src.index('startswith("rumik")')]
+    assert "except Exception" in smallest_branch
+
+
+def test_bot_is_interrupted_at_vad_onset_not_at_transcript():
+    """MEASURED root cause of "it takes ages for the bot to stop" (three founder
+    calls): holding audio in DuckGate cannot stop playback, because the reply has
+    already flowed past the duck into pipecat's output queue and Plivo's buffer —
+    live call d6e82def logged "dropping 0 held frame(s)" on the interrupt. Only a
+    flush empties those, and waiting for the STT final delayed it 0.8-1.6s.
+    Probe: 1.92s of talk-over before, 0.32s after."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    vad = src[src.index("VADUserTurnStartStrategy("):]
+    assert "enable_interruptions=settings.interrupt_on_vad" in vad[:200]
+    # Interims must NOT interrupt: Google STT streams them continuously.
+    tr = src[src.index("TranscriptionUserTurnStartStrategy("):]
+    assert "enable_interruptions=False" in tr[:200]
+
+
+def test_backchannel_after_a_cut_carries_on_instead_of_answering_haan():
+    """Interrupting at VAD onset means the bot is already silent when the words
+    arrive ~1.5s later, so the absorb path would never fire and every "haan"
+    ended the bot's turn (observed on the probe: the model answered the
+    acknowledgment from a standing start). A cut within backchannel_carry_secs
+    still counts as mid-reply, and the bot is asked to carry on."""
+    import inspect
+    src = inspect.getsource(b.TranscriptCollector.process_frame)
+    assert "self._recently_cut()" in src
+    assert "carry on" in src
+
+
+def test_audio_lead_is_capped_so_plivo_cannot_hoard_the_reply():
+    import inspect
+    import app.main as mm
+    src = inspect.getsource(mm._cap_audio_lead)
+    assert "max_lead" in src and "monotonic" in src
+    # Falling behind must re-anchor rather than accumulate debt.
+    assert "if lead < 0" in src
+
+
+# ── the repeated-introduction / language-flip root cause (2026-08-06) ────────
+
+def test_scripted_opening_is_written_to_context_deterministically():
+    """ROOT CAUSE of both "the questions repeat" and "it switches to Hindi":
+    pipecat 1.4 commits a TTSSpeakFrame utterance to context only when it
+    COMPLETES. A caller who speaks over the opening cancels that commit, and the
+    model is left with no record that it ever introduced itself. MEASURED on the
+    live pipeline — uninterrupted the context held the opening (n=4); interrupted
+    at +4s it held only (system, user, assistant-reply) and that reply
+    re-introduced the agent from scratch. The language flip is the same wound:
+    LANGUAGE STABILITY anchors on "your own previous turns", and there were none.
+
+    So we append it ourselves and tell pipecat not to, giving exactly one copy
+    whether or not the caller interrupts."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    greet = src[src.index("diag.greet_path = \"scripted\""):]
+    assert "TTSSpeakFrame(opening, append_to_context=False)" in greet[:2400]
+    assert "LLMMessagesAppendFrame" in greet[:2400]
+
+
+def test_already_spoken_rule_quotes_the_opening_and_is_opening_only():
+    """Authored prompts here are call SCRIPTS whose first block IS the
+    introduction (Shiksha Nation's literally starts "Bot: Hi! I'm Ameet calling
+    from…"), so the model reads from the top and says it again. Naming the
+    opening verbatim also gives the first turn a language anchor."""
+    MARK = "ALREADY SPOKEN — do not repeat"
+    with_opening = b.build_system_prompt({"agent": {
+        "name": "Ameet", "systemPrompt": "Bot: Hi! I am Ameet. " * 40,
+        "direction": "OUTBOUND",
+        "openingLine": "Hi! I am Ameet calling from Shiksha Nation."}})
+    assert MARK in with_opening
+    assert "Hi! I am Ameet calling from Shiksha Nation." in with_opening
+    assert "never restart your script" in with_opening
+    # mid-call "hello" must NOT re-trigger the opening
+    assert "ONLY at the start" in with_opening
+    without = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert MARK not in without
+
+
+def test_plain_hindi_register_rule_targets_the_words_actually_used():
+    """Founder after live calls: "everything is highly formal Hindi... words that
+    in general are not used". Measured across two days of transcripts: 198 uses of
+    literary vocabulary (प्रदर्शन 37x, पूछताछ 28x, अकादमिक 14x, अवधारणा 12x). It is
+    translationese — the authored script is English and the model renders it as
+    textbook Hindi. The rule names the ACTUAL offenders, because concrete swaps
+    steer a model far better than "be conversational"."""
+    hi = b.build_system_prompt({"agent": {
+        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "PHONE HINDI" in hi
+    for offender in ("प्रदर्शन", "पूछताछ", "अकादमिक", "अवधारणाएँ", "शुल्क", "अभिभावक"):
+        assert offender in hi, offender
+    # English agents must not be told about Hindi vocabulary at all.
+    en = b.build_system_prompt({"agent": {
+        "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "PHONE HINDI" not in en
+
+
+def test_language_switch_on_request_is_permanent():
+    """Founder: "if users asks that i want to talk in english it should then talk
+    only in english". The old rule allowed the switch but said nothing about
+    STAYING switched, and the model drifted back within a couple of turns."""
+    p = b.build_system_prompt({"agent": {
+        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "ON REQUEST, THE SWITCH IS PERMANENT" in p
+    assert "WHOLE rest of the call" in p
+    assert "no Devanagari" in p
+
+
+# ── call 77cb4b47 (2026-08-06): replay the real transcripts through the gate ──
+class _Rec:
+    """Captures everything the collector pushes downstream."""
+
+    def __init__(self):
+        self.frames = []
+        self.interruptions = 0
+
+    def cues(self):
+        out = []
+        for f in self.frames:
+            for m in getattr(f, "messages", []) or []:
+                out.append(m.get("content") or "")
+        return out
+
+
+def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
+                      in_machine_window=None):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: bot_speaking,
+        fillers_armed=lambda: False,
+        bot_stopped_t=bot_stopped_t or (lambda: 0.0),
+        gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True,      # what production actually runs
+        filler_phrases=[],
+        in_machine_window=in_machine_window or (lambda: True),
+        reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True,
+    )
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+
+    async def _broadcast():
+        rec.interruptions += 1
+
+    tc.push_frame = _push
+    tc.broadcast_interruption = _broadcast
+    return tc
+
+
+async def _feed(tc, text):
+    from pipecat.frames.frames import TranscriptionFrame
+    f = TranscriptionFrame(text=text, user_id="u", timestamp="t")
+    # Bypass pipecat's base setup (needs a running task manager); this test is
+    # about OUR gate logic, which lives entirely after the super() call.
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(f, b.FrameDirection.DOWNSTREAM)
+
+
+async def _noop_super(self, frame, direction):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_carrier_announcement_never_reaches_the_model():
+    """Verbatim Sarvam finals from the start of call 77cb4b47. These made the
+    bot skip its opening AND became the first user message in the LLM context,
+    where they conditioned every generation for the next 2.5 minutes."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    await _feed(tc, "The person you're trying to reach is not available.")
+    assert rec.frames == [], "carrier audio must not be forwarded downstream"
+    assert rec.interruptions == 0, "the network must not barge in on us"
+    # ...but it must still be in the transcript, or LIKELY_MACHINE goes blind.
+    assert len(tc._outcome.transcript) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_hello_loop_breaks_on_the_second_hello():
+    """The loop, verbatim: cut -> 'Hello.' -> cut -> 'Hello.' -> ... The first
+    hello asks the model to carry on; the SECOND must stop it re-delivering the
+    sentence at all, which is what made the call unlistenable."""
+    rec = _Rec()
+    # The bot spoke (and was cut) between each hello — that is what stops the
+    # 4-second dedupe from swallowing the repeats, and it is exactly what the
+    # live log shows at 08:27:02.7 / 08:27:05.1 / 08:27:13.3.
+    tc = _replay_collector(rec, bot_stopped_t=lambda: time.time())
+    await _feed(tc, "haan ji bol raha hoon")     # a real turn first
+    rec.frames.clear()
+    rec.interruptions = 0                        # that turn's barge-in is fine
+
+    await _feed(tc, "Hello.")
+    first = rec.cues()
+    assert any("carry on" in c for c in first), first
+    assert rec.interruptions == 0, "an absorbed hello must not be a barge-in"
+
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    second = rec.cues()
+    assert any("hear you" in c for c in second), second
+    assert any("Do NOT repeat your question" in c for c in second), second
+
+
+@pytest.mark.asyncio
+async def test_a_real_answer_clears_the_hello_streak():
+    """Otherwise one stray hello early in a call would arm the escalation for
+    the rest of it."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_stopped_t=lambda: time.time())
+    await _feed(tc, "Hello.")
+    await _feed(tc, "sixty eight percent aaye the")   # real answer -> interrupts
+    assert tc._audio_checks == 0
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    assert any("carry on" in c for c in rec.cues()), "streak did not reset"
+
+
+# ── call 14029bd6 (2026-08-06): the whole voicemail greeting, in order ────────
+_VOICEMAIL_GREETING = [
+    "Your call has been forwarded to voicemail.",
+    "The person you're trying to reach is not available.",
+    "Add the tone.",                      # Sarvam's rendering of "…after the tone"
+    "Please record your message.",
+    "When you have finished recording you may hang up.",
+]
+
+
+@pytest.mark.asyncio
+async def test_the_entire_voicemail_greeting_is_filtered_not_just_line_one():
+    """Verbatim Sarvam finals from call 14029bd6, in order. The first version of
+    this filter latched on "have we heard a real caller yet?" — 'Add the tone.'
+    missed, flipped the latch, and the two unmistakable announcements AFTER it
+    were treated as the caller and interrupted our opening three times."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    for line in _VOICEMAIL_GREETING:
+        await _feed(tc, line)
+    assert rec.interruptions == 0, "the voicemail system barged in on our opening"
+    assert rec.frames == [], "voicemail audio reached the model"
+    assert len(tc._outcome.transcript) == 5, "must stay in the transcript for LIKELY_MACHINE"
+
+
+@pytest.mark.asyncio
+async def test_the_caller_is_still_heard_after_the_machine_window_closes():
+    """The window is a clock, so it must actually expire — otherwise a caller
+    who says any of these words mid-call is silently ignored."""
+    rec = _Rec()
+    tc = _replay_collector(rec, in_machine_window=lambda: False)
+    await _feed(tc, "Haan main abhi available nahi hoon, baad mein call karein")
+    assert rec.frames, "a real caller was swallowed after the window closed"
+
+
+def test_carrier_lines_are_not_counted_as_deleted_answers():
+    """The filter keeps announcements in the transcript and out of the context —
+    which is exactly the shape reconcile_answers calls a DELETED ANSWER. Call
+    14029bd6's panel duly reported '2 caller answers were discarded', quoting
+    the voicemail system. The reconcile step must exclude them."""
+    import app.turntake as tt
+    heard = [t for t in _VOICEMAIL_GREETING + ["Raman", "class aath mein hai"]
+             if not tt.is_carrier_announcement(t)]
+    assert heard == ["Raman", "class aath mein hai"]
+    n, _samples = dg_mod.reconcile_answers(heard, ["Raman", "class aath mein hai"])
+    assert n == 0, "carrier lines still manufacture a false ANSWER_DELETED"
+
+
+# ── call bc84958c (2026-08-06): the double pitch ─────────────────────────────
+@pytest.mark.asyncio
+async def test_a_second_final_during_composition_is_not_a_fresh_turn():
+    """Sarvam split one answer into two finals 0.85s apart. The first started a
+    reply; the second arrived in the ~0.9s hole before that reply was audible,
+    the turn-gate saw a quiet bot, and it became a BRAND-NEW turn — so the bot
+    delivered its entire Marks Improvement pitch twice, ~40s of it, and the
+    caller asked on the line "फिर से repeat क्यों कर रहे हैं आप".
+
+    In flight, the second final must be handled as mid-reply (absorbed or a
+    formal interruption) — either way ONE reply, never two."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)   # composing, not yet audible
+    tc._reply_in_flight = lambda: True
+    await _feed(tc, "नहीं।")
+    assert rec.interruptions == 1, (
+        "a real answer arriving mid-composition must cancel the in-flight reply, "
+        "not spawn a second one")
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_during_composition_does_not_spawn_a_reply_either():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: True
+    await _feed(tc, "हाँ।")
+    assert rec.interruptions == 0
+    assert any("carry on" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_bot_with_no_reply_pending_still_takes_normal_turns():
+    """The guard must not swallow ordinary turns — that would mute the call."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: False
+    await _feed(tc, "Raman seventh class mein hai")
+    assert rec.interruptions == 0
+    assert rec.frames, "a normal turn was swallowed"
+
+
+def test_reply_in_flight_is_time_capped():
+    """A generation that dies before playout must not mute the caller forever."""
+    import app.callstate as cs
+    from app.config import get_settings
+    s = get_settings()
+    assert s.reply_inflight_grace_secs > 0
+    st = cs.CallState(t=0.0)
+    assert st.reply_started_t == 0.0, "must default to 'no reply pending'"
+
+
+# ── LLM latency (2026-08-06) ─────────────────────────────────────────────────
+def test_vertex_thinking_is_explicitly_disabled():
+    """gemini-2.5-flash thinks DYNAMICALLY unless told not to, and pipecat's
+    InputParams.thinking defaults to None (sends no thinkingConfig at all) — so
+    "we didn't ask for thinking" is not the same as "thinking is off".
+
+    It cost 0.43s TTFB in the morning and 2.35s p50 / 5.76s p95 by midday with
+    no LLM code change, purely because the system prompt got richer. Measured
+    on the Mumbai box, same region and model: 2.43s -> 0.51s with budget 0."""
+    import app.providers as pvd
+    from app.config import get_settings
+    assert get_settings().vertex_thinking_budget == 0
+    src = inspect.getsource(pvd.build_llm)
+    assert "ThinkingConfig" in src
+    assert "vertex_thinking_budget" in src
+
+
+def test_thinking_budget_reaches_the_service_params():
+    """Guards the failure mode this whole fix is about: a knob that looks set in
+    our code and is silently dropped before the wire."""
+    from pipecat.services.google.llm import GoogleLLMService
+    p = GoogleLLMService.InputParams(
+        temperature=0.35, max_tokens=300,
+        thinking=GoogleLLMService.ThinkingConfig(thinking_budget=0))
+    assert p.thinking is not None, "pipecat dropped the thinking config"
+    assert p.thinking.thinking_budget == 0
+
+
+@pytest.mark.asyncio
+async def test_machine_greeting_scraps_do_not_suppress_our_opening():
+    """Call 38536b71: four announcements were filtered correctly, then the
+    one-word scrap 'तो।' slipped through, counted as the callee, and
+    _greet_when_ready skipped our opening (greetPath "callee_spoke_first")."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    await _feed(tc, "Your call has been forwarded to voicemail.")   # arms it
+    await _feed(tc, "तो।")
+    assert rec.frames == [], "a machine scrap reached the model"
+    assert rec.interruptions == 0
+
+
+@pytest.mark.asyncio
+async def test_a_human_picking_up_mid_greeting_is_never_swallowed():
+    """The one thing this filter must not eat."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    rec.frames.clear()
+    await _feed(tc, "Hello.")
+    assert rec.frames, "the human saying hello was dropped as machine noise"
+
+
+@pytest.mark.asyncio
+async def test_short_answers_survive_once_we_have_spoken():
+    """After our opening, a one-word answer ('Raman') is the whole point."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._bot_spoke_once = lambda: True
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    rec.frames.clear()
+    await _feed(tc, "Raman")
+    assert rec.frames, "a real one-word answer was dropped"

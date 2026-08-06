@@ -182,6 +182,10 @@ export interface SubOrgListItem {
     plan_status?: string | null;
     used_seats?: number | null;
     total_seats?: number | null;
+    /** Distinct ACTIVE learners enrolled under this sub-org (admins excluded). Same
+     *  population as used_seats, but always present — used_seats reads as blank when
+     *  the sub-org has no seat cap configured. */
+    learner_count?: number | null;
     invite_code?: string | null;
     short_url?: string | null;
     created_at?: string | number | null;
@@ -199,11 +203,16 @@ export interface SubOrgListPage {
 }
 
 /**
- * Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per
- * sub-org (newest first). Omit page/size to fetch EVERYTHING (the backend's legacy bare-array
- * shape) — used by the list screen so search/status filters can match across the whole
- * dataset (admin email/phone/plan status come from cross-service enrichment, so they can't
- * be filtered in the DB query). Pass page+size for the paginated Spring Page shape.
+ * Manage VLEs list — one call returns admin email/phone, plan status, seats, learner count
+ * and invite per sub-org (newest first). Omit page/size to fetch EVERYTHING (the backend's
+ * legacy bare-array shape) — used by the list screen so search/status filters can match
+ * across the whole dataset (admin email/phone/plan status come from cross-service
+ * enrichment, so they can't be filtered in the DB query). Pass page+size for the paginated
+ * Spring Page shape.
+ *
+ * "EVERYTHING" is always relative to the caller: the backend scopes the response to the
+ * sub-orgs assigned to them unless they're a root user or a true institute admin. So the
+ * client-side search/filter/pagination below inherently operates on the assigned set only.
  */
 export const getSubOrgsWithDetails = async (
     parentInstituteId?: string,
@@ -409,10 +418,19 @@ export const updateSubOrgConfiguration = async (
  * Re-run the SUBORG_LEARNER mirror logic for every PS already linked to this sub-org's
  * org-level invite. Idempotent — only creates invites for institute-wide PaymentOptions
  * that aren't already mirrored. Used by the "Re-sync invites" button on the deep page.
+ *
+ * Also re-applies the institute's current Naming Settings terminology to existing
+ * sub-org invite names (`renamed_count`) — invite names are written once at creation,
+ * so this is how a term rename reaches invites that already exist.
  */
 export const resyncSubOrgInvites = async (
     subOrgId: string
-): Promise<{ sub_org_id: string; created_count: number; package_session_count: number }> => {
+): Promise<{
+    sub_org_id: string;
+    created_count: number;
+    renamed_count: number;
+    package_session_count: number;
+}> => {
     const parentInstituteId = getCurrentInstituteId();
     const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resync-invites`;
     const response = await authenticatedAxiosInstance({
@@ -676,6 +694,35 @@ export interface UserSubOrgLink {
 /** For each user linked (via FSPSSM) to a sub-org the caller can see, the list of those
  *  sub-orgs. Scoped server-side to the caller (real admin → all; sub-org admin → their own).
  *  Drives the "Sub-Orgs" column + filter on the institute Teams list. */
+/**
+ * Grant an EXISTING institute user access to a channel partner.
+ *
+ * Deliberately NOT `addSubOrgTeamMember`: that endpoint creates a person via auth-service
+ * `/user-invitation/invite`, which can email somebody who already has an account. This one
+ * only writes the access rows, so assigning from the Teams list is silent.
+ *
+ * Omitting package_session_ids grants every course the partner's active invites reach —
+ * i.e. "assign them to the whole partner", which is what the Teams list action means.
+ */
+export const assignUserToSubOrg = async (body: {
+    sub_org_id: string;
+    institute_id: string;
+    user_id: string;
+    package_session_ids?: string[];
+}): Promise<{
+    user_id: string;
+    sub_org_id: string;
+    granted_count: number;
+    already_had: number;
+}> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${BASE_URL}/admin-core-service/sub-org/v1/team/assign`,
+        data: body,
+    });
+    return response.data;
+};
+
 export const listUserSubOrgLinks = async (
     instituteId: string
 ): Promise<UserSubOrgLink[]> => {

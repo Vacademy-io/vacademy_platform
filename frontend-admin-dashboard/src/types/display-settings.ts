@@ -134,6 +134,32 @@ export interface CourseCreationSettings {
     limitToSingleLevel: boolean;
 }
 
+// Per-role visibility of the assessment create / edit / delete actions. Applies
+// across every surface that exposes them: the Assessments list header, the
+// /assessment type picker, the sidebar "Create …" shortcuts, the in-slide
+// "Create new assessment" option, the Assessment Details edit (pencil) button
+// and the "Delete Assessment" item in each assessment card's "…" menu — plus
+// the Evaluation Centre and Homework clones of those lists.
+//
+// Every flag is optional and DEFAULTS TO TRUE (on). Read sites must therefore
+// test `=== false` / `!== false`, never truthiness, so a role that has never
+// been configured keeps seeing the actions.
+export interface AssessmentActionSettings {
+    // "Create Assessment" / "Create Homework" entry points.
+    showCreateAssessment?: boolean;
+    // The edit (pencil) button on Assessment Details that reopens the
+    // create-assessment wizard for an existing assessment.
+    showEditAssessment?: boolean;
+    // "Delete Assessment" / "Delete Homework" in the card "…" menu.
+    showDeleteAssessment?: boolean;
+}
+
+export const DEFAULT_ASSESSMENT_ACTION_SETTINGS: AssessmentActionSettings = {
+    showCreateAssessment: true,
+    showEditAssessment: true,
+    showDeleteAssessment: true,
+};
+
 // Stable identifiers for the student side-view tabs. Used as keys in the
 // settings ordering map and as values for the default-tab selector. These
 // match the `setCategory(...)` strings the side-view component already uses.
@@ -259,6 +285,19 @@ export interface LearnerManagementSettings {
     allowViewPassword: boolean;
     allowSendResetPasswordMail: boolean;
     showApprovalToggle: boolean;
+    // Controls the "Edit" action on the Portal Access → Account Credentials card,
+    // which rewrites the learner's username/password. Unlike the other flags
+    // here it drives a WRITE, and it signs the learner out of their session.
+    //
+    // Role-dependent default when the key is absent (institutes whose saved
+    // settings predate this flag): ON for ADMIN, OFF for teachers and custom
+    // roles. An admin grants it to another role from Display Settings. Consumers
+    // must resolve `?? isAdmin` rather than `?? false`, or admins on an older
+    // settings blob lose the button.
+    //
+    // Only meaningful when allowViewPassword is on — the card it lives in is
+    // hidden otherwise.
+    allowEditCredentials?: boolean;
 }
 
 // What a custom header button links to.
@@ -366,6 +405,67 @@ export interface TeamManagementSettings {
 export interface WorkbenchVisibilitySettings {
     counsellorsPageVisible?: boolean;
     salesDashboardVisible?: boolean;
+}
+
+// Per-role access to the Sub-Organizations (Channel Partners) module —
+// /manage-custom-teams and the per-sub-org drilldown.
+//
+// Off by default for every role. Enabling it for a NON-admin role (teacher or a
+// custom role) surfaces the module in the sidebar and unlocks the route, but the
+// user still only ever sees the channel partners ASSIGNED to them: the backend
+// scopes every sub-org response to the caller's ACTIVE SUB_ORG-linked FSPSSM
+// rows, so search, filters, pagination and counts all operate on the assigned
+// set, and a user with no assignments gets an empty list. Admins are unaffected
+// by the scoping and continue to see the whole network.
+// Per-role capabilities inside the Sub-Organizations (Channel Partners) module.
+// Deliberately mapped to actions that actually exist today — there is no delete
+// endpoint for a channel partner, so there is no delete toggle to offer.
+export interface SubOrgModulePermissions {
+    /** Create a new channel partner. Default false. */
+    canCreate?: boolean;
+    /** Edit a partner's configuration + re-sync its invites. Default false. */
+    canEditConfig?: boolean;
+    /** Add / remove people on a partner's Team tab. Default false. */
+    canManageTeam?: boolean;
+    /** See the Admin Payment + Invoices tabs at all. Default TRUE (read). */
+    canViewFinance?: boolean;
+    /** Record payments, mark invoices paid, send reminders, raise invoices. Default false. */
+    canManageFinance?: boolean;
+    /** Export the partner list to CSV. Default TRUE (read). */
+    canExport?: boolean;
+}
+
+export interface SubOrgModuleSettings {
+    // Grant this role access to the Sub-Organizations module. Missing/undefined
+    // = false (module hidden), so existing institutes are unaffected.
+    moduleEnabled?: boolean;
+
+    // What this role may DO on the channel partners it can see. Read gates are
+    // separate from write gates on purpose: an institute usually wants a regional
+    // sales role to see a partner's finances without being able to move money.
+    //
+    // Every write flag defaults to FALSE and every read flag to TRUE, so granting
+    // the module alone produces a read-only view — the safe end of the range. An
+    // institute admin opts each capability in per role.
+    //
+    // Enforced in BOTH places: the UI hides the affordance, and the backend
+    // re-checks the same flag before mutating. A UI-only gate would be theatre —
+    // the endpoints are reachable directly.
+    permissions?: SubOrgModulePermissions;
+
+    // Sub-org (channel partner) ids every holder of this role can see — a
+    // ROLE-level grant, read server-side by SubOrgAccessScopeService.
+    //
+    // Why this exists alongside per-user assignment: assignment was originally
+    // only per-person (a SUB_ORG-linked FSPSSM row created from a partner's Team
+    // tab). For a regional team ("Gujarat sales") that meant wiring every member
+    // individually and re-doing it for each new joiner. Listing the partners on
+    // the role covers the whole team at once, including people added later.
+    //
+    // The two mechanisms UNION — a per-user assignment still adds on top of what
+    // the role grants, so nothing configured the old way stops working. Empty or
+    // missing = this role grants no partners on its own.
+    assignedSubOrgIds?: string[];
 }
 
 // Admin list surfaces that support custom-field filter/sort gating.
@@ -500,6 +600,10 @@ export interface DisplaySettingsData {
         showEnrolledStudentCount: boolean;
     };
 
+    // 10d) Assessment action visibility toggles. See AssessmentActionSettings —
+    //      every flag defaults to ON so existing roles are unaffected.
+    assessmentPage?: AssessmentActionSettings;
+
     // 11) Course creation configuration
     courseCreation?: CourseCreationSettings;
 
@@ -561,6 +665,12 @@ export interface DisplaySettingsData {
     // sales dashboard (/sales-dashboard). Both default to false. See
     // WorkbenchVisibilitySettings for details.
     workbench?: WorkbenchVisibilitySettings;
+
+    // 13d) Sub-Organizations (Channel Partners) module access for this role.
+    //      Off by default. See SubOrgModuleSettings — enabling it for a
+    //      non-admin role grants the module but keeps visibility limited to the
+    //      channel partners assigned to that user.
+    subOrganizations?: SubOrgModuleSettings;
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{

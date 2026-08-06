@@ -28,13 +28,8 @@ interface MobileActionBarProps {
   nativePad?: boolean;
 }
 
-const SUBLABEL: Record<string, string | undefined> = {
-  login: "If already registered",
-  leadCollection: "For new users",
-  form: undefined,
-  signup: "For new users",
-  navigate: undefined,
-};
+/** New-user prompt shown as one line beside the signup link, not as a button. */
+const SIGNUP_PROMPT = "Don't have an account?";
 
 export const MobileActionBar: React.FC<MobileActionBarProps> = ({
   catalogueData,
@@ -64,15 +59,18 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
           <button onClick={onLogin} className="catalogue-btn catalogue-btn-secondary w-full justify-center">
             Login
           </button>
-          <span className="text-center text-xs text-catalogue-text-secondary">If already registered</span>
         </div>
         {legacyGetStartedVisible && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
-          <div className="flex flex-col gap-1">
-            <button onClick={onLegacyGetStarted} className="catalogue-btn catalogue-btn-primary w-full justify-center">
+          <p className="text-center text-xs text-catalogue-text-secondary">
+            {SIGNUP_PROMPT}{" "}
+            <button
+              type="button"
+              onClick={onLegacyGetStarted}
+              className="font-semibold text-primary-500 underline underline-offset-2"
+            >
               Get Started
             </button>
-            <span className="text-center text-xs text-catalogue-text-secondary">For new users</span>
-          </div>
+          </p>
         )}
       </>
     );
@@ -106,21 +104,37 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
     <>
       {links.slice(0, 3).map((link: any, i: number) => {
         const kind = classifyBarLink(link);
-        // Capture actions lead; login/navigation stay quiet.
-        const primary = kind === "form" || kind === "leadCollection" || kind === "signup";
-        const sublabel = SUBLABEL[kind];
+
+        // Signup / lead capture reads as one prompt line with an inline link
+        // rather than a second full-width button: the bar offers a single
+        // action, and registering is the aside for people who can't take it.
+        // "form" (an Audience campaign CTA like Enquire Now) stays a button —
+        // it is the page's own call to action, not a signup fallback.
+        if (kind === "leadCollection" || kind === "signup") {
+          return (
+            <p key={i} className="text-center text-xs text-catalogue-text-secondary">
+              {SIGNUP_PROMPT}{" "}
+              <button
+                type="button"
+                onClick={() => handleClick(link)}
+                className="font-semibold text-primary-500 underline underline-offset-2"
+              >
+                {link.label || "Get Started"}
+              </button>
+            </p>
+          );
+        }
+
+        // The page's own CTA leads; login/navigation stay quiet.
+        const primary = kind === "form";
         return (
-          <div key={i} className="flex flex-col gap-1">
-            <button
-              onClick={() => handleClick(link)}
-              className={`catalogue-btn w-full justify-center ${primary ? "catalogue-btn-primary" : "catalogue-btn-secondary"}`}
-            >
-              {link.label || "Open"}
-            </button>
-            {sublabel && (
-              <span className="text-center text-xs text-catalogue-text-secondary">{sublabel}</span>
-            )}
-          </div>
+          <button
+            key={i}
+            onClick={() => handleClick(link)}
+            className={`catalogue-btn w-full justify-center ${primary ? "catalogue-btn-primary" : "catalogue-btn-secondary"}`}
+          >
+            {link.label || "Open"}
+          </button>
         );
       })}
     </>

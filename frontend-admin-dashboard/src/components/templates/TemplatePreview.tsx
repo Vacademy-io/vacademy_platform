@@ -63,6 +63,8 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
         return 'Invoice (PDF)';
       case 'INVOICE_EMAIL':
         return 'Invoice Email';
+      case 'PAYMENT_CONFIRMATION':
+        return 'Payment Confirmation Email';
       default:
         return 'Template';
     }

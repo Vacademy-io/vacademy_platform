@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
@@ -17,6 +18,8 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallResponse
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
@@ -108,10 +111,72 @@ public class AiCallService {
     @Lazy
     private AiCallOutcomeProcessor aiCallOutcomeProcessor;
 
+    /** Kill-switch for the affordability gate (default ON). */
+    @Value("${telephony.ai.credit-gate.enabled:true}")
+    private boolean creditGateEnabled;
+
+    @Autowired
+    private CreditClient creditClient;
+
+    /**
+     * True only when the institute can actually pay for a call. Fails CLOSED on
+     * any error — see the call site.
+     */
+    private boolean hasAffordableCredits(String instituteId) {
+        try {
+            return creditClient.hasActiveCredits(instituteId);
+        } catch (Exception e) {
+            log.warn("AI call credit check failed for institute {} — blocking (fail-closed): {}",
+                    instituteId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Automated entry point (workflow node, scheduler, retry re-dialer). Every throttle
+     * applies: already-assigned, daily cap, and the near-simultaneous dedup.
+     */
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
+        return placeCall(req, counsellorUserId, CallTrigger.AUTOMATION);
+    }
+
+    /**
+     * @param trigger who asked for this call — decides which pre-dial throttles apply.
+     *        Set SERVER-side by the calling path, never read from the request body, so
+     *        automation cannot opt itself out. See {@link CallTrigger}: every throttle
+     *        returns HTTP 200 with dispatched=false and dials nothing, so applying one
+     *        to a human's explicit request makes calling look broken rather than
+     *        throttled — which is exactly what happened to counsellors, whose leads are
+     *        all assigned and so were refused by the first guard every time.
+     *
+     *        <p>Credit exhaustion still blocks every path, and throws a visible error
+     *        rather than pretending to dial.
+     */
+    public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId,
+                                       CallTrigger trigger) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required.");
         }
+        // AFFORDABILITY GATE. Placing an AI call costs real money (telephony +
+        // STT/LLM/TTS) and was billed ONLY after the fact, so an institute whose
+        // balance had run out kept dialling and simply went further negative —
+        // observed live at -5759 credits with calls still going out. The
+        // engagement engine already gates its autonomous sends exactly like this;
+        // AI calling never did.
+        //
+        // Fails CLOSED, deliberately: hasActiveCredits returns false when the
+        // balance cannot be read, so an unreachable credits service stops calls
+        // rather than letting unpriced ones through. A blocked call is
+        // recoverable (top up and re-run); an unbilled one is not.
+        if (creditGateEnabled && !hasAffordableCredits(req.getInstituteId())) {
+            log.warn("AI call BLOCKED — no credits for institute {} (responseId={}, phone=***{})",
+                    req.getInstituteId(), req.getResponseId(),
+                    req.getPhoneNumber() == null ? "" :
+                            req.getPhoneNumber().substring(Math.max(0, req.getPhoneNumber().length() - 4)));
+            throw new ConflictException(
+                    "This institute is out of AI calling credits. Top up to resume calls.");
+        }
+
         // Provider + campaign default to the institute's AI_CALLING_SETTING, so swapping
         // the AI agent is a settings change, not a code change.
         AiCallingSettingsPojo settings = settingsService.get(req.getInstituteId());
@@ -175,12 +240,16 @@ public class AiCallService {
         // lead-specific; non-lead subjects (e.g. student feedback) have their eligibility
         // decided by the caller/scheduler.
         if (isLead && leadAlreadyAssigned(userId, req.getInstituteId())) {
-            log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
-            return AiCallResponseDTO.builder()
-                    .status("SKIPPED_ASSIGNED")
-                    .dispatched(false)
-                    .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
-                    .build();
+            if (trigger.enforcesAssignedLeadGuard()) {
+                log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_ASSIGNED")
+                        .dispatched(false)
+                        .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
+                        .build();
+            }
+            log.info("AI call: lead {} is already assigned, but {} asked for the call explicitly — dialing",
+                    userId, counsellorUserId);
         }
 
         // Daily spend guardrail: bound the WHOLE institute's AI dials on this provider
@@ -188,7 +257,12 @@ public class AiCallService {
         // click) funnels through here, so this one check covers all three. Real calls
         // only — MOCK never leaves the box. Per-institute setting wins; else the
         // server-wide default. Returns a distinct skip status the campaign loop can log.
-        if (!mock) {
+        //
+        // Skipped for a single manual click: the cap is there to stop fan-out running up
+        // an unbounded bill, and one person clicking one button cannot. Silently refusing
+        // that click — after automation had already eaten the day's cap — is the failure
+        // mode this whole guard set kept producing. Bulk campaigns still respect it.
+        if (!mock && trigger.enforcesDailyCap()) {
             int cap = settings.getMaxCallsPerDay() > 0 ? settings.getMaxCallsPerDay() : globalMaxCallsPerDay;
             if (cap > 0) {
                 java.sql.Timestamp since = java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(24)));
@@ -216,7 +290,12 @@ public class AiCallService {
         synchronized (lockFor(dedupKey)) {
             java.sql.Timestamp since = java.sql.Timestamp.from(
                     Instant.now().minusSeconds(Math.max(1, dedupWindowSec)));
-            if (callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
+            // A single manual click is never de-duped: the window exists to collapse an
+            // ACCIDENTAL double dispatch, and a person clicking twice is asking for a
+            // second call, not repeating themselves by mistake. Bulk keeps it — a
+            // campaign overlapping a workflow node is precisely the accident it catches.
+            if (trigger.enforcesDuplicateWindow()
+                    && callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
                 log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
                         provider, userId, dedupWindowSec);
                 return AiCallResponseDTO.builder()

@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from . import admin_core
+from . import admin_core, diagnostics
 from .bot import CallOutcome
 from .config import get_settings
 
@@ -134,6 +134,81 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None}
+
+
+def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
+    """Never raises: diagnostics are a debugging aid, the report is the product."""
+    try:
+        d = getattr(outcome, "diagnostics", None)
+        if d is None:
+            return None
+        # Fill in what only the report knows, then freeze the verdict.
+        d.user_turns = len(_caller_turns(outcome))
+        d.transfer_requested = bool(outcome.transfer_requested)
+        d.transfer_registered = bool(outcome.transfer_registered)
+        if outcome.crashed:
+            d.crash = getattr(outcome, "crash_detail", None) or "pipeline_error"
+        d.machine_markers = _machine_markers(outcome)
+        return diagnostics.to_payload(d)
+    except Exception:
+        logger.exception("diagnostics blob failed corr=%s", outcome.corr)
+        return None
+
+
+# Verbatim IVR/voicemail openers seen in the live corpus. EVIDENCE ONLY in v1 —
+# scored into the LIKELY_MACHINE fault, never used to change a disposition.
+_MACHINE_MARKERS = (
+    # English
+    "forwarded to voicemail", "leave a message", "after the tone", "not available",
+    "switched off", "will be recorded for monitoring", "please hold while",
+    "press one", "is currently unavailable", "out of coverage",
+    "record your name", "reason for calling", "if this person is available",
+    "at the tone", "voice mail", "voicemail",
+    # Devanagari. Sarvam's saarika is pinned to hi-IN and TRANSLITERATES English
+    # audio into Devanagari, so an English voicemail greeting arrives looking like
+    # "इफ यू रिकॉर्ड योर नेम एंड रीज़न फॉर कॉलिंग…" and matched NONE of the ASCII
+    # markers above. That is exactly how a voicemail wrote disposition=Callback
+    # onto a real lead on 2026-08-03 (corr e461549e).
+    "रिकॉर्ड योर नेम", "रीज़न फॉर कॉलिंग", "लीव अ मैसेज", "वॉइस मेल", "वॉइसमेल",
+    "अवेलेबल", "आफ्टर द टोन", "स्विच ऑफ", "उपलब्ध नहीं",
+)
+
+
+def _machine_markers(outcome: CallOutcome) -> List[str]:
+    hits: List[str] = []
+    for t in _caller_turns(outcome)[:3]:
+        low = t.lower()
+        for m in _MACHINE_MARKERS:
+            if m in low and m not in hits:
+                hits.append(m)
+    return hits
+
+
+def _caller_turns(outcome: CallOutcome) -> List[str]:
+    """The caller's REAL words (synthetic bracketed cues excluded)."""
+    return [t["text"] for t in outcome.transcript
+            if t.get("role") == "user" and t.get("text")
+            and not t["text"].lstrip().startswith("[")]
+
+
+def _is_conversation(outcome: CallOutcome) -> bool:
+    """Did a two-sided conversation actually happen?
+
+    Guards the disposition path: 23 live calls where the caller contributed no
+    real words still received Not_Interested / Wrong_Person / Wrong_Number.
+
+    Deliberately ONLY a caller-turn test. Requiring a played ASSISTANT turn too
+    would misfire in exactly the case we are fixing elsewhere: when our own
+    audio never played (a wedged TTS socket) the caller may still have spoken —
+    including a terminal "not interested". Forcing that to Incomplete flips a
+    STOP into admin_core's retry path and re-dials someone who refused.
+
+    NOTE this does NOT catch answering machines: voicemail greetings ARE caller
+    text ("Your call has been forwarded to voicemail"), so those still reach the
+    classifier. Machine detection is a separate, explicit fix — see the plan's
+    later item; do not mistake this gate for it.
+    """
+    return len(_caller_turns(outcome)) >= 1
 
 
 def _status(outcome: CallOutcome) -> str:
@@ -273,7 +348,22 @@ async def report_spool_sweeper() -> None:
 
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
     ctx = outcome.context
-    analysis = await _analyze(outcome)
+    # Never let the classifier judge a call the caller never took part in — see
+    # _is_conversation. Skipping _analyze also saves the LLM round trip on the
+    # 17% of dials that are answering machines.
+    if get_settings().report_require_conversation and not _is_conversation(outcome):
+        logger.info("report: no two-sided conversation corr=%s (%d caller turns) — "
+                    "forcing Incomplete, skipping analysis",
+                    outcome.corr, len(_caller_turns(outcome)))
+        analysis = {
+            "disposition": "Incomplete",
+            "summary": "No two-sided conversation took place (no caller turn captured).",
+            "leadRating": None, "extractedQa": {}, "callbackRequested": False,
+            "callbackTimeText": None, "meetingRequested": False,
+            "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
+        }
+    else:
+        analysis = await _analyze(outcome)
     agent = ctx.get("agent") or {}
 
     payload: Dict[str, Any] = {
@@ -304,6 +394,12 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         # True when the pipeline crashed mid-call — observability for "completed"
         # calls whose conversation was cut short by US rather than the caller.
         "systemError": bool(outcome.crashed),
+        # Per-call technical diagnostics: a health verdict + named fault codes +
+        # the counters behind them. admin_core's report parser is lenient and
+        # stores the verbatim body in ai_call_result.raw_payload, so this is
+        # queryable the day it ships, before any backend change. Total by
+        # construction — a diagnostics bug must never cost us the report.
+        "diagnostics": _diagnostics_blob(outcome),
         "transcript": _transcript_text(outcome.transcript) or None,
         "phoneNumber": ctx.get("leadPhone"),
         "customerName": ctx.get("leadName"),

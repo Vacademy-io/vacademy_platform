@@ -1,7 +1,7 @@
 // hooks/use-slides.ts
 import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { GET_SLIDES } from "@/constants/urls";
+import { GET_SLIDES, GET_SLIDES_BY_PACKAGE_SESSION } from "@/constants/urls";
 
 export interface TextData {
   id: string;
@@ -179,6 +179,28 @@ export const fetchSlidesByChapterId = async (
   const response = await authenticatedAxiosInstance.get(
     `${GET_SLIDES}?chapterId=${chapterId}`
   );
+  return response.data;
+};
+
+export interface ChapterSlides {
+  chapter_id: string;
+  slides: Slide[];
+}
+
+// Bulk form of fetchSlidesByChapterId: every chapter of the package session in
+// one round trip, grouped per chapter. Callers should fall back to per-chapter
+// fetches when this fails (e.g. backend not yet deployed).
+export const fetchSlidesByPackageSession = async (
+  packageSessionId: string
+): Promise<ChapterSlides[]> => {
+  const response = await authenticatedAxiosInstance.get(
+    `${GET_SLIDES_BY_PACKAGE_SESSION}?packageSessionId=${packageSessionId}`
+  );
+  // A non-array 200 (e.g. a gateway rewriting the response) must NOT count as
+  // "course has no slides" — throw so callers run the per-chapter fallback.
+  if (!Array.isArray(response.data)) {
+    throw new Error("slides-by-package-session: unexpected response shape");
+  }
   return response.data;
 };
 

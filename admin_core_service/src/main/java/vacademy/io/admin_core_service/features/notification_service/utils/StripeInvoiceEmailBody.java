@@ -122,7 +122,13 @@ public class StripeInvoiceEmailBody {
         );
     }
 
-    private static String getThemeColorHex(String themeCode) {
+    /**
+     * Maps an institute theme code (hex, or a colour name like "amber") to a hex colour.
+     * Public so the template-driven payment-confirmation path can feed {@code {{theme_color}}}
+     * through the exact same mapping — otherwise the seeded DEFAULT template would render a
+     * different colour than the body it was migrated from.
+     */
+    public static String getThemeColorHex(String themeCode) {
         // Return default for null or blank input
         if (themeCode == null || themeCode.isBlank()) {
             return "#007bff";

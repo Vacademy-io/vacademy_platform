@@ -299,10 +299,16 @@ const PDFEvaluator = ({
     useEffect(() => {
         if (!fabricCanvas) return;
         const handleResize = () => {
-            fabricCanvas.setDimensions({
-                width: canvasContainerRef.current?.clientWidth || 800,
-                height: canvasContainerRef.current?.clientHeight || 1100,
-            });
+            // The rendered page size is fixed by the Page `scale` prop (window size
+            // doesn't change it), so keep the annotation canvas synced to the page —
+            // sizing it to the container here desynced them, clipping annotations.
+            const pageCanvas = document.querySelector(".react-pdf__Page__canvas");
+            if (pageCanvas?.clientWidth && pageCanvas?.clientHeight) {
+                fabricCanvas.setDimensions({
+                    width: pageCanvas.clientWidth,
+                    height: pageCanvas.clientHeight,
+                });
+            }
             fabricCanvas.requestRenderAll();
         };
         window.addEventListener("resize", handleResize);
@@ -748,12 +754,23 @@ const PDFEvaluator = ({
         setDimensions({ width, height });
     }
 
-    // Resize the annotation canvas to the currently-rendered page (used after a
-    // device-uploaded PDF replaces the original, since its page size may differ).
+    // Resize the annotation canvas to the currently-rendered page. Runs on every
+    // page render: the initial loadPDF() measure fires on a timer that can beat
+    // the first page paint (leaving the canvas at its 600×800 default and making
+    // wide scanned sheets only partially annotatable), and pages within one scan
+    // can differ in size. Measures the page's own canvas (exact rendered size)
+    // rather than the Document wrapper.
     const remeasureCanvasToPdf = () => {
+        const pageCanvas = document.querySelector(".react-pdf__Page__canvas");
         const doc = document.querySelector(".react-pdf__Document");
-        const width = doc?.clientWidth || dimensions.width;
-        const height = doc?.clientHeight || dimensions.height;
+        const width = pageCanvas?.clientWidth || doc?.clientWidth || dimensions.width;
+        const height = pageCanvas?.clientHeight || doc?.clientHeight || dimensions.height;
+        // No-op when already in sync so per-page-render calls don't churn state.
+        if (
+            Math.abs(width - (fabricCanvas?.width ?? 0)) < 1 &&
+            Math.abs(height - (fabricCanvas?.height ?? 0)) < 1
+        )
+            return;
         fabricCanvas?.setWidth(width);
         fabricCanvas?.setHeight(height);
         setDimensions({ width, height });
@@ -1300,10 +1317,12 @@ const PDFEvaluator = ({
                                                     renderAnnotationLayer={false}
                                                     className="max-h-fit shadow-lg"
                                                     onRenderSuccess={() => {
-                                                        if (pendingResizeRef.current) {
-                                                            pendingResizeRef.current = false;
-                                                            remeasureCanvasToPdf();
-                                                        }
+                                                        pendingResizeRef.current = false;
+                                                        // Always sync the annotation canvas to the
+                                                        // just-rendered page so the full page stays
+                                                        // annotatable (first paint can land after the
+                                                        // initial measure, and page sizes can vary).
+                                                        remeasureCanvasToPdf();
                                                     }}
                                                 />
                                             </Document>

@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteSetupDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.domain_routing.service.LearnerPortalUrlResolver;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteInfoDTOForTableSetup;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -73,6 +74,9 @@ public class InstituteInitManager {
         private SlideService slideService;
 
         @Autowired
+        private LearnerPortalUrlResolver learnerPortalUrlResolver;
+
+        @Autowired
         private InstituteCustomFiledService instituteCustomFiledService;
 
         @Autowired
@@ -121,6 +125,7 @@ public class InstituteInitManager {
                 dto.setId(institute.getId());
                 dto.setCity(institute.getCity());
                 dto.setCountry(institute.getCountry());
+                dto.setCurrency(institute.getCurrency());
                 dto.setState(institute.getState());
                 dto.setPinCode(institute.getPinCode());
                 dto.setAddress(institute.getAddress());
@@ -132,9 +137,16 @@ public class InstituteInitManager {
                 dto.setLanguage(institute.getLanguage());
                 dto.setInstituteThemeCode(institute.getInstituteThemeCode());
 
-                // Portal URLs with defaults
+                // Portal URLs with defaults. The learner portal goes through the shared
+                // resolver (learner_portal_base_url → institute_domain_routing role=LEARNER
+                // → configured default) instead of falling straight back to a hardcoded
+                // host: institutes with no column value — sub-orgs especially — do have a
+                // branded LEARNER routing row, and every caller that builds a learner link
+                // from this field was sending them to learner.vacademy.io. Kept host-only,
+                // exactly as before, since callers prepend their own scheme.
                 dto.setLearnerPortalBaseUrl(
-                                Optional.ofNullable(institute.getLearnerPortalBaseUrl()).orElse("learner.vacademy.io"));
+                                learnerPortalUrlResolver.resolveBaseUrl(instituteId, institute)
+                                                .replaceFirst("^https?://", ""));
                 dto.setTeacherPortalBaseUrl(
                                 Optional.ofNullable(institute.getTeacherPortalBaseUrl()).orElse("teacher.vacademy.io"));
                 dto.setAdminPortalBaseUrl(

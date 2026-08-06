@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
+import { Link } from "@tanstack/react-router";
 import { ShoppingCart, CheckCircle, SlidersHorizontal, X, Star, CaretDown, BookOpen, Users, Lightbulb, MagnifyingGlass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -8,6 +9,11 @@ import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { buildComponentStyle, getAnimationStyle } from "../-utils/component-style";
 import { CourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import type {
   PageJson,
   PageComponent,
@@ -45,6 +51,45 @@ function getDisplayParts(mapping: ProductPageMappingResponse) {
     title: mapping.payment_plan?.name || `Course ${mapping.display_order + 1}`,
     subtitle: "",
   };
+}
+
+/** Tags arrive as one comma-separated string ("cbse, ncert"). */
+function splitTags(raw?: string | null): string[] {
+  return (raw || "").split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+/** "CBSE" and "cbse" are the same tag to a visitor — key on the lowercase form. */
+function tagKey(tag: string) {
+  return tag.toLowerCase();
+}
+
+/**
+ * Tags across the page, most used first — "popular" is literally the tag the
+ * most courses carry, so the quick-filter row is derived from the data, never
+ * a hardcoded list.
+ *
+ * The label is the spelling the admins themselves used most often for that
+ * tag (institutes mix "CBSE" and "cbse"). Deriving it beats a casing rule in
+ * code, which would invent labels the admin never typed — "math" → "MATH".
+ */
+function popularTags(mappings: ProductPageMappingResponse[]) {
+  const counts = new Map<string, { count: number; spellings: Map<string, number> }>();
+  for (const m of mappings) {
+    for (const raw of splitTags(m.tags)) {
+      const key = tagKey(raw);
+      const entry = counts.get(key) ?? { count: 0, spellings: new Map<string, number>() };
+      entry.count += 1;
+      entry.spellings.set(raw, (entry.spellings.get(raw) ?? 0) + 1);
+      counts.set(key, entry);
+    }
+  }
+  return [...counts.entries()]
+    .map(([key, v]) => ({
+      key,
+      count: v.count,
+      label: [...v.spellings.entries()].sort((a, b) => b[1] - a[1])[0]![0],
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
 function getInitials(name: string) {
@@ -503,7 +548,9 @@ const CourseDetailSheet = ({
             )}
             {mapping.level_name && (
               <div>
-                <p className="text-xs text-gray-400">Level</p>
+                <p className="text-xs text-gray-400">
+                  {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                </p>
                 <p className="font-medium text-gray-700">{mapping.level_name}</p>
               </div>
             )}
@@ -604,7 +651,37 @@ const useCourseImageUrl = (mediaId?: string | null) => {
   return url;
 };
 
-const PAGE_SIZE = 10;
+/** Courses per page when the block's `pageSize` prop is unset. */
+const DEFAULT_PAGE_SIZE = 12;
+
+/** Quick-filter chips shown above the grid; the rest live in the sidebar. */
+const POPULAR_TAG_LIMIT = 6;
+
+/** Tags shown inline on a card before the row rhythm breaks. */
+const CARD_TAG_LIMIT = 1;
+
+/** Below this a search box is noise rather than help. */
+const SEARCH_MIN_COURSES = 8;
+
+/**
+ * Stable identity for the no-FilterBar case. A `= {}` default would mint a new
+ * object every render, so the filtering useMemo below would never hit its cache
+ * and would re-scan all 127 courses on every unrelated state change.
+ */
+const NO_ACTIVE_FILTERS: Record<string, string> = {};
+
+/** Compact windowed pager: ‹ 1 … 4 5 6 … 20 › */
+function buildPageWindow(current: number, total: number): (number | "gap")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const wanted = new Set<number>([1, total, current, current - 1, current + 1]);
+  const sorted = [...wanted].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out: (number | "gap")[] = [];
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1]! > 1) out.push("gap");
+    out.push(p);
+  });
+  return out;
+}
 
 const CourseCard = ({
   mapping,
@@ -614,6 +691,8 @@ const CourseCard = ({
   primaryColor,
   onToggle,
   instituteId,
+  tagName,
+  productPageCode,
 }: {
   mapping: ProductPageMappingResponse;
   selected: boolean;
@@ -622,12 +701,36 @@ const CourseCard = ({
   primaryColor: string;
   onToggle: () => void;
   instituteId: string;
+  tagName?: string;
+  productPageCode?: string;
 }) => {
   const [showDetail, setShowDetail] = useState(false);
   const { title } = getDisplayParts(mapping);
   const plan = mapping.payment_plan;
   const isFree = !plan?.actual_price || plan.actual_price === 0;
   const imageUrl = useCourseImageUrl(mapping.course_preview_image_media_id);
+  // Same destination and search contract the catalogue offer card builds, so
+  // both entry points land on an identically configured details page.
+  // productPageCode is required, not optional: it is what lets the details
+  // page authorise a course that is not published to the catalogue. Without
+  // it "View course" would dead-end on "not available for public viewing"
+  // for exactly the courses product pages usually sell.
+  const detailsLink =
+    tagName && productPageCode && mapping.package_id
+      ? {
+          to: "/$tagName/$courseId" as const,
+          params: { tagName, courseId: mapping.package_id },
+          search: {
+            enrollInviteId: mapping.enroll_invite_id,
+            packageSessionId: mapping.package_session_id,
+            productPageCode,
+            bannerImage: undefined,
+            level: mapping.level_name,
+            price: mapping.payment_plan?.actual_price?.toString(),
+            available_slots: undefined,
+          },
+        }
+      : null;
   const hasDiscount = !!(plan && plan.elevated_price > plan.actual_price);
   const discountPct = hasDiscount
     ? Math.round(((plan!.elevated_price - plan!.actual_price) / plan!.elevated_price) * 100)
@@ -681,6 +784,16 @@ const CourseCard = ({
                   {mapping.level_name}{mapping.session_name ? ` - ${mapping.session_name}` : ""}
                 </span>
               )}
+              {/* Rendered exactly as authored; the rest are filterable above. */}
+              {splitTags(mapping.tags).slice(0, CARD_TAG_LIMIT).map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full px-2 py-0.5 text-caption font-medium"
+                  style={{ backgroundColor: `${primaryColor}14`, color: primaryColor }}
+                >
+                  {t}
+                </span>
+              ))}
             </div>
             <div className="shrink-0 text-end">
               {isFree ? (
@@ -699,21 +812,37 @@ const CourseCard = ({
           </div>
         </div>
 
-        {/* Add / Added bar at bottom */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); if (selected) { if (canDeselect) onToggle(); } else onToggle(); }}
-          disabled={selected && !canDeselect}
-          className={cn(
-            "flex w-full items-center justify-center gap-1.5 py-2.5 text-caption font-semibold transition-all duration-150",
-            selected
-              ? "hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-              : "text-white hover:opacity-90",
+        {/* Bottom bar. "View course" opens the full details page (same one the
+            catalogue's offer cards link to, carrying productPageCode so its
+            enrol CTA comes back to this checkout); the quick-look sheet stays
+            on the card body. Only shown when the catalogue slug is known —
+            the details page lives under /{tagName}/{courseId}. */}
+        <div className="flex w-full">
+          {detailsLink && (
+            <Link
+              {...detailsLink}
+              onClick={(e) => e.stopPropagation()}
+              className="flex flex-1 items-center justify-center gap-1.5 border-t border-gray-100 py-2.5 text-caption font-semibold no-underline transition-all duration-150 hover:bg-gray-50"
+              style={{ color: primaryColor }}
+            >
+              View course
+            </Link>
           )}
-          style={selected ? { backgroundColor: `${primaryColor}10`, color: primaryColor } : { backgroundColor: primaryColor }}
-        >
-          {selected ? <><CheckCircle className="size-3" /> Added to Cart</> : <><ShoppingCart className="size-3" /> Add to Cart</>}
-        </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); if (selected) { if (canDeselect) onToggle(); } else onToggle(); }}
+            disabled={selected && !canDeselect}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 py-2.5 text-caption font-semibold transition-all duration-150",
+              selected
+                ? "hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                : "text-white hover:opacity-90",
+            )}
+            style={selected ? { backgroundColor: `${primaryColor}10`, color: primaryColor } : { backgroundColor: primaryColor }}
+          >
+            {selected ? <><CheckCircle className="size-3" /> Added to Cart</> : <><ShoppingCart className="size-3" /> Add to Cart</>}
+          </button>
+        </div>
       </div>
 
       {showDetail && (
@@ -729,20 +858,30 @@ const CourseCard = ({
 
 // ─── Course Grid ──────────────────────────────────────────────────────────────
 
-const CourseGridBlock = ({
+export const CourseGridBlock = ({
   props,
   pageData,
   settings,
   primaryColor,
+  activeFilters = NO_ACTIVE_FILTERS,
+  tagName,
+  productPageCode,
 }: {
   props: Record<string, unknown>;
   pageData: ProductPageData;
   settings: ProductPageSettings;
   primaryColor: string;
-  activeFilters: Record<string, string>;
+  /** Set by a legacy FilterBar block above the grid, when the page has one. */
+  activeFilters?: Record<string, string>;
+  /** Catalogue slug — enables the per-card "View course" link. */
+  tagName?: string;
+  productPageCode?: string;
 }) => {
   const columns = (props.columns as number) || 3;
   const sectionTitle = props.title as string | undefined;
+  const sectionSubtitle = props.subtitle as string | undefined;
+  // Admin-set page size wins; the constant is only the fallback.
+  const perPage = Number(props.pageSize) > 0 ? Math.floor(Number(props.pageSize)) : DEFAULT_PAGE_SIZE;
   const { selectedPsOptionIds, toggleSelection, totalPrice } = useProductPageStore();
 
   const activeMappings = useMemo(
@@ -753,15 +892,18 @@ const CourseGridBlock = ({
 
   // ── Filter / search state ──
   const [search, setSearch] = useState("");
+  const [tagSel, setTagSel] = useState<string[]>([]);
   const [levelSel, setLevelSel] = useState<string[]>([]);
   const [sessionSel, setSessionSel] = useState<string[]>([]);
   const [priceMin, setPriceMin] = useState<string>("");
   const [priceMax, setPriceMax] = useState<string>("");
   const [page, setPage] = useState(0);
   const [showMoreLevels, setShowMoreLevels] = useState(false);
+  const [showMoreTags, setShowMoreTags] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Derived unique values
+  const allTags = useMemo(() => popularTags(activeMappings), [activeMappings]);
   const allLevels = useMemo(
     () => [...new Set(activeMappings.map((m) => m.level_name).filter(Boolean) as string[])],
     [activeMappings],
@@ -775,29 +917,52 @@ const CourseGridBlock = ({
     [activeMappings],
   );
 
+  const toggleTag = (v: string) =>
+    setTagSel((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
   const toggleLevel = (v: string) =>
     setLevelSel((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
   const toggleSession = (v: string) =>
     setSessionSel((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
 
-  const clearAll = () => { setSearch(""); setLevelSel([]); setSessionSel([]); setPriceMin(""); setPriceMax(""); setPage(0); };
+  const clearAll = () => { setSearch(""); setTagSel([]); setLevelSel([]); setSessionSel([]); setPriceMin(""); setPriceMax(""); setPage(0); };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     const pMin = priceMin !== "" ? parseFloat(priceMin) : -Infinity;
     const pMax = priceMax !== "" ? parseFloat(priceMax) : Infinity;
     return activeMappings.filter((m) => {
-      if (q && !getDisplayParts(m).title.toLowerCase().includes(q)) return false;
+      const tags = splitTags(m.tags).map(tagKey);
+      // Search spans everything visible on the card, not just the title —
+      // typing "cbse" or "2026-27" used to return nothing.
+      if (
+        q &&
+        ![getDisplayParts(m).title, m.level_name, m.session_name, ...tags]
+          .filter(Boolean)
+          .some((v) => (v as string).toLowerCase().includes(q))
+      )
+        return false;
+      if (tagSel.length > 0 && !tagSel.some((t) => tags.includes(t))) return false;
       if (levelSel.length > 0 && !levelSel.includes(m.level_name!)) return false;
       if (sessionSel.length > 0 && !sessionSel.includes(m.session_name!)) return false;
       const price = m.payment_plan?.actual_price || 0;
       if (price < pMin || price > pMax) return false;
+      // A FilterBar block's selections were previously accepted and then
+      // ignored here, so those chips filtered nothing at all.
+      for (const [key, val] of Object.entries(activeFilters)) {
+        if (!val) continue;
+        if (key === "level" && m.level_name !== val) return false;
+        if (key === "session" && m.session_name !== val) return false;
+        if (key === "package" && m.package_name !== val) return false;
+      }
       return true;
     });
-  }, [activeMappings, search, levelSel, sessionSel, priceMin, priceMax]);
+  }, [activeMappings, search, tagSel, levelSel, sessionSel, priceMin, priceMax, activeFilters]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / perPage);
+  // Derived, not synced via an effect: a shrinking result set must never leave
+  // the pager parked on a page that no longer exists (blank grid).
+  const safePage = Math.min(page, Math.max(totalPages - 1, 0));
+  const paginated = filtered.slice(safePage * perPage, (safePage + 1) * perPage);
 
   const colClass =
     columns >= 4 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
@@ -805,9 +970,37 @@ const CourseGridBlock = ({
     : columns === 2 ? "grid-cols-1 sm:grid-cols-2"
     : "grid-cols-1";
 
-  const hasActiveFilters = levelSel.length > 0 || sessionSel.length > 0 || priceMin !== "" || priceMax !== "";
+  const hasActiveFilters =
+    tagSel.length > 0 || levelSel.length > 0 || sessionSel.length > 0 || priceMin !== "" || priceMax !== "";
+  const activeFilterCount = tagSel.length + levelSel.length + sessionSel.length;
 
-  const FilterSidebar = () => (
+  // A dimension is worth offering only if picking a value could actually
+  // exclude something: either it holds more than one value, or some courses
+  // carry no value at all. Every course sharing one identical value filters
+  // nothing, and on a one- or two-course page that noise turns a simple offer
+  // into a search interface. (The previous fallback used the same principle.)
+  const partitions = (distinct: number, covered: number) =>
+    distinct > 1 || (distinct === 1 && covered < activeMappings.length);
+  const showTagFilter = partitions(
+    allTags.length,
+    activeMappings.filter((m) => splitTags(m.tags).length > 0).length,
+  );
+  const showLevelFilter = partitions(
+    allLevels.length,
+    activeMappings.filter((m) => m.level_name).length,
+  );
+  const showSessionFilter = partitions(
+    allSessions.length,
+    activeMappings.filter((m) => m.session_name).length,
+  );
+  const showPriceFilter = maxPriceAll > 0 && activeMappings.length > 1;
+  const hasFilterUi = showTagFilter || showLevelFilter || showSessionFilter || showPriceFilter;
+  const showSearch = activeMappings.length >= SEARCH_MIN_COURSES;
+
+  // A plain element, NOT a nested component: declaring `const FilterSidebar =
+  // () => …` inside the render remounts the whole subtree on every keystroke,
+  // which made the price inputs lose focus after each character.
+  const filterSidebar = (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-gray-900">Filters</span>
@@ -818,10 +1011,43 @@ const CourseGridBlock = ({
         )}
       </div>
 
-      {/* Level */}
-      {allLevels.length > 0 && (
+      {/* Tags — the course's own labels (CBSE, ICSE …), most used first */}
+      {showTagFilter && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Level</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)}
+          </p>
+          <div className="space-y-1.5">
+            {(showMoreTags ? allTags : allTags.slice(0, 5)).map((t) => (
+              <label key={t.key} className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={tagSel.includes(t.key)}
+                  onChange={() => { toggleTag(t.key); setPage(0); }}
+                  className="size-3.5 rounded"
+                  style={{ accentColor: primaryColor }}
+                />
+                <span className="flex-1 text-xs text-gray-700">{t.label}</span>
+                <span className="text-caption text-gray-400">{t.count}</span>
+              </label>
+            ))}
+          </div>
+          {allTags.length > 5 && (
+            <button type="button" onClick={() => setShowMoreTags((p) => !p)}
+              className="mt-2 flex items-center gap-1 text-caption font-medium text-gray-400 hover:text-gray-700">
+              <CaretDown className={cn("size-3 transition-transform", showMoreTags && "rotate-180")} />
+              {showMoreTags ? "Show less" : `Show ${allTags.length - 5} more`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Level */}
+      {showLevelFilter && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+          </p>
           <div className="space-y-1.5">
             {(showMoreLevels ? allLevels : allLevels.slice(0, 4)).map((lvl) => (
               <label key={lvl} className="flex cursor-pointer items-center gap-2.5">
@@ -847,9 +1073,12 @@ const CourseGridBlock = ({
       )}
 
       {/* Session */}
-      {allSessions.length > 1 && (
+      {showSessionFilter && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Batch / Session</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} /{" "}
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+          </p>
           <div className="space-y-1.5">
             {allSessions.map((s) => (
               <label key={s} className="flex cursor-pointer items-center gap-2.5">
@@ -868,7 +1097,7 @@ const CourseGridBlock = ({
       )}
 
       {/* Price range */}
-      {maxPriceAll > 0 && (
+      {showPriceFilter && (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Price Range</p>
           <div className="flex items-center gap-2">
@@ -902,56 +1131,98 @@ const CourseGridBlock = ({
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 lg:text-3xl">{sectionTitle}</h2>
           <div className="mt-1.5 h-1 w-10 rounded-full" style={{ backgroundColor: primaryColor }} />
+          {sectionSubtitle && <p className="mt-2 max-w-2xl text-sm text-gray-500">{sectionSubtitle}</p>}
+        </div>
+      )}
+
+      {/* Popular tags — one-tap filtering for the labels most courses carry.
+          A sidebar checkbox list is where filters go to be ignored on a page
+          with 100+ courses; these chips are the fast path to the same state. */}
+      {showTagFilter && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Popular</span>
+          {allTags.slice(0, POPULAR_TAG_LIMIT).map((t) => {
+            const on = tagSel.includes(t.key);
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => { toggleTag(t.key); setPage(0); }}
+                aria-pressed={on}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  on ? "text-white" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
+                )}
+                style={on ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+              >
+                {t.label}
+                <span className={cn("ms-1.5", on ? "opacity-80" : "text-gray-400")}>{t.count}</span>
+              </button>
+            );
+          })}
+          {hasActiveFilters && (
+            <button type="button" onClick={clearAll} className="text-xs font-medium text-gray-400 hover:text-gray-700">
+              Clear
+            </button>
+          )}
         </div>
       )}
 
       <div className="flex gap-6">
         {/* ── Desktop sidebar ── */}
-        {(allLevels.length > 0 || allSessions.length > 1 || maxPriceAll > 0) && (
+        {hasFilterUi && (
           <aside className="hidden w-56 shrink-0 lg:block">
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-              <FilterSidebar />
+            <div className="sticky top-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              {filterSidebar}
             </div>
           </aside>
         )}
 
         {/* ── Main area ── */}
         <div className="min-w-0 flex-1">
-          {/* Search + filter toggle row */}
-          <div className="mb-4 flex items-center gap-3">
-            <div className="relative flex-1">
-              <MagnifyingGlass className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-                placeholder="Search courses…"
-                className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
-              />
+          {/* Search + filter toggle row — omitted entirely on a page small
+              enough that neither helps. */}
+          {(showSearch || hasFilterUi) && (
+            <div className="mb-4 flex items-center gap-3">
+              {showSearch && (
+                <div className="relative flex-1">
+                  <MagnifyingGlass className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                    placeholder="Search courses…"
+                    className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                  />
+                </div>
+              )}
+              {/* Mobile filter button */}
+              {hasFilterUi && (
+                <button
+                  type="button"
+                  onClick={() => setMobileFiltersOpen((p) => !p)}
+                  className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 shadow-sm lg:hidden"
+                >
+                  <SlidersHorizontal className="size-4" />
+                  Filters
+                  {activeFilterCount > 0 && <span className="flex size-4 items-center justify-center rounded-full text-caption font-bold text-white" style={{ backgroundColor: primaryColor }}>{activeFilterCount}</span>}
+                </button>
+              )}
             </div>
-            {/* Mobile filter button */}
-            <button
-              type="button"
-              onClick={() => setMobileFiltersOpen((p) => !p)}
-              className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 shadow-sm lg:hidden"
-            >
-              <SlidersHorizontal className="size-4" />
-              Filters
-              {hasActiveFilters && <span className="flex size-4 items-center justify-center rounded-full text-caption font-bold text-white" style={{ backgroundColor: primaryColor }}>{levelSel.length + sessionSel.length}</span>}
-            </button>
-          </div>
+          )}
 
           {/* Mobile filters panel */}
-          {mobileFiltersOpen && (
+          {mobileFiltersOpen && hasFilterUi && (
             <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 lg:hidden">
-              <FilterSidebar />
+              {filterSidebar}
             </div>
           )}
 
           {/* Results count */}
-          <p className="mb-3 text-xs text-gray-400">
+          <p className="mb-3 text-xs text-gray-400" role="status" aria-live="polite">
             {filtered.length} course{filtered.length !== 1 ? "s" : ""}
             {(search || hasActiveFilters) ? " found" : " available"}
+            {totalPages > 1 && ` · page ${safePage + 1} of ${totalPages}`}
           </p>
 
           {/* Grid */}
@@ -976,6 +1247,8 @@ const CourseGridBlock = ({
                     currency={currency}
                     primaryColor={primaryColor}
                     instituteId={pageData.institute_id}
+                    tagName={tagName}
+                    productPageCode={productPageCode}
                     onToggle={() => {
                       toggleSelection(mapping.ps_invite_payment_option_id);
                       const newCount = selected ? selectedPsOptionIds.length - 1 : selectedPsOptionIds.length + 1;
@@ -989,40 +1262,50 @@ const CourseGridBlock = ({
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-2">
+            <nav className="mt-6 flex flex-wrap items-center justify-center gap-2" aria-label="Course pages">
               <button
                 type="button"
-                disabled={page === 0}
-                onClick={() => setPage((p) => p - 1)}
+                disabled={safePage === 0}
+                onClick={() => setPage(safePage - 1)}
+                aria-label="Previous page"
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
                 <CaretLeft className="size-4" />
               </button>
               <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setPage(i)}
-                    className={cn(
-                      "flex size-8 items-center justify-center rounded-lg text-xs font-medium transition-colors",
-                      page === i ? "text-white shadow-sm" : "border border-gray-200 bg-white text-gray-500 hover:bg-gray-50",
-                    )}
-                    style={page === i ? { backgroundColor: primaryColor } : {}}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
+                {/* Windowed: a 127-course page is 13 pages, and printing every
+                    number turns the pager into a wall of digits. */}
+                {buildPageWindow(safePage + 1, totalPages).map((p, i) =>
+                  p === "gap" ? (
+                    <span key={`gap-${i}`} className="px-1 text-xs text-gray-400" aria-hidden="true">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPage(p - 1)}
+                      aria-label={`Page ${p}`}
+                      aria-current={p === safePage + 1 ? "page" : undefined}
+                      className={cn(
+                        "flex size-8 items-center justify-center rounded-lg text-xs font-medium transition-colors",
+                        p === safePage + 1 ? "text-white shadow-sm" : "border border-gray-200 bg-white text-gray-500 hover:bg-gray-50",
+                      )}
+                      style={p === safePage + 1 ? { backgroundColor: primaryColor } : {}}
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
               </div>
               <button
                 type="button"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
+                disabled={safePage >= totalPages - 1}
+                onClick={() => setPage(safePage + 1)}
+                aria-label="Next page"
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
                 <CaretRight className="size-4" />
               </button>
-            </div>
+            </nav>
           )}
         </div>
       </div>
@@ -1693,6 +1976,9 @@ interface PageRendererProps {
   pageJson: PageJson;
   pageData: ProductPageData;
   settings: ProductPageSettings;
+  /** Catalogue slug — enables the per-card "View course" link. */
+  tagName?: string;
+  productPageCode?: string;
   onNext: () => void;
 }
 
@@ -1709,6 +1995,8 @@ export const PageRenderer = ({
   pageJson,
   pageData,
   settings,
+  tagName,
+  productPageCode,
   onNext,
 }: PageRendererProps) => {
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
@@ -1749,7 +2037,7 @@ export const PageRenderer = ({
         );
       case "CourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
         );
       case "TextBlock":
         return <TextBlockComp key={component.id} props={component.props} />;
@@ -1771,7 +2059,7 @@ export const PageRenderer = ({
         );
       case "productCourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
         );
       case "footer":
         return <NewFooterBlock key={component.id} props={component.props} />;

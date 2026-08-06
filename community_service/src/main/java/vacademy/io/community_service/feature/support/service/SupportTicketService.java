@@ -2,9 +2,12 @@ package vacademy.io.community_service.feature.support.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +36,8 @@ import vacademy.io.community_service.feature.support.enums.TicketStatus;
 import vacademy.io.community_service.feature.support.repository.SupportTicketMessageRepository;
 import vacademy.io.community_service.feature.support.repository.SupportTicketRepository;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -40,10 +45,12 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class SupportTicketService {
 
     private static final long HOUR_MS = 3_600_000L;
@@ -53,6 +60,8 @@ public class SupportTicketService {
     private static final int MAX_CONTEXT_JSON_LEN = 16384;
     private static final TypeReference<List<AttachmentDto>> ATTACHMENT_LIST = new TypeReference<>() {
     };
+    /** Stand-in for a disabled date bound — the query's boolean flag makes it unreachable. */
+    private static final Date DATE_SENTINEL = new Date(0L);
 
     @Autowired
     private SupportTicketRepository ticketRepository;
@@ -92,6 +101,7 @@ public class SupportTicketService {
                 .raisedByName(raiserName)
                 .raisedByEmail(raiserEmail)
                 .raisedByRole(raisedByRole)
+                .ticketNumber(allocateTicketNumber())
                 .subject(request.getSubject().trim())
                 .category(category)
                 .priority(priority)
@@ -147,9 +157,8 @@ public class SupportTicketService {
                                                AddMessageRequest request) {
         SupportTicket ticket = getOrThrow(ticketId);
         requireInstitute(ticket, instituteId);
-        if (request == null || !StringUtils.hasText(request.getBody())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
-        }
+        // A screenshot on its own is a legitimate reply, so text is only required when nothing is attached.
+        String body = requireBodyOrAttachments(request);
         Date now = new Date();
 
         SupportTicketMessage message = SupportTicketMessage.builder()
@@ -157,7 +166,7 @@ public class SupportTicketService {
                 .senderType(SenderType.CUSTOMER)
                 .senderUserId(user != null ? user.getUserId() : ticket.getRaisedByUserId())
                 .senderName(user != null ? user.getFullName() : ticket.getRaisedByName())
-                .body(request.getBody().trim())
+                .body(body)
                 .attachments(writeAttachments(request.getAttachments()))
                 .internalNote(false)
                 .build();
@@ -223,12 +232,21 @@ public class SupportTicketService {
             engineerId = engineerService.getOrThrow(request.getAssignedEngineerId().trim()).getId();
         }
 
+        // When support records who actually reported the issue, the ticket belongs to that person:
+        // they are shown as the raiser and are the sole recipient of reply notifications. Without
+        // a reporter the fields describe the support agent, and replies notify nobody.
+        boolean hasReporter = StringUtils.hasText(request.getReportedByEmail())
+                || StringUtils.hasText(request.getReportedByUserId());
+
         SupportTicket ticket = SupportTicket.builder()
                 .instituteId(instituteId)
                 .instituteName(StringUtils.hasText(request.getInstituteName()) ? request.getInstituteName().trim() : null)
-                .raisedByUserId(user != null ? user.getUserId() : null)
-                .raisedByName("Vacademy Support")
-                .raisedByRole("SUPPORT")
+                .raisedByUserId(hasReporter ? trimToNull(request.getReportedByUserId())
+                        : (user != null ? user.getUserId() : null))
+                .raisedByName(hasReporter ? trimToNull(request.getReportedByName()) : "Vacademy Support")
+                .raisedByEmail(hasReporter ? trimToNull(request.getReportedByEmail()) : null)
+                .raisedByRole(hasReporter ? "ADMIN" : "SUPPORT")
+                .ticketNumber(allocateTicketNumber())
                 .subject(request.getSubject().trim())
                 .category(category)
                 .priority(priority)
@@ -297,8 +315,9 @@ public class SupportTicketService {
                         computeDue(ticket.getCreatedAt(), ticket.getPlanAtCreation(), newPriority));
             }
         }
+        boolean justResolved = false;
         if (StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         if (request.getAssignedEngineerId() != null) {
             if (StringUtils.hasText(request.getAssignedEngineerId())) {
@@ -314,7 +333,29 @@ public class SupportTicketService {
         if (request.isEtaSet()) {
             ticket.setEta(request.getEta());
         }
+        if (request.isReportedBySet()) {
+            // Attributing a ticket to a real institute contact also makes it notifiable; clearing
+            // the reporter hands it back to support and silences reply notifications.
+            String email = trimToNull(request.getReportedByEmail());
+            String reporterId = trimToNull(request.getReportedByUserId());
+            boolean hasReporter = email != null || reporterId != null;
+            // A client-raised ticket's raiser is a recorded fact, not an attribution choice —
+            // clearing it would destroy who actually opened the ticket and silence their
+            // notifications for good. Only support-logged tickets may be re-attributed to nobody.
+            boolean clearingClientRaised = !hasReporter && ticket.getSource() == TicketSource.PORTAL;
+            if (clearingClientRaised) {
+                log.warn("Refusing to clear the raiser on client-raised ticket {}", ticket.getId());
+            } else {
+                ticket.setRaisedByUserId(reporterId);
+                ticket.setRaisedByEmail(email);
+                ticket.setRaisedByName(hasReporter ? trimToNull(request.getReportedByName()) : "Vacademy Support");
+                ticket.setRaisedByRole(hasReporter ? "ADMIN" : "SUPPORT");
+            }
+        }
         ticketRepository.save(ticket);
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
 
         boolean editMessage = StringUtils.hasText(request.getMessage()) || request.isAttachmentsSet();
         if (editMessage) {
@@ -339,12 +380,18 @@ public class SupportTicketService {
     @Transactional(readOnly = true)
     public PageResponseDto<SupportTicketDto> search(Collection<String> instituteIds, String statusFilter,
                                                     String engineerId, boolean unassigned, String searchTerm,
+                                                    String createdFrom, String createdTo,
                                                     boolean onlyOverdue, Pageable pageable) {
         TicketStatus status = TicketStatus.fromName(statusFilter, null);
         List<String> institutes = instituteIds == null ? List.of() : instituteIds.stream()
                 .filter(StringUtils::hasText)
                 .map(String::trim)
                 .collect(Collectors.toList());
+        Date from = parseInstant(createdFrom, "createdFrom");
+        Date to = parseInstant(createdTo, "createdTo");
+        if (from != null && to != null && from.after(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "createdFrom must not be after createdTo");
+        }
         Page<SupportTicket> page = ticketRepository.searchTickets(
                 !institutes.isEmpty(),
                 // Never bind an empty IN list; the sentinel is unreachable when hasInstitutes=false.
@@ -354,11 +401,111 @@ public class SupportTicketService {
                 (unassigned || !StringUtils.hasText(engineerId)) ? null : engineerId,
                 unassigned,
                 likeParam(searchTerm),
+                // Never bind a null Date: an untyped NULL bind makes Postgres reject the statement.
+                // The sentinel is unreachable when its flag is false.
+                from != null,
+                from != null ? from : DATE_SENTINEL,
+                to != null,
+                to != null ? to : DATE_SENTINEL,
                 onlyOverdue,
                 new Date(),
                 pageable);
         Map<String, String> names = engineerNames(page);
         return PageResponseDto.of(page, t -> toSummaryDto(t, names));
+    }
+
+    /**
+     * Entity properties the inbox/board may sort on. Sorting is driven by a client-supplied string,
+     * so it must never reach {@link Sort} unchecked — an arbitrary property path is a JPQL injection
+     * point and leaks schema shape through the resulting error messages.
+     */
+    private static final Map<String, String> SORTABLE = Map.of(
+            "lastMessageAt", "lastMessageAt",
+            "createdAt", "createdAt",
+            "updatedAt", "updatedAt",
+            "firstResponseDueAt", "firstResponseDueAt");
+
+    private static final String DEFAULT_SORT = "lastMessageAt";
+
+    /**
+     * Build the inbox page request. Defaults to newest activity first — without an explicit ORDER BY
+     * Postgres returns rows in whatever order it likes, which is what made the console look unsorted.
+     * {@code id} breaks ties so pagination stays stable across pages.
+     *
+     * <p>Null handling is deliberately not set here: Spring Data's {@code QueryUtils} applies a
+     * Sort's direction but drops its null handling for {@code @Query} methods, so
+     * {@code nullsLast()} would be a silent no-op. Postgres then sorts NULLs first on DESC, which
+     * would pin a null-{@code lastMessageAt} ticket above every real conversation — V37 backfills
+     * that column instead. {@code firstResponseDueAt} is legitimately null for no-SLA plans, but is
+     * only offered ascending ("due soonest"), where Postgres already puts NULLs last.
+     */
+    public Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
+        String property = SORTABLE.getOrDefault(sortBy == null ? "" : sortBy.trim(), DEFAULT_SORT);
+        Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection)
+                ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Sort sort = Sort.by(direction, property).and(Sort.by(Sort.Direction.DESC, "id"));
+        return PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100), sort);
+    }
+
+    /**
+     * Validate a reply and return its trimmed body. A message must carry text or at least one
+     * attachment — an entirely empty message is still rejected. Returns "" for attachment-only
+     * replies; the column is NOT NULL, so an empty string is the correct stored value.
+     */
+    private String requireBodyOrAttachments(AddMessageRequest request) {
+        String body = (request == null || request.getBody() == null) ? "" : request.getBody().trim();
+        // Mirror sanitizeAttachments, which keeps only non-null entries — a list of nulls is empty
+        // once stored, so treating it as "has attachments" would persist a blank message.
+        boolean hasAttachments = request != null && request.getAttachments() != null
+                && request.getAttachments().stream().anyMatch(Objects::nonNull);
+        if (body.isEmpty() && !hasAttachments) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body or attachments are required");
+        }
+        return body;
+    }
+
+    /** Notification e-mails need something to show when the reply is attachments only. */
+    private String alertBody(String body, List<AttachmentDto> attachments) {
+        if (StringUtils.hasText(body)) {
+            return body;
+        }
+        int count = attachments == null ? 0 : attachments.size();
+        return count == 1 ? "(sent an attachment)" : "(sent " + count + " attachments)";
+    }
+
+    /**
+     * Allocate the next human-facing reference, e.g. VAC-001 … VAC-999, VAC-1000.
+     *
+     * <p>Zero-padded to three digits and then allowed to grow — {@code %03d} pads to a minimum
+     * width and never truncates, so 1000 formats as "1000", not "100". Best-effort: a ticket
+     * without a number is still a usable ticket, so a sequence hiccup must not fail creation.
+     */
+    private String allocateTicketNumber() {
+        try {
+            Long next = ticketRepository.nextTicketNumber();
+            return next == null ? null : String.format("VAC-%03d", next);
+        } catch (Exception e) {
+            log.error("Could not allocate a ticket number: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** Trimmed value, or null when blank — keeps empty strings out of the raisedBy* columns. */
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /** Parse an ISO-8601 instant (e.g. {@code 2026-08-05T00:00:00.000Z}); blank means "no bound". */
+    private Date parseInstant(String value, String field) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return Date.from(Instant.parse(value.trim()));
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    field + " must be an ISO-8601 instant, e.g. 2026-08-05T00:00:00Z");
+        }
     }
 
     /**
@@ -384,9 +531,8 @@ public class SupportTicketService {
     @Transactional
     public SupportTicketDto addSupportMessage(String ticketId, CustomUserDetails user, AddMessageRequest request) {
         SupportTicket ticket = getOrThrow(ticketId);
-        if (request == null || !StringUtils.hasText(request.getBody())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
-        }
+        // A screenshot on its own is a legitimate reply, so text is only required when nothing is attached.
+        String body = requireBodyOrAttachments(request);
         boolean internal = request.isInternalNote();
         Date now = new Date();
 
@@ -395,7 +541,7 @@ public class SupportTicketService {
                 .senderType(SenderType.SUPPORT)
                 .senderUserId(user != null ? user.getUserId() : null)
                 .senderName(user != null ? user.getFullName() : "Support")
-                .body(request.getBody().trim())
+                .body(body)
                 .attachments(writeAttachments(request.getAttachments()))
                 .internalNote(internal)
                 .build();
@@ -412,7 +558,9 @@ public class SupportTicketService {
             ticket.setLastMessageAt(now);
             ticket.setMessageCount(ticket.getMessageCount() + 1);
             ticketRepository.save(ticket);
-            alertService.onSupportReply(ticket, request.getBody().trim());
+            alertService.onSupportReply(ticket, alertBody(body, request.getAttachments()),
+                    user != null ? user.getUserId() : null,
+                    user != null ? user.getFullName() : "Vacademy Support");
         } else {
             ticketRepository.save(ticket); // touch updated_at only
         }
@@ -428,10 +576,14 @@ public class SupportTicketService {
         } else {
             ticket.setAssignedEngineerId(null);
         }
+        boolean justResolved = false;
         if (request != null && StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         ticketRepository.save(ticket);
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
         return toDetailDto(ticket, true);
     }
 
@@ -449,10 +601,15 @@ public class SupportTicketService {
                 ticket.setFirstResponseDueAt(computeDue(ticket.getCreatedAt(), ticket.getPlanAtCreation(), newPriority));
             }
         }
+        boolean justResolved = false;
         if (StringUtils.hasText(request.getStatus())) {
-            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+            justResolved = applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
         }
         ticketRepository.save(ticket);
+        // After the save, so a failed notification cannot roll back the status change.
+        if (justResolved) {
+            alertService.onTicketResolved(ticket, null, "Vacademy Support");
+        }
         return toDetailDto(ticket, true);
     }
 
@@ -481,10 +638,18 @@ public class SupportTicketService {
         }
     }
 
-    private void applyStatus(SupportTicket ticket, TicketStatus newStatus) {
+    /**
+     * @return true when this call moved the ticket from a live state into a terminal one — the
+     *         moment worth telling the raiser about. Returns false for terminal → terminal
+     *         (RESOLVED → CLOSED), so tidying up a ticket does not email them a second time.
+     *         Callers on the customer's own path must ignore it: nobody wants an email about
+     *         their own click.
+     */
+    private boolean applyStatus(SupportTicket ticket, TicketStatus newStatus) {
         if (newStatus == null) {
-            return;
+            return false;
         }
+        boolean wasTerminal = ticket.getStatus() != null && ticket.getStatus().isTerminal();
         ticket.setStatus(newStatus);
         if (newStatus.isTerminal()) {
             if (ticket.getResolvedAt() == null) {
@@ -493,6 +658,7 @@ public class SupportTicketService {
         } else {
             ticket.setResolvedAt(null);
         }
+        return !wasTerminal && newStatus.isTerminal();
     }
 
     private Date computeDue(Date from, SupportPlan plan, TicketPriority priority) {
@@ -554,6 +720,7 @@ public class SupportTicketService {
                 .raisedByName(t.getRaisedByName())
                 .raisedByEmail(t.getRaisedByEmail())
                 .raisedByRole(t.getRaisedByRole())
+                .ticketNumber(t.getTicketNumber())
                 .subject(t.getSubject())
                 .category(t.getCategory() != null ? t.getCategory().name() : null)
                 .priority(t.getPriority() != null ? t.getPriority().name() : null)

@@ -17,6 +17,12 @@ public class InstituteInfoDTO {
     private String instituteName;
     private String address;
     private String instituteThemeCode;
+    /**
+     * The institute's own logo file id. Exposed so other services (e.g. the
+     * assessment-service report branding fallback) can brand generated documents
+     * with the institute logo when a feature-specific logo isn't configured.
+     */
+    private String instituteLogoFileId;
     private String setting;
     private String email;
     private String websiteUrl;

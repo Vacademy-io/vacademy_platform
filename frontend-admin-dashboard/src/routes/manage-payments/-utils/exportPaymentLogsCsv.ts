@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import { fetchPaymentLogs } from '@/services/payment-logs';
 import type { PaymentLogEntry, PaymentLogsRequest } from '@/types/payment-logs';
+import { resolveEntryCurrency } from '@/utils/payment-currency';
 
 // Fetch in large pages to keep the number of round-trips small, and cap total rows so an
 // accidental "All Time" export on a huge institute can't hang the browser.
@@ -37,15 +38,41 @@ export const derivePaymentTypeLabel = (entry: PaymentLogEntry): string => {
     return userPlan.source === 'SUB_ORG' ? 'Sub-Org' : 'Individual';
 };
 
+/**
+ * `created_at` arrives as a UTC instant, so writing it verbatim put a UTC clock in the sheet while
+ * the table on screen showed the admin's local time — the same payment read as 08:31 in the export
+ * and 2:01 PM in the UI. Emit the local wall clock in a sortable, spreadsheet-friendly shape.
+ *
+ * The `date` fallback is a DATE column (UTC midnight, no time), so it is rendered date-only in UTC
+ * — converting it to local would shift it to the previous day west of UTC.
+ */
+const toCsvTimestamp = (log: PaymentLogEntry['payment_log']): string => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (log?.created_at) {
+        const d = new Date(log.created_at);
+        if (!Number.isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+                d.getHours()
+            )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+    }
+    if (log?.date) {
+        const d = new Date(log.date);
+        if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    return '';
+};
+
 const toCsvRow = (entry: PaymentLogEntry): Record<string, string | number> => {
     const { payment_log: log, user_plan: plan, user } = entry;
     return {
-        'Date & Time': log?.date ?? '',
+        'Date & Time': toCsvTimestamp(log),
         'User Name': user?.full_name ?? '',
         Email: user?.email ?? '',
         'Mobile Number': user?.mobile_number ?? '',
         Amount: log?.payment_amount ?? '',
-        Currency: log?.currency ?? '',
+        // Same resolution as the table — a blank payment_log.currency falls back to the plan's.
+        Currency: resolveEntryCurrency(entry),
         'Payment Status': entry.current_payment_status ?? log?.payment_status ?? '',
         'Payment Method': log?.vendor ?? '',
         'Plan Status': plan?.status ?? '',

@@ -51,7 +51,10 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   //      that the Preferences snapshot doesn't yet know about.
   // Dedup by package_session_id, preferring the (1) entry when both exist because
   // it carries fully-resolved session/level UUIDs from batches_for_sessions.
-  const fetchEnrolledSessions = useCallback(async () => {
+  // Passive re-reads (mount, store updates, window focus) go through the
+  // service-level 30s memo; pass { force: true } only after an enrollment
+  // change so the fresh state is fetched immediately.
+  const fetchEnrolledSessions = useCallback(async (opts?: { force?: boolean }) => {
     try {
       const batchesForSessions = instituteDetails?.batches_for_sessions ?? [];
       const batchById = new Map(batchesForSessions.map((b) => [b.id, b]));
@@ -63,7 +66,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
         const students = JSON.parse(studentsResult.value);
         const studentList = Array.isArray(students) ? students : [students];
         const packageSessionIds = studentList
-          .map((s: any) => s.package_session_id)
+          .map((s: { package_session_id?: string }) => s.package_session_id)
           .filter(Boolean);
 
         if (packageSessionIds.length > 0) {
@@ -130,7 +133,10 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       let backendSessions: EnrolledSession[] = [];
       if (instituteId) {
         try {
-          const enrolledCourses = await fetchEnrolledCoursePackages(instituteId);
+          const enrolledCourses = await fetchEnrolledCoursePackages(
+            instituteId,
+            opts,
+          );
           backendSessions = enrolledCourses.map(
             (course: EnrolledCourseSummary) => {
               const batch = batchById.get(course.package_session_id);
@@ -172,7 +178,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       for (const s of localSessions) merged.set(s.id, s);
 
       setEnrolledSessions(Array.from(merged.values()));
-    } catch (error) {
+    } catch {
       setEnrolledSessions([]);
     } finally {
       setIsLoading(false);
@@ -180,17 +186,17 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   }, [instituteId, instituteDetails]);
 
   // Check donation status only when instituteId is available
-  const checkDonationStatus = useCallback(async () => {
+  const checkDonationStatus = useCallback(async (opts?: { force?: boolean }) => {
     if (!instituteId) {
       setUserHasDonated(false);
       return;
     }
 
     try {
-      const hasDonated = await hasUserDonated(instituteId);
+      const hasDonated = await hasUserDonated(instituteId, opts);
       setUserHasDonated(hasDonated);
       setDonationCheckCompleted(true);
-    } catch (error) {
+    } catch {
       setUserHasDonated(false);
       setDonationCheckCompleted(true);
     }
@@ -222,8 +228,9 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
         // Silent error handling
       }
 
-      // Refresh from API to get the latest state
-      await fetchEnrolledSessions();
+      // Refresh from API to get the latest state (bypass the read memo —
+      // enrollment just changed)
+      await fetchEnrolledSessions({ force: true });
     },
     [enrolledSessions, fetchEnrolledSessions],
   );
@@ -250,11 +257,14 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
     [enrolledSessions],
   ); // Add enrolledSessions dependency
 
-  // Refresh all data
+  // Refresh all data (explicit refresh API — bypasses the read memos)
   const refreshData = useCallback(async () => {
     try {
-      await Promise.all([fetchEnrolledSessions(), checkDonationStatus()]);
-    } catch (error) {
+      await Promise.all([
+        fetchEnrolledSessions({ force: true }),
+        checkDonationStatus({ force: true }),
+      ]);
+    } catch {
       // Silent error handling
     } finally {
       setIsLoading(false);
@@ -307,7 +317,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
     if (instituteId) {
       setDonationCheckCompleted(false);
       setIsLoading(true);
-      await checkDonationStatus();
+      await checkDonationStatus({ force: true });
     }
   }, [instituteId, checkDonationStatus]);
 

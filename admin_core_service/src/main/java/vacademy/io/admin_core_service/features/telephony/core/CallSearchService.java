@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -54,12 +55,35 @@ public class CallSearchService {
 
     private static final int DEFAULT_RANGE_DAYS = 30;
     private static final int MAX_PAGE_SIZE = 200;
+
+    /** "DEAD_AIR,TTS_WEDGE" -> ["DEAD_AIR","TTS_WEDGE"]; null/blank -> null (NOT []). */
+    private static List<String> splitDiagFaults(String csv) {
+        if (csv == null || csv.isBlank()) return null;
+        return Arrays.stream(csv.split(","))
+                .map(String::trim).filter(t -> !t.isEmpty()).toList();
+    }
     private static final ZoneId FALLBACK_ZONE = ZoneId.of("Asia/Kolkata");
 
     /** Per-row AI metadata (latest result wins on webhook dupes), joined laterally. */
+    /**
+     * "Is this an AI-agent call?" — an AI result has landed, OR the row was placed on
+     * an AI provider. The provider list must stay in sync with the AI implementations
+     * of {@code AiOutboundCaller} (see {@code ProviderType}): AAVTAAR, VACADEMY_AI (our
+     * own voice bot, dialled over Plivo) and MOCK.
+     *
+     * <p>Testing the provider matters because the result arm alone only turns true once
+     * the end-of-call report lands. Checking {@code = 'AAVTAAR'} here meant a VACADEMY_AI
+     * call was reported as HUMAN for its whole life when no report ever arrives — every
+     * no-answer/busy/failed dial, which on a bulk campaign is a large share of the list —
+     * so the AI/Human KPI undercounted and the "AI" call-type filter hid them outright.
+     *
+     * <p>Repeated inline at the four sites below rather than concatenated in: three of
+     * them sit inside SQL text blocks.
+     */
     private static final String AI_LATERAL = """
             LEFT JOIN LATERAL (
-                SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at
+                SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
+                       r.diag_health AS diag_health, r.diag_faults AS diag_faults
                 FROM ai_call_result r
                 WHERE r.call_log_id = tcl.id
                 ORDER BY r.received_at DESC NULLS LAST
@@ -158,7 +182,8 @@ public class CallSearchService {
                    COUNT(DISTINCT tcl.user_id) FILTER (WHERE tcl.user_id IS NOT NULL AND tcl.user_id <> 'UNKNOWN') AS unique_leads,
                    COUNT(*) FILTER (WHERE tcl.direction = 'INBOUND') AS inbound,
                    COUNT(*) FILTER (WHERE tcl.direction = 'OUTBOUND') AS outbound,
-                   COUNT(*) FILTER (WHERE acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') AS ai_calls
+                   COUNT(*) FILTER (WHERE acr.acr_id IS NOT NULL
+                                       OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK')) AS ai_calls
             """;
 
     /**
@@ -240,7 +265,11 @@ public class CallSearchService {
                    tcl.ivr_selection,
                    ar.parent_name AS lead_name,
                    acr.ai_disposition AS ai_disposition,
-                   CASE WHEN (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') THEN 'AI' ELSE 'HUMAN' END AS call_type,
+                   acr.diag_health AS diag_health,
+                   acr.diag_faults AS diag_faults,
+                   CASE WHEN (acr.acr_id IS NOT NULL
+                              OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))
+                        THEN 'AI' ELSE 'HUMAN' END AS call_type,
                    COALESCE(tcl.callback_at, acr.ai_callback_at AT TIME ZONE 'UTC') AS callback_at_eff
             """;
 
@@ -271,6 +300,12 @@ public class CallSearchService {
                 .dispositionNotes(rs.getString("disposition_notes"))
                 .dispositionedAt(rs.getTimestamp("dispositioned_at"))
                 .aiDisposition(rs.getString("ai_disposition"))
+                // Health rides the LIST, not just the detail: the row cell reads it
+                // synchronously, so without it a row can never show a verdict and can
+                // never become "detailable" either — the dot only appeared on rows some
+                // OTHER feature had already fetched detail for.
+                .diagHealth(rs.getString("diag_health"))
+                .diagFaults(splitDiagFaults(rs.getString("diag_faults")))
                 .callbackAt(rs.getTimestamp("callback_at_eff"))
                 .createdAt(rs.getTimestamp("created_at"))
                 .build();
@@ -292,13 +327,26 @@ public class CallSearchService {
         // institute, not to any one counsellor (counsellor_user_id IS NULL), so it
         // would otherwise be invisible to everyone. Institute-wide admins (scopeCsv
         // NULL) already see everything. Still institute-bounded — never cross-tenant.
+        //
+        // Third arm: an UNOWNED call whose LEAD is assigned to someone in scope. A
+        // workflow-fired AI call has no human actor at all (placeCall gets a null
+        // counsellor by design), so ownership can never be stamped on it — without
+        // this, calls to a counsellor's own leads are invisible to her and visible
+        // only to admins. Deliberately restricted to counsellor_user_id IS NULL: it
+        // rescues calls nobody owns, and never exposes another counsellor's calls.
         StringBuilder sb = new StringBuilder("""
                 WHERE tcl.institute_id = :instituteId
                   AND COALESCE(tcl.start_time, tcl.created_at) >= :fromUtc
                   AND COALESCE(tcl.start_time, tcl.created_at) < :toUtc
                   AND (:scopeCsv IS NULL
                        OR tcl.counsellor_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ','))
-                       OR (tcl.direction = 'INBOUND' AND tcl.counsellor_user_id IS NULL))
+                       OR (tcl.direction = 'INBOUND' AND tcl.counsellor_user_id IS NULL)
+                       OR (tcl.counsellor_user_id IS NULL AND EXISTS (
+                             SELECT 1 FROM user_lead_profile ulp
+                             WHERE ulp.user_id = tcl.user_id
+                               AND ulp.institute_id = tcl.institute_id
+                               AND ulp.assigned_counselor_id
+                                     = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))))
                 """);
 
         if (notBlank(f.getDirection())) {
@@ -315,14 +363,26 @@ public class CallSearchService {
         }
         if (notBlank(f.getCallType())) {
             if ("AI".equalsIgnoreCase(f.getCallType().trim())) {
-                sb.append(" AND (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR')");
+                sb.append(" AND (acr.acr_id IS NOT NULL"
+                        + " OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             } else if ("HUMAN".equalsIgnoreCase(f.getCallType().trim())) {
-                sb.append(" AND (acr.acr_id IS NULL AND tcl.provider_type <> 'AAVTAAR')");
+                sb.append(" AND (acr.acr_id IS NULL"
+                        + " AND tcl.provider_type NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             }
         }
-        if (f.getDispositionKeys() != null && !f.getDispositionKeys().isEmpty()) {
-            sb.append(" AND tcl.disposition_key IN (:dispositionKeys)");
-            params.addValue("dispositionKeys", f.getDispositionKeys());
+        // Disposition filter matches the EFFECTIVE outcome — the same value the
+        // Disposition column renders: the counsellor's manual key when set, else the
+        // AI agent's. Matching tcl.disposition_key alone silently excluded every AI
+        // call (their outcome lives in ai_call_result), which on an AI-heavy institute
+        // is the entire log. Comparison is on the normalized key so "NOT_INTERESTED"
+        // (catalog), "Not_Interested" (AI settings) and "Not Interested" (a hand-typed
+        // agent value) are one outcome — see CallDispositionOptionsService.
+        List<String> dispositionKeys = normalizedDispositionKeys(f.getDispositionKeys());
+        if (!dispositionKeys.isEmpty()) {
+            sb.append(" AND UPPER(REGEXP_REPLACE("
+                    + "COALESCE(NULLIF(tcl.disposition_key, ''), acr.ai_disposition), "
+                    + "'[^A-Za-z0-9]', '', 'g')) IN (:dispositionKeys)");
+            params.addValue("dispositionKeys", dispositionKeys);
         }
         if (notBlank(f.getFromNumber())) {
             sb.append(" AND RIGHT(regexp_replace(tcl.from_number, '[^0-9]', '', 'g'), 10)"
@@ -355,6 +415,21 @@ public class CallSearchService {
             params.addValue("nowUtc", LocalDateTime.now(ZoneOffset.UTC), Types.TIMESTAMP);
         }
         return sb.toString();
+    }
+
+    /**
+     * Requested disposition keys reduced to their normalized form, blanks dropped.
+     * Empty out ⇒ no disposition predicate at all (same as an absent filter), never a
+     * predicate that can't match — a selection of only-blank keys is not a request for
+     * zero rows.
+     */
+    private static List<String> normalizedDispositionKeys(List<String> requested) {
+        if (requested == null || requested.isEmpty()) return List.of();
+        return requested.stream()
+                .map(CallDispositionOptionsService::normalizeKey)
+                .filter(k -> !k.isEmpty())
+                .distinct()
+                .toList();
     }
 
     /** Whitelisted sort — never interpolate user input into SQL. */

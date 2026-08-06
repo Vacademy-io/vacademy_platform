@@ -1,5 +1,10 @@
 import { useEffect } from 'react';
-import { isChunkLoadError, isLazyResolverError, reloadForChunkError } from '@/lib/chunk-reload';
+import {
+    isChunkLoadError,
+    isLazyResolverError,
+    reloadForChunkError,
+    rememberFailedAssetsFrom,
+} from '@/lib/chunk-reload';
 import { classifyError } from '@/lib/error-classifier';
 import { GenericErrorPage } from './GenericErrorPage';
 import { RuntimeErrorPage } from './RuntimeErrorPage';
@@ -15,9 +20,12 @@ export function SmartErrorPage({ error }: Props) {
 
     useEffect(() => {
         if (chunkError) {
+            // The chunk URL is only in the message here — hand it over so the
+            // recovery can purge its (possibly HTML-poisoned) cache entry.
+            rememberFailedAssetsFrom(error);
             reloadForChunkError();
         }
-    }, [chunkError]);
+    }, [chunkError, error]);
 
     if (chunkError) {
         return (

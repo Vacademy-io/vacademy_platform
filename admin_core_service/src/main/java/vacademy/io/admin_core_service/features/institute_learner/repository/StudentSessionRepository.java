@@ -9,6 +9,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchProjection;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.LearnerStatusCountProjection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
 import java.util.Date;
@@ -116,17 +117,35 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
   List<StudentSessionInstituteGroupMapping> findAllBySubOrgIdAndStatusIn(String subOrgId, List<String> status);
 
-  @Query(value = "SELECT COUNT(ss.id) " +
-          "FROM student_session_institute_group_mapping ss " +
-          "JOIN package_session ps ON ss.package_session_id = ps.id " +
-          "WHERE ss.institute_id = :instituteId " +
-          "AND ss.status NOT IN (:statusList) " +
-          "AND ss.package_session_id IS NOT NULL " +
-          "AND ps.status IN (:packageSessionStatusList)", nativeQuery = true)
-  Long countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(
-          @Param("instituteId") String instituteId,
-          @Param("statusList") List<String> statusList,
-          @Param("packageSessionStatusList") List<String> packageSessionStatusList);
+  /**
+   * Dashboard learner tile. Deliberately mirrors the learner list's header badges
+   * (findPagedCombinedUserIdsForLearnerList with statuses:["ACTIVE"] / ["INACTIVE"]),
+   * so the dashboard and Learner Management never disagree.
+   *
+   * That means matching the list's scope exactly:
+   * - DISTINCT user_id, not COUNT(ss.id) — a learner in N batches is one learner.
+   *   (This alone was 361 vs 74 for one institute.)
+   * - No package_session status filter and no package_session join. Deleting a
+   *   batch does NOT cascade its mappings to DELETED, so those learners stay in
+   *   the learner list; filtering them out here is what made the tile read 74
+   *   against the list's 76.
+   * - Positive per-status buckets rather than a NOT IN blacklist, which used to
+   *   sweep in INVITED and PENDING_FOR_APPROVAL as if they were enrolled.
+   *
+   * totalCount is every learner ever mapped to the institute, any status — the
+   * list header's "Total" badge.
+   */
+  @Query(value = """
+              SELECT
+                COUNT(DISTINCT ss.user_id)                                        AS totalCount,
+                COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'ACTIVE')     AS activeCount,
+                COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'INACTIVE')   AS inactiveCount,
+                COUNT(DISTINCT ss.user_id) FILTER (WHERE ss.status = 'TERMINATED') AS terminatedCount
+              FROM student_session_institute_group_mapping ss
+              WHERE ss.institute_id = :instituteId
+          """, nativeQuery = true)
+  LearnerStatusCountProjection countLearnersByStatusForInstitute(
+          @Param("instituteId") String instituteId);
 
   @Query(value = """
                 SELECT ps.id AS packageSessionId,

@@ -22,6 +22,9 @@ import vacademy.io.admin_core_service.features.faculty.repository.FacultySubject
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteTerminologyService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteTerminologyService.Terms;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
@@ -35,6 +38,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOp
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
@@ -64,6 +68,8 @@ public class SubOrgSubscriptionService {
     private final InstituteCustomFiledService instituteCustomFiledService;
     private final FacultyService facultyService;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+    private final InstituteTerminologyService instituteTerminologyService;
+    private final InstituteRepository instituteRepository;
 
     /**
      * Creates a sub-org with an org-level EnrollInvite that the sub-org admin
@@ -78,9 +84,14 @@ public class SubOrgSubscriptionService {
                 request.getSubOrgDetails(), parentInstituteId);
         log.info("Created sub-org with ID: {}", subOrgId);
 
+        // Institute terminology (Settings > Naming Settings) drives every name minted below,
+        // so an institute that calls sub-orgs "Branches" and learners "Students" sees those
+        // words on the invites it just created. Resolved once and threaded through.
+        Terms terms = instituteTerminologyService.forInstitute(parentInstituteId);
+
         // 2. Create the org-level EnrollInvite
         EnrollInvite invite = new EnrollInvite();
-        invite.setName("Sub-Org Subscription: " + request.getSubOrgDetails().getInstituteName());
+        invite.setName(SubOrgNaming.orgInviteName(terms, request.getSubOrgDetails().getInstituteName()));
         invite.setTag(EnrollInviteTag.SUB_ORG.name());
         invite.setSubOrgId(subOrgId);
         invite.setStatus(StatusEnum.ACTIVE.name());
@@ -200,7 +211,8 @@ public class SubOrgSubscriptionService {
                     option.getId(), option.getType());
         } else {
             option = new PaymentOption();
-            option.setName("Sub-Org Plan: " + request.getSubOrgDetails().getInstituteName());
+            option.setName(SubOrgNaming.adminPaymentOptionName(
+                    terms, request.getSubOrgDetails().getInstituteName()));
             option.setType(paymentType);
             option.setTag("DEFAULT");
             option.setStatus(StatusEnum.ACTIVE.name());
@@ -210,7 +222,7 @@ public class SubOrgSubscriptionService {
 
             // 4. Per-sub-org PaymentPlan carries the seat cap for the non-CPO path.
             PaymentPlan plan = new PaymentPlan();
-            plan.setName("Sub-Org Plan");
+            plan.setName(SubOrgNaming.adminPaymentPlanName(terms));
             plan.setStatus(StatusEnum.ACTIVE.name());
             plan.setActualPrice(request.getActualPrice() != null ? request.getActualPrice() : 0);
             plan.setElevatedPrice(request.getElevatedPrice() != null ? request.getElevatedPrice() : 0);
@@ -275,6 +287,7 @@ public class SubOrgSubscriptionService {
                                          PaymentPlan orgPlan) {
         String subOrgId = orgInvite.getSubOrgId();
         String instituteId = orgInvite.getInstituteId();
+        Terms terms = instituteTerminologyService.forInstitute(instituteId);
 
         // For CPO sub-orgs the org PaymentPlan is the shared CPO synthetic plan and
         // carries no per-sub-org memberCount — fall back to settingJson.MEMBER_COUNT.
@@ -304,7 +317,8 @@ public class SubOrgSubscriptionService {
 
             // Create scoped FREE invite
             EnrollInvite scopedInvite = new EnrollInvite();
-            scopedInvite.setName("Sub-Org Access: " + ps.getPackageEntity().getPackageName());
+            scopedInvite.setName(SubOrgNaming.scopedInviteName(
+                    terms, ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null));
             scopedInvite.setTag(EnrollInviteTag.SUB_ORG.name());
             scopedInvite.setSubOrgId(subOrgId);
             scopedInvite.setStatus(StatusEnum.ACTIVE.name());
@@ -318,7 +332,7 @@ public class SubOrgSubscriptionService {
 
             // Create FREE PaymentOption
             PaymentOption freeOption = new PaymentOption();
-            freeOption.setName("Free Access (Sub-Org)");
+            freeOption.setName(SubOrgNaming.freePaymentOptionName(terms));
             freeOption.setType("FREE");
             freeOption.setTag("DEFAULT");
             freeOption.setStatus(StatusEnum.ACTIVE.name());
@@ -327,7 +341,7 @@ public class SubOrgSubscriptionService {
 
             // Create PaymentPlan with seat cap from org plan
             PaymentPlan freePlan = new PaymentPlan();
-            freePlan.setName("Sub-Org Free Plan");
+            freePlan.setName(SubOrgNaming.freePaymentPlanName(terms));
             freePlan.setStatus(StatusEnum.ACTIVE.name());
             freePlan.setActualPrice(0);
             freePlan.setElevatedPrice(0);
@@ -535,7 +549,8 @@ public class SubOrgSubscriptionService {
         EnrollInvite learnerInvite = new EnrollInvite();
         String optionLabel = option != null && StringUtils.hasText(option.getType())
                 ? option.getType() : "DEFAULT";
-        learnerInvite.setName("SubOrgLearner — " + psLabel + " · " + optionLabel);
+        Terms terms = instituteTerminologyService.forInstitute(parentInstituteId);
+        learnerInvite.setName(SubOrgNaming.learnerInviteName(terms, psLabel, optionLabel));
         learnerInvite.setTag(EnrollInviteTag.SUBORG_LEARNER.name());
         learnerInvite.setSubOrgId(subOrgId);
         learnerInvite.setStatus(StatusEnum.ACTIVE.name());
@@ -598,13 +613,121 @@ public class SubOrgSubscriptionService {
             totalCreated += mirrorSuborgLearnerInvitesForPs(
                     subOrgId, parentInstituteId, ps, fallback, null);
         }
+
+        // Re-apply the institute's CURRENT terminology to invites created earlier. Names are
+        // written once at creation, so an institute that renames "Sub-Org" to "Branch" after
+        // its sub-orgs exist would otherwise keep the old wording forever. Re-sync is the
+        // deliberate "push the rename through" action.
+        int totalRenamed = backfillSubOrgInviteNames(subOrgId, parentInstituteId, orgInvite.getId());
+
         Map<String, Object> result = new HashMap<>();
         result.put("sub_org_id", subOrgId);
         result.put("created_count", totalCreated);
+        result.put("renamed_count", totalRenamed);
         result.put("package_session_count", psById.size());
-        log.info("Re-synced SUBORG_LEARNER invites for sub-org={}: created={} across {} PSes",
-                subOrgId, totalCreated, psById.size());
+        log.info("Re-synced SUBORG_LEARNER invites for sub-org={}: created={} renamed={} across {} PSes",
+                subOrgId, totalCreated, totalRenamed, psById.size());
         return result;
+    }
+
+    /**
+     * Rewrite every existing sub-org invite name using the institute's current
+     * Naming Settings terminology. Regenerates through {@link SubOrgNaming} — the same
+     * builders creation uses — so a re-synced name is byte-identical to a freshly created
+     * one. Only rows whose name still matches a system-generated shape are touched; a name
+     * that has drifted from the pattern is assumed hand-edited and left alone.
+     *
+     * <p>Scope is deliberately invites only. PaymentOption/PaymentPlan rows are NOT renamed
+     * here because the sub-org flows can reuse an institute-level PaymentOption
+     * ({@code pickedOption}) shared with non-sub-org invites — renaming it would rewrite a
+     * label the rest of the institute depends on. Those pick up new terminology on creation.
+     *
+     * @return the number of invites actually renamed.
+     */
+    private int backfillSubOrgInviteNames(String subOrgId, String parentInstituteId, String orgInviteId) {
+        Terms terms = instituteTerminologyService.forInstitute(parentInstituteId);
+        String subOrgName = subOrgDisplayName(subOrgId);
+
+        List<EnrollInvite> invites = enrollInviteRepository.findBySubOrgIdAndInstituteIdAndTags(
+                subOrgId, parentInstituteId,
+                List.of(EnrollInviteTag.SUB_ORG.name(), EnrollInviteTag.SUBORG_LEARNER.name()),
+                List.of(StatusEnum.ACTIVE.name()));
+
+        int renamed = 0;
+        for (EnrollInvite invite : invites) {
+            String desired = desiredInviteName(invite, terms, subOrgName, orgInviteId);
+            if (desired == null || desired.equals(invite.getName())) continue;
+            if (!looksSystemGenerated(invite.getName())) {
+                log.info("Skipping rename of invite id={} — name '{}' looks hand-edited",
+                        invite.getId(), invite.getName());
+                continue;
+            }
+            log.info("Renaming sub-org invite id={} '{}' -> '{}'",
+                    invite.getId(), invite.getName(), desired);
+            invite.setName(desired);
+            enrollInviteRepository.save(invite);
+            renamed++;
+        }
+        return renamed;
+    }
+
+    /** The name this invite WOULD get if it were created right now; null when unknown. */
+    private String desiredInviteName(EnrollInvite invite, Terms terms,
+                                     String subOrgName, String orgInviteId) {
+        if (EnrollInviteTag.SUBORG_LEARNER.name().equals(invite.getTag())) {
+            for (PackageSessionLearnerInvitationToPaymentOption link
+                    : packageSessionEnrollInviteToPaymentOptionService.findByInvite(invite)) {
+                if (link.getPackageSession() == null) continue;
+                PaymentOption opt = link.getPaymentOption();
+                String optionLabel = opt != null && StringUtils.hasText(opt.getType())
+                        ? opt.getType() : "DEFAULT";
+                return SubOrgNaming.learnerInviteName(
+                        terms, buildPsLabel(link.getPackageSession()), optionLabel);
+            }
+            return null;
+        }
+        if (EnrollInviteTag.SUB_ORG.name().equals(invite.getTag())) {
+            // The org-level invite is named after the sub-org; the scoped FREE invites
+            // minted per package session are named after their course.
+            if (invite.getId() != null && invite.getId().equals(orgInviteId)) {
+                return SubOrgNaming.orgInviteName(terms, subOrgName);
+            }
+            for (PackageSessionLearnerInvitationToPaymentOption link
+                    : packageSessionEnrollInviteToPaymentOptionService.findByInvite(invite)) {
+                PackageSession ps = link.getPackageSession();
+                if (ps == null || ps.getPackageEntity() == null) continue;
+                return SubOrgNaming.scopedInviteName(terms, ps.getPackageEntity().getPackageName());
+            }
+            return null;
+        }
+        return null;
+    }
+
+    /**
+     * True when the stored name still looks like something these flows minted, under EITHER
+     * the built-in defaults or any terminology the institute has used. Matching on the
+     * structural suffix (" Subscription: ", " Access: ", " — ") rather than the leading term
+     * means a rename from "Sub-Org" to "Branch" and back is still recognised, while a fully
+     * hand-written name is not — so re-sync can never clobber an admin's own wording.
+     */
+    private boolean looksSystemGenerated(String name) {
+        if (!StringUtils.hasText(name)) return true;
+        return name.contains(" Subscription: ")
+                || name.contains(" Access: ")
+                || name.contains(" — ");
+    }
+
+    /** Display name of the sub-org (a child institute); falls back to its id. */
+    private String subOrgDisplayName(String subOrgId) {
+        try {
+            return instituteRepository.findById(subOrgId)
+                    .map(Institute::getInstituteName)
+                    .filter(StringUtils::hasText)
+                    .orElse(subOrgId);
+        } catch (Exception e) {
+            log.warn("Could not load sub-org {} for naming; using id", subOrgId, e);
+            return subOrgId;
+        }
     }
 
     /**

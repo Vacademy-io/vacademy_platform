@@ -1,12 +1,12 @@
 package vacademy.io.community_service.feature.support.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.util.SuperAdminAuthUtil;
+import vacademy.io.community_service.feature.support.client.SupportAuthClient;
 import vacademy.io.community_service.feature.support.dto.*;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.service.SupportConfigService;
@@ -33,6 +33,8 @@ public class SupportSuperAdminController {
     private SupportEngineerService engineerService;
     @Autowired
     private SupportConfigService configService;
+    @Autowired
+    private SupportAuthClient authClient;
 
     // ---- catalogue ---------------------------------------------------------------
 
@@ -49,8 +51,13 @@ public class SupportSuperAdminController {
      * @param instituteId  single-institute filter (kept for existing callers/deep links)
      * @param instituteIds multi-institute filter (repeated or comma-separated); unioned with
      *                     {@code instituteId}. Empty/absent means all institutes.
-     * @param unassigned   only tickets with no engineer assigned (takes precedence over engineerId)
-     * @param search       case-insensitive substring match on the ticket subject
+     * @param unassigned    only tickets with no engineer assigned (takes precedence over engineerId)
+     * @param search        case-insensitive substring match on the ticket subject
+     * @param createdFrom   inclusive lower bound on the ticket's creation time (ISO-8601 instant)
+     * @param createdTo     inclusive upper bound on the ticket's creation time (ISO-8601 instant)
+     * @param sortBy        one of lastMessageAt (default) | createdAt | updatedAt | firstResponseDueAt;
+     *                      anything else falls back to the default rather than erroring
+     * @param sortDirection ASC or DESC (default)
      */
     @GetMapping("/tickets")
     public ResponseEntity<PageResponseDto<SupportTicketDto>> tickets(
@@ -61,11 +68,15 @@ public class SupportSuperAdminController {
             @RequestParam(value = "engineerId", required = false) String engineerId,
             @RequestParam(value = "unassigned", defaultValue = "false") boolean unassigned,
             @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "createdFrom", required = false) String createdFrom,
+            @RequestParam(value = "createdTo", required = false) String createdTo,
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @RequestParam(value = "sortDirection", required = false) String sortDirection,
             @RequestParam(value = "overdue", defaultValue = "false") boolean overdue,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100));
+        Pageable pageable = ticketService.buildPageable(page, size, sortBy, sortDirection);
         List<String> institutes = new ArrayList<>();
         if (instituteIds != null) {
             institutes.addAll(instituteIds);
@@ -74,7 +85,21 @@ public class SupportSuperAdminController {
             institutes.add(instituteId);
         }
         return ResponseEntity.ok(ticketService.search(
-                institutes, status, engineerId, unassigned, search, overdue, pageable));
+                institutes, status, engineerId, unassigned, search,
+                createdFrom, createdTo, overdue, pageable));
+    }
+
+    /**
+     * The institute's own admin users, for the "Reported by" picker when logging a ticket on
+     * their behalf. Picking a real person is what lets reply notifications reach someone: a
+     * ticket with no institute-side contact notifies nobody.
+     */
+    @GetMapping("/institutes/{instituteId}/contacts")
+    public ResponseEntity<List<SupportRecipientDto>> instituteContacts(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String instituteId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(authClient.findByInstituteAndRole(instituteId, "ADMIN"));
     }
 
     @GetMapping("/tickets/counts")

@@ -3,12 +3,14 @@ package vacademy.io.assessment_service.features.assessment.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.offline_entry.*;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
+import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
@@ -118,6 +120,9 @@ public class AdminOfflineDataEntryManager {
             attempt.setMaxTime(assessment.getDuration() != null ? assessment.getDuration() : 0);
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
             attempt.setResultStatus(AttemptResultStatusEnum.PENDING.name());
+            // Seed empty JSON so downstream attempt_data readers/updaters (manual
+            // evaluation upload, set assignment) don't trip on a NULL column.
+            attempt.setAttemptData("{}");
             attempt.setTotalMarks(0.0);
             attempt.setResultMarks(0.0);
             attempt.setTotalTimeInSeconds(0L);
@@ -222,6 +227,192 @@ public class AdminOfflineDataEntryManager {
         } catch (Exception e) {
             throw new VacademyException("Failed to create and submit offline attempt: " + e.getMessage());
         }
+    }
+
+    /**
+     * Attaches the scanned PDFs an admin collected offline to an existing attempt:
+     * the learner's answer sheet, the checked (annotated) copy and a prepared
+     * result report.
+     * <p>
+     * This deliberately does NOT go through manual-evaluation's submit/marks —
+     * that endpoint recomputes total_marks from the questions in its payload and
+     * flips the attempt to COMPLETED/RELEASED, so using it merely to carry a file
+     * id would zero out the marks the offline entry just calculated.
+     */
+    public ResponseEntity<String> attachOfflineFiles(
+            CustomUserDetails userDetails,
+            String assessmentId,
+            String attemptId,
+            String instituteId,
+            OfflineAttachmentsRequest request) {
+        if (request == null) throw new VacademyException("Invalid Request");
+
+        Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
+        if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+
+        StudentAttempt attempt = attemptOptional.get();
+        if (!attempt.getRegistration().getAssessment().getId().equals(assessmentId)) {
+            throw new VacademyException("Attempt does not belong to the specified assessment");
+        }
+
+        // Same guard the manual-evaluation answer-sheet upload applies: writing to
+        // an attempt the learner is still sitting would race their own submission
+        // and could overwrite attempt_data mid-exam.
+        String status = attempt.getStatus();
+        if (AssessmentAttemptEnum.PREVIEW.name().equals(status)
+                || AssessmentAttemptEnum.LIVE.name().equals(status)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "This student's attempt is still in progress (" + status
+                            + "). Files can be attached only after it is submitted.");
+        }
+
+        try {
+            Map<String, String> attemptDataUpdates = new LinkedHashMap<>();
+            if (StringUtils.hasText(request.getStudentFileId())) {
+                attemptDataUpdates.put("fileId", request.getStudentFileId());
+            }
+            if (StringUtils.hasText(request.getReportFileId())) {
+                attemptDataUpdates.put("reportFileId", request.getReportFileId());
+            }
+
+            if (!attemptDataUpdates.isEmpty()) {
+                attempt.setAttemptData(mergeIntoAttemptData(attempt.getAttemptData(), attemptDataUpdates));
+            }
+            if (StringUtils.hasText(request.getCheckedFileId())) {
+                attempt.setEvaluatedFileId(request.getCheckedFileId());
+            }
+
+            studentAttemptService.updateStudentAttempt(attempt);
+            return ResponseEntity.ok("Done");
+        } catch (Exception e) {
+            throw new VacademyException("Failed to attach offline files: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Bulk offline data entry: one row per student carrying their total marks and
+     * the already-uploaded sheet file ids.
+     * <p>
+     * Each row is isolated — a student whose registration can't be resolved fails
+     * alone and the rest still import, because re-running a 200-row scan batch to
+     * get past one bad roll number is not a reasonable ask of an admin.
+     */
+    public ResponseEntity<OfflineBulkImportResponse> bulkImportOfflineEntries(
+            CustomUserDetails userDetails,
+            String assessmentId,
+            String instituteId,
+            OfflineBulkImportRequest request) {
+        if (request == null || request.getEntries() == null || request.getEntries().isEmpty()) {
+            throw new VacademyException("Invalid Request: no entries to import");
+        }
+
+        List<OfflineBulkImportResponse.OfflineBulkImportResult> results = new ArrayList<>();
+        int successCount = 0;
+
+        for (OfflineBulkImportRequest.OfflineBulkImportEntry entry : request.getEntries()) {
+            try {
+                String attemptId = importSingleEntry(userDetails, assessmentId, instituteId, entry);
+                results.add(OfflineBulkImportResponse.OfflineBulkImportResult.builder()
+                        .rowLabel(entry.getRowLabel())
+                        .username(entry.getUsername())
+                        .status("SUCCESS")
+                        .attemptId(attemptId)
+                        .build());
+                successCount++;
+            } catch (Exception e) {
+                log.error("Bulk offline import failed for row {}: {}", entry.getRowLabel(), e.getMessage());
+                results.add(OfflineBulkImportResponse.OfflineBulkImportResult.builder()
+                        .rowLabel(entry.getRowLabel())
+                        .username(entry.getUsername())
+                        .status("FAILED")
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        return ResponseEntity.ok(OfflineBulkImportResponse.builder()
+                .results(results)
+                .successCount(successCount)
+                .failureCount(results.size() - successCount)
+                .build());
+    }
+
+    private String importSingleEntry(
+            CustomUserDetails userDetails,
+            String assessmentId,
+            String instituteId,
+            OfflineBulkImportRequest.OfflineBulkImportEntry entry) {
+
+        OfflineAttemptCreateRequest createRequest = OfflineAttemptCreateRequest.builder()
+                .userId(entry.getUserId())
+                .fullName(entry.getFullName())
+                .email(entry.getEmail())
+                .username(entry.getUsername())
+                .mobileNumber(entry.getMobileNumber())
+                .batchId(entry.getBatchId())
+                .build();
+
+        OfflineAttemptCreateResponse created = createOfflineAttempt(
+                userDetails, assessmentId, entry.getRegistrationId(), instituteId, createRequest).getBody();
+        if (created == null) throw new VacademyException("Could not create an attempt for this student");
+
+        StudentAttempt attempt = studentAttemptService.getStudentAttemptById(created.getAttemptId())
+                .orElseThrow(() -> new VacademyException("Attempt Not Found after creation"));
+
+        applyBulkMarksAndFiles(attempt, entry);
+        studentAttemptService.updateStudentAttempt(attempt);
+
+        return attempt.getId();
+    }
+
+    private void applyBulkMarksAndFiles(StudentAttempt attempt, OfflineBulkImportRequest.OfflineBulkImportEntry entry) {
+        if (entry.getTotalMarks() != null) {
+            // Mirrors manual evaluation's submit: for a hand-checked paper the
+            // admin's total IS the result, and entering it IS the release — the
+            // learner would otherwise sit on "Pending evaluation" forever.
+            attempt.setTotalMarks(entry.getTotalMarks());
+            attempt.setResultMarks(entry.getTotalMarks());
+            attempt.setResultStatus(AttemptResultStatusEnum.COMPLETED.name());
+            attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
+            attempt.setReportLastReleaseDate(DateUtil.getCurrentUtcTime());
+        }
+
+        Map<String, String> attemptDataUpdates = new LinkedHashMap<>();
+        if (StringUtils.hasText(entry.getStudentFileId())) {
+            attemptDataUpdates.put("fileId", entry.getStudentFileId());
+        }
+        if (StringUtils.hasText(entry.getReportFileId())) {
+            attemptDataUpdates.put("reportFileId", entry.getReportFileId());
+        }
+        if (!attemptDataUpdates.isEmpty()) {
+            try {
+                attempt.setAttemptData(mergeIntoAttemptData(attempt.getAttemptData(), attemptDataUpdates));
+            } catch (Exception e) {
+                throw new VacademyException("Failed to attach files: " + e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(entry.getCheckedFileId())) {
+            attempt.setEvaluatedFileId(entry.getCheckedFileId());
+        }
+    }
+
+    /**
+     * Merges keys into the attempt_data JSON, preserving every other key. A
+     * null/blank/unparseable blob starts from an empty object rather than failing —
+     * the response payload is rebuilt on submit anyway, and losing an attachment
+     * to a malformed blob is worse than losing the malformed blob.
+     */
+    private String mergeIntoAttemptData(String attemptData, Map<String, String> updates) throws Exception {
+        Map<String, Object> jsonMap = new HashMap<>();
+        if (StringUtils.hasText(attemptData)) {
+            try {
+                jsonMap = objectMapper.readValue(attemptData, Map.class);
+            } catch (Exception e) {
+                log.warn("Unparseable attempt_data while attaching offline files, starting fresh: {}", e.getMessage());
+            }
+        }
+        jsonMap.putAll(updates);
+        return objectMapper.writeValueAsString(jsonMap);
     }
 
     private String buildAttemptDataJson(String attemptId, String assessmentId, OfflineResponseSubmitRequest request) {

@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.mentorship.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.mentorship.dto.AssignMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.AssignmentResultDTO;
@@ -41,6 +43,7 @@ public class MentorAssignmentService {
     private final MentorRepository mentorRepository;
     private final MentorService mentorService;
     private final AuthService authService;
+    private final MentorshipNotificationService mentorshipNotificationService;
 
     @Transactional
     public AssignmentResultDTO assignManual(AssignMentorRequest req, CustomUserDetails user) {
@@ -67,7 +70,16 @@ public class MentorAssignmentService {
                     AssignmentMethod.MANUAL, req.getPackageSessionId(), user));
             assigned++;
         }
-        if (!toSave.isEmpty()) assignmentRepository.saveAll(toSave);
+        if (!toSave.isEmpty()) {
+            assignmentRepository.saveAll(toSave);
+            final String instituteId = req.getInstituteId();
+            final String mentorUserId = mentor.getUserId();
+            final String mentorName = mentor.getDisplayName();
+            final List<String> studentIds = toSave.stream()
+                    .map(MentorStudentAssignment::getStudentUserId).collect(Collectors.toList());
+            afterCommit(() -> studentIds.forEach(sid ->
+                    mentorshipNotificationService.notifyAssignment(instituteId, sid, mentorUserId, mentorName)));
+        }
         return AssignmentResultDTO.builder().assigned(assigned).skipped(skipped).build();
     }
 
@@ -126,7 +138,16 @@ public class MentorAssignmentService {
             load.merge(chosen.getId(), 1, Integer::sum);
             assigned++;
         }
-        if (!toSave.isEmpty()) assignmentRepository.saveAll(toSave);
+        if (!toSave.isEmpty()) {
+            assignmentRepository.saveAll(toSave);
+            final String instituteId = req.getInstituteId();
+            final Map<String, String> nameByMentorUser = mentors.stream()
+                    .collect(Collectors.toMap(Mentor::getUserId, Mentor::getDisplayName, (a, b) -> a));
+            final List<MentorStudentAssignment> saved = new ArrayList<>(toSave);
+            afterCommit(() -> saved.forEach(a ->
+                    mentorshipNotificationService.notifyAssignment(instituteId, a.getStudentUserId(),
+                            a.getMentorUserId(), nameByMentorUser.get(a.getMentorUserId()))));
+        }
         return AssignmentResultDTO.builder().assigned(assigned).skipped(skipped).build();
     }
 
@@ -213,6 +234,25 @@ public class MentorAssignmentService {
 
     private static String pairKey(String mentorId, String studentUserId) {
         return mentorId + "::" + studentUserId;
+    }
+
+    /**
+     * Run {@code task} once the surrounding transaction has committed, so notification
+     * HTTP calls never hold the assignment transaction open and a notification failure
+     * can never roll back the assignment (see live-session-notify-rolls-back-slide).
+     * Falls back to inline execution when there's no active transaction.
+     */
+    private void afterCommit(Runnable task) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
+        }
     }
 
     private static List<String> distinctNonBlank(List<String> ids) {

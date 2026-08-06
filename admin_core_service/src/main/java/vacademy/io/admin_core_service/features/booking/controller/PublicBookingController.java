@@ -32,8 +32,9 @@ public class PublicBookingController {
             @PathVariable("slug") String slug,
             @RequestParam("from") String from,
             @RequestParam("to") String to,
-            @RequestParam(value = "tz", required = false) String tz) {
-        return ResponseEntity.ok(publicBookingService.getSlots(instituteId, slug, from, to, tz));
+            @RequestParam(value = "tz", required = false) String tz,
+            @RequestParam(value = "duration", required = false) Integer duration) {
+        return ResponseEntity.ok(publicBookingService.getSlots(instituteId, slug, from, to, tz, duration));
     }
 
     @PostMapping("/page/{instituteId}/{slug}/book")

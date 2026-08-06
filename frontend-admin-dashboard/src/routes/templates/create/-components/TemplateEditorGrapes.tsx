@@ -54,9 +54,10 @@ export const TemplateEditorGrapes: React.FC<TemplateEditorGrapesProps> = ({ temp
     const [template, setTemplate] = useState<MessageTemplate | null>(null);
     const [formData, setFormData] = useState({
         name: '',
-        type: 'EMAIL' as 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
+        // Widened from MessageTemplate so adding a template type can't break this assignment.
+        type: 'EMAIL' as MessageTemplate['type'],
         subject: '',
-        templateType: 'utility' as 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL',
+        templateType: 'utility' as NonNullable<MessageTemplate['templateType']>,
         isDefault: false,
     });
     // Text placeholder that survives GrapesJS re-renders and sanitation

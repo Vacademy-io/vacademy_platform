@@ -34,6 +34,13 @@ public class AiCallingSettingsService {
         Institute institute = instituteRepository.findById(instituteId).orElse(null);
         if (institute == null) return AiCallingSettingsPojo.defaults();
 
+        // NOTE: getSettingData throws VacademyException when the institute's WHOLE
+        // setting_json is unparseable (one such institute exists in prod), so this
+        // method can still propagate despite the "sane defaults" contract above.
+        // Deliberately left as-is: swallowing it here would silently switch AI calling
+        // to "disabled" for every caller below, and a loud failure is the safer default
+        // for the call-placing paths. Read-only display callers guard the call
+        // themselves — see CallDispositionOptionsService.
         Object data = instituteSettingService.getSettingData(institute, SettingKeyEnums.AI_CALLING_SETTING.name());
         if (data == null) return AiCallingSettingsPojo.defaults();
         try {

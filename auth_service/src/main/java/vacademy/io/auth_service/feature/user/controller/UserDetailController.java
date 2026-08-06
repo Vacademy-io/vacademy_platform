@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
 import vacademy.io.auth_service.feature.user.dto.UserBasicDetailsDto;
 import vacademy.io.common.auth.dto.UserJwtUpdateDetail;
+import vacademy.io.auth_service.feature.user.service.UserCredentialUpdateService;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
 import vacademy.io.auth_service.feature.user.service.UserOperationService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -27,6 +28,9 @@ public class UserDetailController {
 
     @Autowired
     private UserDetailService userDetailService;
+
+    @Autowired
+    private UserCredentialUpdateService userCredentialUpdateService;
 
     @Autowired
     private UserOperationService userOperationService;
@@ -68,15 +72,35 @@ public class UserDetailController {
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {
             userDTO.setId(userId);
+
+            // Credentials go through the one credential path, ahead of every other
+            // field: it validates uniqueness (so a taken username aborts before any
+            // profile write lands), evicts the old username's auth-cache entries, and
+            // fans the rename out to student.username and the four assessment-database
+            // copies. They are then cleared from the DTO so the generic profile update
+            // below cannot write them a second time down a path that does none of that.
+            // A no-op change costs one primary-key read and nothing else.
+            String newUsername = userDTO.getUsername();
+            String newPassword = userDTO.getPassword();
+            if (StringUtils.hasText(newUsername) || StringUtils.hasText(newPassword)) {
+                userCredentialUpdateService.updateCredentials(userId, newUsername, newPassword);
+                userDTO.setUsername(null);
+                userDTO.setPassword(null);
+            }
+
             institutePolicyService.updateLearnerDetails(userDTO);
             UserDTO updated = userService.updateUserDetails(userDTO, userId);
             // This is the endpoint the learner "Change Password" screen calls (PUT with
             // {username, password}). If the password was changed, mirror it to any
             // WordPress LMS the learner's courses are connected to (async, best-effort).
-            if (StringUtils.hasText(userDTO.getPassword())) {
-                institutePolicyService.syncLmsPassword(userId, updated.getEmail(), userDTO.getPassword());
+            if (StringUtils.hasText(newPassword)) {
+                institutePolicyService.syncLmsPassword(userId, updated.getEmail(), newPassword);
             }
             return ResponseEntity.ok(updated);
+        } catch (VacademyException e) {
+            // Preserve the status the credential path chose (510 for "username already
+            // taken", which is what both UIs match on) instead of flattening it.
+            throw e;
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

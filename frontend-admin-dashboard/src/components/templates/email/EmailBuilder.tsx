@@ -29,6 +29,24 @@ interface IEmailTemplate {
     content: IBlockData;
 }
 
+// Categories the editor offers. The lowercase ones are marketing metadata stored on the
+// template; the uppercase ones double as the DB `type`, because the backend resolves each
+// of those templates by type (invoice PDF layout, invoice email, payment-confirmation email).
+export type EmailTemplateCategory =
+    | 'marketing'
+    | 'utility'
+    | 'transactional'
+    | 'INVOICE'
+    | 'INVOICE_EMAIL'
+    | 'PAYMENT_CONFIRMATION';
+
+// Categories that are persisted as the template's own DB type rather than as plain EMAIL.
+const TYPE_BEARING_CATEGORIES: EmailTemplateCategory[] = [
+    'INVOICE',
+    'INVOICE_EMAIL',
+    'PAYMENT_CONFIRMATION',
+];
+
 interface EmailBuilderProps {
     template?: MessageTemplate | null;
     onBack: () => void;
@@ -36,7 +54,10 @@ interface EmailBuilderProps {
     isSaving?: boolean;
     // Preselects the category when creating a new template (e.g. opening straight
     // into "Invoice (PDF Layout)" / "Invoice Email" from Invoice Settings).
-    initialTemplateType?: 'INVOICE' | 'INVOICE_EMAIL';
+    initialTemplateType?: Extract<
+        EmailTemplateCategory,
+        'INVOICE' | 'INVOICE_EMAIL' | 'PAYMENT_CONFIRMATION'
+    >;
 }
 
 // Font list for the rich text toolbar font-family dropdown
@@ -125,6 +146,42 @@ const invoiceMergeTags = {
     },
 };
 
+// Payment-confirmation merge tags. These resolve in
+// PaymentNotificatonService.buildPaymentConfirmationPlaceholders when a PAYMENT_CONFIRMATION
+// template replaces the built-in confirmation mail — a different resolver from the invoice
+// tags above, so the two lists are deliberately kept separate.
+const paymentConfirmationMergeTags = {
+    Learner: {
+        'Learner Name': '{{learner_name}}',
+        Email: '{{email}}',
+        'Mobile Number': '{{mobile_number}}',
+    },
+    Payment: {
+        Amount: '{{amount}}',
+        Currency: '{{currency}}',
+        'Currency Symbol': '{{currency_symbol}}',
+        'Payment Date': '{{payment_date}}',
+        'Payment Mode': '{{payment_mode}}',
+        'Transaction ID': '{{transaction_id}}',
+        'Receipt / Invoice No.': '{{invoice_number}}',
+        'Receipt URL': '{{receipt_url}}',
+        'Invoice PDF Link': '{{invoice_pdf_link}}',
+        'Course Name': '{{course_name}}',
+    },
+    Institute: {
+        'Institute Name': '{{institute_name}}',
+        'Institute Address': '{{institute_address}}',
+        'Institute Contact': '{{institute_contact}}',
+        'Institute Email': '{{institute_email}}',
+        'Institute Website': '{{institute_website}}',
+        'Institute Logo': '{{institute_logo}}',
+    },
+    'Date & General': {
+        'Current Date': '{{current_date}}',
+        Year: '{{year}}',
+    },
+};
+
 // Inner toolbar component to access form context
 const EditorToolbar: React.FC<{
     onBack: () => void;
@@ -132,8 +189,8 @@ const EditorToolbar: React.FC<{
     setTemplateName: (name: string) => void;
     onOpenAssets: () => void;
     isSaving: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
-    onTemplateTypeChange?: (type: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL') => void;
+    templateType?: EmailTemplateCategory;
+    onTemplateTypeChange?: (type: EmailTemplateCategory) => void;
     previewText?: string;
     onPreviewTextChange?: (text: string) => void;
     mergeTags?: Record<string, Record<string, string>>;
@@ -289,10 +346,7 @@ const EditorToolbar: React.FC<{
                     <select
                         value={templateType}
                         onChange={(e) => {
-                            const newType = e.target.value as
-                                | 'marketing'
-                                | 'utility'
-                                | 'transactional';
+                            const newType = e.target.value as EmailTemplateCategory;
                             if (onTemplateTypeChange) {
                                 onTemplateTypeChange(newType);
                             }
@@ -304,6 +358,7 @@ const EditorToolbar: React.FC<{
                         <option value="transactional">Transactional</option>
                         <option value="INVOICE">Invoice (PDF Layout)</option>
                         <option value="INVOICE_EMAIL">Invoice Email</option>
+                        <option value="PAYMENT_CONFIRMATION">Payment Confirmation Email</option>
                     </select>
                 </div>
                 <div style={styles.subjectContainer}>
@@ -371,7 +426,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
     const [imageResolve, setImageResolve] = useState<((url: string) => void) | null>(null);
     const [templateName, setTemplateName] = useState(template?.name || 'Untitled Template');
-    const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL'>(
+    const [templateType, setTemplateType] = useState<EmailTemplateCategory>(
         template?.templateType || initialTemplateType || 'utility'
     );
     const [isSaving, setIsSaving] = useState(false);
@@ -597,9 +652,11 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 const mjmlJsonString = JSON.stringify(values.content);
 
                 // 5. Create template object with MJML stored in mjml field
-                // For INVOICE/INVOICE_EMAIL types, use that as the DB type directly
-                const resolvedType = (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL')
-                    ? templateType : 'EMAIL';
+                // Type-bearing categories (INVOICE / INVOICE_EMAIL / PAYMENT_CONFIRMATION) are the
+                // DB type directly — that's how the backend finds them. Everything else is EMAIL.
+                const resolvedType = TYPE_BEARING_CATEGORIES.includes(templateType)
+                    ? (templateType as MessageTemplate['type'])
+                    : 'EMAIL';
 
                 const savedTemplate: MessageTemplate = {
                     id: template?.id || '',
@@ -701,6 +758,11 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     const mergeTags = useMemo(() => {
         if (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL') {
             return { ...invoiceMergeTags, ...defaultMergeTags };
+        }
+        // Payment-confirmation templates get ONLY their own resolver's tags — offering the
+        // generic catalog here would advertise variables that render as literal {{...}} text.
+        if (templateType === 'PAYMENT_CONFIRMATION') {
+            return paymentConfirmationMergeTags;
         }
         return defaultMergeTags;
     }, [templateType]);

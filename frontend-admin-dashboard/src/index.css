@@ -452,6 +452,12 @@ html {
     .dialog-height {
         height: calc(100vh - 80px);
     }
+    /* Shrinks question thumbnails in the paper-editor rail. Uses zoom (not
+       transform scale) so the layout box shrinks too and the rail's scroll
+       height matches what is visible. */
+    .question-rail-zoom {
+        zoom: 0.26;
+    }
     .hide-scrollbar {
         scrollbar-width: none; /* Firefox */
         -ms-overflow-style: none; /* IE and Edge */

@@ -414,7 +414,7 @@ export function QuestionPaperTemplate({
                                 </DialogClose>
                             </div>
                         </div>
-                        <div className="flex min-h-0 flex-1 items-start">
+                        <div className="flex min-h-0 flex-1 items-stretch">
                             <div className="flex h-full w-40 shrink-0 flex-col items-center gap-2 pt-4">
                                 <AlertDialog
                                     open={addQuestionDialogBox}
@@ -455,7 +455,7 @@ export function QuestionPaperTemplate({
                                             move(activeIndex, overIndex)
                                         }
                                     >
-                                        <div className="flex origin-top-left scale-[0.26] flex-col gap-8 overflow-x-hidden">
+                                        <div className="question-rail-zoom flex flex-col gap-8 overflow-x-hidden">
                                             {fields.map((field, index) => {
                                                 // Check if the current question has an error
                                                 const hasError =

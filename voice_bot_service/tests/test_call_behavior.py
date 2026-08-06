@@ -1712,3 +1712,79 @@ async def test_short_answers_survive_once_we_have_spoken():
     rec.frames.clear()
     await _feed(tc, "Raman")
     assert rec.frames, "a real one-word answer was dropped"
+
+
+# ── NoRepeatGate (2026-08-06): what four prompt attempts could not fix ───────
+class _NRRec:
+    def __init__(self):
+        self.text = []
+
+    async def push(self, frame, direction=None):
+        t = getattr(frame, "text", None)
+        if t:
+            self.text.append(t)
+
+
+def _no_repeat(rec, caller=""):
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g
+
+
+async def _reply(gate, *sentences):
+    from pipecat.frames.frames import (LLMFullResponseStartFrame,
+                                       LLMFullResponseEndFrame, LLMTextFrame)
+    d = b.FrameDirection.DOWNSTREAM
+    await gate.process_frame(LLMFullResponseStartFrame(), d)
+    for s in sentences:
+        await gate.process_frame(LLMTextFrame(s), d)
+    await gate.process_frame(LLMFullResponseEndFrame(), d)
+
+
+@pytest.mark.asyncio
+async def test_the_bot_stops_re_asking_its_own_closing_questions():
+    """Verbatim from the measured A/B run: these two questions were asked twice
+    in a ten-turn conversation, and that is what the founder kept hearing."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "MGP mein hum 90% marks ki guarantee dete hain. ",
+                 "Kya aap iski fees ke baare mein jaanna chahenge? ")
+    rec.text.clear()
+    await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hai. ",
+                 "Kya aap iski fees ke baare mein jaanna chahengi? ")
+    joined = " ".join(rec.text)
+    assert "chalis hazaar" in joined, "new content must still be spoken"
+    assert "jaanna chaheng" not in joined, "the re-asked question got through"
+
+
+@pytest.mark.asyncio
+async def test_short_acknowledgements_are_never_suppressed():
+    """"Theek hai" / "achha" recur legitimately every call. Stripping them
+    would leave the bot with no acknowledgements at all."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    for _ in range(3):
+        await _reply(g, "Theek hai. ", "Achha. ")
+    assert len(rec.text) == 6, rec.text
+
+
+@pytest.mark.asyncio
+async def test_a_reply_is_never_silenced_completely():
+    """If every sentence is a repeat, one repeated line beats dead air."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Kya main is WhatsApp number par link bhej doon? ")
+    rec.text.clear()
+    await _reply(g, "Kya main is WhatsApp number par link bhej doon? ")
+    assert rec.text, "the reply vanished entirely — caller hears silence"
+
+
+@pytest.mark.asyncio
+async def test_repeating_is_allowed_when_the_caller_asks_for_it():
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="phir se bataiye")
+    await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hai. ")
+    rec.text.clear()
+    await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hai. ")
+    assert rec.text, "caller asked us to repeat and we refused"

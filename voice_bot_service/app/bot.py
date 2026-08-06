@@ -83,7 +83,8 @@ from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
 from .turntake import (mid_reply_action, is_carrier_announcement,
-                       is_audio_check, suppresses_opening, ABSORB)
+                       is_audio_check, suppresses_opening, is_repeat,
+                       caller_asked_to_repeat, normalize_spoken, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -582,6 +583,111 @@ class TtfbObserver:
         self._seen: list = []
         self._diag = diag
         self.observer = _Obs()
+
+
+class NoRepeatGate(FrameProcessor):
+    """Between the LLM and the TTS: never say the same sentence twice in a call.
+
+    THE PROBLEM the founder kept hearing: the bot re-asks its own closing
+    questions — "kya aap fees ke baare mein jaanna chahenge?", "kya main is
+    WhatsApp number par link bhej doon?" — several turns after it already asked
+    them, because nothing tracks which questions have been put to the caller.
+
+    WHY IN CODE. Four prompt-level attempts failed, each measured over 3+ live
+    conversations against the real model: style rules in the system prompt
+    (1.7 -> 1.7 repeats, and they broke script and gender), no-echo rules with
+    worked examples in the script (3.0 -> 3.0 echoes), deleting the scripted
+    acknowledgement lines the model was parroting (2.7 -> 2.7), and changing
+    model (1.0 -> 0.3, real but reverted for latency). Remembering what you
+    already said is state, and a 16k-character prompt is not where state lives.
+
+    NO LATENCY COST. pipecat's TTS already buffers to a sentence boundary before
+    synthesising (hence "Generating TTS [whole sentence]" in the logs), so
+    holding a sentence here to look at it costs nothing that was not already
+    being spent.
+
+    NEVER SILENT. If every sentence of a reply is a repeat, the LAST one is let
+    through anyway: one repeated question is bad, a reply that vanishes and
+    leaves the caller in silence is worse.
+    """
+
+    _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
+
+    def __init__(self, enabled=None, last_caller_text=None, diag=None):
+        super().__init__()
+        self._enabled = enabled or (lambda: True)
+        self._last_caller_text = last_caller_text or (lambda: "")
+        self._diag = diag
+        self._spoken: list = []
+        self._buf = ""
+        self._emitted = 0
+        self._held_tail = ""
+
+    def _keep(self, sentence: str) -> bool:
+        if not self._enabled():
+            return True
+        if caller_asked_to_repeat(self._last_caller_text()):
+            return True            # they ASKED us to say it again
+        return not is_repeat(sentence, self._spoken)
+
+    async def _emit(self, text: str, direction):
+        self._spoken.append(normalize_spoken(text))
+        self._emitted += 1
+        await self.push_frame(LLMTextFrame(text), direction)
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            self._buf, self._emitted, self._held_tail = "", 0, ""
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, InterruptionFrame):
+            # A cancelled reply's unsaid tail was never heard, so it is not
+            # "already said" — but what DID play is still in _spoken.
+            self._buf, self._held_tail = "", ""
+            await self.push_frame(frame, direction)
+            return
+
+        if (isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM
+                and not isinstance(frame, TTSTextFrame)):
+            self._buf += frame.text or ""
+            while True:
+                m = self._SENT_END.search(self._buf)
+                if not m:
+                    break
+                sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
+                if not sentence.strip():
+                    continue
+                if self._keep(sentence):
+                    await self._emit(sentence, direction)
+                else:
+                    self._held_tail = sentence
+                    if self._diag is not None:
+                        self._diag.bump("repeats_suppressed")
+                    logger.info("no-repeat: dropping already-said %r", sentence.strip()[:56])
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame):
+            tail = self._buf.strip()
+            self._buf = ""
+            if tail:
+                if self._keep(tail):
+                    await self._emit(tail, direction)
+                else:
+                    self._held_tail = tail
+                    if self._diag is not None:
+                        self._diag.bump("repeats_suppressed")
+                    logger.info("no-repeat: dropping already-said %r", tail[:56])
+            if self._emitted == 0 and self._held_tail:
+                # Everything was a repeat. Silence would be worse.
+                logger.info("no-repeat: whole reply was a repeat — keeping the last line")
+                await self._emit(self._held_tail, direction)
+            await self.push_frame(frame, direction)
+            return
+
+        await self.push_frame(frame, direction)
 
 
 class SentinelGate(FrameProcessor):
@@ -1917,6 +2023,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      bot_spoke_once=lambda: flags["bot_spoke_once"])
     played_transcript = PlayedTranscriptRecorder(outcome)
 
+    no_repeat = NoRepeatGate(
+        enabled=lambda: settings.no_repeat_enabled,
+        last_caller_text=lambda: (outcome.transcript[-1].get("text", "")
+                                  if outcome.transcript
+                                  and outcome.transcript[-1].get("role") == "user" else ""),
+        diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing)
@@ -1928,6 +2040,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         aggregators.user(),
         llm,
         sentinel,
+        no_repeat,
         tts,
         duck,
         transport.output(),

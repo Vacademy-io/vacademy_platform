@@ -136,6 +136,8 @@ class CallDiagnostics:
     # context. NOTE the name must match bump()'s argument EXACTLY — bump() is
     # getattr/setattr with a bare except, so a typo silently counts nothing.
     carrier_announcements: int = 0
+    # Sentences dropped because the bot had already said them this call.
+    repeats_suppressed: int = 0
     # Consecutive times the bot re-delivered a reply it had just been cut off
     # on. 1-2 is normal recovery; a run of them is the restart loop that made
     # call 77cb4b47 unlistenable.
@@ -525,6 +527,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "duckAbsorbs": d.duck_absorbs,
                 "duckTimeoutResumes": d.duck_timeout_resumes,
                 "carrierAnnouncements": d.carrier_announcements,
+                "repeatsSuppressed": d.repeats_suppressed,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

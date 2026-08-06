@@ -214,3 +214,55 @@ def suppresses_opening(text: str, min_words: int = 4) -> bool:
     if not t or is_carrier_announcement(t) or is_audio_check(t):
         return False
     return len(_words(t)) >= min_words
+
+
+# ── saying the same thing twice ────────────────────────────────────────────
+# FOUR prompt-level attempts failed to stop this, each measured over 3+ live
+# conversations: style rules in the system prompt (1.7 -> 1.7 repeats, and it
+# broke script and gender), no-echo rules with GALAT/SAHI examples in the script
+# (3.0 -> 3.0 echoes), removing the scripted acknowledgement lines the model was
+# parroting (2.7 -> 2.7), and swapping the model (helps, 1.0 -> 0.3, but the
+# founder reverted for latency). The prompt is ~16k characters; it is saturated.
+#
+# What actually repeats is not the pitch — it is the bot's OWN CLOSING
+# QUESTIONS: "kya aap fees ke baare mein jaanna chahenge?" and "kya main is
+# WhatsApp number par link bhej doon?", asked again several turns later, because
+# nothing tracks which questions have already been put to the caller. That is
+# state, and state belongs in code.
+_ASK_AGAIN_WORDS = frozenset({
+    "repeat", "again", "dobara", "phir", "dubara", "samajh", "sunai", "sunayi",
+    "kya", "pardon", "sorry", "दोबारा", "फिर", "समझ", "सुनाई",
+})
+
+
+def caller_asked_to_repeat(text: str) -> bool:
+    """Did the caller ASK us to say it again? Then repeating is correct."""
+    ws = set(_words(text))
+    if not ws:
+        return False
+    return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
+        len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
+
+
+def is_repeat(sentence: str, spoken, threshold: float = 0.80) -> bool:
+    """Has this sentence already been said, in these words or near enough?
+
+    Fuzzy on purpose: the model re-renders its own question slightly differently
+    every time ("Kya aap iski fees ke baare mein jaanna chahenge" vs "chahengi"),
+    and an exact match would catch none of the real cases.
+
+    Short fragments are never repeats — "haan", "theek hai", "achha" legitimately
+    recur, and suppressing them would strip the bot of every acknowledgement.
+    """
+    import difflib
+    t = " ".join((sentence or "").split()).casefold()
+    if len(t) < 22:
+        return False
+    for prev in spoken or ():
+        if difflib.SequenceMatcher(None, prev, t).ratio() >= threshold:
+            return True
+    return False
+
+
+def normalize_spoken(sentence: str) -> str:
+    return " ".join((sentence or "").split()).casefold()

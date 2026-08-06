@@ -1366,4 +1366,65 @@ public class SubOrgLearnerService {
                 .totalAdmins(admins.size())
                 .build();
     }
+
+    /**
+     * Sub-organizations already present in an org-associated package session, each with its own
+     * contact details and its admins (name + email).
+     *
+     * <p>Feeds the sub-org step of the admin enroll wizard. The set is scoped to the package
+     * session rather than the whole institute so the admin only sees organizations that actually
+     * belong to the batch they are enrolling into.
+     *
+     * <p>Includes INACTIVE/TERMINATED mappings when locating sub-orgs — an organization whose only
+     * members have lapsed still exists and must remain pickable — but only ACTIVE members count
+     * toward {@code memberCount}'s admin list.
+     */
+    @Transactional(readOnly = true)
+    public List<PackageSessionSubOrgDTO> getSubOrgsByPackageSession(String packageSessionId) {
+        List<String> statuses = List.of(
+                LearnerSessionStatusEnum.ACTIVE.name(),
+                LearnerSessionStatusEnum.INACTIVE.name(),
+                LearnerSessionStatusEnum.TERMINATED.name());
+
+        List<Object[]> rows = mappingRepository.findSubOrgsByPackageSession(packageSessionId, statuses);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> subOrgIds = rows.stream()
+                .map(r -> r[0] != null ? String.valueOf(r[0]) : null)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, List<AdminDetailsDTO>> adminsBySubOrg = new HashMap<>();
+        for (Object[] admin : mappingRepository.findAdminsBySubOrgIds(subOrgIds)) {
+            if (admin[0] == null) {
+                continue;
+            }
+            adminsBySubOrg
+                    .computeIfAbsent(String.valueOf(admin[0]), k -> new ArrayList<>())
+                    .add(AdminDetailsDTO.builder()
+                            .userId(admin[1] != null ? String.valueOf(admin[1]) : null)
+                            .name(admin[2] != null ? String.valueOf(admin[2]) : null)
+                            .email(admin[3] != null ? String.valueOf(admin[3]) : null)
+                            .role(admin[4] != null ? String.valueOf(admin[4]) : null)
+                            .build());
+        }
+
+        return rows.stream()
+                .filter(r -> r[0] != null)
+                .map(r -> {
+                    String subOrgId = String.valueOf(r[0]);
+                    return PackageSessionSubOrgDTO.builder()
+                            .subOrgId(subOrgId)
+                            .name(r[1] != null ? String.valueOf(r[1]) : null)
+                            .email(r[2] != null ? String.valueOf(r[2]) : null)
+                            .mobileNumber(r[3] != null ? String.valueOf(r[3]) : null)
+                            .memberCount(r[4] != null ? ((Number) r[4]).longValue() : 0L)
+                            .admins(adminsBySubOrg.getOrDefault(subOrgId, List.of()))
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
 }

@@ -58,4 +58,38 @@ public class AssignmentItemDTO {
      * for this assignment. When null, the legacy fields apply unchanged.
      */
     private CpoEnrollmentConfigDTO cpoConfig;
+
+    /**
+     * Explicit sub-organization to enroll into, for package sessions flagged
+     * {@code is_org_associated}. When set, it wins over the legacy custom-field resolution
+     * (which mints a brand-new sub-org from the learner's answers) — the admin picked an
+     * organization that already exists, so we attach to it instead of creating a duplicate.
+     * Ignored for package sessions that aren't org-associated.
+     */
+    private String subOrgId;
+
+    /**
+     * Roles the enrolled member holds inside {@link #subOrgId}, as the CSV stored on
+     * {@code ssigm.comma_separated_org_roles} — "ADMIN,LEARNER" for a regular member,
+     * "ADMIN" for admin-only access. Defaults to "ADMIN,LEARNER" when a sub-org is chosen
+     * without an explicit value, matching {@code InstituteCustomFieldMapper}'s default.
+     */
+    private String subOrgRoles;
+
+    /**
+     * Creates a brand-new sub-organization instead of picking an existing one. Only consulted
+     * when {@link #subOrgId} is blank and the package session is org-associated.
+     */
+    private NewSubOrgDTO newSubOrg;
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class NewSubOrgDTO {
+        private String name;
+        private String email;
+        private String mobileNumber;
+    }
 }

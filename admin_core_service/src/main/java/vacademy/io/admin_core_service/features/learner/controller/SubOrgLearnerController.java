@@ -67,6 +67,19 @@ public class SubOrgLearnerController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Sub-orgs already present in a package session, with their admins (name + email).
+     * Drives the sub-org picker in the admin "Enroll Learner" wizard, shown only for package
+     * sessions flagged {@code is_org_associated}.
+     */
+    @GetMapping("/by-package-session")
+    public ResponseEntity<java.util.List<vacademy.io.admin_core_service.features.learner.dto.PackageSessionSubOrgDTO>> getSubOrgsByPackageSession(
+            @RequestParam("packageSessionId") String packageSessionId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+
+        return ResponseEntity.ok(subOrgLearnerService.getSubOrgsByPackageSession(packageSessionId));
+    }
+
     @GetMapping("/all-admins")
     public ResponseEntity<SubOrgAdminsResponseDTO> getAllAdminsBySubOrg(
             @RequestParam("subOrgId") String subOrgId,

@@ -82,6 +82,40 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                 </div>
             )}
 
+            {/* Sub-org destinations, so the admin can confirm the organisation + role
+                choice before the enrollment is actually written. */}
+            {selectedPackageSessions.some((ps) => ps.isOrgAssociated) && (
+                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-4 py-2.5">
+                    <p className="mb-1.5 text-xs font-semibold text-neutral-600">
+                        Sub-organisation assignment
+                    </p>
+                    <ul className="flex flex-col gap-1">
+                        {selectedPackageSessions
+                            .filter((ps) => ps.isOrgAssociated)
+                            .map((ps) => (
+                                <li
+                                    key={ps.packageSessionId}
+                                    className="flex flex-wrap items-center gap-x-2 text-xs text-neutral-600"
+                                >
+                                    <span className="font-medium text-neutral-700">
+                                        {ps.courseName}
+                                    </span>
+                                    <span className="text-neutral-300">→</span>
+                                    <span>
+                                        {ps.subOrgName ||
+                                            (ps.newSubOrg?.name
+                                                ? `${ps.newSubOrg.name} (new)`
+                                                : 'Not selected')}
+                                    </span>
+                                    <span className="rounded-full bg-white px-2 py-0.5 text-caption font-medium text-neutral-600 ring-1 ring-inset ring-neutral-200">
+                                        {ps.subOrgRole === 'ADMIN' ? 'Admin only' : learnerTerm}
+                                    </span>
+                                </li>
+                            ))}
+                    </ul>
+                </div>
+            )}
+
             {summary.successful === 0 && summary.re_enrolled === 0 && (
                 <div className="rounded-md border border-warning-200 bg-warning-50 px-4 py-2 text-sm text-warning-700">
                     ⚠️ No {learnersTerm.toLowerCase()} will be newly enrolled. Review your

@@ -1042,6 +1042,9 @@ export const GET_SUB_ORG_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/sub
 export const GET_SUB_ORG_ALL_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/all-admins`;
 export const GET_SUB_ORG_MEMBERS = `${BASE_URL}/admin-core-service/sub-org/v1/members`;
 export const ADD_SUB_ORG_MEMBER = `${BASE_URL}/admin-core-service/sub-org/v1/add-member`;
+// Sub-orgs already present in one package session (+ their admins) — powers the sub-org
+// step of the Enroll Learner wizard for org-associated batches.
+export const GET_SUB_ORGS_BY_PACKAGE_SESSION = `${BASE_URL}/admin-core-service/sub-org/v1/by-package-session`;
 // Sub-org team (custom-role) endpoints — server-scoped to caller's sub-org
 export const SUB_ORG_TEAM_LIST = `${BASE_URL}/admin-core-service/sub-org/v1/team/list`;
 export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/add`;

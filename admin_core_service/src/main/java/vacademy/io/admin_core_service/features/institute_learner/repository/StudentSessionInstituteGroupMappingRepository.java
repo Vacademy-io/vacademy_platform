@@ -700,4 +700,58 @@ public interface StudentSessionInstituteGroupMappingRepository
       """, nativeQuery = true)
   List<String> findActiveAdminUserIdsBySubOrg(@Param("subOrgId") String subOrgId);
 
+  /**
+   * Sub-organizations that already have members inside one package session, with the spawned
+   * institute's own contact details and a distinct member count.
+   *
+   * <p>Membership mirrors {@link #findActiveSubOrgIdsForUserInPackageSession}: the mapping's own
+   * stamp OR the sub-org invite its user_plan came from — SUBORG_LEARNER enrollments leave
+   * {@code ssigm.sub_org_id} null and are only reachable through {@code enroll_invite.sub_org_id}.
+   *
+   * <p>Returns: sub_org_id, name, email, mobile_number, member_count.
+   */
+  @Query(value = """
+      SELECT sub.sub_org_id                    AS sub_org_id,
+             i.name                            AS name,
+             i.email                           AS email,
+             i.mobile_number                   AS mobile_number,
+             COUNT(DISTINCT sub.user_id)       AS member_count
+      FROM (
+          SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id,
+                 ssigm.user_id                             AS user_id
+          FROM student_session_institute_group_mapping ssigm
+          LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+          LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+          WHERE ssigm.package_session_id = :packageSessionId
+            AND ssigm.status IN (:statuses)
+            AND COALESCE(ssigm.sub_org_id, ei.sub_org_id) IS NOT NULL
+      ) sub
+      JOIN institutes i ON i.id = sub.sub_org_id
+      GROUP BY sub.sub_org_id, i.name, i.email, i.mobile_number
+      ORDER BY i.name
+      """, nativeQuery = true)
+  List<Object[]> findSubOrgsByPackageSession(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * Batched variant of {@link #findAdminsBySubOrg(String)} for several sub-orgs at once, enriched
+   * with the admin's contact email. Used to fill the picker without fanning out one query per row.
+   *
+   * <p>Returns: sub_org_id, user_id, full_name, email, roles.
+   */
+  @Query(value = """
+      SELECT DISTINCT ssigm.sub_org_id             AS sub_org_id,
+                      ssigm.user_id                AS user_id,
+                      s.full_name                  AS full_name,
+                      s.email                      AS email,
+                      ssigm.comma_separated_org_roles AS roles
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.sub_org_id IN (:subOrgIds)
+        AND ssigm.status = 'ACTIVE'
+        AND ssigm.comma_separated_org_roles LIKE '%ADMIN%'
+      """, nativeQuery = true)
+  List<Object[]> findAdminsBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
 }

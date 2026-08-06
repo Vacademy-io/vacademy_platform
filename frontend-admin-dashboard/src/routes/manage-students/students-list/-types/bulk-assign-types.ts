@@ -363,12 +363,18 @@ export interface SelectedPackageSession {
 }
 
 /**
- * Role the enrolled member holds inside the sub-org.
- * - 'LEARNER' → `ADMIN,LEARNER` (the default a learner-side enrollment produces): consumes the
- *   course and can administer their organization's roster.
- * - 'ADMIN' → `ADMIN` only: manages the organization without learner access.
+ * Role the enrolled member holds inside the sub-org. These map onto the three CSV values
+ * actually stored on `ssigm.comma_separated_org_roles`:
+ * - 'STAFF' → `LEARNER` — ordinary member: course access only, no admin rights. The default,
+ *   and by far the most common value in practice.
+ * - 'ADMIN' → `ADMIN,LEARNER` — runs the organization's roster AND takes the course.
+ * - 'ADMIN_ONLY' → `ADMIN` — manages the roster without any course access.
+ *
+ * Note `ADMIN,LEARNER` grants BOTH — anything containing ADMIN makes the member an
+ * organization admin (see findAdminsBySubOrg's `LIKE '%ADMIN%'`). Picking 'STAFF' must
+ * therefore emit `LEARNER` alone, never `ADMIN,LEARNER`.
  */
-export type SubOrgRoleChoice = 'LEARNER' | 'ADMIN';
+export type SubOrgRoleChoice = 'STAFF' | 'ADMIN' | 'ADMIN_ONLY';
 
 export interface NewSubOrgInput {
     name: string;
@@ -377,8 +383,11 @@ export interface NewSubOrgInput {
 }
 
 /** Serialises a role choice to the CSV the backend stores on the SSIGM. */
-export const subOrgRolesCsv = (role: SubOrgRoleChoice | undefined): string =>
-    role === 'ADMIN' ? 'ADMIN' : 'ADMIN,LEARNER';
+export const subOrgRolesCsv = (role: SubOrgRoleChoice | undefined): string => {
+    if (role === 'ADMIN') return 'ADMIN,LEARNER';
+    if (role === 'ADMIN_ONLY') return 'ADMIN';
+    return 'LEARNER';
+};
 
 /** A sub-org already present in a package session, from /sub-org/v1/by-package-session. */
 export interface PackageSessionSubOrg {

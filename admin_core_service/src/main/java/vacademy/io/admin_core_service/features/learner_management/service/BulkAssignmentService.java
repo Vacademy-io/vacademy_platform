@@ -1106,12 +1106,21 @@ public class BulkAssignmentService {
     }
 
     /**
-     * Falls back to ADMIN,LEARNER (the same default {@code InstituteCustomFieldMapper} applies when
-     * the "admin only access" answer is absent) and normalises casing/spacing of an explicit value.
+     * Normalises casing/spacing of an explicit roles CSV, falling back to LEARNER.
+     *
+     * <p>The fallback is deliberately LEARNER and NOT {@code ADMIN,LEARNER}: anything containing
+     * ADMIN makes the member an organization admin (see
+     * {@code findAdminsBySubOrg}'s {@code LIKE '%ADMIN%'}), which would silently hand every
+     * ordinary member admin rights over their organization. An ordinary member is the
+     * overwhelmingly common case, so the safe default is the least-privileged one.
+     *
+     * <p>Note this differs from {@code InstituteCustomFieldMapper.determineRolesAsString}, whose
+     * fallback IS {@code ADMIN,LEARNER} — that mapper models an "admin only access?" yes/no
+     * question and so can never express a non-admin member at all.
      */
     private String normalizeSubOrgRoles(String roles) {
         if (!StringUtils.hasText(roles)) {
-            return SubOrgRoles.ADMIN.name() + "," + SubOrgRoles.LEARNER.name();
+            return SubOrgRoles.LEARNER.name();
         }
         return Arrays.stream(roles.split(","))
                 .map(String::trim)

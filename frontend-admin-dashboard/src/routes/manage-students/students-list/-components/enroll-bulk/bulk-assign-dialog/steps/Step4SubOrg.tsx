@@ -88,7 +88,7 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
     const isCreatingNew = !ps.subOrgId && !!ps.newSubOrg;
     const pickerValue = ps.subOrgId ?? (isCreatingNew ? CREATE_NEW : '');
     const selectedSubOrg = subOrgs.find((s) => s.sub_org_id === ps.subOrgId);
-    const role: SubOrgRoleChoice = ps.subOrgRole ?? 'LEARNER';
+    const role: SubOrgRoleChoice = ps.subOrgRole ?? 'STAFF';
 
     const handlePick = (value: string) => {
         if (value === CREATE_NEW) {
@@ -233,16 +233,17 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="z-popover-above-modal">
-                            <SelectItem value="LEARNER">
-                                {learnerTerm} (default)
-                            </SelectItem>
-                            <SelectItem value="ADMIN">Admin only</SelectItem>
+                            <SelectItem value="STAFF">Staff — {learnerTerm} (default)</SelectItem>
+                            <SelectItem value="ADMIN">Admin + {learnerTerm}</SelectItem>
+                            <SelectItem value="ADMIN_ONLY">Admin only</SelectItem>
                         </SelectContent>
                     </Select>
                     <p className="mt-1 text-xs text-neutral-400">
-                        {role === 'ADMIN'
+                        {role === 'ADMIN_ONLY'
                             ? 'Manages the organisation’s roster without course access. Member-enrollment automations do not run for admin-only members.'
-                            : `Gets course access and can manage the organisation’s roster. Runs the sub-org member enrollment automations.`}
+                            : role === 'ADMIN'
+                              ? 'Gets course access AND manages the organisation’s roster — they will show as an organisation admin.'
+                              : 'Course access only. No admin rights over the organisation.'}
                     </p>
                 </div>
             </div>

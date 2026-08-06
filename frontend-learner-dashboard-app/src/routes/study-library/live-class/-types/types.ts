@@ -39,12 +39,17 @@ export interface RawApiResponse {
   upcoming_sessions?: RawSession[];
 }
 
+/**
+ * One learner-facing action button under the player. Authored by admins in the
+ * workflow config tab, so only text and url are guaranteed; colours and `visible`
+ * may be absent. Missing `visible` means visible.
+ */
 export interface LearnerButtonConfig {
   text: string;
   url: string;
-  background_color: string;
-  text_color: string;
-  visible: boolean;
+  background_color?: string;
+  text_color?: string;
+  visible?: boolean;
 }
 
 export interface SessionDetails {
@@ -65,7 +70,8 @@ export interface SessionDetails {
   session_streaming_service_type: string;
   timezone: string;
   link_type?: string;
-  learner_button_config?: LearnerButtonConfig | null;
+  // Single object (legacy) or a list — see the embed screen's LearnerButtonsSchema.
+  learner_button_config?: LearnerButtonConfig | LearnerButtonConfig[] | null;
   default_class_link?: string | null;
   custom_meeting_link?: string | null;
   provider_meeting_id?: string | null;

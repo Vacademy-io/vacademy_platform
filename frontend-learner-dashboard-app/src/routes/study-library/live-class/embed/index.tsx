@@ -27,12 +27,18 @@ import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 
+// Only text and url are required — a button is defined by where it sends the
+// learner. Colours and `visible` are optional because these rows are authored by
+// admins in the workflow config tab: demanding every field made one blank colour
+// (or a row saved without `visible`) fail validation and silently drop EVERY
+// button on the screen. Missing `visible` means visible; only an explicit false
+// hides a button.
 const LearnerButtonConfigSchema = z.object({
   text: z.string(),
   url: z.string(),
-  background_color: z.string(),
-  text_color: z.string(),
-  visible: z.boolean(),
+  background_color: z.string().optional(),
+  text_color: z.string().optional(),
+  visible: z.boolean().optional(),
 });
 
 // A session may carry ONE button (legacy) or a LIST of buttons (e.g. YouTube
@@ -49,7 +55,7 @@ const toVisibleButtons = (config: unknown): LearnerButton[] => {
   const parsed = LearnerButtonsSchema.safeParse(config);
   if (!parsed.success) return [];
   const list = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
-  return list.filter((b) => b.visible && b.url);
+  return list.filter((b) => b.visible !== false && b.url);
 };
 
 /** Right-aligned action buttons row under the player (YouTube/IG/FB etc.). */
@@ -64,11 +70,17 @@ const LearnerActionButtons = ({ config }: { config: unknown }) => {
           variant="default"
           size="sm"
           className="h-9 rounded-full px-6 text-sm font-medium shadow-sm transition-all duration-200 hover:shadow"
-          style={{
-            backgroundColor: button.background_color,
-            color: button.text_color,
-            border: `1px solid ${button.background_color}20`,
-          }}
+          // Admin-chosen brand colours (YouTube red, Instagram pink…) can only be
+          // inline. When a row leaves them blank the Button's own styling stands in.
+          style={
+            button.background_color
+              ? {
+                  backgroundColor: button.background_color,
+                  color: button.text_color,
+                  border: `1px solid ${button.background_color}20`,
+                }
+              : { color: button.text_color }
+          }
           onClick={() => window.open(button.url, "_blank")}
         >
           <span>{button.text}</span>

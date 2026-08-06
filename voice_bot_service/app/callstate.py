@@ -49,6 +49,10 @@ class CallState:
     # that where the bot is not yet audible — call bc84958c fell into exactly
     # that window and delivered its whole pitch twice. 0 = no reply pending.
     reply_started_t: float = 0.0
+    # Last SUBSTANTIVE caller utterance (see turntake.suppresses_opening).
+    # Distinct from transcript_t, which any word stamps — including the
+    # operator's voicemail recording arriving in fragments.
+    substantive_t: float = 0.0
     # One-shot guards.
     orphan_used: bool = False
     # Consecutive caller utterances that produced NO transcript. Reset by any real

@@ -146,6 +146,14 @@ _CARRIER_PHRASES = (
     "is unreachable", "not reachable", "incoming call facility",
     # Fragments — see the note above. Only ever consulted inside the
     # answering-machine window at the very start of a call.
+    # Sarvam splits the SAME operator sentence at different points on different
+    # calls, so match the pieces, not the sentence. Live evidence 2026-08-06:
+    # one call produced 'Your call has been forwarded to voicemail.' (matched)
+    # and the next produced 'Your call.' then 'Has been forwarded to voicemail.'
+    # — the first fragment matched nothing, counted as the callee, and killed
+    # our opening before the second fragment could arm anything.
+    "your call", "been forwarded", "forwarded to", "record your", "leave a",
+    "the person you", "trying to reach",
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
@@ -187,3 +195,22 @@ def is_audio_check(text: str, max_words: int = 3) -> bool:
     if not ws or len(ws) > max_words:
         return False
     return any(w in _AUDIO_CHECK_WORDS for w in ws)
+
+
+def suppresses_opening(text: str, min_words: int = 4) -> bool:
+    """Should this caller utterance make us SKIP our scripted opening?
+
+    Only something substantive should. The greet gate used to skip on ANY
+    transcript, so a single stray word decided it — and on a voicemail the
+    stray words are the operator's own recording arriving in fragments
+    ('Hi.', 'Your call.', 'If you record your'). Three calls on 2026-08-06 lost
+    their opening that way, and the model improvised a replacement, which is how
+    one of them delivered its introduction twice.
+
+    A caller who genuinely opens with "who is this, why are you calling me" is
+    substantive and still takes over. "Hello?" is not.
+    """
+    t = (text or "").strip()
+    if not t or is_carrier_announcement(t) or is_audio_check(t):
+        return False
+    return len(_words(t)) >= min_words

@@ -83,7 +83,7 @@ from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
 from .turntake import (mid_reply_action, is_carrier_announcement,
-                       is_audio_check, ABSORB)
+                       is_audio_check, suppresses_opening, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,8 @@ class TranscriptCollector(FrameProcessor):
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
-        self._on_transcript = on_transcript or (lambda backchannel=False: None)
+        self._on_transcript = on_transcript or (
+            lambda backchannel=False, substantive=False: None)
         # Turn-gate (see DuckGate): for ANY final that lands mid-reply, THIS
         # processor is the decision point — it sits before aggregators.user(),
         # so an absorbed backchannel never reaches the aggregator that would
@@ -356,7 +357,7 @@ class TranscriptCollector(FrameProcessor):
                             messages=[{"role": "user", "content": cue}],
                             run_llm=True), direction)
                     return
-                self._on_transcript()
+                self._on_transcript(substantive=suppresses_opening(text))
                 # Real barge-in. If ducked, the line is already silent and this
                 # makes it formal; if the VAD missed the onset the bot is STILL
                 # TALKING and this is what finally stops it — late beats never.
@@ -378,7 +379,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript()
                 await self._on_absorb(None)
             else:
-                self._on_transcript()
+                self._on_transcript(substantive=suppresses_opening(text))
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
@@ -1833,8 +1834,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         ),
     )
 
-    def on_transcript(backchannel: bool = False):
+    def on_transcript(backchannel: bool = False, substantive: bool = False):
         flags["transcript_t"] = time.time()
+        if substantive:
+            flags["substantive_t"] = flags["transcript_t"]
         if not backchannel and flags["end_pending_since"] != 0.0:
             flags["end_pending_since"] = 0.0
             outcome.end_requested = False
@@ -1997,14 +2000,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
+        # SUBSTANTIVE speech only. This used to test transcript_t, i.e. ANY
+        # transcript, so one stray word decided whether we opened at all — and
+        # on a voicemail the stray words are the operator's own recording
+        # arriving in fragments. Calls 0d61b32a ('Your call.') and 9668da21
+        # ('Hi.' / 'If you record your') both lost their opening to a fragment
+        # on 2026-08-06, and the model improvised a replacement, which is how
+        # one of them delivered its introduction twice.
         while time.time() - connect_t < settings.greet_delay_secs:
-            if flags["transcript_t"] > connect_t + 0.05:
+            if flags["substantive_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
         while (time.time() - connect_t < 2.5
                and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
-            if flags["transcript_t"] > connect_t + 0.05:
+            if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return

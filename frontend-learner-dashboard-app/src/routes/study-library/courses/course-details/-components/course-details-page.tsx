@@ -975,31 +975,69 @@ export const CourseDetailsPage = () => {
     updateLoadingState("courseDetails", isCourseDetailsLoading);
   }, [isCourseDetailsLoading, updateLoadingState]);
 
-  // Update completion percentage when course details data changes
-  useEffect(() => {
-    if (courseDetailsData?.course?.percentage_completed) {
-      setCompletionPercentage(courseDetailsData.course.percentage_completed);
-    }
-  }, [courseDetailsData]);
+  // Progress is recorded per batch, not per course, so the number shown has to
+  // belong to the package_session whose content this page is rendering. A
+  // learner enrolled in several batches of one course has a different
+  // percentage in each, and the course-level value is the best of them — it
+  // used to leak another batch's number onto this page.
+  //
+  // Precedence: this batch → course-level (best-of-batches, for learners whose
+  // batch hasn't resolved yet) → the snapshot the catalogue card carried in the
+  // URL → localStorage. The last two are cold-start fallbacks only; they go
+  // stale the moment the learner studies anything, so the backend always wins.
+  const resolvedCompletionPercentage = useMemo(() => {
+    const data = courseDetailsData as
+      | {
+          course?: { percentage_completed?: number | null };
+          package_sessions?: Array<{
+            id?: string;
+            percentage_completed?: number | null;
+          }>;
+        }
+      | null
+      | undefined;
 
-  // Update completion percentage from query parameters
-  useEffect(() => {
-    const pctFromQuery = ((): number | undefined => {
-      const raw =
-        (searchParams as { [k: string]: unknown }).percentageCompleted ??
-        (searchParams as { [k: string]: unknown }).percentage_completed;
-      if (typeof raw === "number") return raw;
-      if (typeof raw === "string") {
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : undefined;
-      }
-      return undefined;
-    })();
+    // Only the authenticated course-init response carries per-batch numbers. If
+    // not one batch has one, we're on an older backend (or an unauthenticated
+    // payload) and must not read "no entry" as "no progress" — fall through.
+    const batches = data?.package_sessions;
+    const hasPerBatchProgress = batches?.some(
+      (ps) => typeof ps.percentage_completed === "number",
+    );
 
-    if (typeof pctFromQuery === "number") {
-      setCompletionPercentage(pctFromQuery);
+    if (packageSessionIdForCurrentLevel && hasPerBatchProgress) {
+      const thisBatch = batches?.find(
+        (ps) => ps.id === packageSessionIdForCurrentLevel,
+      );
+      // A batch present in the payload with no stored rollup genuinely has no
+      // progress. Returning 0 rather than falling through is the point of the
+      // fix: the course-level value below is some other batch's number.
+      if (thisBatch) return thisBatch.percentage_completed ?? 0;
     }
-  }, [searchParams]);
+
+    const pctFromCourse = data?.course?.percentage_completed;
+    if (typeof pctFromCourse === "number") return pctFromCourse;
+
+    const raw =
+      (searchParams as { [k: string]: unknown }).percentageCompleted ??
+      (searchParams as { [k: string]: unknown }).percentage_completed;
+    const pctFromQuery = typeof raw === "string" ? Number(raw) : raw;
+    if (typeof pctFromQuery === "number" && Number.isFinite(pctFromQuery)) {
+      return pctFromQuery;
+    }
+
+    const pctFromLocal = LocalStorageUtils.get<{
+      value: number;
+      ts: number;
+    }>(`COURSE_PCT_${searchParams.courseId}`)?.value;
+    return typeof pctFromLocal === "number" ? pctFromLocal : undefined;
+  }, [courseDetailsData, packageSessionIdForCurrentLevel, searchParams]);
+
+  useEffect(() => {
+    if (typeof resolvedCompletionPercentage === "number") {
+      setCompletionPercentage(resolvedCompletionPercentage);
+    }
+  }, [resolvedCompletionPercentage]);
 
   // Trigger certificate generation after entering this page once essentials are available
   useEffect(() => {
@@ -1021,42 +1059,10 @@ export const CourseDetailsPage = () => {
         const threshold =
           settings.certificates?.generationThresholdPercent ?? 80;
         setCertificateThreshold(threshold);
-        // percent can come from query param (carried over from list) or course data
-        const pctFromQuery = ((): number | undefined => {
-          const raw =
-            (searchParams as { [k: string]: unknown }).percentageCompleted ??
-            (searchParams as { [k: string]: unknown }).percentage_completed;
-          if (typeof raw === "number") return raw;
-          if (typeof raw === "string") {
-            const n = Number(raw);
-            return Number.isFinite(n) ? n : undefined;
-          }
-          return undefined;
-        })();
-        const pctFromCourse = courseDetailsData?.course?.percentage_completed;
-        const pctFromLocal = (() => {
-          const key = `COURSE_PCT_${searchParams.courseId}`;
-          const saved = LocalStorageUtils.get<{
-            value: number;
-            ts: number;
-          }>(key);
-          return saved?.value;
-        })();
-        // Backend (course-init) is authoritative — URL/localStorage are stale-prone
-        // fallbacks for cases where the backend response is unavailable.
-        const percentageCompleted =
-          typeof pctFromCourse === "number"
-            ? pctFromCourse
-            : typeof pctFromQuery === "number" && !Number.isNaN(pctFromQuery)
-              ? pctFromQuery
-              : typeof pctFromLocal === "number"
-                ? pctFromLocal
-                : undefined;
-
-        // Set completion percentage for banner display
-        if (typeof percentageCompleted === "number") {
-          setCompletionPercentage(percentageCompleted);
-        }
+        // Same batch-scoped value the progress card shows — certificates are
+        // issued per package_session, so gating on another batch's percentage
+        // would issue the wrong certificate (or none at all).
+        const percentageCompleted = resolvedCompletionPercentage;
         const userDetailsRaw = await Preferences.get({
           key: "StudentDetails",
         });
@@ -1212,7 +1218,7 @@ export const CourseDetailsPage = () => {
   }, [
     packageSessionIdForCurrentLevel,
     courseDetailsData,
-    searchParams.percentageCompleted,
+    resolvedCompletionPercentage,
   ]);
 
   const form = useForm<CourseDetailsFormValues>({

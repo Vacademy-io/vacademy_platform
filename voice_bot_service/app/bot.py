@@ -1836,13 +1836,37 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def on_activity(user: bool = True):
         flags["t"] = time.time()
 
+    # WHAT was the bot doing while the line was silent? Call 597aeb3f showed
+    # 8.2s of dead air and the container restart that shipped the next build
+    # destroyed the logs before it could be diagnosed — so the answer has to
+    # travel with the REPORT, which survives restarts, not the log.
+    def _silence_cause(gap: float) -> str:
+        if gap < 2.5:
+            return ""
+        now = time.time()
+        if flags["ducked_since"] > 0:
+            return "ducked_%.1fs" % (now - flags["ducked_since"])
+        st = flags["reply_started_t"]
+        if st and flags["bot_stopped_t"] < st:
+            return "awaiting_playout_%.1fs" % (now - st)   # LLM/TTS composed, no audio
+        if flags["user_speaking"]:
+            return "caller_speaking"
+        if flags["user_stopped_t"] > flags["bot_stopped_t"]:
+            return "after_caller_turn"      # we owed them a reply and did not start one
+        return "both_quiet"
+
     def set_bot_speaking(speaking: bool):
         if speaking:
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
-                diag.sample("dead_air", max(0.0, time.time() - _last))
+                _gap = max(0.0, time.time() - _last)
+                diag.sample("dead_air", _gap)
+                _why = _silence_cause(_gap)
+                if _why:
+                    diag.note_silence(round(_gap, 1), _why)
+                    logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
             diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
@@ -1854,7 +1878,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if speaking and not flags["user_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
-                diag.sample("dead_air", max(0.0, time.time() - _last))
+                _gap = max(0.0, time.time() - _last)
+                diag.sample("dead_air", _gap)
+                _why = _silence_cause(_gap)
+                if _why:
+                    diag.note_silence(round(_gap, 1), _why)
+                    logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
             if flags["bot_speaking"]:
                 diag.bump("barge_ins")
         elif not speaking and flags["user_speaking"]:

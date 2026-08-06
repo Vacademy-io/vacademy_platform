@@ -1424,3 +1424,15 @@ def test_plain_hindi_register_rule_targets_the_words_actually_used():
         "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
         "direction": "OUTBOUND", "openingLine": "Hi!"}})
     assert "PHONE HINDI" not in en
+
+
+def test_language_switch_on_request_is_permanent():
+    """Founder: "if users asks that i want to talk in english it should then talk
+    only in english". The old rule allowed the switch but said nothing about
+    STAYING switched, and the model drifted back within a couple of turns."""
+    p = b.build_system_prompt({"agent": {
+        "name": "Ameet", "language": "hinglish", "systemPrompt": "Bot: Hi! " * 80,
+        "direction": "OUTBOUND", "openingLine": "Hi!"}})
+    assert "ON REQUEST, THE SWITCH IS PERMANENT" in p
+    assert "WHOLE rest of the call" in p
+    assert "no Devanagari" in p

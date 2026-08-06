@@ -1454,7 +1454,13 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "or one odd/garbled transcript line, is NEVER a cue to switch — treat it as a mis-hear. "
         "Switch languages only if the caller explicitly asks, or speaks 3+ consecutive full "
         "sentences in the other language. If your instructions define their own language "
-        "rules, those take precedence."
+        "rules, those take precedence.\n"
+        "ON REQUEST, THE SWITCH IS PERMANENT: if the caller asks for a language at any point "
+        "(\u2018English mein baat karo\u2019, \u2018can you speak in English\u2019, "
+        "\u2018Hindi mein boliye\u2019), switch on your VERY NEXT sentence and stay there for "
+        "the WHOLE rest of the call. Never drift back \u2014 not for one line, not because they "
+        "later use a word of the other language, not after an interruption. If they ask for "
+        "English, speak plain English only: no Hindi words, no Devanagari."
     )
     lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
     fields_line = _lead_fields_line(context)

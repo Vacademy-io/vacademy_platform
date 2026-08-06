@@ -7,7 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -17,6 +20,7 @@ import vacademy.io.community_service.feature.support.dto.SupportRecipientDto;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +36,7 @@ import java.util.stream.Collectors;
 public class SupportAuthClient {
 
     private static final String BY_ROLE = "/auth-service/v1/users/by-role";
+    private static final String BY_IDS = "/auth-service/v1/users/by-ids";
 
     @Autowired
     @Qualifier(SupportClientConfig.SUPPORT_REST_TEMPLATE)
@@ -70,6 +75,41 @@ public class SupportAuthClient {
             log.error("Could not resolve {} users for institute {}: {}",
                     roleName, instituteId, e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Contact details for a single user id. Needed because the ticket's stored raiser "email" is
+     * historically a username — the login principal never carried an email address, so the portal
+     * recorded {@code getUsername()} in the email column.
+     */
+    public SupportRecipientDto findById(String userId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(authServerBaseUrl)) {
+            return null;
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity =
+                    new HttpEntity<>(Map.of("userIds", List.of(userId)), headers);
+
+            ResponseEntity<List<AuthUser>> response = restTemplate.exchange(
+                    authServerBaseUrl + BY_IDS, HttpMethod.POST, entity,
+                    new ParameterizedTypeReference<List<AuthUser>>() {
+                    });
+
+            List<AuthUser> users = response.getBody();
+            if (users == null || users.isEmpty()) {
+                return null;
+            }
+            AuthUser u = users.get(0);
+            if (u == null || !StringUtils.hasText(u.getEmail())) {
+                return null;
+            }
+            return new SupportRecipientDto(u.getId(), u.getEmail().trim(), u.getFullName());
+        } catch (Exception e) {
+            log.error("Could not resolve contact for user {}: {}", userId, e.getMessage());
+            return null;
         }
     }
 

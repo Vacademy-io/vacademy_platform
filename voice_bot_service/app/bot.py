@@ -133,10 +133,19 @@ class TranscriptCollector(FrameProcessor):
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
-                 diag=None):
+                 diag=None, in_machine_window=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
+        # True only while an operator/voicemail recording is still plausible.
+        # This was a LATCH ("have we heard a real caller yet?") and the latch is
+        # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
+        # complete final "Add the tone.", that one miss flipped the latch, and
+        # the two unmistakable announcements that followed ("Please record your
+        # message.", "When you have finished recording you may hang up.") were
+        # then treated as the caller and cut our opening three times. A clock
+        # cannot be flipped by a single bad transcript.
+        self._in_machine_window = in_machine_window or (lambda: False)
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -173,8 +182,6 @@ class TranscriptCollector(FrameProcessor):
         # spoken twice back-to-back on a live call.
         self._last_text = ""
         self._last_text_t = 0.0
-        # Flips on the first transcript that is NOT a network announcement.
-        self._heard_real_user = False
         # Consecutive bare "hello?"s from the caller (reset by anything else).
         self._audio_checks = 0
         s = get_settings()
@@ -213,7 +220,7 @@ class TranscriptCollector(FrameProcessor):
             #
             # Only before the callee has actually said something: after that, a
             # match is far more likely to be the caller quoting us than the network.
-            if not self._heard_real_user and is_carrier_announcement(text):
+            if self._in_machine_window() and is_carrier_announcement(text):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 if self._diag is not None:
                     self._diag.bump("carrier_announcements")
@@ -222,7 +229,6 @@ class TranscriptCollector(FrameProcessor):
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
-            self._heard_real_user = True
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
@@ -1829,6 +1835,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("duck_absorbs")
         await duck.resume("backchannel" if text is not None else "no_content")
 
+    def _in_machine_window() -> bool:
+        return (time.time() - _run_bot_t0) < settings.machine_greeting_window_secs
+
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
                                      set_user_speaking=set_user_speaking,
@@ -1840,7 +1849,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      backchannel_extra=settings.backchannel_extra,
                                      gate_enabled=lambda: settings.duck_enabled,
                                      interrupt_on_vad=lambda: settings.interrupt_on_vad,
-                                     recently_cut=_recently_cut, diag=diag)
+                                     recently_cut=_recently_cut, diag=diag,
+                                     in_machine_window=_in_machine_window)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
@@ -2072,8 +2082,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         try:
             _delivered = [m.get("content") or "" for m in llm_context.get_messages()
                           if isinstance(m, dict) and m.get("role") == "user"]
+            # Carrier recordings are kept in the transcript (LIKELY_MACHINE reads
+            # those markers) but are deliberately NOT in the context — so they
+            # are not "answers the model never saw". Without this exclusion the
+            # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
+            # 14029bd6's panel read "2 caller answers were discarded", quoting
+            # the voicemail system back at us.
             _heard = [t.get("text") or "" for t in outcome.transcript
-                      if t.get("role") == "user" and not (t.get("text") or "").lstrip().startswith("[")]
+                      if t.get("role") == "user"
+                      and not (t.get("text") or "").lstrip().startswith("[")
+                      and not is_carrier_announcement(t.get("text") or "")]
             _n, _samples = diag_mod.reconcile_answers(_heard, _delivered)
             diag.answers_deleted = _n
             diag.answers_deleted_samples = _samples

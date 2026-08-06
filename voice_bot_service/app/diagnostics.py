@@ -454,7 +454,15 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     for level in faults.values():
         if _RANK[level] > _RANK[health]:
             health = level
-    headline = next((c for c in HEADLINE_PRIORITY if c in faults), None)
+    # Severity FIRST, then caller-experience order within that severity. The
+    # order alone used to decide it, so an AMBER could headline over a RED:
+    # call 14029bd6 was banner-RED for LIKELY_MACHINE but read "The agent kept
+    # restarting the same reply", an AMBER two-restart blip, because REPLY_LOOP
+    # sits higher in the list. The banner and the sentence under it must agree.
+    headline = next((c for c in HEADLINE_PRIORITY
+                     if faults.get(c) == health), None)
+    if headline is None:       # defensive: never lose the headline entirely
+        headline = next((c for c in HEADLINE_PRIORITY if c in faults), None)
     return {"health": health, "faults": faults, "headline": headline}
 
 

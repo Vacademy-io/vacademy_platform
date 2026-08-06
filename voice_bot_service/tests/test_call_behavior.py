@@ -18,6 +18,7 @@ import inspect
 import json as _json
 
 import app.bot as b
+import app.diagnostics as dg_mod
 import app.providers as pv
 
 import inspect
@@ -1454,7 +1455,8 @@ class _Rec:
         return out
 
 
-def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None):
+def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
+                      in_machine_window=None):
     tc = b.TranscriptCollector(
         FakeOutcome(), lambda user=True: None,
         is_bot_speaking=lambda: bot_speaking,
@@ -1463,6 +1465,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None):
         gate_enabled=lambda: True,
         interrupt_on_vad=lambda: True,      # what production actually runs
         filler_phrases=[],
+        in_machine_window=in_machine_window or (lambda: True),
     )
 
     async def _push(frame, direction=None):
@@ -1542,3 +1545,51 @@ async def test_a_real_answer_clears_the_hello_streak():
     rec.frames.clear()
     await _feed(tc, "Hello.")
     assert any("carry on" in c for c in rec.cues()), "streak did not reset"
+
+
+# ── call 14029bd6 (2026-08-06): the whole voicemail greeting, in order ────────
+_VOICEMAIL_GREETING = [
+    "Your call has been forwarded to voicemail.",
+    "The person you're trying to reach is not available.",
+    "Add the tone.",                      # Sarvam's rendering of "…after the tone"
+    "Please record your message.",
+    "When you have finished recording you may hang up.",
+]
+
+
+@pytest.mark.asyncio
+async def test_the_entire_voicemail_greeting_is_filtered_not_just_line_one():
+    """Verbatim Sarvam finals from call 14029bd6, in order. The first version of
+    this filter latched on "have we heard a real caller yet?" — 'Add the tone.'
+    missed, flipped the latch, and the two unmistakable announcements AFTER it
+    were treated as the caller and interrupted our opening three times."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    for line in _VOICEMAIL_GREETING:
+        await _feed(tc, line)
+    assert rec.interruptions == 0, "the voicemail system barged in on our opening"
+    assert rec.frames == [], "voicemail audio reached the model"
+    assert len(tc._outcome.transcript) == 5, "must stay in the transcript for LIKELY_MACHINE"
+
+
+@pytest.mark.asyncio
+async def test_the_caller_is_still_heard_after_the_machine_window_closes():
+    """The window is a clock, so it must actually expire — otherwise a caller
+    who says any of these words mid-call is silently ignored."""
+    rec = _Rec()
+    tc = _replay_collector(rec, in_machine_window=lambda: False)
+    await _feed(tc, "Haan main abhi available nahi hoon, baad mein call karein")
+    assert rec.frames, "a real caller was swallowed after the window closed"
+
+
+def test_carrier_lines_are_not_counted_as_deleted_answers():
+    """The filter keeps announcements in the transcript and out of the context —
+    which is exactly the shape reconcile_answers calls a DELETED ANSWER. Call
+    14029bd6's panel duly reported '2 caller answers were discarded', quoting
+    the voicemail system. The reconcile step must exclude them."""
+    import app.turntake as tt
+    heard = [t for t in _VOICEMAIL_GREETING + ["Raman", "class aath mein hai"]
+             if not tt.is_carrier_announcement(t)]
+    assert heard == ["Raman", "class aath mein hai"]
+    n, _samples = dg_mod.reconcile_answers(heard, ["Raman", "class aath mein hai"])
+    assert n == 0, "carrier lines still manufacture a false ANSWER_DELETED"

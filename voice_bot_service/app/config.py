@@ -358,6 +358,11 @@ class Settings:
     # on with what you were saying" rather than a new turn to answer.
     backchannel_carry_secs: float = field(
         default_factory=lambda: float(_env("BACKCHANNEL_CARRY_SECS", "3.0")))
+    # How long into a call an operator/voicemail recording is still plausible.
+    # Machine greetings run 10-20s (call 14029bd6's ran 10.4s), and after that a
+    # phrase match is far more likely to be the caller than the network.
+    machine_greeting_window_secs: float = field(
+        default_factory=lambda: float(_env("MACHINE_GREETING_WINDOW_SECS", "22.0")))
     interrupt_on_vad: bool = field(
         default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
 

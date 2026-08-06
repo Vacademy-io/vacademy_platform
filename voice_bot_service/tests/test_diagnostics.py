@@ -456,3 +456,23 @@ def test_carrier_and_restart_counters_reach_the_payload():
     p = dg.to_payload(diag)
     assert p["turnTaking"]["carrierAnnouncements"] == 2
     assert p["turnTaking"]["maxReplyRestarts"] == 4
+
+
+def test_headline_never_picks_an_amber_over_a_red():
+    """Call 14029bd6: banner said RED (LIKELY_MACHINE) while the sentence under
+    it described an AMBER two-restart blip, because REPLY_LOOP sits higher in
+    HEADLINE_PRIORITY. Severity has to win first."""
+    diag = dg.CallDiagnostics()
+    diag.max_reply_restarts = 2                     # -> REPLY_LOOP AMBER
+    diag.machine_score, diag.machine_markers = 0.7, ["voicemail"]
+    v = dg.verdict(diag)
+    if v["health"] == dg.RED:
+        assert v["faults"][v["headline"]] == dg.RED, v
+
+
+def test_headline_still_follows_caller_experience_within_a_severity():
+    diag = dg.CallDiagnostics()
+    diag.user_turns, diag.bot_turns, diag.tts_chars = 3, 0, 0   # BOT_SILENT RED
+    diag.max_reply_restarts = 4                                  # REPLY_LOOP RED
+    v = dg.verdict(diag)
+    assert v["headline"] == dg.BOT_SILENT, v

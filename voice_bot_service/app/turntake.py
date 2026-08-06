@@ -130,6 +130,10 @@ def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
 # voicemai") still match. Kept deliberately narrow: these are fixed operator
 # recordings, and a human saying one of these sentences on a sales call is not a
 # thing that happens.
+# Match on FRAGMENTS, not whole sentences. Live evidence (call 14029bd6): Sarvam
+# rendered "…after the tone" as the complete final "Add the tone." — chasing
+# exact operator wording loses to the STT every time, so these are the short
+# distinctive pieces that survive a mis-hear.
 _CARRIER_PHRASES = (
     # English (Airtel / Jio / Vi / BSNL + generic)
     "forwarded to voicemail", "call has been forwarded", "leave a message after",
@@ -140,6 +144,11 @@ _CARRIER_PHRASES = (
     "the subscriber you have dialed", "is switched off", "out of coverage",
     "please try again later", "call cannot be completed", "temporarily out of service",
     "is unreachable", "not reachable", "incoming call facility",
+    # Fragments — see the note above. Only ever consulted inside the
+    # answering-machine window at the very start of a call.
+    "the tone", "the beep", "voicemail", "voice mail", "record your message",
+    "record your messages", "recording", "hang up", "leave a message",
+    "leave your message", "not available", "unavailable", "please try again",
     # Hindi
     "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
     "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",

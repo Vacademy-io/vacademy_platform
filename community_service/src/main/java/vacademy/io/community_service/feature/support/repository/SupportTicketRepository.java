@@ -58,7 +58,9 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
             + "(:status IS NULL OR t.status = :status) AND "
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
             + "(:unassigned = false OR t.assignedEngineerId IS NULL) AND "
-            + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!') AND "
+            // Matches the ticket number too, so a customer quoting "VAC-014" is findable.
+            + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!' "
+            + "    OR LOWER(t.ticketNumber) LIKE :search ESCAPE '!') AND "
             + "(:hasCreatedFrom = false OR t.createdAt >= :createdFrom) AND "
             + "(:hasCreatedTo = false OR t.createdAt <= :createdTo) AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
@@ -81,6 +83,13 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
                                       @Param("onlyOverdue") boolean onlyOverdue,
                                       @Param("now") Date now,
                                       Pageable pageable);
+
+    /**
+     * Next value of the global ticket-number sequence. nextval is atomic and lock-free, so
+     * concurrent creates can never receive the same number — unlike a SELECT max()+1.
+     */
+    @Query(value = "SELECT nextval('public.support_ticket_number_seq')", nativeQuery = true)
+    Long nextTicketNumber();
 
     long countByStatus(TicketStatus status);
 

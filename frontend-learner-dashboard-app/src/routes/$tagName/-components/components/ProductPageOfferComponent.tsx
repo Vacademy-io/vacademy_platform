@@ -213,7 +213,7 @@ const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
   // renders directly under the tile, so printing it inside the tile too made
   // every imageless card read its own name twice. A big two-letter monogram
   // gives each tile identity without the echo.
-  <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50">
+  <div className="relative flex aspect-[2/1] w-full items-center justify-center overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50">
     <span className="catalogue-h2 select-none font-bold tracking-wide-08 text-catalogue-brand-ink opacity-90" aria-hidden="true">
       {initialsOf(title)}
     </span>
@@ -225,14 +225,37 @@ const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
   </div>
 );
 
+/**
+ * Band ratio for an upload we have not measured yet — the ratio the admin
+ * cropper enforces on course previews, so correctly cropped art never reflows.
+ */
+const DEFAULT_BAND_RATIO = 2;
+/**
+ * A wildly off-ratio upload (a portrait phone photo, a long banner strip) would
+ * otherwise hand one card a band twice its neighbours' height and wreck the
+ * row, so the measured ratio is clamped to what still reads as a card header.
+ */
+const MIN_BAND_RATIO = 1.4;
+const MAX_BAND_RATIO = 3;
+
 const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt }) => {
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
+  // The band takes the artwork's OWN ratio once the file reports it. `cover`
+  // into a fixed band cropped the logo and class label off the corners;
+  // `contain` kept them but padded the band with dead space, because these
+  // tiles carry their own margins. Matching the ratio means the image fills
+  // the band edge to edge with nothing cropped and nothing padded — the two
+  // fits become identical. Uploads reach us off ratio routinely (bulk create
+  // and the course-details editor both skip the 2:1 cropper), so this is
+  // measured per image rather than assumed.
+  const [bandRatio, setBandRatio] = useState(DEFAULT_BAND_RATIO);
 
   useEffect(() => {
     let alive = true;
     setFailed(false);
     setUrl("");
+    setBandRatio(DEFAULT_BAND_RATIO);
     if (!mediaId) return;
     if (mediaId.startsWith("http")) {
       setUrl(mediaId);
@@ -248,7 +271,11 @@ const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt
 
   // Reserve the band either way so cards don't reflow when images resolve.
   return (
-    <div className="catalogue-img-zoom aspect-[16/9] w-full overflow-hidden rounded-catalogue-lg bg-catalogue-bg-muted">
+    <div
+      className="catalogue-img-zoom w-full overflow-hidden rounded-catalogue-lg bg-catalogue-bg-muted"
+      // Dynamic: the uploaded artwork's own ratio, known only at load.
+      style={{ aspectRatio: bandRatio }}
+    >
       {url && (
         <img
           src={url}
@@ -256,6 +283,11 @@ const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt
           loading="lazy"
           decoding="async"
           className="size-full object-cover"
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            if (!w || !h) return;
+            setBandRatio(Math.min(Math.max(w / h, MIN_BAND_RATIO), MAX_BAND_RATIO));
+          }}
           onError={() => setFailed(true)}
         />
       )}
@@ -468,7 +500,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       <div className={gridCols} aria-busy="true">
         {Array.from({ length: cols }, (_, i) => (
           <div key={i} className="catalogue-card-elevated p-5">
-            {showImage && <div className="catalogue-skeleton-shimmer mb-4 aspect-[16/9] w-full rounded-catalogue-lg" />}
+            {showImage && <div className="catalogue-skeleton-shimmer mb-4 aspect-[2/1] w-full rounded-catalogue-lg" />}
             <div className="catalogue-skeleton-shimmer mb-2 h-5 w-3/4 rounded" />
             <div className="catalogue-skeleton-shimmer mb-4 h-4 w-full rounded" />
             <div className="catalogue-skeleton-shimmer h-9 w-full rounded-catalogue-md" />

@@ -130,7 +130,9 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                         style={isCarousel ? { flex: `0 0 calc((100% - ${(cols - 1) * 24}px) / ${cols})`, minWidth: 250 } : undefined}
                     >
                         {props.showImage !== false && (
-                            <div className="mb-4 aspect-[16/9] w-full rounded-catalogue-lg bg-catalogue-bg-muted" />
+                            // 2:1, matching the live offer card — the builder
+                            // preview must reserve the same band the learner sees.
+                            <div className="mb-4 aspect-[2/1] w-full rounded-catalogue-lg bg-catalogue-bg-muted" />
                         )}
                         {props.showChips !== false && chips.length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-1.5">

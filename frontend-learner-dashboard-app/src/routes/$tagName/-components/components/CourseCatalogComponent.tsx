@@ -86,8 +86,11 @@ interface CourseImageProps {
   className?: string;
 }
 
+// Fills whatever band it is dropped into — the card owns the ratio (2:1, the
+// ratio admins crop preview images to), so the fallback never disagrees with
+// the real artwork about how tall the header band is.
 const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
-  <div className="aspect-video w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+  <div className="size-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
     <BookOpen size={40} className="text-primary/60" />
     <span className="text-xs font-medium text-primary/70 px-3 text-center line-clamp-1">
       {title}
@@ -176,7 +179,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   // Show loading placeholder while loading
   if (loadingImage && !courseImageUrl) {
     return (
-      <div className="aspect-video">
+      <div className="size-full">
         <div className="w-full h-full bg-catalogue-bg-muted animate-pulse rounded-md flex items-center justify-center">
           <div className="text-catalogue-text-muted text-xs">
             Loading...
@@ -187,7 +190,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   }
 
   return (
-    <div className="aspect-video">
+    <div className="size-full">
       <img
         src={courseImageUrl}
         alt={alt}
@@ -1081,7 +1084,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 key={i}
                 className="catalogue-card-elevated overflow-hidden"
               >
-                <div className="catalogue-skeleton-shimmer h-44 w-full rounded-none"></div>
+                <div className="catalogue-skeleton-shimmer aspect-[2/1] w-full rounded-none"></div>
                 <div className="flex flex-col gap-2.5 p-4">
                   <div className="catalogue-skeleton-shimmer h-4 w-3/4"></div>
                   <div className="catalogue-skeleton-shimmer h-3 w-full"></div>
@@ -1403,7 +1406,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {displayImage && (
                       <div
                         className={cn(
-                          "relative h-44 overflow-hidden flex-shrink-0",
+                          // 2:1 — the ratio the admin cropper enforces on course
+                          // preview images, so a correct upload fills the band
+                          // exactly and nothing is cropped away.
+                          "relative aspect-[2/1] w-full overflow-hidden flex-shrink-0",
                           // `contain` letterboxes, so give the band a surface
                           // rather than leaving a bare gap beside the artwork.
                           imageFit === "contain" && "bg-catalogue-bg-subtle",

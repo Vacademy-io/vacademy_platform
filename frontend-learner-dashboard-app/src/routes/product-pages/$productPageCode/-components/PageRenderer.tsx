@@ -494,9 +494,9 @@ const CourseDetailSheet = ({
 
         {/* Banner */}
         {resolvedBannerUrl ? (
-          <img src={resolvedBannerUrl} alt={title} className="w-full aspect-video object-cover" />
+          <img src={resolvedBannerUrl} alt={title} className="w-full aspect-[2/1] object-cover" />
         ) : (
-          <div className="flex aspect-video w-full items-center justify-center" style={{ backgroundColor: `${primaryColor}22` }}>
+          <div className="flex aspect-[2/1] w-full items-center justify-center" style={{ backgroundColor: `${primaryColor}22` }}>
             <span className="text-5xl font-bold" style={{ color: primaryColor }}>{getInitials(title)}</span>
           </div>
         )}
@@ -705,6 +705,8 @@ const CourseCard = ({
   productPageCode?: string;
 }) => {
   const [showDetail, setShowDetail] = useState(false);
+  // 2:1 until the artwork reports its own ratio — see the thumbnail band below.
+  const [bandRatio, setBandRatio] = useState(2);
   const { title } = getDisplayParts(mapping);
   const plan = mapping.payment_plan;
   const isFree = !plan?.actual_price || plan.actual_price === 0;
@@ -750,13 +752,27 @@ const CourseCard = ({
         )}
         style={selected ? { borderColor: primaryColor, boxShadow: `0 0 0 2px ${primaryColor}40, 0 4px 16px ${primaryColor}18` } : {}}
       >
-        {/* Thumbnail */}
+        {/* Thumbnail. The band takes the artwork's own ratio once the file
+            reports it (2:1 until then — the ratio the admin cropper enforces),
+            so the image fills it with nothing cropped off the corners and no
+            dead padding around it. Clamped so one odd upload can't hand a card
+            a band twice its neighbours' height. */}
         <div
-          className="relative flex h-40 w-full items-center justify-center overflow-hidden"
-          style={{ backgroundColor: `${primaryColor}12` }}
+          className="relative flex w-full items-center justify-center overflow-hidden"
+          // Dynamic: brand tint, and the uploaded artwork's own ratio.
+          style={{ backgroundColor: `${primaryColor}12`, aspectRatio: bandRatio }}
         >
           {imageUrl ? (
-            <img src={imageUrl} alt={title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <img
+              src={imageUrl}
+              alt={title}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onLoad={(e) => {
+                const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+                if (!w || !h) return;
+                setBandRatio(Math.min(Math.max(w / h, 1.4), 3));
+              }}
+            />
           ) : (
             <BookOpen className="size-10 transition-transform duration-200 group-hover:scale-110" style={{ color: primaryColor, opacity: 0.75 }} />
           )}

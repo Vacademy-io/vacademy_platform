@@ -133,7 +133,8 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
             >
               {/* Thumbnail */}
               {course.thumbnail && (
-                <div className="aspect-video">
+                // 2:1 — the ratio course preview images are cropped to in admin.
+                <div className="aspect-[2/1]">
                   <img
                     src={course.thumbnail}
                     alt={course.title}

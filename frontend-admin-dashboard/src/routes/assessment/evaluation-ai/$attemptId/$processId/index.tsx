@@ -34,7 +34,12 @@ import { getPublicUrl } from '@/services/upload_file';
 import { FileText } from '@phosphor-icons/react';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import { CaretLeft } from 'phosphor-react';
-import { PdfAnnotationOverlay, type Annotation, type LayoutMap } from './-components/PdfAnnotationOverlay';
+import {
+    PdfAnnotationOverlay,
+    type Annotation,
+    type LayoutMap,
+    type QuestionScoreMarker,
+} from './-components/PdfAnnotationOverlay';
 import { RubricChangedBadge } from './-components/RubricChangedBadge';
 import { getLayoutMap } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 
@@ -148,6 +153,28 @@ function RouteComponent() {
             for (const ann of qAnnotations) {
                 out.push({ ...ann, question_id: q.question_id });
             }
+        }
+        return out;
+    }, [progress?.completed_questions]);
+
+    // Circled per-question marks beside the answer on the sheet, the way a
+    // checked copy carries them. Anchored to the question's LAST annotation so
+    // the badge lands near the end of that answer; a question with no
+    // annotations has nowhere on the page to point at, so its marks stay on
+    // the question card only.
+    const questionScores: QuestionScoreMarker[] = useMemo(() => {
+        const out: QuestionScoreMarker[] = [];
+        for (const q of progress?.completed_questions ?? []) {
+            if (q.status !== 'COMPLETED') continue;
+            const qAnnotations = q.annotations ?? q.evaluation_details_json?.annotations ?? [];
+            const anchor = qAnnotations[qAnnotations.length - 1];
+            if (!anchor) continue;
+            out.push({
+                target: anchor.target,
+                page_id: anchor.page_id,
+                label: `${Number(q.marks_awarded ?? 0)}`,
+                outOf: q.max_marks != null ? `/ ${Number(q.max_marks)}` : undefined,
+            });
         }
         return out;
     }, [progress?.completed_questions]);
@@ -552,6 +579,7 @@ function RouteComponent() {
                                             pdfContainerEl={pdfContainerEl}
                                             layoutMap={layoutMap}
                                             annotations={annotations}
+                                            scores={questionScores}
                                         />
                                     </div>
                                 ) : (

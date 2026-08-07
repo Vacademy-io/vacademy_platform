@@ -33,6 +33,10 @@ export function AnnotationBox({ style, target, dims, text, onClick }: Annotation
     const padding = 4;
 
     if (style === 'tick' || style === 'cross') {
+        // OCR often hands back a small fragment box; a mark scaled to it is an
+        // invisible speck. A tick/cross must read at arm's length, so floor
+        // the glyph size regardless of the anchor box.
+        const glyph = Math.max(16, h * 0.8);
         return (
             <div
                 onClick={onClick}
@@ -43,15 +47,15 @@ export function AnnotationBox({ style, target, dims, text, onClick }: Annotation
                 )}
                 style={{
                     left: x + w + padding,
-                    top: y,
-                    width: h,
-                    height: h,
+                    top: y + h / 2 - glyph / 2,
+                    width: glyph,
+                    height: glyph,
                 }}
             >
                 {style === 'tick' ? (
-                    <Check size={h * 0.8} weight="bold" />
+                    <Check size={glyph} weight="bold" />
                 ) : (
-                    <X size={h * 0.8} weight="bold" />
+                    <X size={glyph} weight="bold" />
                 )}
             </div>
         );
@@ -91,18 +95,20 @@ export function AnnotationBox({ style, target, dims, text, onClick }: Annotation
     if (style === 'circle') {
         // Amber ring around the span — partial/needs-attention, matching the
         // annotator's _ATTENTION colour so screen and PDF carry one verdict
-        // language. (Without this branch it fell to the red catch-all box and
-        // read as "wrong".)
+        // language. A ring around a 2-character fragment reads as a stray dot,
+        // so enforce a minimum ring size centred on the anchor.
+        const ringW = Math.max(36, w + padding * 2);
+        const ringH = Math.max(22, h + padding * 2);
         return (
             <div
                 onClick={onClick}
                 title={text || undefined}
                 className="absolute pointer-events-auto cursor-pointer border-2 border-warning-500 rounded-full"
                 style={{
-                    left: x - padding,
-                    top: y - padding,
-                    width: w + padding * 2,
-                    height: h + padding * 2,
+                    left: x + w / 2 - ringW / 2,
+                    top: y + h / 2 - ringH / 2,
+                    width: ringW,
+                    height: ringH,
                 }}
             />
         );

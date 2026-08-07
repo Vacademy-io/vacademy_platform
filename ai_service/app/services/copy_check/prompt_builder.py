@@ -86,7 +86,17 @@ GRADING_SYSTEM = (
     "`marks < max_marks` for that criterion, explicitly state 'X mark(s) "
     "deducted because Y' and reference at least one `line_id` from the "
     "student's work that drives the deduction. This is the audit trail; the "
-    "on-page notes stay short because this field carries the detail."
+    "on-page notes stay short because this field carries the detail.\n"
+    "7. ANCHOR PRECISELY. `target` must be the line_id of the FULL line the "
+    "mark refers to — never a short fragment mid-answer, and never a guess. "
+    "If you cannot identify the exact line, use a `margin_note` anchored to "
+    "the answer's first line instead: a circle on the wrong words destroys "
+    "trust in every other mark on the copy.\n"
+    "8. CREDIT VISIBLY. When an answer (or a sub-part) is CORRECT, tick the "
+    "line carrying its final conclusion — a correct answer must never go "
+    "visually unmarked on the page. These ticks count toward the 3-tick "
+    "budget; for a fully-correct multi-part answer, tick the overall "
+    "conclusion line."
 )
 
 
@@ -208,6 +218,8 @@ def build_grading_prompt(
 - **Strike wrong statements**: use `strike` through an incorrect/irrelevant line with the correction as its note; `underline` emphasises a key correct statement.
 - **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/strike/margin_note) naming what was missing, with the arithmetic in `criteria_breakdown[].reason` — except when the question was not attempted (then `annotations = []`, per above).
 - **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
+- **Credit visibly**: a correct answer (or correct sub-part) MUST get a tick on its conclusion line — correct work never goes unmarked.
+- **Anchor precisely**: `target` is the full line the mark refers to, never a fragment or a guess; when unsure of the exact line, use `margin_note` on the answer's first line.
 - **Per-criterion trace**: in `criteria_breakdown[].reason`, when `marks < max_marks`, write 'X mark(s) deducted because Y' and reference a `line_id` driving the deduction.
 
 **Output: STRICT JSON only.**

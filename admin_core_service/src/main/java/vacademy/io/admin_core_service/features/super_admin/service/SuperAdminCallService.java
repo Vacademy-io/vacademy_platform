@@ -53,6 +53,32 @@ public class SuperAdminCallService {
               AND (CAST(:agentId AS text) IS NULL OR r.campaign_id = CAST(:agentId AS text))
             """;
 
+    /** engine -> credits/min surcharge, read live so it cannot drift from billing. */
+    @Transactional(readOnly = true)
+    public Map<String, Double> ttsSurcharges() {
+        Map<String, Double> out = new LinkedHashMap<>();
+        List<Object[]> rows = em.createNativeQuery(
+                "SELECT model, surcharge_credits_per_min FROM ai_tts_model_pricing WHERE is_active")
+                .getResultList();
+        for (Object[] r : rows) out.put((String) r[0], ((Number) r[1]).doubleValue());
+        return out;
+    }
+
+    /**
+     * What we BILL for a minute on this engine, in rupees.
+     *
+     * <p>Billing is by credits and the credits differ per TTS engine, so this is
+     * (base credits + that engine's surcharge) x rupees per credit — never one
+     * flat number. The surcharge comes from ai_tts_model_pricing, the same table
+     * the billing path itself reads, so the two cannot disagree.
+     */
+    private double billedPerMin(Map<String, Double> card, Map<String, Double> surcharge, String engine) {
+        String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
+        double credits = card.getOrDefault("billed_base_credits_per_min", 0d)
+                + surcharge.getOrDefault(e, 0d);
+        return credits * card.getOrDefault("credit_inr", 0d);
+    }
+
     /** component -> INR/min, from the rate card. Missing component = 0, never a guess. */
     @Transactional(readOnly = true)
     public Map<String, Double> rateCard() {
@@ -99,7 +125,7 @@ public class SuperAdminCallService {
             String disposition, String agentId, int page, int size) {
 
         Map<String, Double> card = rateCard();
-        double billedRate = card.getOrDefault("billed", 0d);
+        Map<String, Double> surcharge = ttsSurcharges();
 
         Query q = em.createNativeQuery("""
                 SELECT r.id, r.correlation_id, r.institute_id, i.name,
@@ -107,7 +133,7 @@ public class SuperAdminCallService {
                        r.phone_number, r.customer_name, r.direction, r.status, r.disposition,
                        r.call_start, r.duration_seconds,
                        COALESCE(l.recording_url, r.recording_url),
-                       r.diag_health, r.diag_faults, r.diagnostics::text
+                       r.diag_health, r.diag_faults, CAST(r.diagnostics AS text)
                 """ + BASE_FROM + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
         bind(q, instituteId, from, to, health, disposition, agentId);
         q.setParameter("lim", size);
@@ -121,7 +147,7 @@ public class SuperAdminCallService {
             String tts = (String) r[6];
             Map<String, Double> b = breakdown(card, tts, minutes);
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
-            double billed = round(billedRate * minutes);
+            double billed = round(billedPerMin(card, surcharge, tts) * minutes);
             double margin = round(billed - cost);
             String recording = (String) r[15];
             content.add(SuperAdminCallDTO.builder()
@@ -168,6 +194,7 @@ public class SuperAdminCallService {
     public SuperAdminCallSummaryDTO summary(String instituteId, String from, String to,
                                             String health, String disposition, String agentId) {
         Map<String, Double> card = rateCard();
+        Map<String, Double> surcharge = ttsSurcharges();
         Query q = em.createNativeQuery("""
                 SELECT COALESCE(a.tts_model,'sarvam') AS engine,
                        count(*),
@@ -180,7 +207,7 @@ public class SuperAdminCallService {
         bind(q, instituteId, from, to, health, disposition, agentId);
 
         long calls = 0, red = 0, amber = 0, green = 0, rec = 0;
-        double minutes = 0, cost = 0;
+        double minutes = 0, cost = 0, billedTotal = 0;
         Map<String, Double> agg = new LinkedHashMap<>(
                 Map.of("plivo", 0d, "stt", 0d, "tts", 0d, "llm", 0d));
         Map<String, Long> byEngine = new LinkedHashMap<>();
@@ -198,9 +225,11 @@ public class SuperAdminCallService {
             Map<String, Double> b = breakdown(card, engine, mins);
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();
+            // per engine, because both the TTS cost AND the billed credits differ
+            billedTotal += billedPerMin(card, surcharge, engine) * mins;
         }
         agg.replaceAll((k, v) -> round(v));
-        double billed = round(card.getOrDefault("billed", 0d) * minutes);
+        double billed = round(billedTotal);
         double margin = round(billed - round(cost));
         return SuperAdminCallSummaryDTO.builder()
                 .calls(calls).minutes(round(minutes))

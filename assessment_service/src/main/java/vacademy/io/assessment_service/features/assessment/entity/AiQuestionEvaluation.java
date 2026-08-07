@@ -60,8 +60,11 @@ public class AiQuestionEvaluation {
 
         // Teacher-override provenance (Phase 1 review gate). is_edited=true means a
         // human adjusted this verdict; a late/retried AI callback must not clobber it.
-        @Column(name = "is_edited")
-        private Boolean isEdited;
+        // The column is NOT NULL DEFAULT FALSE (V22), but Hibernate always lists it in
+        // the INSERT, so the DB default never fires — the default has to live here.
+        @Column(name = "is_edited", nullable = false)
+        @Builder.Default
+        private Boolean isEdited = false;
 
         @Column(name = "edited_by")
         private String editedBy;

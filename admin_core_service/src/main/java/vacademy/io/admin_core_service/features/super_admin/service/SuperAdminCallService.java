@@ -63,18 +63,62 @@ public class SuperAdminCallService {
         return out;
     }
 
+    /** request_type -> (credits/min, per-call minimum), straight from credit_pricing. */
+    @Transactional(readOnly = true)
+    public Map<String, double[]> creditPricing() {
+        Map<String, double[]> out = new LinkedHashMap<>();
+        List<Object[]> rows = em.createNativeQuery(
+                "SELECT request_type, token_rate, minimum_charge FROM credit_pricing WHERE is_active")
+                .getResultList();
+        for (Object[] r : rows) {
+            out.put((String) r[0], new double[]{
+                    ((Number) r[1]).doubleValue(), ((Number) r[2]).doubleValue()});
+        }
+        return out;
+    }
+
     /**
-     * What we BILL for a minute on this engine, in rupees.
+     * What this call ACTUALLY billed, in rupees — mirroring CallBillingService.
      *
-     * <p>Billing is by credits and the credits differ per TTS engine, so this is
-     * (base credits + that engine's surcharge) x rupees per credit — never one
-     * flat number. The surcharge comes from ai_tts_model_pricing, the same table
-     * the billing path itself reads, so the two cannot disagree.
+     * <p>Modelling this as a flat rupees-per-minute was wrong twice over, and the
+     * founder caught both on a 30-second call the page priced at Rs 1.86 when the
+     * wallet had really taken Rs 9.30:
+     *
+     * <ul>
+     *   <li>Billing CEILS to whole minutes with a per-call floor —
+     *       {@code max(minimum, ceil(secs/60) x perMinute)} — so a six-second call
+     *       bills a full minute, not a tenth of one.</li>
+     *   <li>There are TWO meters, not one: the telephony leg
+     *       (voice_call_out/in, on Vacademy-paid trunks only) AND the AI leg
+     *       (ai_call_out/in), and the TTS engine surcharge rides on the AI leg.</li>
+     * </ul>
+     *
+     * <p>Rates come from credit_pricing and the surcharge from
+     * ai_tts_model_pricing — the same two tables the billing path itself reads,
+     * so this cannot drift from what the wallet actually charged. It is still a
+     * RECONSTRUCTION, not the ledger: a negotiated per-institute override
+     * suppresses the surcharge in the real path and is not modelled here.
      */
-    private double billedPerMin(Map<String, Double> card, Map<String, Double> surcharge, String engine) {
+    private double billedInr(Map<String, Double> card, Map<String, Double> surcharge,
+                             Map<String, double[]> pricing, String engine,
+                             String direction, String providerType, int seconds) {
+        if (seconds <= 0) return 0d;
+        long minutes = (seconds + 59) / 60;                 // ceil, min 1 — as billed
+        boolean inbound = "INBOUND".equalsIgnoreCase(direction);
         String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
-        double credits = card.getOrDefault("billed_base_credits_per_min", 0d)
-                + surcharge.getOrDefault(e, 0d);
+
+        double credits = 0d;
+        // Telephony leg — only on trunks Vacademy pays for.
+        String pt = providerType == null ? "" : providerType.toUpperCase();
+        if (pt.contains("PLIVO") || pt.contains("VACADEMY")) {
+            double[] v = pricing.get(inbound ? "voice_call_in" : "voice_call_out");
+            if (v != null) credits += Math.max(v[1], v[0] * minutes);
+        }
+        // AI leg — engine surcharge rides here.
+        double[] a = pricing.get(inbound ? "ai_call_in" : "ai_call_out");
+        if (a != null) {
+            credits += Math.max(a[1], (a[0] + surcharge.getOrDefault(e, 0d)) * minutes);
+        }
         return credits * card.getOrDefault("credit_inr", 0d);
     }
 
@@ -90,10 +134,20 @@ public class SuperAdminCallService {
         return out;
     }
 
-    private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel, double minutes) {
+    /**
+     * Per-component rupee cost.
+     *
+     * <p>Plivo is billed in WHOLE MINUTES — a six-second call still costs a full
+     * minute — so it is ceiled. STT, TTS and the LLM are genuine usage meters
+     * (per second, per character, per token) and stay fractional. Charging the
+     * telephony leg fractionally understated every short call.
+     */
+    private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
+                                          double minutes, int seconds) {
         String engine = (ttsModel == null || ttsModel.isBlank()) ? "sarvam" : ttsModel.trim().toLowerCase();
+        long billedMinutes = seconds <= 0 ? 0 : (seconds + 59) / 60;
         Map<String, Double> b = new LinkedHashMap<>();
-        b.put("plivo", round(card.getOrDefault("plivo", 0d) * minutes));
+        b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMinutes));
         b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * minutes));
         b.put("tts", round(card.getOrDefault("tts_" + engine, 0d) * minutes));
         b.put("llm", round(card.getOrDefault("llm", 0d) * minutes));
@@ -125,6 +179,7 @@ public class SuperAdminCallService {
 
         Map<String, Double> card = rateCard();
         Map<String, Double> surcharge = ttsSurcharges();
+        Map<String, double[]> pricing = creditPricing();
 
         Query q = em.createNativeQuery("""
                 SELECT r.id, r.correlation_id, r.institute_id, i.name,
@@ -132,7 +187,8 @@ public class SuperAdminCallService {
                        r.phone_number, r.customer_name, r.direction, r.status, r.disposition,
                        r.call_start, r.duration_seconds,
                        COALESCE(l.recording_url, r.recording_url),
-                       r.diag_health, r.diag_faults, CAST(r.diagnostics AS text)
+                       r.diag_health, r.diag_faults, CAST(r.diagnostics AS text),
+                       l.provider_type, COALESCE(l.provider_call_id, r.call_uuid)
                 """ + BASE_FROM + " ORDER BY r.created_at DESC LIMIT :lim OFFSET :off");
         bind(q, instituteId, from, to, health, disposition, agentId);
         q.setParameter("lim", size);
@@ -144,9 +200,10 @@ public class SuperAdminCallService {
             int secs = r[14] == null ? 0 : ((Number) r[14]).intValue();
             double minutes = secs / 60.0;
             String tts = (String) r[6];
-            Map<String, Double> b = breakdown(card, tts, minutes);
+            Map<String, Double> b = breakdown(card, tts, minutes, secs);
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
-            double billed = round(billedPerMin(card, surcharge, tts) * minutes);
+            double billed = round(billedInr(card, surcharge, pricing, tts,
+                    (String) r[10], (String) r[19], secs));
             double margin = round(billed - cost);
             String recording = (String) r[15];
             content.add(SuperAdminCallDTO.builder()
@@ -165,6 +222,7 @@ public class SuperAdminCallService {
                     .costInr(cost).billedInr(billed).marginInr(margin)
                     .marginPct(billed > 0 ? round(margin / billed * 100) : null)
                     .costBreakdown(b).costIsModelled(true)
+                    .providerCallId((String) r[20])
                     .build());
         }
 
@@ -212,6 +270,7 @@ public class SuperAdminCallService {
                                             String health, String disposition, String agentId) {
         Map<String, Double> card = rateCard();
         Map<String, Double> surcharge = ttsSurcharges();
+        Map<String, double[]> pricing = creditPricing();
         Query q = em.createNativeQuery("""
                 SELECT COALESCE(a.tts_model,'sarvam') AS engine,
                        count(*),
@@ -219,7 +278,15 @@ public class SuperAdminCallService {
                        count(*) FILTER (WHERE r.diag_health = 'RED'),
                        count(*) FILTER (WHERE r.diag_health = 'AMBER'),
                        count(*) FILTER (WHERE r.diag_health = 'GREEN'),
-                       count(*) FILTER (WHERE COALESCE(l.recording_url, r.recording_url) IS NOT NULL)
+                       count(*) FILTER (WHERE COALESCE(l.recording_url, r.recording_url) IS NOT NULL),
+                       COALESCE(sum(CASE WHEN r.duration_seconds > 0
+                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
+                       COALESCE(sum(CASE WHEN COALESCE(l.provider_type,'') ~* '(plivo|vacademy)'
+                                          AND r.duration_seconds > 0
+                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
+                       COALESCE(sum(CASE WHEN COALESCE(r.direction,'') ILIKE 'INBOUND'
+                                          AND r.duration_seconds > 0
+                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0)
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
 
@@ -239,11 +306,28 @@ public class SuperAdminCallService {
             green += ((Number) r[5]).longValue();
             rec += ((Number) r[6]).longValue();
             byEngine.merge(engine, n, Long::sum);
-            Map<String, Double> b = breakdown(card, engine, mins);
+            long billedMins = ((Number) r[7]).longValue();     // ceil-minutes, as billed
+            long trunkMins = ((Number) r[8]).longValue();
+            long inboundMins = ((Number) r[9]).longValue();
+
+            Map<String, Double> b = new LinkedHashMap<>();
+            b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMins));
+            b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * mins));
+            b.put("tts", round(card.getOrDefault("tts_" + engine, 0d) * mins));
+            b.put("llm", round(card.getOrDefault("llm", 0d) * mins));
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();
-            // per engine, because both the TTS cost AND the billed credits differ
-            billedTotal += billedPerMin(card, surcharge, engine) * mins;
+
+            // Revenue, per engine and per meter, on CEIL-minutes as billing does.
+            double credits = 0d;
+            double[] vOut = pricing.get("voice_call_out"), vIn = pricing.get("voice_call_in");
+            double[] aOut = pricing.get("ai_call_out"), aIn = pricing.get("ai_call_in");
+            if (vOut != null) credits += vOut[0] * Math.max(0, trunkMins - inboundMins);
+            if (vIn != null) credits += vIn[0] * Math.min(trunkMins, inboundMins);
+            double sur = surcharge.getOrDefault(engine, 0d);
+            if (aOut != null) credits += (aOut[0] + sur) * Math.max(0, billedMins - inboundMins);
+            if (aIn != null) credits += (aIn[0] + sur) * inboundMins;
+            billedTotal += credits * card.getOrDefault("credit_inr", 0d);
         }
         agg.replaceAll((k, v) -> round(v));
         double billed = round(billedTotal);

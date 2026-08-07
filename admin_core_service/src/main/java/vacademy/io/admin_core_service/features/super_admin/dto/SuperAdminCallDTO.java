@@ -37,6 +37,8 @@ public class SuperAdminCallDTO {
     private String ttsModel;
     private String voice;
 
+    /** The provider's own call id — what you quote to Plivo in a ticket. */
+    private String providerCallId;
     private String phoneNumber;
     private String customerName;
     private String direction;

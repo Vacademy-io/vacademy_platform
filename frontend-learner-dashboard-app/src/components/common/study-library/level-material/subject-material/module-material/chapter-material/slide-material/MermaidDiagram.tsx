@@ -7,6 +7,79 @@ import { ArrowsOut, MagnifyingGlassPlus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
+// How far a diagram may be scaled ABOVE its natural size in the expanded view.
+// Expanding should make a diagram comfortable to read, not stretch a two-node
+// flow across a 1400px dialog until one node fills the screen.
+const EXPANDED_MAX_ZOOM = 2;
+// Ceiling for the expanded diagram's height so the whole thing stays on screen
+// (dialog is 85vh, minus its padding and header allowance). A diagram taller
+// than this keeps its natural size and scrolls instead.
+const EXPANDED_MAX_HEIGHT_VH = 70;
+const EXPANDED_MAX_HEIGHT = `${EXPANDED_MAX_HEIGHT_VH}vh`;
+
+/** Authored height in px, read from the viewBox Mermaid emits. */
+const readNaturalHeight = (svg: string): number => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = svg;
+    const viewBox = (tempDiv.querySelector('svg')?.getAttribute('viewBox') || '')
+        .split(/[\s,]+/)
+        .map(Number);
+    return viewBox.length === 4 && viewBox[3]! > 0 ? viewBox[3]! : 0;
+};
+
+/**
+ * Size a rendered Mermaid SVG for display.
+ *
+ * Mermaid (useMaxWidth: true) emits `width="100%"` plus an inline
+ * `max-width: <natural width>px`; that cap is what stops a small two-node
+ * flowchart from being stretched across the whole document. Overwriting it with
+ * `max-width: 100%` scaled a ~130px diagram up to the full card width, which is
+ * why a single node filled the slide.
+ *
+ * - 'inline': keep the natural cap, so the diagram renders at authored size and
+ *   only ever shrinks on narrow screens.
+ * - 'expanded': allow a bounded zoom (EXPANDED_MAX_ZOOM) and fit the dialog
+ *   height where possible — but never below natural size. A tall flowchart
+ *   therefore stays readable and scrolls, instead of being squeezed to fit and
+ *   ending up smaller than it was in the card.
+ *
+ * Natural size comes from the viewBox, which Mermaid derives from the same
+ * bbox + padding as its own max-width — so it matches Mermaid's cap exactly and
+ * also gives us the height.
+ */
+const makeResponsiveSvg = (svg: string, mode: 'inline' | 'expanded'): string => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = svg;
+    const svgElement = tempDiv.querySelector('svg');
+    if (!svgElement) return svg;
+
+    const viewBox = (svgElement.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    const hasViewBox = viewBox.length === 4 && viewBox[2]! > 0 && viewBox[3]! > 0;
+    const naturalWidth = hasViewBox ? viewBox[2]! : parseFloat(svgElement.style.maxWidth) || 0;
+    const naturalHeight = hasViewBox ? viewBox[3]! : 0;
+
+    svgElement.removeAttribute('height');
+    svgElement.removeAttribute('width');
+    svgElement.style.width = '100%';
+    svgElement.style.height = 'auto';
+
+    if (mode === 'inline') {
+        svgElement.style.maxWidth = naturalWidth > 0 ? `${naturalWidth}px` : '100%';
+    } else {
+        svgElement.style.maxWidth =
+            naturalWidth > 0 ? `min(100%, ${naturalWidth * EXPANDED_MAX_ZOOM}px)` : '100%';
+        // clamp(natural, fit-the-dialog, natural * zoom): fit when the diagram
+        // can fit, cap the zoom when it's small, and hold natural size (scroll)
+        // when it's too tall to fit — never scale it down.
+        svgElement.style.maxHeight =
+            naturalHeight > 0
+                ? `clamp(${naturalHeight}px, ${EXPANDED_MAX_HEIGHT}, ${naturalHeight * EXPANDED_MAX_ZOOM}px)`
+                : EXPANDED_MAX_HEIGHT;
+    }
+
+    return tempDiv.innerHTML;
+};
+
 interface MermaidDiagramProps {
     code: string;
     className?: string;
@@ -23,6 +96,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     const [hasError, setHasError] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [svgHtml, setSvgHtml] = useState<string>('');
+    // Same SVG, sized for the expanded dialog (see makeResponsiveSvg).
+    const [svgHtmlExpanded, setSvgHtmlExpanded] = useState<string>('');
+    // Authored height — tells us whether the expanded diagram will overflow the
+    // dialog, i.e. whether the learner needs to scroll to see the rest of it.
+    const [naturalHeight, setNaturalHeight] = useState(0);
 
     // Initialize mermaid once
     useEffect(() => {
@@ -60,26 +138,9 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 if (result && result.svg) {
                     renderedCodeRef.current = trimmedCode;
 
-                    // Modify SVG for responsiveness (string manipulation or DOM)
-                    // We'll use a temp div to manipulate it safely like before
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = result.svg;
-                    const svgElement = tempDiv.querySelector('svg');
-
-                    if (svgElement) {
-                        // Remove fixed width/height attributes
-                        svgElement.removeAttribute('height');
-                        svgElement.removeAttribute('width');
-
-                        // Set responsive styles
-                        svgElement.style.width = '100%';
-                        svgElement.style.height = 'auto';
-                        svgElement.style.maxWidth = '100%';
-
-                        setSvgHtml(tempDiv.innerHTML);
-                    } else {
-                        setSvgHtml(result.svg);
-                    }
+                    setSvgHtml(makeResponsiveSvg(result.svg, 'inline'));
+                    setSvgHtmlExpanded(makeResponsiveSvg(result.svg, 'expanded'));
+                    setNaturalHeight(readNaturalHeight(result.svg));
 
                     setHasError(false);
                     setErrorMessage(''); // Clear any previous error message
@@ -90,6 +151,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 console.error('Error rendering mermaid diagram:', error);
                 // The component will render null if hasError is true
                 setSvgHtml(''); // Clear SVG on error
+                setSvgHtmlExpanded('');
+                setNaturalHeight(0);
                 setHasError(true);
                 setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
 
@@ -115,6 +178,13 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         // Optional: Loading skeleton could go here
         return null;
     }
+
+    // The expanded diagram holds its natural height once it passes the fit
+    // ceiling (see makeResponsiveSvg), so that's exactly when it scrolls.
+    const willOverflow =
+        naturalHeight > 0 &&
+        typeof window !== 'undefined' &&
+        naturalHeight > (window.innerHeight * EXPANDED_MAX_HEIGHT_VH) / 100;
 
     return (
         <Dialog>
@@ -154,17 +224,24 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
             </DialogTrigger>
 
             <DialogContent className="max-w-vw-90 h-screen-85 p-0 gap-0 overflow-hidden flex flex-col bg-slate-50 border-none outline-none">
+                {/* The diagram is sized to fit this box (see makeResponsiveSvg),
+                    so it's fully visible on open; overflow-auto is only a safety
+                    net for an unusually tall diagram. */}
                 <div className="flex-1 overflow-auto p-8 min-h-0">
                     <div className="min-h-full w-full flex flex-col items-center justify-center">
                         <div
-                            className="w-full"
-                            dangerouslySetInnerHTML={{ __html: svgHtml }}
+                            className="w-full flex justify-center"
+                            dangerouslySetInnerHTML={{ __html: svgHtmlExpanded || svgHtml }}
                         />
                     </div>
                 </div>
-                <div className="p-3 border-t bg-white flex justify-end text-xs text-muted-foreground">
-                    Scroll to pan • Use controls to interact
-                </div>
+                {/* Only when the diagram really is taller than the dialog — a
+                    scroll hint on a diagram that already fits is just noise. */}
+                {willOverflow && (
+                    <div className="p-3 border-t bg-white flex justify-end text-xs text-muted-foreground">
+                        {t('mermaid.scrollForMore')}
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );

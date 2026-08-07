@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import vacademy.io.assessment_service.features.assessment.client.AiServiceCopyCheckClient;
@@ -197,6 +198,27 @@ public class CopyCheckOrchestratorService {
             log.error("[copy-check] media-service failed for fileId={}", fileId, e);
             return null;
         }
+    }
+
+    /**
+     * Mark a process FAILED after dispatch blew up. Runs in its own transaction:
+     * the dispatch transaction is already rolled back (and, on a constraint
+     * violation, poisoned — every further statement gets 25P02), so a write
+     * through it would be discarded. Without this a dispatch crash leaves the
+     * process stuck at PENDING forever with nothing to retry it.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markDispatchFailed(String processId, String message) {
+        try {
+            processRepository.findById(processId).ifPresent(process -> failProcess(process, truncate(message)));
+        } catch (Exception e) {
+            log.error("[copy-check] could not mark process {} as FAILED", processId, e);
+        }
+    }
+
+    private String truncate(String message) {
+        if (message == null) return "dispatch failed";
+        return message.length() <= 2000 ? message : message.substring(0, 2000) + "…";
     }
 
     private void failProcess(AiEvaluationProcess process, String message) {

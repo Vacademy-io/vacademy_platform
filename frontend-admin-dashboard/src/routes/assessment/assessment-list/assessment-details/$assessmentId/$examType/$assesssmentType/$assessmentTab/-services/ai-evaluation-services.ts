@@ -29,6 +29,7 @@ export type AnnotationStyle =
     | 'tick'
     | 'cross'
     | 'circle'
+    | 'strike'
     | 'underline'
     | 'margin_note'
     | 'region_note';

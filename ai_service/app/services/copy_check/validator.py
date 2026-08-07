@@ -15,7 +15,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-VALID_STYLES = {"tick", "cross", "circle", "underline", "margin_note", "region_note"}
+VALID_STYLES = {"tick", "cross", "circle", "strike", "underline", "margin_note", "region_note"}
 
 
 def _layout_target_index(layout_map: dict[str, Any]) -> dict[str, str]:

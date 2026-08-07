@@ -22,6 +22,12 @@ export interface TtsModelMeta {
     label: string;
     /** Shown under the picker — the price consequence, in the customer's terms. */
     note: string;
+    /** Credits/min for the CALL itself — telephony leg + AI leg, from credit_pricing. */
+    callCreditsPerMin?: number;
+    /** This engine's surcharge in credits/min, from ai_tts_model_pricing. */
+    ttsCreditsPerMin?: number;
+    /** What a minute on this engine really costs the institute. */
+    totalCreditsPerMin?: number;
     defaultVoice: string;
 }
 
@@ -203,4 +209,28 @@ export function patchForModelChange(
         ? palette.find((v) => v.id.toLowerCase() === currentVoice.trim().toLowerCase())
         : undefined;
     return { ttsModel: model, voice: hit ? hit.id : defaultVoiceFor(model) };
+}
+
+/**
+ * "10 credits per minute — 6 call + 4 voice"
+ *
+ * Picking an engine is a pricing decision, and the prose note only ever
+ * mentioned Sarvam's surcharge — the smallest part of the bill. A minute is
+ * billed twice before any surcharge (telephony leg + AI leg), so the total is
+ * the number that matters. Returns null when the API served no pricing (the
+ * annotator degrades rather than 500s), so callers keep the prose note.
+ */
+export function creditLine(m?: TtsModelMeta | null): string | null {
+    if (!m || m.totalCreditsPerMin == null) return null;
+    const n = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+    const parts = [`${n(m.totalCreditsPerMin)} credits per minute`];
+    if (m.callCreditsPerMin != null) {
+        const tts = m.ttsCreditsPerMin ?? 0;
+        parts.push(
+            tts > 0
+                ? `${n(m.callCreditsPerMin)} call + ${n(tts)} voice`
+                : `${n(m.callCreditsPerMin)} call, no voice surcharge`
+        );
+    }
+    return parts.join(' — ');
 }

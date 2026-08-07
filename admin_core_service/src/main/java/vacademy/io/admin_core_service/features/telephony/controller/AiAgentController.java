@@ -1,7 +1,9 @@
 package vacademy.io.admin_core_service.features.telephony.controller;
 
+import vacademy.io.admin_core_service.features.telephony.core.TtsModelPricingAnnotator;
 import vacademy.io.admin_core_service.features.telephony.core.TtsVoiceCatalog;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
@@ -63,9 +65,16 @@ public class AiAgentController {
         return ResponseEntity.ok(TtsVoiceCatalog.all());
     }
 
-    /** Engines we sell, each with its label, surcharge note, default and voice list. */
+    @Autowired
+    private TtsModelPricingAnnotator ttsModelPricing;
+
+    /**
+     * Engines we sell — label, default, voice list, and what a MINUTE ON THIS
+     * ENGINE ACTUALLY COSTS the institute in credits. The surcharge alone was
+     * never the interesting number; see {@link TtsModelPricingAnnotator}.
+     */
     @GetMapping("/tts-models")
     public ResponseEntity<List<Map<String, Object>>> ttsModels() {
-        return ResponseEntity.ok(TtsVoiceCatalog.models());
+        return ResponseEntity.ok(ttsModelPricing.annotate(TtsVoiceCatalog.models()));
     }
 }

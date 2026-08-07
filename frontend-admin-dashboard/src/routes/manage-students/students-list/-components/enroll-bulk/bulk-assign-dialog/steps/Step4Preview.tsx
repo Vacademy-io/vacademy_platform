@@ -102,18 +102,22 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                     </span>
                                     <span className="text-neutral-300">→</span>
                                     <span>
-                                        {ps.subOrgName ||
-                                            (ps.newSubOrg?.name
-                                                ? `${ps.newSubOrg.name} (new)`
-                                                : 'Not selected')}
+                                        {ps.subOrgSkipped
+                                            ? 'No organisation link'
+                                            : ps.subOrgName ||
+                                              (ps.newSubOrg?.name
+                                                  ? `${ps.newSubOrg.name} (new)`
+                                                  : 'Not selected')}
                                     </span>
-                                    <span className="rounded-full bg-white px-2 py-0.5 text-caption font-medium text-neutral-600 ring-1 ring-inset ring-neutral-200">
-                                        {ps.subOrgRole === 'ADMIN_ONLY'
-                                            ? 'Admin only'
-                                            : ps.subOrgRole === 'ADMIN'
-                                              ? `Admin + ${learnerTerm}`
-                                              : `Staff — ${learnerTerm}`}
-                                    </span>
+                                    {!ps.subOrgSkipped && (
+                                        <span className="rounded-full bg-white px-2 py-0.5 text-caption font-medium text-neutral-600 ring-1 ring-inset ring-neutral-200">
+                                            {ps.subOrgRole === 'ADMIN_ONLY'
+                                                ? 'Admin only'
+                                                : ps.subOrgRole === 'ADMIN'
+                                                  ? `Admin + ${learnerTerm}`
+                                                  : `Staff — ${learnerTerm}`}
+                                        </span>
+                                    )}
                                 </li>
                             ))}
                     </ul>

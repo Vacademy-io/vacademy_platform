@@ -182,18 +182,21 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 // Only org-associated batches carry a sub-org; sending it for a normal batch
                 // would be ignored by the backend but is noise, so it's omitted entirely.
                 ...(ps.isOrgAssociated
-                    ? {
-                          sub_org_id: ps.subOrgId ?? null,
-                          sub_org_roles: subOrgRolesCsv(ps.subOrgRole),
-                          new_sub_org:
-                              !ps.subOrgId && ps.newSubOrg?.name?.trim()
-                                  ? {
-                                        name: ps.newSubOrg.name.trim(),
-                                        email: ps.newSubOrg.email?.trim() || null,
-                                        mobile_number: ps.newSubOrg.mobileNumber?.trim() || null,
-                                    }
-                                  : null,
-                      }
+                    ? ps.subOrgSkipped
+                        ? { skip_sub_org: true }
+                        : {
+                              sub_org_id: ps.subOrgId ?? null,
+                              sub_org_roles: subOrgRolesCsv(ps.subOrgRole),
+                              new_sub_org:
+                                  !ps.subOrgId && ps.newSubOrg?.name?.trim()
+                                      ? {
+                                            name: ps.newSubOrg.name.trim(),
+                                            email: ps.newSubOrg.email?.trim() || null,
+                                            mobile_number:
+                                                ps.newSubOrg.mobileNumber?.trim() || null,
+                                        }
+                                      : null,
+                          }
                     : {}),
             })),
             options: {

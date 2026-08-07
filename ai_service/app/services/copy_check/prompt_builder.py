@@ -58,22 +58,35 @@ GRADING_SYSTEM = (
     "Ignore OCR/spelling errors; focus on intent and meaning.\n\n"
     "ANNOTATION DISCIPLINE (these rules are non-negotiable — teachers rely on "
     "them to audit your grading):\n"
-    "1. JUSTIFY EVERY DEDUCTION. Every `cross` or `circle` annotation MUST have "
-    "a non-empty `text` field stating WHAT IS WRONG and WHY MARKS WERE LOST "
-    "(e.g. 'Sign error — should be -x not +x', 'Missing closed circle at 3'). "
-    "Never leave `text` null or empty on cross/circle.\n"
-    "2. NO SILENT MARK CUTS. If `marks_awarded < max_marks`, you MUST add at "
-    "least one annotation (`cross`, `circle`, or `margin_note`) whose text "
-    "explicitly states the deduction reason. A student should be able to read "
-    "your annotations and understand exactly why they lost marks.\n"
-    "3. NO TICK SPAM. Use AT MOST 3 ticks per question. Reserve ticks for the "
+    "1. WRITE LIKE A TEACHER'S PEN. Annotation `text` is written ON the copy, "
+    "so it must read like a marginal pen note: imperative, specific, AT MOST "
+    "10 words. Good: 'Cite Section 21 explicitly', 'Mention buyer's right to "
+    "refund', 'Add unanimous consent for minor admission'. Bad: any sentence "
+    "explaining why marks were deducted — that explanation belongs in "
+    "`criteria_breakdown[].reason`, never on the page.\n"
+    "2. JUSTIFY EVERY DEDUCTION. Every `cross`, `circle`, or `strike` MUST "
+    "have a non-empty `text` note (short, per rule 1) naming the fix. Never "
+    "leave `text` null or empty on cross/circle/strike.\n"
+    "3. STRIKE WHAT IS WRONG. Use `strike` on a line whose statement is "
+    "incorrect or irrelevant — the note carries the correction (e.g. 'Payment "
+    "does not transfer ownership'). Use `cross` for a wrong but readable "
+    "step; use `circle` for something incomplete that needs attention; use "
+    "`underline` to emphasise a key correct statement.\n"
+    "4. NO SILENT MARK CUTS. If `marks_awarded < max_marks`, at least one "
+    "annotation (`cross`, `circle`, `strike`, or `margin_note`) must name "
+    "what was missing or wrong, and `criteria_breakdown[].reason` must carry "
+    "the full deduction arithmetic. Exception: an UNATTEMPTED question has "
+    "`annotations = []` — there is nothing on the page to mark, and a note "
+    "pinned to unrelated writing would deface another answer.\n"
+    "5. NO TICK SPAM. Use AT MOST 3 ticks per question. Reserve ticks for the "
     "final answer and one or two key inferential steps. For long correct "
     "chains, use ONE `region_note` saying 'All steps correct' instead of a "
     "tick on every line. A wall of green ticks hides the cross that matters.\n"
-    "4. PER-CRITERION TRACE. In `criteria_breakdown[].reason`, when "
+    "6. PER-CRITERION TRACE. In `criteria_breakdown[].reason`, when "
     "`marks < max_marks` for that criterion, explicitly state 'X mark(s) "
     "deducted because Y' and reference at least one `line_id` from the "
-    "student's work that drives the deduction."
+    "student's work that drives the deduction. This is the audit trail; the "
+    "on-page notes stay short because this field carries the detail."
 )
 
 
@@ -190,8 +203,10 @@ def build_grading_prompt(
 - Each annotation needs a `page_id` matching the line_id's page.
 - If the student didn't attempt this question, set `marks_awarded = 0`, `extracted_answer = ""`, and `annotations = []`.
 - `extracted_answer` must be a VERBATIM transcription of what the student actually wrote (preserve their errors) — do not correct, rephrase, or complete it. Judge intent/meaning when grading, but never rewrite the student's words here.
-- **Justify every cross/circle**: `text` MUST state what is wrong and why marks were lost. No null/empty text on cross or circle annotations.
-- **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/margin_note) whose text explicitly states the deduction reason.
+- **Pen-note style**: annotation `text` is written on the copy — imperative, ≤10 words, naming the fix (e.g. 'Cite Section 21 explicitly'). The full why-marks-were-lost explanation goes in `criteria_breakdown[].reason`, NOT on the page.
+- **Justify every cross/circle/strike**: each MUST carry a short non-empty `text` note naming the fix. No null/empty text on cross, circle, or strike annotations.
+- **Strike wrong statements**: use `strike` through an incorrect/irrelevant line with the correction as its note; `underline` emphasises a key correct statement.
+- **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/strike/margin_note) naming what was missing, with the arithmetic in `criteria_breakdown[].reason` — except when the question was not attempted (then `annotations = []`, per above).
 - **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
 - **Per-criterion trace**: in `criteria_breakdown[].reason`, when `marks < max_marks`, write 'X mark(s) deducted because Y' and reference a `line_id` driving the deduction.
 
@@ -206,8 +221,8 @@ def build_grading_prompt(
   ],
   "annotations": [
     {{"target": "<line_id or region_id>", "page_id": "<page_id>",
-      "style": "tick|cross|circle|underline|margin_note|region_note",
-      "text": "<optional, required for margin_note/region_note>"}}
+      "style": "tick|cross|circle|strike|underline|margin_note|region_note",
+      "text": "<pen note, imperative, max 10 words; required for cross/circle/strike/margin_note/region_note>"}}
   ]
 }}
 

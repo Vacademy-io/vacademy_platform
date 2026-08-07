@@ -194,6 +194,11 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                         "criteria_breakdown": [],
                         "annotations": [],
                         "status": "FAILED",
+                        # Diagnosis without pod logs. Still kept out of `feedback`
+                        # so no provider error or stack trace reaches a student —
+                        # this rides along to ai_question_evaluation instead, where
+                        # only admins read it. Class name + message, not a trace.
+                        "error_detail": f"{type(retry_err).__name__}: {retry_err}"[:500],
                     }
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
@@ -208,6 +213,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # a checked copy through evaluated_file_id have a file to show. Best
         # effort by design: grading is already done and reported, so a render or
         # upload failure returns None and the evaluation still completes.
+        # Checkpoint first: a cancel that landed after the last question's check
+        # would otherwise render, upload, and bill a copy the teacher stopped.
+        cancellation.check(job_id, process_id)
         evaluated_file_id = await annotator.render_and_upload(
             pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
         )

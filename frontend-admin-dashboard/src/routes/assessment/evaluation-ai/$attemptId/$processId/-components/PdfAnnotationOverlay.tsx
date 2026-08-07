@@ -34,6 +34,7 @@ export type AnnotationStyle =
     | 'tick'
     | 'cross'
     | 'circle'
+    | 'strike'
     | 'underline'
     | 'margin_note'
     | 'region_note';
@@ -130,6 +131,7 @@ export function PdfAnnotationOverlay({
                                     style={ann.style}
                                     target={{ box: ann.box }}
                                     dims={dims}
+                                    text={ann.text}
                                     onClick={() => onAnnotationClick?.(ann)}
                                 />
                             );

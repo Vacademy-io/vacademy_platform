@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
@@ -94,17 +95,34 @@ public class AiEvaluationReviewService {
         if (process.getStudentAttempt() == null) {
             return;
         }
-        double total = questionEvaluationRepository
-                .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId())
-                .stream()
+        var rows = questionEvaluationRepository
+                .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
+        double total = rows.stream()
                 .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
                 .mapToDouble(q -> q.getMarksAwarded().doubleValue())
                 .sum();
+        // Non-COMPLETED, not just FAILED: a PENDING row mid-run counts as
+        // ungraded, otherwise a teacher tweaking one already-graded question
+        // while the AI is still working would promote the attempt (and its
+        // partial total) straight into the auto-release query's reach.
+        long stillUngraded = rows.stream().filter(q -> !"COMPLETED".equals(q.getStatus())).count();
+        boolean processFinished = AiEvaluationStatusEnum.COMPLETED.name().equals(process.getStatus());
         StudentAttempt attempt = studentAttemptRepository.findById(process.getStudentAttempt().getId())
                 .orElse(null);
         if (attempt != null) {
             attempt.setTotalMarks(total);
             attempt.setResultMarks(total);
+            // Counterpart of CopyCheckCallbackService.onComplete leaving the
+            // attempt EVALUATING while any question is ungraded: once the
+            // teacher grades the last such question, THIS is the only write
+            // path left that can complete the attempt — without it the attempt
+            // stays EVALUATING forever after a full manual review. Gated on the
+            // process itself being COMPLETED so a mid-run edit, or an edit on a
+            // stale swept-FAILED process while a retry is running, can never
+            // promote the attempt.
+            if (stillUngraded == 0 && processFinished) {
+                attempt.setResultStatus("COMPLETED");
+            }
             studentAttemptRepository.save(attempt);
         }
     }

@@ -46,6 +46,9 @@ import {
     type StudentAuthPresentation,
     type StudentUiType,
     type SlidesSidebarNavigation,
+    type StudentDashboardWidgetConfig,
+    RETIRED_WIDGET_IDS,
+    WIDGET_LABELS,
 } from '@/types/student-display-settings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -55,6 +58,18 @@ import {
     saveStudentDisplaySettings,
 } from '@/services/student-display-settings';
 import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
+
+/**
+ * The widget rows this screen renders: retired ids filtered out (the learner
+ * dashboard reads none of them, so their toggles did nothing), rest sorted by
+ * order. Both the list and moveWidget go through here so the "move up/down"
+ * indices always refer to the rows the admin can actually see.
+ */
+function widgetRows(widgets: StudentDashboardWidgetConfig[]): StudentDashboardWidgetConfig[] {
+    return widgets
+        .filter((w) => !RETIRED_WIDGET_IDS.has(w.id))
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
 
 const STUDENT_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
     {
@@ -259,17 +274,19 @@ export default function StudentDisplaySettings(): JSX.Element {
     // Move widget up/down
     const moveWidget = (widgetIdx: number, direction: 'up' | 'down') => {
         if (!settings) return;
-        const sorted = [...settings.dashboard.widgets].sort((a, b) => (a.order || 0) - (b.order || 0));
+        // Same filtered+sorted list the UI renders, so the swap target is the
+        // row directly above/below on screen — a hidden retired entry must not
+        // silently absorb the move.
+        const sorted = widgetRows(settings.dashboard.widgets);
         const swapIdx = direction === 'up' ? widgetIdx - 1 : widgetIdx + 1;
         if (swapIdx < 0 || swapIdx >= sorted.length) return;
         const current = sorted[widgetIdx]!;
         const swap = sorted[swapIdx]!;
-        const widgets = settings.dashboard.widgets.map((w, i) => {
-            // Match by original index in unsorted array
-            if (w === current || (w.id === current.id && w.order === current.order))
-                return { ...w, order: swap.order };
-            if (w === swap || (w.id === swap.id && w.order === swap.order))
-                return { ...w, order: current.order };
+        // Identity match: two custom widgets share id 'custom', so matching on
+        // id+order could swap the wrong pair.
+        const widgets = settings.dashboard.widgets.map((w) => {
+            if (w === current) return { ...w, order: swap.order };
+            if (w === swap) return { ...w, order: current.order };
             return w;
         });
         update('dashboard', { widgets });
@@ -471,9 +488,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Button>
                     </div>
                     {(() => {
-                        const sorted = settings.dashboard.widgets
-                            .slice()
-                            .sort((a, b) => (a.order || 0) - (b.order || 0));
+                        const sorted = widgetRows(settings.dashboard.widgets);
                         return sorted.map((w, idx) => {
                             // Find the original index in the unsorted array for updates
                             const origIdx = settings.dashboard.widgets.indexOf(w);
@@ -493,7 +508,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     </div>
                                     <div className="flex flex-1 flex-wrap items-center gap-2">
                                         <div className="grow text-xs font-medium">
-                                            {w.id}
+                                            {WIDGET_LABELS[w.id] ?? w.id}
                                             {w.isCustom && w.title ? `: ${w.title}` : ''}
                                         </div>
                                         {w.id === 'custom' && (

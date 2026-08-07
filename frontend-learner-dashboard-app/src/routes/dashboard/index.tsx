@@ -424,8 +424,26 @@ export function DashboardComponent() {
   };
 
   useEffect(() => {
-    // Force-refresh Student Display Settings on dashboard mount to update local cache
-    getStudentDisplaySettings(true).catch(() => { });
+    // Student Display Settings: paint from cache, then correct from the server.
+    //
+    // The force-refresh result used to be discarded while a separate effect read
+    // the 24h localStorage cache — so an admin's widget change only landed on the
+    // learner's NEXT dashboard visit ("I turned the widget off but it's still
+    // showing"). The forced call now owns widgetConfigs.
+    //
+    // The cached read stays, but only to fill the gap before the network
+    // resolves: while widgetConfigs is null every widget counts as visible, so
+    // going network-only would flash widgets the institute has hidden. The
+    // `prev ?? ` guard means it can never clobber a forced result that already
+    // landed, whichever order the two settle in.
+    getStudentDisplaySettings(false)
+      .then((s) =>
+        setWidgetConfigs((prev) => prev ?? (s?.dashboard?.widgets || []))
+      )
+      .catch(() => { });
+    getStudentDisplaySettings(true)
+      .then((s) => setWidgetConfigs(s?.dashboard?.widgets || []))
+      .catch(() => { });
     getChatbotSettings(true).catch(() => { });
 
     const fetchIds = async () => {
@@ -441,15 +459,6 @@ export function DashboardComponent() {
     };
     fetchIds();
   }, [trackPageView, setNavHeading]);
-
-  // Load dashboard widget configurations
-  useEffect(() => {
-    getStudentDisplaySettings(false)
-      .then((s) => {
-        setWidgetConfigs(s?.dashboard?.widgets || []);
-      })
-      .catch(() => setWidgetConfigs(null));
-  }, [setNavHeading, trackPageView]);
 
   const OPT_IN_WIDGETS: Set<StudentDashboardWidgetConfig["id"]> = new Set(["myOrders"]);
 
@@ -1071,37 +1080,46 @@ export function DashboardComponent() {
               </Card>
             )}
 
-            {/* Explore Buttons Section — commerce, hidden for the play (K-12)
-                audience and in reader mode (iOS / reader-mode institutes,
-                Apple 3.1.1). */}
-            {!isPlayTheme && !shouldHidePaidPurchaseUI() && (
-              <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
-                {isWidgetVisible("myMembership") && (
-                  <Button
-                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
-                    onClick={() => {
-                      sessionStorage.setItem("levelFilter", "rent");
-                      navigate({ to: "/collections" as never });
-                    }}
-                  >
-                    Explore Memberships
-                    <CaretRight size={14} />
-                  </Button>
-                )}
-                {isWidgetVisible("myBooks") && (
-                  <Button
-                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
-                    onClick={() => {
-                      sessionStorage.setItem("levelFilter", "buy");
-                      navigate({ to: "/collections" as never });
-                    }}
-                  >
-                    Explore Books
-                    <CaretRight size={14} />
-                  </Button>
-                )}
-              </div>
-            )}
+            {/* Explore Buttons Section — commerce CTAs, hidden for the play
+                (K-12) audience and in reader mode (iOS / reader-mode
+                institutes, Apple 3.1.1).
+
+                These have their OWN widget flags (exploreMemberships /
+                exploreBooks) rather than riding myMembership / myBooks: an
+                institute that wants the membership widget but not a
+                "go buy more" CTA had no way to say so, and the row rendered
+                its padding even when both buttons were hidden. */}
+            {!isPlayTheme &&
+              !shouldHidePaidPurchaseUI() &&
+              (isWidgetVisible("exploreMemberships") ||
+                isWidgetVisible("exploreBooks")) && (
+                <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
+                  {isWidgetVisible("exploreMemberships") && (
+                    <Button
+                      className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                      onClick={() => {
+                        sessionStorage.setItem("levelFilter", "rent");
+                        navigate({ to: "/collections" as never });
+                      }}
+                    >
+                      Explore Memberships
+                      <CaretRight size={14} />
+                    </Button>
+                  )}
+                  {isWidgetVisible("exploreBooks") && (
+                    <Button
+                      className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                      onClick={() => {
+                        sessionStorage.setItem("levelFilter", "buy");
+                        navigate({ to: "/collections" as never });
+                      }}
+                    >
+                      Explore Books
+                      <CaretRight size={14} />
+                    </Button>
+                  )}
+                </div>
+              )}
           </>
         )}
 

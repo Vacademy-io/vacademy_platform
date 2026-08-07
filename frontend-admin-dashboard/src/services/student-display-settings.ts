@@ -6,6 +6,7 @@ import {
     type StudentDisplaySettingsData,
     type StudentSidebarTabConfig,
     type StudentDashboardWidgetConfig,
+    type StudentDashboardWidgetId,
 } from '@/types/student-display-settings';
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from '@/constants/display-settings/student-defaults';
 
@@ -45,6 +46,40 @@ function mergeArrayById<T extends { id: string }>(
         else byId.set(i.id, i as T);
     });
     return Array.from(byId.values());
+}
+
+/**
+ * Back-compat for the split-out commerce CTAs.
+ *
+ * "Explore Memberships" / "Explore Books" used to be gated by the myMembership
+ * / myBooks WIDGET flags. Now they have their own ids, which default to
+ * visible — so an institute that had deliberately hidden the membership widget
+ * would suddenly get its CTA back (and this screen would show the toggle as on,
+ * persisting that on the next save). When the saved settings predate the new
+ * ids, inherit the old flag instead of the default. Only applies when the old
+ * flag was explicitly saved and the new one was not; an explicit CTA entry wins.
+ *
+ * Mirrors the learner app's seedExploreCtaVisibility — keep the two in step.
+ */
+function seedExploreCtaVisibility(
+    out: StudentDisplaySettingsData,
+    incoming?: Partial<StudentDisplaySettingsData> | null
+): void {
+    const savedIds = new Set(
+        (incoming?.dashboard?.widgets ?? [])
+            .map((w) => w?.id)
+            .filter((id): id is StudentDashboardWidgetId => Boolean(id))
+    );
+    const pairs: Array<[StudentDashboardWidgetId, StudentDashboardWidgetId]> = [
+        ['exploreMemberships', 'myMembership'],
+        ['exploreBooks', 'myBooks'],
+    ];
+    for (const [ctaId, widgetId] of pairs) {
+        if (savedIds.has(ctaId) || !savedIds.has(widgetId)) continue;
+        const source = out.dashboard.widgets.find((w) => w.id === widgetId);
+        const cta = out.dashboard.widgets.find((w) => w.id === ctaId);
+        if (source && cta) cta.visible = source.visible;
+    }
 }
 
 function mergeWithDefaults(
@@ -254,6 +289,8 @@ function mergeWithDefaults(
     };
 
     // Sort
+    seedExploreCtaVisibility(out, incoming);
+
     out.sidebar.tabs.sort((a, b) => (a.order || 0) - (b.order || 0));
     out.sidebar.tabs.forEach((t) => t.subTabs?.sort((a, b) => (a.order || 0) - (b.order || 0)));
     out.dashboard.widgets.sort((a, b) => (a.order || 0) - (b.order || 0));

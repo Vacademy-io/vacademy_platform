@@ -173,7 +173,12 @@ public class CallBillingService {
             return false;
         }
         BigDecimal perMinute = rate.perMinute();
-        if (engineSurcharge != null && engineSurcharge.signum() > 0) {
+        // signum() != 0, not > 0: the column is a SURCHARGE but a negative value
+        // is a legitimate per-engine DISCOUNT. Edge TTS costs us nothing, so an
+        // Edge agent is sold at 2 credits/min on the AI leg rather than 5 —
+        // expressed as -3 here. With the old `> 0` guard that discount was
+        // silently dropped and the institute was charged the full rate.
+        if (engineSurcharge != null && engineSurcharge.signum() != 0) {
             if (rate.negotiated()) {
                 // A per-institute override is an AGREED all-in price. Silently adding
                 // a surcharge on top would break a negotiated number that somebody
@@ -181,7 +186,9 @@ public class CallBillingService {
                 log.info("call-billing: institute {} has a negotiated {} rate — engine surcharge {} not applied",
                         instituteId, requestType, engineSurcharge);
             } else {
-                perMinute = perMinute.add(engineSurcharge);
+                // Never below zero: a discount larger than the rate must not
+                // turn a call into a credit refund.
+                perMinute = perMinute.add(engineSurcharge).max(BigDecimal.ZERO);
             }
         }
         long minutes = (durationSeconds + 59) / 60; // ceil, min 1 for any >0 duration

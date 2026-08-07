@@ -55,10 +55,16 @@ public class TtsModelPricingAnnotator {
             return models;
         }
         for (Map<String, Object> m : models) {
+            // The engine surcharge lands on the AI leg, and it can be NEGATIVE:
+            // Edge is free to run so it is sold at 2 AI credits/min rather than
+            // 5. Report the two legs the way they are actually billed rather
+            // than as "base plus a surcharge" — nobody buys a surcharge.
             double tts = surcharge.getOrDefault(String.valueOf(m.get("id")), 0d);
+            double aiLeg = Math.max(0d, ai + tts);
+            m.put("aiCreditsPerMin", round(aiLeg));
+            m.put("telephonyCreditsPerMin", round(voice));
             m.put("ttsCreditsPerMin", round(tts));
-            m.put("callCreditsPerMin", round(voice + ai));
-            m.put("totalCreditsPerMin", round(voice + ai + tts));
+            m.put("totalCreditsPerMin", round(aiLeg + voice));
         }
         return models;
     }

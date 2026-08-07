@@ -324,6 +324,36 @@ def _google_tts_mp3(text: str, voice: str, pace: float) -> bytes:
         return b""
 
 
+async def _edge_tts_mp3(text: str, voice: str, pace: float) -> bytes:
+    """Audition an Edge voice. Returns MP3 bytes — which is what Edge emits
+    natively, so unlike Rumik/Smallest there is nothing to wrap or transcode:
+    the browser plays it directly.
+
+    A cross-vendor voice is rejected rather than substituted. An audition that
+    plays a DIFFERENT voice than the one that will ship is worse than an
+    audition that fails, and this exact confusion already cost a week.
+    """
+    v = (voice or "").strip()
+    if not (v and "-" in v and v.lower().endswith("neural")):
+        logger.warning("preview: %r is not an Edge voice", v[:40])
+        return b""
+    try:
+        import edge_tts
+    except Exception:
+        logger.exception("preview: edge-tts not installed")
+        return b""
+    pct = int(round((max(0.5, min(2.0, pace)) - 1.0) * 100))
+    out = b""
+    try:
+        async for chunk in edge_tts.Communicate(text, v, rate=f"{pct:+d}%").stream():
+            if chunk.get("type") == "audio" and chunk.get("data"):
+                out += chunk["data"]
+    except Exception:
+        logger.exception("preview: edge synthesis failed for voice %r", v[:40])
+        return b""
+    return out
+
+
 async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> bytes:
     """One-shot Smallest.ai Lightning synthesis over its websocket -> WAV bytes.
 
@@ -411,6 +441,20 @@ async def preview(
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
         if not os.path.exists(path):
             audio = await asyncio.to_thread(_google_tts_mp3, text, voice, pace)
+            if not audio:
+                return Response(status_code=502)
+            if not _cache_write(path, audio):
+                return Response(content=audio, media_type="audio/mpeg")
+            await _evict_tts_cache_async()
+        return _serve_mp3(path)
+
+    if engine.startswith("edge") or engine.startswith("microsoft"):
+        # Edge emits MP3 natively — serve it straight through.
+        key = hashlib.sha1(
+            f"pv|edge|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
+        if not os.path.exists(path):
+            audio = await _edge_tts_mp3(text, voice, pace)
             if not audio:
                 return Response(status_code=502)
             if not _cache_write(path, audio):

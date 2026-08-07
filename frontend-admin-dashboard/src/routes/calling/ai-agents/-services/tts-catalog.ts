@@ -22,9 +22,11 @@ export interface TtsModelMeta {
     label: string;
     /** Shown under the picker — the price consequence, in the customer's terms. */
     note: string;
-    /** Credits/min for the CALL itself — telephony leg + AI leg, from credit_pricing. */
-    callCreditsPerMin?: number;
-    /** This engine's surcharge in credits/min, from ai_tts_model_pricing. */
+    /** Credits/min for the AI leg on this engine (surcharge already applied). */
+    aiCreditsPerMin?: number;
+    /** Credits/min for the telephony leg. */
+    telephonyCreditsPerMin?: number;
+    /** This engine's adjustment in credits/min — negative means a discount. */
     ttsCreditsPerMin?: number;
     /** What a minute on this engine really costs the institute. */
     totalCreditsPerMin?: number;
@@ -49,7 +51,7 @@ export const TTS_MODELS: TtsModelMeta[] = [
         // Slower to first audio than Chirp3-HD (0.27s vs 0.18s, measured), and
         // despite "offline" it calls Microsoft's public endpoint — a network
         // dependency with no SLA behind it.
-        note: 'Free to run, so billed at a lower flat rate. Starts ~0.1s slower.',
+        note: 'Free TTS — no vendor charge, so it is sold cheaper. Starts ~0.1s slower.',
         defaultVoice: 'hi-IN-SwaraNeural',
     },
     {
@@ -212,25 +214,17 @@ export function patchForModelChange(
 }
 
 /**
- * "10 credits per minute — 6 call + 4 voice"
+ * "3 credits per minute — 2 AI + 1 telephony"
  *
  * Picking an engine is a pricing decision, and the prose note only ever
  * mentioned Sarvam's surcharge — the smallest part of the bill. A minute is
- * billed twice before any surcharge (telephony leg + AI leg), so the total is
- * the number that matters. Returns null when the API served no pricing (the
- * annotator degrades rather than 500s), so callers keep the prose note.
+ * billed on TWO legs, so show both. Returns null when the API served no pricing
+ * (the annotator degrades rather than 500s) and callers keep the prose note.
  */
 export function creditLine(m?: TtsModelMeta | null): string | null {
     if (!m || m.totalCreditsPerMin == null) return null;
     const n = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
-    const parts = [`${n(m.totalCreditsPerMin)} credits per minute`];
-    if (m.callCreditsPerMin != null) {
-        const tts = m.ttsCreditsPerMin ?? 0;
-        parts.push(
-            tts > 0
-                ? `${n(m.callCreditsPerMin)} call + ${n(tts)} voice`
-                : `${n(m.callCreditsPerMin)} call, no voice surcharge`
-        );
-    }
-    return parts.join(' — ');
+    const line = `${n(m.totalCreditsPerMin)} credits per minute`;
+    if (m.aiCreditsPerMin == null || m.telephonyCreditsPerMin == null) return line;
+    return `${line} — ${n(m.aiCreditsPerMin)} AI calling + ${n(m.telephonyCreditsPerMin)} telephony`;
 }

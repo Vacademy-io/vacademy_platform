@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.CopyCheckCallbackDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
@@ -203,6 +204,13 @@ public class CopyCheckCallbackService {
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
                 attempt.setResultStatus("COMPLETED");
+                // The annotated copy ai_service rendered. Absent when the render
+                // or upload failed, in which case leave whatever is already on
+                // the attempt — a failed render must not wipe a copy a teacher
+                // uploaded by hand.
+                if (StringUtils.hasText(payload.getEvaluatedFileId())) {
+                    attempt.setEvaluatedFileId(payload.getEvaluatedFileId());
+                }
                 studentAttemptRepository.save(attempt);
             }
         }

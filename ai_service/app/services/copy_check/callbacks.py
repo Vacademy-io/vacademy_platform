@@ -97,13 +97,19 @@ async def complete(
     total_marks_awarded: float,
     total_max_marks: float,
     questions_evaluated: int,
+    evaluated_file_id: Optional[str] = None,
 ) -> None:
+    # evaluated_file_id is the annotated copy (see annotator.py). Omitted when
+    # rendering or upload failed — Java leaves the existing value alone rather
+    # than clearing it, so a failed render never destroys a copy someone
+    # uploaded by hand.
     await _post(f"{base_url.rstrip('/')}/copy-check/callback/complete", {
         "process_id": process_id,
         "job_id": job_id,
         "total_marks_awarded": total_marks_awarded,
         "total_max_marks": total_max_marks,
         "questions_evaluated": questions_evaluated,
+        "evaluated_file_id": evaluated_file_id,
     })
 
 

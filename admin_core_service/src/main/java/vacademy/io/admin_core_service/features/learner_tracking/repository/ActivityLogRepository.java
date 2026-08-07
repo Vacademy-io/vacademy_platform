@@ -33,6 +33,20 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     // length and, via the slide-level monotonic guard, permanently promoted
     // the learner to 100%. Returns NULL (skip the write) when the published
     // length is missing or the learner has no valid segments.
+    //
+    // "No valid segments" MUST be its own CASE branch -- it cannot be left for
+    // LEAST() to propagate. Postgres GREATEST/LEAST *ignore* NULL arguments and
+    // return NULL only when every argument is NULL, so LEAST(100.0, NULL) is
+    // 100.0, not NULL (the opposite of the SQL standard, MySQL and Oracle).
+    // Because this query is driven off slide/video it always returns exactly
+    // one row, so for a learner with no tracking `merged` was empty, SUM(ms)
+    // was NULL, and LEAST handed back a clean 100.0 -- which
+    // updateLearnerOperationsForSlideTrigger stored as PERCENTAGE_VIDEO_WATCHED
+    // for someone who had never opened the video. updateLearnerOperationsForBatch
+    // runs that trigger for every enrolled learner on any slide edit, so a single
+    // admin edit marked a whole batch 100% complete, the cascade carried it up to
+    // the course percentage, and the slide-level monotonic guard in
+    // addOrUpdatePercentageOperation made it permanent. Repaired by V430.
     @Query(value = """
             WITH segs AS (
                 SELECT vt.start_time, vt.end_time
@@ -60,14 +74,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 SELECT EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) * 1000 AS ms
                 FROM islands
                 GROUP BY island
+            ),
+            watched AS (
+                SELECT SUM(ms) AS watched_ms FROM merged
             )
             SELECT
                 CASE
                     WHEN v.published_video_length IS NULL OR v.published_video_length = 0 THEN NULL
-                    ELSE LEAST(100.0, (SELECT SUM(ms) FROM merged) / v.published_video_length * 100)
+                    WHEN w.watched_ms IS NULL THEN NULL
+                    ELSE LEAST(100.0, w.watched_ms / v.published_video_length * 100)
                 END AS percentage_watched
             FROM slide s
             JOIN video v ON s.source_id = v.id
+            CROSS JOIN watched w
             WHERE s.id = :slideId
             """, nativeQuery = true)
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
@@ -99,14 +118,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 SELECT EXTRACT(EPOCH FROM (MAX(end_time) - MIN(start_time))) * 1000 AS ms
                 FROM islands
                 GROUP BY island
+            ),
+            watched AS (
+                SELECT SUM(ms) AS watched_ms FROM merged
             )
             SELECT
                 CASE
                     WHEN v.video_length IS NULL OR v.video_length = 0 THEN NULL
-                    ELSE LEAST(100.0, (SELECT SUM(ms) FROM merged) / v.video_length * 100)
+                    WHEN w.watched_ms IS NULL THEN NULL
+                    ELSE LEAST(100.0, w.watched_ms / v.video_length * 100)
                 END AS percentage_watched
             FROM slide s
             JOIN html_video_slide v ON s.source_id = v.id
+            CROSS JOIN watched w
             WHERE s.id = :slideId
             """, nativeQuery = true)
     Double getPercentageHtmlVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);

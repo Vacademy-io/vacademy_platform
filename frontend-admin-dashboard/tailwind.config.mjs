@@ -27,6 +27,9 @@ module.exports = {
         extend: {
             zIndex: {
                 'popover-above-modal': '1200',
+                // For popovers/menus inside the few dialogs that stack at 10000
+                // (edit course, image cropper). The 1200 tier is not enough there.
+                'popover-above-top-modal': '10001',
             },
             height: {
                 // AI intake chat surface inside the create-page dialog — a

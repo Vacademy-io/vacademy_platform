@@ -11,7 +11,6 @@ import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallSum
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminPageResponse;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.util.*;
 
 /**
@@ -157,7 +156,7 @@ public class SuperAdminCallService {
                     .ttsModel(tts == null ? "sarvam" : tts).voice((String) r[7])
                     .phoneNumber((String) r[8]).customerName((String) r[9])
                     .direction((String) r[10]).status((String) r[11]).disposition((String) r[12])
-                    .callStart(r[13] == null ? null : new Date(((Timestamp) r[13]).getTime()))
+                    .callStart(toDate(r[13]))
                     .durationSeconds(secs)
                     .recordingUrl(recording).hasRecording(recording != null && !recording.isBlank())
                     .health((String) r[16])
@@ -178,6 +177,24 @@ public class SuperAdminCallService {
                 .totalElements(total)
                 .totalPages((int) Math.ceil((double) total / Math.max(size, 1)))
                 .build();
+    }
+
+    /**
+     * A native query's timestamp column comes back as whatever the Hibernate
+     * version feels like — Hibernate 6 hands back java.time.Instant, older ones
+     * java.sql.Timestamp. Casting to one of them blew up in production with
+     * "class java.time.Instant cannot be cast to class java.sql.Timestamp", so
+     * accept all of them rather than bet on the mapping.
+     */
+    private static Date toDate(Object o) {
+        if (o == null) return null;
+        if (o instanceof Date d) return d;                       // covers java.sql.Timestamp
+        if (o instanceof java.time.Instant i) return Date.from(i);
+        if (o instanceof java.time.LocalDateTime ldt) {
+            return Date.from(ldt.atZone(java.time.ZoneOffset.UTC).toInstant());
+        }
+        if (o instanceof java.time.OffsetDateTime odt) return Date.from(odt.toInstant());
+        return null;
     }
 
     private static List<String> splitFaults(String csv) {

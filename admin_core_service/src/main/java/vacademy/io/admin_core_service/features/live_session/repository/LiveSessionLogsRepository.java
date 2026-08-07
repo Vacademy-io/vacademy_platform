@@ -11,7 +11,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
-public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs, String> {
+public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs, String>, LiveSessionLogsRepositoryCustom {
 
     @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.logType = 'ATTENDANCE_RECORDED'")
     List<LiveSessionLogs> findAllAttendanceByScheduleId(@Param("scheduleId") String scheduleId);
@@ -25,37 +25,13 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
         return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
     }
 
-    /**
-     * Single-round-trip attendance upsert. During a live class an entire batch
-     * marks attendance on the same schedule concurrently; the previous
-     * check-then-save serialized them (and still produced duplicates under
-     * race). Conflict target is the partial unique index
-     * uq_lsl_attendance_schedule_user (V415). A null details keeps whatever the
-     * existing row already has.
+    /*
+     * The single-round-trip attendance upsert lives in
+     * LiveSessionLogsRepositoryCustomImpl.upsertAttendanceReturningPreviousStatus.
+     * It has to report the pre-existing status so callers can skip re-notifying
+     * on a repeat mark, and @Modifying cannot return a value. Conflict target is
+     * still the partial unique index uq_lsl_attendance_schedule_user (V415).
      */
-    @Modifying
-    @Transactional
-    @Query(value = """
-            INSERT INTO live_session_logs
-                (id, session_id, schedule_id, user_source_type, user_source_id,
-                 log_type, status, status_type, details, updated_at)
-            VALUES (:id, :sessionId, :scheduleId, :userSourceType, :userSourceId,
-                    'ATTENDANCE_RECORDED', :status, :statusType, :details, now())
-            ON CONFLICT (schedule_id, user_source_id) WHERE log_type = 'ATTENDANCE_RECORDED'
-            DO UPDATE SET status      = EXCLUDED.status,
-                          status_type = EXCLUDED.status_type,
-                          details     = COALESCE(EXCLUDED.details, live_session_logs.details),
-                          updated_at  = now()
-            """, nativeQuery = true)
-    void upsertAttendance(
-            @Param("id") String id,
-            @Param("sessionId") String sessionId,
-            @Param("scheduleId") String scheduleId,
-            @Param("userSourceType") String userSourceType,
-            @Param("userSourceId") String userSourceId,
-            @Param("status") String status,
-            @Param("statusType") String statusType,
-            @Param("details") String details);
 
     /**
      * Upsert for the BBB meeting-join path (also a class-start stampede).

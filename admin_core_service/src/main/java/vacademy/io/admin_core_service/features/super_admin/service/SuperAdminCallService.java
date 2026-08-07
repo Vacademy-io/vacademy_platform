@@ -104,14 +104,13 @@ public class SuperAdminCallService {
                              String direction, String providerType, int seconds) {
         if (seconds <= 0) return 0d;
         long minutes = (seconds + 59) / 60;                 // ceil, min 1 — as billed
-        // A per-engine flat rupee rate overrides the credit computation entirely.
-        // Edge is free to us, so it is sold at a cheaper flat rate rather than at
-        // the standard voice+ai credit stack.
-        String eng = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
-        Double flat = card.get("billed_inr_per_min_" + eng);
-        if (flat != null && flat > 0) return flat * minutes;
         boolean inbound = "INBOUND".equalsIgnoreCase(direction);
         String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
+        // An escape hatch for an engine priced outside the credit stack entirely.
+        // Edge USED one while its discount was report-only; it now rides the same
+        // negative surcharge the wallet charges, so no engine sets this today.
+        Double flat = card.get("billed_inr_per_min_" + e);
+        if (flat != null && flat > 0) return flat * minutes;
 
         double credits = 0d;
         // Telephony leg — only on trunks Vacademy pays for.
@@ -120,10 +119,14 @@ public class SuperAdminCallService {
             double[] v = pricing.get(inbound ? "voice_call_in" : "voice_call_out");
             if (v != null) credits += Math.max(v[1], v[0] * minutes);
         }
-        // AI leg — engine surcharge rides here.
+        // AI leg — the engine surcharge rides here, and it can be NEGATIVE (Edge is
+        // free to run, so it sells at 2 credits against the standard 5). Floor the
+        // per-minute at zero exactly as CallBillingService does, so a surcharge
+        // deeper than the base rate can never make this report a refund.
         double[] a = pricing.get(inbound ? "ai_call_in" : "ai_call_out");
         if (a != null) {
-            credits += Math.max(a[1], (a[0] + surcharge.getOrDefault(e, 0d)) * minutes);
+            double perMin = Math.max(0d, a[0] + surcharge.getOrDefault(e, 0d));
+            credits += Math.max(a[1], perMin * minutes);
         }
         return credits * card.getOrDefault("credit_inr", 0d);
     }

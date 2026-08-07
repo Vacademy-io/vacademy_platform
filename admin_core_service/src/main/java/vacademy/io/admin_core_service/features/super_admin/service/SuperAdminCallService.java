@@ -104,6 +104,12 @@ public class SuperAdminCallService {
                              String direction, String providerType, int seconds) {
         if (seconds <= 0) return 0d;
         long minutes = (seconds + 59) / 60;                 // ceil, min 1 — as billed
+        // A per-engine flat rupee rate overrides the credit computation entirely.
+        // Edge is free to us, so it is sold at a cheaper flat rate rather than at
+        // the standard voice+ai credit stack.
+        String eng = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
+        Double flat = card.get("billed_inr_per_min_" + eng);
+        if (flat != null && flat > 0) return flat * minutes;
         boolean inbound = "INBOUND".equalsIgnoreCase(direction);
         String e = (engine == null || engine.isBlank()) ? "sarvam" : engine.trim().toLowerCase();
 
@@ -324,6 +330,11 @@ public class SuperAdminCallService {
             double[] aOut = pricing.get("ai_call_out"), aIn = pricing.get("ai_call_in");
             if (vOut != null) credits += vOut[0] * Math.max(0, trunkMins - inboundMins);
             if (vIn != null) credits += vIn[0] * Math.min(trunkMins, inboundMins);
+            Double flatEngine = card.get("billed_inr_per_min_" + engine);
+            if (flatEngine != null && flatEngine > 0) {
+                billedTotal += flatEngine * billedMins;
+                continue;                      // flat rate replaces the credit stack
+            }
             double sur = surcharge.getOrDefault(engine, 0d);
             if (aOut != null) credits += (aOut[0] + sur) * Math.max(0, billedMins - inboundMins);
             if (aIn != null) credits += (aIn[0] + sur) * inboundMins;

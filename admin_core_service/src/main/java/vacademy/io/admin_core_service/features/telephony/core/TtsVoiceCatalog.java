@@ -57,6 +57,7 @@ public final class TtsVoiceCatalog {
      * LLM. Voice ids are locale-prefixed ({@code hi-IN-Chirp3-HD-Achird}), so a
      * cross-vendor name is impossible to confuse with the other palettes.
      */
+    public static final String MODEL_EDGE = "edge";
     public static final String MODEL_GOOGLE = "google";
     /**
      * Smallest.ai Lightning — Indian-language specialist (146 of its 234
@@ -145,6 +146,19 @@ public final class TtsVoiceCatalog {
      * <p>Chirp3-HD leads because the founder chose it by ear; the Neural2 and
      * WaveNet entries are the ~half-price tiers, kept selectable for volume.
      */
+    /**
+     * Microsoft Edge read-aloud — FREE, no API key. Only these five exist for
+     * India: two Hindi, three English. Names are locale-prefixed and end in
+     * Neural, which is also how the bot distinguishes them from another
+     * vendor's palette when a stale voice is stored.
+     */
+    private static final List<Map<String, String>> EDGE_VOICES = List.of(
+            v("hi-IN-SwaraNeural", "female", MODEL_EDGE),
+            v("hi-IN-MadhurNeural", "male", MODEL_EDGE),
+            v("en-IN-NeerjaNeural", "female", MODEL_EDGE),
+            v("en-IN-NeerjaExpressiveNeural", "female", MODEL_EDGE),
+            v("en-IN-PrabhatNeural", "male", MODEL_EDGE));
+
     private static final List<Map<String, String>> GOOGLE_VOICES = List.of(
             v("hi-IN-Chirp3-HD-Achird", "male", MODEL_GOOGLE),
             v("hi-IN-Chirp3-HD-Charon", "male", MODEL_GOOGLE),
@@ -191,7 +205,8 @@ public final class TtsVoiceCatalog {
             MODEL_SARVAM, SARVAM_VOICES,
             MODEL_RUMIK, RUMIK_VOICES,
             MODEL_GOOGLE, GOOGLE_VOICES,
-            MODEL_SMALLEST, SMALLEST_VOICES);
+            MODEL_SMALLEST, SMALLEST_VOICES,
+            MODEL_EDGE, EDGE_VOICES);
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {
@@ -208,8 +223,8 @@ public final class TtsVoiceCatalog {
 
     /** Every voice, model-tagged. The frontend groups by {@code model}. */
     public static List<Map<String, String>> all() {
-        return java.util.stream.Stream.of(GOOGLE_VOICES, SMALLEST_VOICES, RUMIK_VOICES,
-                SARVAM_VOICES).flatMap(List::stream).toList();
+        return java.util.stream.Stream.of(GOOGLE_VOICES, EDGE_VOICES, SMALLEST_VOICES,
+                RUMIK_VOICES, SARVAM_VOICES).flatMap(List::stream).toList();
     }
 
     public static List<Map<String, String>> forModel(String model) {
@@ -222,6 +237,7 @@ public final class TtsVoiceCatalog {
         if (MODEL_RUMIK.equals(m)) return "ira";
         // The founder's pick, and male — agent personas here are predominantly male
         // and Hindi verb gender follows the voice.
+        if (MODEL_EDGE.equals(m)) return "hi-IN-SwaraNeural";
         if (MODEL_GOOGLE.equals(m)) return "hi-IN-Chirp3-HD-Achird";
         if (MODEL_SMALLEST.equals(m)) return "devansh";
         return "priya";
@@ -278,6 +294,7 @@ public final class TtsVoiceCatalog {
         if (m.equals(MODEL_RUMIK) || m.startsWith("rumik") || m.startsWith("silk")
                 || m.startsWith("mulberry")) return MODEL_RUMIK;
         if (m.equals(MODEL_SARVAM) || m.startsWith("sarvam") || m.startsWith("bulbul")) return MODEL_SARVAM;
+        if (m.equals(MODEL_EDGE) || m.startsWith("edge") || m.startsWith("microsoft")) return MODEL_EDGE;
         if (m.equals(MODEL_GOOGLE) || m.startsWith("google") || m.startsWith("chirp")) return MODEL_GOOGLE;
         if (m.equals(MODEL_SMALLEST) || m.startsWith("smallest") || m.startsWith("lightning")) {
             return MODEL_SMALLEST;
@@ -290,6 +307,8 @@ public final class TtsVoiceCatalog {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         out.add(model(MODEL_GOOGLE, "Google Chirp3-HD",
                 "Recommended — clearest Hindi; cheaper per minute than Sarvam"));
+        out.add(model(MODEL_EDGE, "Microsoft Edge (free)",
+                "No vendor cost — billed at a cheaper per-minute rate. Slightly slower to start."));
         out.add(model(MODEL_SMALLEST, "Smallest.ai Lightning v3.1",
                 "Indian-language specialist"));
         out.add(model(MODEL_RUMIK, "Rumik Silk Mulberry 1.5",

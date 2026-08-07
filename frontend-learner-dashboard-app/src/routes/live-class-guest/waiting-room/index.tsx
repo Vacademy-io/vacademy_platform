@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -42,6 +42,50 @@ function GuestWaitingRoomComponent() {
   // Paid session opened without a local registration (new browser): bounce to
   // the registration page to recover identity instead of showing a 403 error.
   useGuestAccessRecovery(sessionId, error);
+
+  // The session check below runs on a 30s poll and again from the countdown's
+  // onExpire. Without these guards one join re-hit mark-attendance on every
+  // tick and, for redirect sessions, re-opened the meeting link forever —
+  // nothing unmounts this route once window.open takes over.
+  const hasMarkedRef = useRef(false);
+  const hasJoinedRef = useRef(false);
+
+  // One mark per join. Reset on failure so a mark that genuinely did not land
+  // can still be retried by the next tick.
+  const markAttendanceOnce = useCallback(async () => {
+    if (hasMarkedRef.current || !sessionDetails) return;
+    hasMarkedRef.current = true;
+    try {
+      await markAttendance({
+        sessionId: sessionDetails.sessionId,
+        scheduleId: sessionId,
+        userSourceType: "EXTERNAL_USER",
+        userSourceId: guestId,
+        details: "Guest joined live class from waiting room",
+      });
+    } catch (error) {
+      hasMarkedRef.current = false;
+      throw error;
+    }
+  }, [markAttendance, sessionDetails, sessionId, guestId]);
+
+  // Unchanged redirect behaviour, shared by the poll, the countdown's onExpire,
+  // and both the success and failure paths of each.
+  const proceedToJoin = useCallback(async () => {
+    if (!sessionDetails) return;
+    const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+    if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
+      hasJoinedRef.current = true;
+      navigate({
+        to: "/live-class-guest/embed",
+        search: { sessionId },
+      });
+    } else {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      hasJoinedRef.current = true;
+    }
+  }, [navigate, sessionDetails, sessionId]);
 
   useEffect(() => {
     const fetchThumbnail = async () => {
@@ -90,41 +134,17 @@ function GuestWaitingRoomComponent() {
 
         // Case 1: Session has already started.
         if (isInMainSession) {
-          if (sessionDetails.defaultMeetLink) {
+          if (sessionDetails.defaultMeetLink && !hasJoinedRef.current) {
             try {
               // Mark attendance before redirecting
-              await markAttendance({
-                sessionId: sessionDetails.sessionId,
-                scheduleId: sessionId,
-                userSourceType: "EXTERNAL_USER",
-                userSourceId: guestId,
-                details: "Guest joined live class from waiting room",
-              });
+              await markAttendanceOnce();
 
-              const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
-              if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
-                navigate({
-                  to: "/live-class-guest/embed",
-                  search: { sessionId },
-                });
-              } else {
-                const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-                window.open(joinLink, "_blank", "noopener,noreferrer");
-              }
+              await proceedToJoin();
             } catch (error) {
               console.error("Failed to mark attendance:", error);
               toast.error("Failed to mark attendance");
               // Still proceed with redirection
-              const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
-              if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
-                navigate({
-                  to: "/live-class-guest/embed",
-                  search: { sessionId },
-                });
-              } else {
-                const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-                window.open(joinLink, "_blank", "noopener,noreferrer");
-              }
+              await proceedToJoin();
             }
           }
         } else if (isInWaitingRoom) {
@@ -151,7 +171,14 @@ function GuestWaitingRoomComponent() {
 
       return () => clearInterval(timer);
     }
-  }, [sessionDetails, navigate, markAttendance, sessionId, guestId]);
+  }, [
+    sessionDetails,
+    navigate,
+    markAttendanceOnce,
+    proceedToJoin,
+    sessionId,
+    guestId,
+  ]);
 
   if (isLoading) {
     return <DashboardLoader />;
@@ -202,41 +229,21 @@ function GuestWaitingRoomComponent() {
                   );
                   const isInMainSession = now >= sessionDate;
 
-                  if (isInMainSession && sessionDetails.defaultMeetLink) {
+                  if (
+                    isInMainSession &&
+                    sessionDetails.defaultMeetLink &&
+                    !hasJoinedRef.current
+                  ) {
                     try {
                       // Mark attendance before redirecting
-                      await markAttendance({
-                        sessionId: sessionDetails.sessionId,
-                        scheduleId: sessionId,
-                        userSourceType: "EXTERNAL_USER",
-                        userSourceId: guestId,
-                        details: "Guest joined live class from waiting room",
-                      });
+                      await markAttendanceOnce();
 
-                      const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
-                      if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
-                        navigate({
-                          to: "/live-class-guest/embed",
-                          search: { sessionId },
-                        });
-                      } else {
-                        const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-                        window.open(joinLink, "_blank", "noopener,noreferrer");
-                      }
+                      await proceedToJoin();
                     } catch (error) {
                       console.error("Failed to mark attendance:", error);
                       toast.error("Failed to mark attendance");
                       // Still proceed with redirection
-                      const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
-                      if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
-                        navigate({
-                          to: "/live-class-guest/embed",
-                          search: { sessionId },
-                        });
-                      } else {
-                        const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-                        window.open(joinLink, "_blank", "noopener,noreferrer");
-                      }
+                      await proceedToJoin();
                     }
                   }
                 };

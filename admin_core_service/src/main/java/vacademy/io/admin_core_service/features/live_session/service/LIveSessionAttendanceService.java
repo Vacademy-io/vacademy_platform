@@ -28,10 +28,15 @@ public class LIveSessionAttendanceService {
     public void markAttendance(MarkAttendanceRequestDTO request , CustomUserDetails user) {
         String userId = request.getUserSourceId().isEmpty() ? user.getUserId() : request.getUserSourceId();
 
-        upsertPresent(request, userId);
+        String previousStatus = upsertPresent(request, userId);
 
-        // Send attendance notification to learner
-        notificationProcessor.sendAttendanceNotification(request.getSessionId(), userId, "PRESENT");
+        // Notify only when the attendance state actually moved. The learner
+        // waiting room re-marks on a 30s poll (and again on every rejoin or
+        // refresh), so an unconditional call here mailed the learner dozens of
+        // times for one class. The row was always idempotent; the mail was not.
+        if (isStatusChange(previousStatus, "PRESENT")) {
+            notificationProcessor.sendAttendanceNotification(request.getSessionId(), userId, "PRESENT");
+        }
     }
 
     public void markGuestAttendance(MarkAttendanceRequestDTO request ) {
@@ -48,8 +53,8 @@ public class LIveSessionAttendanceService {
      * hold a connection across multiple statements or race on the existence
      * check (which historically produced duplicate attendance rows).
      */
-    private void upsertPresent(MarkAttendanceRequestDTO request, String userSourceId) {
-        liveSessionLogRepository.upsertAttendance(
+    private String upsertPresent(MarkAttendanceRequestDTO request, String userSourceId) {
+        return liveSessionLogRepository.upsertAttendanceReturningPreviousStatus(
                 UUID.randomUUID().toString(),
                 request.getSessionId(),
                 request.getScheduleId(),
@@ -58,6 +63,16 @@ public class LIveSessionAttendanceService {
                 "PRESENT",
                 "ONLINE",
                 request.getDetails());
+    }
+
+    /**
+     * True when a mark is worth notifying about: either the first mark for this
+     * schedule+user (no previous status) or a genuine transition such as an
+     * admin-set ABSENT being overwritten by the learner actually joining.
+     * Re-marking the same status is a no-op as far as the learner is concerned.
+     */
+    private static boolean isStatusChange(String previousStatus, String newStatus) {
+        return previousStatus == null || !previousStatus.equalsIgnoreCase(newStatus);
     }
 
     /**
@@ -77,8 +92,14 @@ public class LIveSessionAttendanceService {
                     entry.getUserSourceId()
             );
 
+            // Captured before the overwrite: re-saving an attendance sheet
+            // resubmits every row, so notifying unconditionally re-mailed
+            // learners whose status never moved.
+            boolean statusChanged;
+
             if (existingLog.isPresent()) {
                 LiveSessionLogs log = existingLog.get();
+                statusChanged = isStatusChange(log.getStatus(), entry.getStatus());
                 log.setStatus(entry.getStatus());
                 log.setStatusType("OFFLINE");
                 if (entry.getDetails() != null && !entry.getDetails().isBlank()) {
@@ -88,6 +109,7 @@ public class LIveSessionAttendanceService {
                 liveSessionLogRepository.save(log);
                 updated++;
             } else {
+                statusChanged = true;
                 LiveSessionLogs log = LiveSessionLogs.builder()
                         .sessionId(request.getSessionId())
                         .scheduleId(request.getScheduleId())
@@ -105,8 +127,10 @@ public class LIveSessionAttendanceService {
             }
 
             // Send attendance notification to learner
-            notificationProcessor.sendAttendanceNotification(
-                    request.getSessionId(), entry.getUserSourceId(), entry.getStatus());
+            if (statusChanged) {
+                notificationProcessor.sendAttendanceNotification(
+                        request.getSessionId(), entry.getUserSourceId(), entry.getStatus());
+            }
         }
 
         return Map.of("updated", updated, "created", created);

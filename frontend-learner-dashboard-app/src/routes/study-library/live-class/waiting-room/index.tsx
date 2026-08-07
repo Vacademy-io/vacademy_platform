@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "./-components/CountdownTimer";
@@ -44,6 +44,13 @@ function WaitingRoomComponent() {
     error,
   } = useSessionDetails(sessionId);
   const { data: serverTimeData } = useServerTime();
+
+  // checkSessionStart below runs on a 30s poll. Without these guards a single
+  // join re-hit mark-attendance on every tick — harmless for the stored row,
+  // but it re-sent the "attendance marked" mail and, for redirect sessions,
+  // re-opened the meeting link forever because nothing unmounts this route.
+  const hasMarkedRef = useRef(false);
+  const hasJoinedRef = useRef(false);
 
   const fetchThumbnail = useCallback(async () => {
     if (sessionDetails?.thumbnailFileId) {
@@ -90,25 +97,44 @@ function WaitingRoomComponent() {
     // BBB sessions may not have a defaultMeetLink (room is auto-created on join)
     const isBbb = sessionDetails.linkType === LinkType.BBB_MEETING || sessionDetails.linkType === "bbb";
     if (now >= sessionStartInUserTimezone && (sessionDetails.defaultMeetLink || isBbb)) {
-      try {
-        await markAttendance({
-          sessionId: sessionDetails.sessionId,
-          scheduleId: sessionId,
-          userSourceType: "USER",
-          userSourceId: "",
-          details: "Joined live class from waiting room",
-        });
+      // Already sent to the meeting — later ticks only keep watching for the
+      // class-ended redirect above, they must not re-join.
+      if (hasJoinedRef.current) return;
+
+      // One mark per join. Reset on failure so a mark that genuinely did not
+      // land can still be retried by the next tick.
+      const markOnce = async () => {
+        if (hasMarkedRef.current) return;
+        hasMarkedRef.current = true;
+        try {
+          await markAttendance({
+            sessionId: sessionDetails.sessionId,
+            scheduleId: sessionId,
+            userSourceType: "USER",
+            userSourceId: "",
+            details: "Joined live class from waiting room",
+          });
+        } catch (error) {
+          hasMarkedRef.current = false;
+          throw error;
+        }
+      };
+
+      // Unchanged join behaviour, shared by the success and failure paths.
+      const proceedToJoin = async () => {
         if (isBbb) {
           // BBB: open the personalized join URL (real name + userId) directly.
           // Do NOT route to the embed page — its session data can resolve linkType
           // to "other" and fail with "Unsupported session type". The backend
           // /meeting/join is authoritative. Then leave the waiting room.
           await openBbbJoinForLearner(sessionId);
+          hasJoinedRef.current = true;
           navigate({ to: "/study-library/live-class" });
         } else if (
           sessionDetails.sessionStreamingServiceType ===
           SessionStreamingServiceType.EMBED
         ) {
+          hasJoinedRef.current = true;
           navigate({
             to: "/study-library/live-class/embed",
             search: { sessionId },
@@ -116,29 +142,17 @@ function WaitingRoomComponent() {
         } else {
           const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
           window.open(joinLink, "_blank", "noopener,noreferrer");
+          hasJoinedRef.current = true;
         }
+      };
+
+      try {
+        await markOnce();
+        await proceedToJoin();
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error(t("liveClass.failedToMarkAttendance"));
-        if (isBbb) {
-          // BBB: open the personalized join URL (real name + userId) directly.
-          // Do NOT route to the embed page — its session data can resolve linkType
-          // to "other" and fail with "Unsupported session type". The backend
-          // /meeting/join is authoritative. Then leave the waiting room.
-          await openBbbJoinForLearner(sessionId);
-          navigate({ to: "/study-library/live-class" });
-        } else if (
-          sessionDetails.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
-        ) {
-          navigate({
-            to: "/study-library/live-class/embed",
-            search: { sessionId },
-          });
-        } else {
-          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-          window.open(joinLink, "_blank", "noopener,noreferrer");
-        }
+        await proceedToJoin();
       }
     }
   }, [sessionDetails, serverTimeData, markAttendance, navigate, sessionId]);

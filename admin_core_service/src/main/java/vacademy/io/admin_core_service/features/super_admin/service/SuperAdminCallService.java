@@ -34,17 +34,23 @@ public class SuperAdminCallService {
     @PersistenceContext
     private EntityManager em;
 
+    // EVERY bind parameter is CAST explicitly. Postgres cannot infer a type for
+    // `$1 IS NULL` — the null-safe optional-filter idiom — and fails the whole
+    // statement with "could not determine data type of parameter $1", which the
+    // global handler turns into a 511. Live symptom: /calls and /calls/summary
+    // both 511'd while /calls/rate-card returned 200, because rate-card is the
+    // only query here that binds nothing.
     private static final String BASE_FROM = """
             FROM ai_call_result r
             LEFT JOIN telephony_call_log l ON l.id = r.call_log_id
             LEFT JOIN ai_agent a ON a.id = r.campaign_id
             LEFT JOIN institutes i ON i.id = r.institute_id
-            WHERE (:instituteId IS NULL OR r.institute_id = :instituteId)
-              AND (:fromTs IS NULL OR r.created_at >= CAST(:fromTs AS timestamp))
-              AND (:toTs   IS NULL OR r.created_at <  CAST(:toTs   AS timestamp))
-              AND (:health IS NULL OR r.diag_health = :health)
-              AND (:disposition IS NULL OR r.disposition = :disposition)
-              AND (:agentId IS NULL OR r.campaign_id = :agentId)
+            WHERE (CAST(:instituteId AS text) IS NULL OR r.institute_id = CAST(:instituteId AS text))
+              AND (CAST(:fromTs AS text) IS NULL OR r.created_at >= CAST(:fromTs AS timestamp))
+              AND (CAST(:toTs   AS text) IS NULL OR r.created_at <  CAST(:toTs   AS timestamp))
+              AND (CAST(:health AS text) IS NULL OR r.diag_health = CAST(:health AS text))
+              AND (CAST(:disposition AS text) IS NULL OR r.disposition = CAST(:disposition AS text))
+              AND (CAST(:agentId AS text) IS NULL OR r.campaign_id = CAST(:agentId AS text))
             """;
 
     /** component -> INR/min, from the rate card. Missing component = 0, never a guess. */

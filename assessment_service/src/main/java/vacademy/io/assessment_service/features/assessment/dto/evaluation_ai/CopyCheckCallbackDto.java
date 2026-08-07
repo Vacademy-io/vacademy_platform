@@ -120,6 +120,12 @@ public class CopyCheckCallbackDto {
 
         @JsonProperty("questions_evaluated")
         private Integer questionsEvaluated;
+
+        // media-service fileId of the annotated copy ai_service rendered. Null
+        // when rendering or upload failed — treat as "no new copy", never as
+        // "clear the existing one".
+        @JsonProperty("evaluated_file_id")
+        private String evaluatedFileId;
     }
 
     @Data

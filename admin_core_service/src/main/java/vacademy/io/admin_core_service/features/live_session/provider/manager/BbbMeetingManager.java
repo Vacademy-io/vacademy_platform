@@ -211,6 +211,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // via the provider config keys below.
         int meetingCameraCap = intOrDefault(bbbCfg, "meeting_camera_cap", 20);
         int userCameraCap = intOrDefault(bbbCfg, "user_camera_cap", 3);
+        // Lock settings restrict VIEWERS (students) only — moderators keep full
+        // access, e.g. a teacher can still private-message a locked student.
+        boolean disablePrivateChat = boolOrDefault(bbbCfg, "disable_private_chat", false);
+        boolean disablePublicChat = boolOrDefault(bbbCfg, "disable_public_chat", false);
+        boolean disableSharedNotes = boolOrDefault(bbbCfg, "disable_shared_notes", false);
+        boolean hideUserList = boolOrDefault(bbbCfg, "hide_user_list", false);
+        boolean endWhenNoModerator = boolOrDefault(bbbCfg, "end_when_no_moderator", false);
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("name", request.getTopic() != null ? request.getTopic() : instituteName + " Live Class");
@@ -223,6 +230,18 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("meetingCameraCap", String.valueOf(meetingCameraCap));
         params.put("userCameraCap", String.valueOf(userCameraCap));
         params.put("guestPolicy", guestPolicy);
+        params.put("lockSettingsDisablePrivateChat", String.valueOf(disablePrivateChat));
+        params.put("lockSettingsDisablePublicChat", String.valueOf(disablePublicChat));
+        params.put("lockSettingsDisableNotes", String.valueOf(disableSharedNotes));
+        params.put("lockSettingsHideUserList", String.valueOf(hideUserList));
+        // Auto-end after the last moderator leaves — saves server capacity when a
+        // teacher forgets to end the class. Delay gives them room to rejoin after
+        // a network drop without killing the meeting for everyone.
+        if (endWhenNoModerator) {
+            params.put("endWhenNoModerator", "true");
+            params.put("endWhenNoModeratorDelayInMinutes",
+                    String.valueOf(intOrDefault(bbbCfg, "end_when_no_moderator_delay_minutes", 10)));
+        }
         params.put("welcome", "");
 
         // Institute branding

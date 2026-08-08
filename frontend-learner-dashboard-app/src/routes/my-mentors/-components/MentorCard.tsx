@@ -70,7 +70,7 @@ export function MentorCard({
                     )}
 
                     <div className="mt-auto flex flex-col gap-2">
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <MyButton
                                 type="button"
                                 buttonType="primary"

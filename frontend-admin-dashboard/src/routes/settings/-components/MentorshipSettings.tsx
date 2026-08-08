@@ -577,7 +577,12 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                                 max={168}
                                 value={settings.session_reminder.hours_before}
                                 onChange={(e) =>
-                                    setReminderField('hours_before', Number(e.target.value))
+                                    // Clamp to the backend's accepted range so the UI never
+                                    // shows a value the scheduler won't actually use.
+                                    setReminderField(
+                                        'hours_before',
+                                        Math.min(168, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
                                 }
                                 className="w-24"
                             />
@@ -625,7 +630,11 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                                 max={365}
                                 value={settings.checkin_reminder.inactivity_days}
                                 onChange={(e) =>
-                                    setCheckinField('inactivity_days', Number(e.target.value))
+                                    // Clamp to the backend's accepted range (see intCfg 1..365).
+                                    setCheckinField(
+                                        'inactivity_days',
+                                        Math.min(365, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
                                 }
                                 className="w-24"
                             />

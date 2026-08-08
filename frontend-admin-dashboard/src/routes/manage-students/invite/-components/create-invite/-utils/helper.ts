@@ -467,6 +467,12 @@ export function convertInviteData(
                         ...(autopay.authAmount != null
                             ? { AUTH_AMOUNT: autopay.authAmount }
                             : {}),
+                        ...(autopay.gracePeriodDays != null
+                            ? { GRACE_PERIOD_DAYS: autopay.gracePeriodDays }
+                            : {}),
+                        ...(autopay.totalDurationMonths != null
+                            ? { TOTAL_DURATION_MONTHS: autopay.totalDurationMonths }
+                            : {}),
                     },
                 };
             } else if (next.setting?.AUTOPAY_SETTING) {

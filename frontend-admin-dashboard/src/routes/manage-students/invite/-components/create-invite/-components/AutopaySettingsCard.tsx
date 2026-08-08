@@ -239,6 +239,76 @@ const AutopaySettingsCard = ({ form }: AutopaySettingsCardProps) => {
                                 price; set higher to leave headroom for tax / price changes.
                             </div>
                         </div>
+
+                        <div className="mt-4 border-t pt-4">
+                            <span className="text-sm font-medium">Grace period (days)</span>
+                            <FormField
+                                control={form.control}
+                                name="autopaySettings.gracePeriodDays"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                className="mt-2 w-40"
+                                                placeholder="0"
+                                                value={field.value ?? ''}
+                                                onChange={(e) =>
+                                                    field.onChange(
+                                                        e.target.value === ''
+                                                            ? null
+                                                            : Number(e.target.value)
+                                                    )
+                                                }
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <div className="mt-1 text-xs text-muted-foreground">
+                                If a renewal payment fails on the due date, keep the learner&apos;s
+                                access for this many days past expiry while we retry the charge. Access
+                                is revoked only if it&apos;s still unpaid when the grace period ends.
+                                Leave blank for no grace.
+                            </div>
+                        </div>
+
+                        <div className="mt-4">
+                            <span className="text-sm font-medium">
+                                Total subscription duration (months)
+                            </span>
+                            <FormField
+                                control={form.control}
+                                name="autopaySettings.totalDurationMonths"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="mt-2 w-40"
+                                                placeholder="Ongoing"
+                                                value={field.value ?? ''}
+                                                onChange={(e) =>
+                                                    field.onChange(
+                                                        e.target.value === ''
+                                                            ? null
+                                                            : Number(e.target.value)
+                                                    )
+                                                }
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <div className="mt-1 text-xs text-muted-foreground">
+                                Total length of the subscription, e.g. 12 for a 12-month course. Autopay
+                                renews until this term is reached, then stops charging — the learner
+                                keeps access until the final paid period ends. Leave blank for an
+                                open-ended subscription.
+                            </div>
+                        </div>
                     </div>
                 )}
             </CardContent>

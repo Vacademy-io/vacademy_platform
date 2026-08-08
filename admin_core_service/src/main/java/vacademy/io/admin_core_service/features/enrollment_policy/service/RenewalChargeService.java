@@ -110,6 +110,51 @@ public class RenewalChargeService {
         }
     }
 
+    /**
+     * True when a fixed-term subscription has run its full duration. The term is
+     * AUTOPAY_SETTING.TOTAL_DURATION_MONTHS on the invite, measured from the plan's
+     * start_date. Open-ended (no/invalid setting) always returns false.
+     */
+    private boolean hasReachedSubscriptionTerm(UserPlan plan, EnrollInvite invite, Date now) {
+        Integer months = readTotalDurationMonths(invite);
+        if (months == null || months <= 0 || plan.getStartDate() == null) {
+            return false;
+        }
+        java.time.LocalDate start = plan.getStartDate().toInstant()
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        java.time.LocalDate termEnd = start.plusMonths(months);
+        java.time.LocalDate today = now.toInstant()
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        // On/after the term-end date the next cycle would fall outside the paid term.
+        return !today.isBefore(termEnd);
+    }
+
+    private Integer readTotalDurationMonths(EnrollInvite invite) {
+        return readAutopayInt(invite, "TOTAL_DURATION_MONTHS");
+    }
+
+    private Integer readGracePeriodDays(EnrollInvite invite) {
+        return readAutopayInt(invite, "GRACE_PERIOD_DAYS");
+    }
+
+    /** Reads an integer AUTOPAY_SETTING key off the invite's settingJson; null if absent. */
+    private Integer readAutopayInt(EnrollInvite invite, String key) {
+        if (invite == null || !StringUtils.hasText(invite.getSettingJson())) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(invite.getSettingJson()).path("setting").path("AUTOPAY_SETTING");
+            if (ap.has(key) && !ap.get(key).isNull()) {
+                return ap.get(key).asInt();
+            }
+        } catch (Exception e) {
+            log.warn("[RenewalCharge] Could not read {} for invite {}: {}",
+                    key, invite.getId(), e.getMessage());
+        }
+        return null;
+    }
+
     /** Last instant of the given day, so "due today" means due by this run. */
     private static Date endOfDay(Date date) {
         java.util.Calendar cal = java.util.Calendar.getInstance();
@@ -140,6 +185,17 @@ public class RenewalChargeService {
         String vendor = invite.getVendor();
         if (!StringUtils.hasText(vendor) || "MANUAL".equalsIgnoreCase(vendor)) {
             log.info("[RenewalCharge] Plan {} vendor={} not chargeable — skipping", plan.getId(), vendor);
+            return Outcome.SKIPPED;
+        }
+
+        // Fixed-term subscription: once the configured total duration has elapsed, stop
+        // charging and turn autopay off. The learner keeps access until the current
+        // period's end_date, then it lapses naturally — we don't revoke here.
+        if (hasReachedSubscriptionTerm(plan, invite, now)) {
+            log.info("[RenewalCharge] Plan {} reached its total subscription term — stopping autopay", plan.getId());
+            plan.setAutoRenewalEnabled(false);
+            plan.setNextChargeAt(null);
+            userPlanRepository.save(plan);
             return Outcome.SKIPPED;
         }
 
@@ -217,7 +273,23 @@ public class RenewalChargeService {
      */
     private void applyDunning(UserPlan plan, Date reArmAt, Date now, String instituteId) {
         int maxAttempts = resolveMaxAttempts(plan);
-        boolean exhausted = plan.getRenewalAttemptCount() >= maxAttempts;
+        // Access is retained while we retry. The grace period (AUTOPAY_SETTING.
+        // GRACE_PERIOD_DAYS) extends that window: keep access and keep retrying until
+        // the due date + grace has passed, THEN revoke. With no grace configured we fall
+        // back to the attempt ceiling alone.
+        Integer graceDays = readGracePeriodDays(plan.getEnrollInvite());
+        boolean graceConfigured = graceDays != null && graceDays > 0 && reArmAt != null;
+        boolean exhausted;
+        if (graceConfigured) {
+            // Grace governs: retry daily throughout the window, revoke only once the due
+            // date + grace has passed — regardless of attempt count.
+            Calendar deadline = Calendar.getInstance();
+            deadline.setTime(reArmAt);
+            deadline.add(Calendar.DAY_OF_MONTH, graceDays);
+            exhausted = !now.before(deadline.getTime());
+        } else {
+            exhausted = plan.getRenewalAttemptCount() >= maxAttempts;
+        }
         if (exhausted) {
             plan.setStatus(UserPlanStatusEnum.EXPIRED.name());
             plan.setNextChargeAt(null);

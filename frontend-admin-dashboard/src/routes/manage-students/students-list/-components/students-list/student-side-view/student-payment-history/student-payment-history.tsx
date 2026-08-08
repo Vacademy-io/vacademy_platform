@@ -7,6 +7,7 @@ import {
     fetchUserAccountSummary,
     fetchUserAccountLedger,
     markInvoicePaidManual,
+    rejectInvoice,
     getInvoiceDownloadUrl,
 } from '@/services/invoice-service';
 import type { InvoiceDTO, UserAccountSummaryDTO, UserAccountLedgerEntryDTO } from '@/services/invoice-service';
@@ -23,6 +24,7 @@ import {
     ClockCounterClockwise,
     ArrowCircleUp,
     ArrowCircleDown,
+    XCircle,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
@@ -38,6 +40,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
@@ -227,16 +239,39 @@ const StudentMarkPaidDialog = ({
 /** Invoice list with client-side pagination + source-based actions. */
 const InvoicesList = ({
     invoices,
+    instituteId,
     onRefresh,
 }: {
     invoices: InvoiceDTO[];
+    instituteId: string;
     onRefresh?: () => void;
 }) => {
     const [page, setPage] = useState(0);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [markPaidTarget, setMarkPaidTarget] = useState<{ id: string; number?: string } | null>(null);
+    // Pending confirm for the destructive Cancel action — terminal, so it goes behind an
+    // AlertDialog rather than firing straight from the row (same gate as the sub-org panel).
+    const [cancelTarget, setCancelTarget] = useState<{ id: string; number: string } | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
     const totalPages = Math.ceil(invoices.length / INVOICES_PER_PAGE);
     const paged = invoices.slice(page * INVOICES_PER_PAGE, (page + 1) * INVOICES_PER_PAGE);
+
+    // Voids a mistaken PENDING_PAYMENT invoice. Mirrors the Reject action in
+    // manage-suborg-teams/sub-org-analytics-panel — same endpoint, same terminal semantics.
+    const cancelMutation = useMutation({
+        mutationFn: (invoiceId: string) => rejectInvoice(invoiceId, instituteId),
+        onMutate: (invoiceId) => setCancellingId(invoiceId),
+        onSettled: () => setCancellingId(null),
+        onSuccess: () => {
+            toast.success('Invoice cancelled');
+            onRefresh?.();
+        },
+        onError: (err: unknown) => {
+            const message = (err as { response?: { data?: { message?: string } } })?.response?.data
+                ?.message;
+            toast.error(message || 'Could not cancel invoice');
+        },
+    });
 
     const handleDownload = (invoice: InvoiceDTO) => {
         if (invoice.pdf_url) {
@@ -276,6 +311,10 @@ const InvoicesList = ({
                         const status = String(inv.status || '').toUpperCase();
                         const isPending = status === 'PENDING_PAYMENT' || status === 'GENERATED' || status === 'SENT';
                         const isAdminManual = inv.source === 'ADMIN_MANUAL';
+                        // Cancel is gated strictly on PENDING_PAYMENT, NOT the broader
+                        // isPending: InvoiceService.rejectInvoice rejects any other status
+                        // outright, so offering it on GENERATED/SENT would only ever 400.
+                        const canCancel = isAdminManual && status === 'PENDING_PAYMENT';
                         const paymentLink = inv.payment_link;
                         return (
                             <li
@@ -355,12 +394,12 @@ const InvoicesList = ({
                                     )}
                                 </div>
                                 {/* Action row: payment link + mark paid for actionable invoices */}
-                                {(paymentLink || (isAdminManual && isPending)) && (
+                                {(paymentLink || (isAdminManual && isPending) || canCancel) && (
                                     <div className="flex flex-wrap items-center gap-2">
                                         {paymentLink && (
                                             <button
                                                 onClick={() => handleCopyLink(inv.id, paymentLink)}
-                                                className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
+                                                className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
                                                 title="Copy payment link to share with learner"
                                             >
                                                 {copiedId === inv.id ? (
@@ -373,10 +412,26 @@ const InvoicesList = ({
                                         {isAdminManual && isPending && (
                                             <button
                                                 onClick={() => setMarkPaidTarget({ id: inv.id, number: inv.invoice_number || inv.id })}
-                                                className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-2xs uppercase tracking-wide text-primary-700 hover:bg-primary-100"
                                                 title="Record an offline / manual payment"
                                             >
                                                 Mark Paid
+                                            </button>
+                                        )}
+                                        {canCancel && (
+                                            <button
+                                                onClick={() =>
+                                                    setCancelTarget({
+                                                        id: inv.id,
+                                                        number: inv.invoice_number || inv.id,
+                                                    })
+                                                }
+                                                disabled={cancellingId === inv.id}
+                                                className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
+                                                title="Void this invoice — the payment link stops working"
+                                            >
+                                                <XCircle className="size-3" />
+                                                {cancellingId === inv.id ? 'Cancelling…' : 'Cancel'}
                                             </button>
                                         )}
                                     </div>
@@ -419,6 +474,32 @@ const InvoicesList = ({
                     onRefresh?.();
                 }}
             />
+            {/* Cancel confirm — terminal and money-voiding, so it is gated behind an explicit
+                AlertDialog rather than firing on the row click. */}
+            <AlertDialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel invoice {cancelTarget?.number}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This voids the invoice permanently — the payment link stops working and
+                            it can never be marked paid. This cannot be undone. To correct a
+                            mistake, raise a new invoice afterwards.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (cancelTarget) cancelMutation.mutate(cancelTarget.id);
+                                setCancelTarget(null);
+                            }}
+                            className="bg-danger-600 hover:bg-danger-700"
+                        >
+                            Cancel Invoice
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 };
@@ -692,7 +773,11 @@ export const StudentPaymentHistory = () => {
                         <span className="ml-2 text-sm text-muted-foreground">Loading invoices...</span>
                     </div>
                 ) : (
-                    <InvoicesList invoices={invoicesData || []} onRefresh={invalidateInvoices} />
+                    <InvoicesList
+                        invoices={invoicesData || []}
+                        instituteId={instituteDetails.id}
+                        onRefresh={invalidateInvoices}
+                    />
                 )}
             </ProfileSectionCard>
 

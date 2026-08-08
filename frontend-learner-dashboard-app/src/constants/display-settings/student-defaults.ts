@@ -84,29 +84,34 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
   // Curated dashboard order. The dashboard renders a 2/3 main column and a
   // 1/3 rail on large screens; orders only sort widgets WITHIN their column,
   // so institutes' saved orders keep working after the redesign.
-  const ids: StudentDashboardWidgetConfig["id"][] = [
+  //
+  // MUST stay identical (ids, order AND default visibility) to the admin app's
+  // defaultDashboardWidgets: the admin persists its own defaults on the first
+  // save, so any divergence silently reshuffles or re-shows widgets the moment
+  // someone opens the settings screen and hits Save.
+  const defaults: StudentDashboardWidgetConfig[] = [
     // Main column: continue learning first, then the stat-cards row.
-    "continueLearning",
-    "coursesStat",
-    "liveClasses",
-    "evaluationStat",
-    "assessmentsStat",
+    { id: "continueLearning", visible: true },
+    { id: "coursesStat", visible: true },
+    { id: "liveClasses", visible: true },
+    { id: "evaluationStat", visible: true },
     // Progress and insights widgets.
-    "learningAnalytics",
-    "activityTrend",
-    "dailyProgress",
-    "myClasses",
+    { id: "learningAnalytics", visible: true },
     // Commerce widgets (hidden in play mode).
-    "myMembership",
-    "myBooks",
+    { id: "myMembership", visible: true },
+    { id: "myBooks", visible: true },
+    // Opt-in: off unless an institute turns it on.
+    { id: "myOrders", visible: false },
     // Rail column: announcements pin panel renders first (not configurable),
-    // then live classes and attendance.
-    "upcomingLiveClasses",
-    "myMentors",
-    "thisWeekAttendance",
-    "referAFriend",
-  ];
-  return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
+    // then live classes, mentors and attendance.
+    { id: "upcomingLiveClasses", visible: true },
+    { id: "myMentors", visible: true },
+    { id: "thisWeekAttendance", visible: true },
+    // Bottom-of-page commerce CTAs.
+    { id: "exploreMemberships", visible: true },
+    { id: "exploreBooks", visible: true },
+  ].map((w, idx) => ({ ...w, order: idx + 1 }));
+  return defaults;
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {

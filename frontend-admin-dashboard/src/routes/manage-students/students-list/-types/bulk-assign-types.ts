@@ -68,6 +68,12 @@ export interface AssignmentItem {
         email?: string | null;
         mobile_number?: string | null;
     } | null;
+
+    /**
+     * Admin deliberately declined to link an organization on an org-associated batch. Enrolls
+     * with no sub-org and fires LEARNER_BATCH_ENROLLMENT instead of SUB_ORG_MEMBER_ENROLLMENT.
+     */
+    skip_sub_org?: boolean;
 }
 
 export interface AssignOptions {
@@ -360,6 +366,12 @@ export interface SelectedPackageSession {
 
     /** Sub-org step: set instead of `subOrgId` when creating a new organization inline. */
     newSubOrg?: NewSubOrgInput;
+
+    /**
+     * Sub-org step: admin chose "don't link an organisation". Enrolls the member as a plain
+     * learner and keeps the enrollment on the LEARNER_BATCH_ENROLLMENT automation.
+     */
+    subOrgSkipped?: boolean;
 }
 
 /**
@@ -405,11 +417,13 @@ export interface PackageSessionSubOrg {
 }
 
 /**
- * A course in the sub-org step is ready once the admin either picked an existing
- * organization or typed a name for a new one.
+ * A course in the sub-org step is ready once the admin made an explicit choice: an existing
+ * organization, a name for a new one, or opting out of linking altogether. "Left untouched"
+ * is deliberately NOT ready — skipping has to be chosen, not defaulted into.
  */
 export const isSubOrgSelectionReady = (ps: SelectedPackageSession): boolean => {
     if (!ps.isOrgAssociated) return true;
+    if (ps.subOrgSkipped) return true;
     if (ps.subOrgId) return true;
     return !!ps.newSubOrg?.name?.trim();
 };

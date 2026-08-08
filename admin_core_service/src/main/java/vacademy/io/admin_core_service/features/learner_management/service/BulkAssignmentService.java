@@ -708,21 +708,8 @@ public class BulkAssignmentService {
                 log.warn("Failed to generate coupon code for userId={}: {}", userId, e.getMessage());
             }
 
-            // Trigger enrollment workflow (same as manual flow). Pass the created sub-org
-            // through so workflow nodes can branch on it (e.g. SUB_ORG_MEMBER_ENROLLMENT
-            // template variants). null when the PS isn't org-associated.
-            try {
-                studentRegistrationManager.triggerEnrollmentWorkflow(
-                        instituteId, userDTO, config.getPackageSession().getId(), createdSubOrg);
-            } catch (Exception e) {
-                log.warn("Failed to trigger enrollment workflow for userId={}: {}",
-                        userId, e.getMessage());
-            }
-
-            // Sub-org members enrolled here must fire the same SUB_ORG_MEMBER_ENROLLMENT
-            // automation the /sub-org/v1/add-member route fires.
-            triggerSubOrgMemberEnrollmentWorkflow(
-                    instituteId, userDTO, config.getPackageSession(), subOrgRoles, adminUserId);
+            fireEnrollmentWorkflow(instituteId, userDTO, config.getPackageSession(),
+                    createdSubOrg, subOrgRoles, adminUserId, userId);
         } else {
             // Fallback: create mapping directly if userDTO is not available. Stamp sub-org
             // fields here too — linkStudentToInstitute (used above) reads them off
@@ -949,19 +936,9 @@ public class BulkAssignmentService {
 
         studentSessionRepository.save(existingMapping);
 
-        // Trigger enrollment workflow (same as manual flow). Pass the resolved sub-org
-        // through for workflow node access; null when the PS isn't org-associated.
         if (userDTO != null) {
-            try {
-                studentRegistrationManager.triggerEnrollmentWorkflow(
-                        instituteId, userDTO, config.getPackageSession().getId(), createdSubOrg);
-            } catch (Exception e) {
-                log.warn("Failed to trigger enrollment workflow for re-enrollment userId={}: {}",
-                        userId, e.getMessage());
-            }
-
-            triggerSubOrgMemberEnrollmentWorkflow(
-                    instituteId, userDTO, config.getPackageSession(), subOrgRoles, adminUserId);
+            fireEnrollmentWorkflow(instituteId, userDTO, config.getPackageSession(),
+                    createdSubOrg, subOrgRoles, adminUserId, userId);
         }
 
         log.info("Re-enrolled: userId={}, packageSession={}, userPlan={}, mapping={}",
@@ -1023,6 +1000,15 @@ public class BulkAssignmentService {
             String instituteId) {
         PackageSession packageSession = config.getPackageSession();
         if (packageSession == null || !Boolean.TRUE.equals(packageSession.getIsOrgAssociated())) {
+            return null;
+        }
+
+        // Admin explicitly opted out of linking an organisation. Enroll them as a plain learner:
+        // no sub_org stamp, no roles, and LEARNER_BATCH_ENROLLMENT rather than the sub-org event.
+        // Must be checked before the custom-field path below, which throws when it can't resolve.
+        if (assignment != null && assignment.isSkipSubOrg()) {
+            log.info("Sub-org linking skipped by admin for userId={} packageSession={}",
+                    userId, packageSession.getId());
             return null;
         }
 
@@ -1128,6 +1114,45 @@ public class BulkAssignmentService {
                 .map(r -> r.toUpperCase(Locale.ROOT))
                 .distinct()
                 .collect(Collectors.joining(","));
+    }
+
+    /**
+     * Fires EXACTLY ONE enrollment workflow event for this enrollment — never both.
+     *
+     * <p>The two events address different audiences and, on a real institute, are wired to
+     * overlapping workflows: firing both ran an admin-onboarding workflow at an ordinary staff
+     * member and sent the welcome email twice (a workflow subscribed to both events runs once
+     * per event). The rule:
+     *
+     * <ul>
+     *   <li><b>No sub-org</b> (batch isn't org-associated, or the admin skipped linking one) →
+     *       {@code LEARNER_BATCH_ENROLLMENT}. Unchanged legacy behaviour, so the Moodle /
+     *       LearnDash sync workflows hanging off that event keep running.</li>
+     *   <li><b>Sub-org + the member has LEARNER</b> → {@code SUB_ORG_MEMBER_ENROLLMENT} only,
+     *       matching what /sub-org/v1/add-member fires for the same person.</li>
+     *   <li><b>Sub-org + ADMIN-only</b> (no course access) → {@code LEARNER_BATCH_ENROLLMENT}.
+     *       Member-onboarding automations are for learners, while the admin-onboarding
+     *       workflows are the ones subscribed to the batch event — so an admin-only member
+     *       would otherwise get no automation at all.</li>
+     * </ul>
+     */
+    private void fireEnrollmentWorkflow(
+            String instituteId, UserDTO userDTO, PackageSession packageSession,
+            Institute subOrg, String subOrgRoles, String adminUserId, String userId) {
+
+        if (subOrg != null && hasLearnerRole(subOrgRoles)) {
+            triggerSubOrgMemberEnrollmentWorkflow(
+                    instituteId, userDTO, packageSession, subOrgRoles, adminUserId);
+            return;
+        }
+
+        try {
+            studentRegistrationManager.triggerEnrollmentWorkflow(
+                    instituteId, userDTO, packageSession.getId(), subOrg);
+        } catch (Exception e) {
+            log.warn("Failed to trigger enrollment workflow for userId={}: {}",
+                    userId, e.getMessage());
+        }
     }
 
     /**

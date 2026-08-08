@@ -54,23 +54,27 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
 }
 
 function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
-    const ids: StudentDashboardWidgetConfig['id'][] = [
-        'coursesStat',
-        'assessmentsStat',
-        'evaluationStat',
-        'continueLearning',
-        'learningAnalytics',
-        'activityTrend',
-        'dailyProgress',
-        'liveClasses',
-        'thisWeekAttendance',
-        'referAFriend',
-        'myClasses',
-        'myMembership',
-        'myBooks',
-        'upcomingLiveClasses',
+    // MUST stay identical (ids, order AND default visibility) to the learner
+    // app's defaultDashboardWidgets. These defaults get PERSISTED on the first
+    // save from this screen, so any divergence silently reshuffles or re-shows
+    // widgets the moment an admin opens settings and hits Save.
+    const defaults: Array<Omit<StudentDashboardWidgetConfig, 'order'>> = [
+        { id: 'continueLearning', visible: true },
+        { id: 'coursesStat', visible: true },
+        { id: 'liveClasses', visible: true },
+        { id: 'evaluationStat', visible: true },
+        { id: 'learningAnalytics', visible: true },
+        { id: 'myMembership', visible: true },
+        { id: 'myBooks', visible: true },
+        // Opt-in: off unless an institute turns it on.
+        { id: 'myOrders', visible: false },
+        { id: 'upcomingLiveClasses', visible: true },
+        { id: 'myMentors', visible: true },
+        { id: 'thisWeekAttendance', visible: true },
+        { id: 'exploreMemberships', visible: true },
+        { id: 'exploreBooks', visible: true },
     ];
-    return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
+    return defaults.map((w, idx) => ({ ...w, order: idx + 1 }));
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {

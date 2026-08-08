@@ -28,22 +28,59 @@ export interface StudentSidebarTabConfig {
 }
 
 // Dashboard Widgets
+/**
+ * Every id the learner dashboard actually renders. Keep in sync with the
+ * learner app's StudentDashboardWidgetId.
+ */
 export type StudentDashboardWidgetId =
     | 'coursesStat'
-    | 'assessmentsStat'
     | 'evaluationStat'
     | 'continueLearning'
     | 'learningAnalytics'
-    | 'activityTrend'
-    | 'dailyProgress'
     | 'liveClasses'
     | 'thisWeekAttendance'
-    | 'referAFriend'
-    | 'myClasses'
     | 'myMembership'
     | 'myBooks'
     | 'upcomingLiveClasses'
+    | 'myMentors'
+    | 'myOrders'
+    // Bottom-of-page commerce CTAs. Separate from myMembership / myBooks so the
+    // widget and the "go buy more" button can be controlled independently.
+    | 'exploreMemberships'
+    | 'exploreBooks'
     | 'custom';
+
+/**
+ * Ids that used to be offered here but that the learner dashboard never reads.
+ * Toggling them did nothing, so they are filtered out of the settings UI. They
+ * may still exist in an institute's saved JSON — harmless, and left in place so
+ * this list stays a pure display filter rather than a destructive migration.
+ */
+export const RETIRED_WIDGET_IDS: ReadonlySet<string> = new Set([
+    'assessmentsStat',
+    'activityTrend',
+    'dailyProgress',
+    'myClasses',
+    'referAFriend',
+]);
+
+/** Human labels for the settings screen — `w.id` alone reads like a variable name. */
+export const WIDGET_LABELS: Record<string, string> = {
+    continueLearning: 'Continue Learning',
+    coursesStat: 'Courses (stat card)',
+    liveClasses: 'Live Sessions (stat card)',
+    evaluationStat: 'Assessments (stat card)',
+    learningAnalytics: 'Learning Analytics',
+    myMembership: 'My Membership',
+    myBooks: 'My Books',
+    myOrders: 'My Orders',
+    upcomingLiveClasses: 'Upcoming Live Classes',
+    myMentors: 'My Mentors',
+    thisWeekAttendance: 'Attendance (this week)',
+    exploreMemberships: 'Explore Memberships (button)',
+    exploreBooks: 'Explore Books (button)',
+    custom: 'Custom',
+};
 
 export interface StudentDashboardWidgetConfig {
     id: StudentDashboardWidgetId;

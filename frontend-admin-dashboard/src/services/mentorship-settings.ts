@@ -60,6 +60,18 @@ export interface MentorshipAssignmentTrigger extends MentorshipTriggerSettings {
     notify_mentor: boolean;
 }
 
+/** Scheduler-driven: one reminder per booked session, `hours_before` the start. */
+export interface MentorshipSessionReminderTrigger extends MentorshipTriggerSettings {
+    enabled: boolean;
+    hours_before: number;
+}
+
+/** Scheduler-driven: nudge after `inactivity_days` without a mentor session. Opt-in. */
+export interface MentorshipCheckinReminderTrigger extends MentorshipTriggerSettings {
+    enabled: boolean;
+    inactivity_days: number;
+}
+
 export interface MentorshipSettings {
     /** A mentor↔student assignment was created (manual or round-robin). */
     assignment: MentorshipAssignmentTrigger;
@@ -67,6 +79,10 @@ export interface MentorshipSettings {
     booking: MentorshipTriggerSettings;
     /** A mentor session was cancelled. */
     cancellation: MentorshipTriggerSettings;
+    /** Upcoming-session reminder (scheduler). */
+    session_reminder: MentorshipSessionReminderTrigger;
+    /** Inactivity check-in nudge (scheduler). Master flag defaults OFF. */
+    checkin_reminder: MentorshipCheckinReminderTrigger;
 }
 
 const whatsappDefault = (): MentorshipWhatsappTemplate => ({
@@ -83,17 +99,17 @@ export const DEFAULT_MENTORSHIP_SETTINGS: MentorshipSettings = {
         email: {
             enabled: true,
             subject: 'You have a new mentor',
-            body: "<p>Hi {{name}},</p><p>You've been assigned a mentor: <b>{{mentor_name}}</b>. Open <b>My Mentors</b> to book a session or send a message.</p>",
+            body: '<p>Hi {{name}},</p><p><b>{{mentor_name}}</b> is now your mentor. Open <b>My Mentors</b> in your dashboard sidebar to message them directly or book a 1:1 session.</p>',
         },
         system_alert: {
             enabled: true,
             title: 'You have a new mentor',
-            body: "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book a session or message them.",
+            body: '{{mentor_name}} is now your mentor. Open My Mentors in the sidebar to message them or book a session.',
         },
         push: {
             enabled: true,
             title: 'You have a new mentor',
-            body: "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.",
+            body: '{{mentor_name}} is now your mentor. Open My Mentors to message them or book a session.',
         },
         whatsapp: whatsappDefault(),
     },
@@ -130,6 +146,48 @@ export const DEFAULT_MENTORSHIP_SETTINGS: MentorshipSettings = {
             enabled: true,
             title: 'Mentor session cancelled',
             body: 'Your session "{{session_title}}" was cancelled.',
+        },
+        whatsapp: whatsappDefault(),
+    },
+    session_reminder: {
+        enabled: true,
+        hours_before: 24,
+        email: {
+            enabled: true,
+            subject: 'Reminder: your mentor session is coming up',
+            body: '<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> with <b>{{mentor_name}}</b> starts at <b>{{session_datetime}}</b>. Open <b>My Mentors</b> if you need the joining link.</p>',
+        },
+        system_alert: {
+            enabled: true,
+            title: 'Upcoming mentor session',
+            body: '"{{session_title}}" with {{mentor_name}} starts at {{session_datetime}}.',
+        },
+        push: {
+            enabled: true,
+            title: 'Upcoming mentor session',
+            body: '"{{session_title}}" with {{mentor_name}} starts at {{session_datetime}}.',
+        },
+        whatsapp: whatsappDefault(),
+    },
+    checkin_reminder: {
+        // Opt-in: unlike the other triggers this one emails out of the blue,
+        // so it stays off until an institute turns it on. Mirrors the backend default.
+        enabled: false,
+        inactivity_days: 14,
+        email: {
+            enabled: true,
+            subject: 'Time to catch up with your mentor?',
+            body: "<p>Hi {{name}},</p><p>It's been a while since your last session with <b>{{mentor_name}}</b>. Open <b>My Mentors</b> to book a 1:1 or send them a message.</p>",
+        },
+        system_alert: {
+            enabled: true,
+            title: 'Catch up with your mentor',
+            body: "It's been a while since you connected with {{mentor_name}}. Book a session or send them a message.",
+        },
+        push: {
+            enabled: true,
+            title: 'Catch up with your mentor',
+            body: "It's been a while since you connected with {{mentor_name}}. Book a session or message them.",
         },
         whatsapp: whatsappDefault(),
     },
@@ -184,6 +242,16 @@ export const getMentorshipSettings = async (): Promise<MentorshipSettings> => {
             },
             booking: mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.booking, partial.booking),
             cancellation: mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.cancellation, partial.cancellation),
+            // mergeTrigger spreads the raw object over the defaults, so the scalar
+            // fields (enabled / hours_before / inactivity_days) merge along with it.
+            session_reminder: mergeTrigger(
+                DEFAULT_MENTORSHIP_SETTINGS.session_reminder,
+                partial.session_reminder
+            ),
+            checkin_reminder: mergeTrigger(
+                DEFAULT_MENTORSHIP_SETTINGS.checkin_reminder,
+                partial.checkin_reminder
+            ),
         };
     } catch (err) {
         console.error('Failed to load mentorship settings, using defaults', err);

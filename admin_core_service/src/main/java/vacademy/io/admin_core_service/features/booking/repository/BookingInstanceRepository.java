@@ -36,6 +36,14 @@ public interface BookingInstanceRepository extends JpaRepository<BookingInstance
 
     Optional<BookingInstance> findByLiveSessionId(String liveSessionId);
 
+    /** Upcoming-session candidates for the mentorship reminder scheduler (all institutes). */
+    List<BookingInstance> findByStatusNotInAndScheduledStartUtcBetween(
+            Collection<String> statuses, Timestamp from, Timestamp to);
+
+    /** Any session of this mentor↔student pair after the cutoff (recent past or scheduled ahead). */
+    boolean existsByHostUserIdAndInviteeUserIdAndStatusNotInAndScheduledStartUtcAfter(
+            String hostUserId, String inviteeUserId, Collection<String> statuses, Timestamp after);
+
     List<BookingInstance> findByAudienceResponseId(String audienceResponseId);
 
     List<BookingInstance> findByInstituteIdAndInviteeUserIdOrderByScheduledStartUtcDesc(

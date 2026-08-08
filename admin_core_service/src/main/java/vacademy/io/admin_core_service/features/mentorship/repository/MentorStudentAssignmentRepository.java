@@ -12,6 +12,9 @@ public interface MentorStudentAssignmentRepository extends JpaRepository<MentorS
 
     List<MentorStudentAssignment> findByInstituteIdAndStatus(String instituteId, String status);
 
+    /** All-institute scan for the check-in nudge scheduler. */
+    List<MentorStudentAssignment> findByStatus(String status);
+
     List<MentorStudentAssignment> findByInstituteIdAndStudentUserIdAndStatus(String instituteId, String studentUserId, String status);
 
     List<MentorStudentAssignment> findByInstituteIdAndMentorUserIdAndStatus(String instituteId, String mentorUserId, String status);

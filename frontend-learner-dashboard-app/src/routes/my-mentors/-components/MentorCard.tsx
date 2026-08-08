@@ -6,14 +6,7 @@ import { MyButton } from "@/components/design-system/button";
 import { ModernCard, ModernCardContent } from "@/components/design-system/modern-card";
 import { openDirectConversation } from "@/services/chat/chatApi";
 import type { MyMentor } from "../-services/my-mentors-service";
-
-function initials(name?: string | null): string {
-    if (!name) return "?";
-    const parts = name.trim().split(/\s+/);
-    return (
-        (parts[0]?.[0] ?? "").concat(parts.length > 1 ? (parts[1]?.[0] ?? "") : "").toUpperCase() || "?"
-    );
-}
+import { MentorAvatar } from "./MentorAvatar";
 
 export function MentorCard({
     mentor,
@@ -53,47 +46,58 @@ export function MentorCard({
     return (
         <ModernCard variant="default" padding="md" rounded="lg">
             <ModernCardContent>
-                <div className="flex flex-col gap-4">
+                <div className="flex h-full flex-col gap-4">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-title font-semibold text-primary-600">
-                            {initials(mentor.display_name || mentor.name)}
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-body font-semibold text-neutral-700">
+                        <MentorAvatar
+                            fileId={mentor.profile_image_file_id || mentor.profile_pic_file_id}
+                            name={mentor.display_name || mentor.name}
+                            className="size-12 text-title"
+                        />
+                        <div className="flex min-w-0 flex-col">
+                            <span className="truncate text-body font-semibold text-neutral-700">
                                 {mentor.display_name || mentor.name || "Mentor"}
                             </span>
                             {mentor.title && (
-                                <span className="text-caption text-neutral-500">{mentor.title}</span>
+                                <span className="truncate text-caption text-neutral-500">
+                                    {mentor.title}
+                                </span>
                             )}
                         </div>
                     </div>
 
-                    {mentor.bio && <p className="text-caption text-neutral-500">{mentor.bio}</p>}
-
-                    <div className="flex flex-wrap gap-2">
-                        <MyButton
-                            type="button"
-                            buttonType="primary"
-                            scale="medium"
-                            onClick={book}
-                            disable={!canBook}
-                        >
-                            <CalendarPlus size={16} /> Book
-                        </MyButton>
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="medium"
-                            onClick={message}
-                            disable={messaging}
-                        >
-                            <ChatCircle size={16} /> Message
-                        </MyButton>
-                    </div>
-
-                    {!canBook && (
-                        <span className="text-caption text-neutral-400">Booking not set up yet</span>
+                    {mentor.bio && (
+                        <p className="line-clamp-3 text-caption text-neutral-500">{mentor.bio}</p>
                     )}
+
+                    <div className="mt-auto flex flex-col gap-2">
+                        <div className="flex gap-2">
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="medium"
+                                onClick={book}
+                                disable={!canBook}
+                                className="flex-1"
+                            >
+                                <CalendarPlus size={16} /> Book session
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="medium"
+                                onClick={message}
+                                disable={messaging}
+                                className="flex-1"
+                            >
+                                <ChatCircle size={16} /> Message
+                            </MyButton>
+                        </div>
+                        {!canBook && (
+                            <span className="text-caption text-neutral-400">
+                                Booking not set up yet
+                            </span>
+                        )}
+                    </div>
                 </div>
             </ModernCardContent>
         </ModernCard>

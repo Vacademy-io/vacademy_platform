@@ -15,6 +15,7 @@ import {
     type MyBooking,
     type MyMentor,
 } from "@/routes/my-mentors/-services/my-mentors-service";
+import { MentorAvatar } from "@/routes/my-mentors/-components/MentorAvatar";
 
 function fmtWhen(v?: string | number | null): string {
     if (v == null) return "";
@@ -27,12 +28,6 @@ function fmtWhen(v?: string | number | null): string {
         hour: "numeric",
         minute: "2-digit",
     });
-}
-
-function initials(name?: string | null): string {
-    if (!name) return "?";
-    const parts = name.trim().split(/\s+/);
-    return (parts[0]?.[0] ?? "").concat(parts.length > 1 ? (parts[1]?.[0] ?? "") : "").toUpperCase() || "?";
 }
 
 /**
@@ -162,9 +157,11 @@ export function MyMentorsWidget() {
                 {mentors.slice(0, 3).map((m) => (
                     <div key={m.id} className="flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-600">
-                                {initials(m.display_name || m.name)}
-                            </span>
+                            <MentorAvatar
+                                fileId={m.profile_image_file_id || m.profile_pic_file_id}
+                                name={m.display_name || m.name}
+                                className="size-9 text-xs"
+                            />
                             <div className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium text-neutral-700">
                                     {m.display_name || m.name || "Mentor"}

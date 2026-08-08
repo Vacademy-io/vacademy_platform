@@ -33,6 +33,10 @@ export interface StudentSidebarTabConfig {
  * learner app's StudentDashboardWidgetId.
  */
 export type StudentDashboardWidgetId =
+    // The "Let's get you started" first-run onboarding checklist in the hero
+    // band. Only the default/vibrant hero has one — the play / cleaner-play
+    // heroes show a greeting band instead, which this flag does not affect.
+    | 'gettingStarted'
     | 'coursesStat'
     | 'evaluationStat'
     | 'continueLearning'
@@ -66,6 +70,7 @@ export const RETIRED_WIDGET_IDS: ReadonlySet<string> = new Set([
 
 /** Human labels for the settings screen — `w.id` alone reads like a variable name. */
 export const WIDGET_LABELS: Record<string, string> = {
+    gettingStarted: "Getting Started checklist (“Let's get you started”)",
     continueLearning: 'Continue Learning',
     coursesStat: 'Courses (stat card)',
     liveClasses: 'Live Sessions (stat card)',

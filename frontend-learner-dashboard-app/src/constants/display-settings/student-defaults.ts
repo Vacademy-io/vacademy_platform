@@ -89,7 +89,13 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
   // defaultDashboardWidgets: the admin persists its own defaults on the first
   // save, so any divergence silently reshuffles or re-shows widgets the moment
   // someone opens the settings screen and hits Save.
-  const defaults: StudentDashboardWidgetConfig[] = [
+  // Typed without `order` so the ids keep their literal types through .map()
+  // (annotating the mapped result instead widens id to string).
+  const defaults: Array<Omit<StudentDashboardWidgetConfig, "order">> = [
+    // Hero band, above the columns — its order is cosmetic (the hero is not
+    // part of the ordered main/rail columns), it leads the list because that
+    // is where it renders.
+    { id: "gettingStarted", visible: true },
     // Main column: continue learning first, then the stat-cards row.
     { id: "continueLearning", visible: true },
     { id: "coursesStat", visible: true },
@@ -110,8 +116,8 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     // Bottom-of-page commerce CTAs.
     { id: "exploreMemberships", visible: true },
     { id: "exploreBooks", visible: true },
-  ].map((w, idx) => ({ ...w, order: idx + 1 }));
-  return defaults;
+  ];
+  return defaults.map((w, idx) => ({ ...w, order: idx + 1 }));
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {

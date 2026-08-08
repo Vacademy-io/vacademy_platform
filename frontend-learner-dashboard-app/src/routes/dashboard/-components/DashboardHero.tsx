@@ -45,6 +45,15 @@ export interface DashboardHeroProps {
   hasAnyProgress: boolean;
   studyLibraryLoaded: boolean;
   onJoinSession: (session: SessionDetails) => void;
+  /**
+   * The "gettingStarted" dashboard widget flag. When false the first-run
+   * onboarding checklist is suppressed and a learner with no progress falls
+   * through to the returning-learner branch — which still surfaces a live /
+   * imminent class banner, so hiding the checklist never costs a learner the
+   * Join button. Optional and defaults to true so existing callers behave
+   * exactly as before.
+   */
+  showGettingStarted?: boolean;
 }
 
 // ── Timing helpers ───────────────────────────────────────────────────────────
@@ -154,6 +163,7 @@ export function DashboardHero({
   hasAnyProgress,
   studyLibraryLoaded,
   onJoinSession,
+  showGettingStarted = true,
 }: DashboardHeroProps): JSX.Element | null {
   const navigate = useNavigate();
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -242,7 +252,9 @@ export function DashboardHero({
 
   // 2. FIRST-RUN — no progress anywhere. An onboarding checklist so the
   // learner always has a clear next action instead of a barren empty state.
-  if (!hasAnyProgress) {
+  // Institutes that don't want it turn off the "gettingStarted" widget; the
+  // learner then falls through to (3), keeping any live-class banner.
+  if (!hasAnyProgress && showGettingStarted) {
     const steps = [
       {
         icon: BookOpen,

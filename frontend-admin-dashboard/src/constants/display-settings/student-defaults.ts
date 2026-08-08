@@ -59,6 +59,10 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     // save from this screen, so any divergence silently reshuffles or re-shows
     // widgets the moment an admin opens settings and hits Save.
     const defaults: Array<Omit<StudentDashboardWidgetConfig, 'order'>> = [
+        // Hero band, above the columns — its order is cosmetic (the hero is not
+        // part of the ordered main/rail columns), it leads the list because
+        // that is where it renders.
+        { id: 'gettingStarted', visible: true },
         { id: 'continueLearning', visible: true },
         { id: 'coursesStat', visible: true },
         { id: 'liveClasses', visible: true },

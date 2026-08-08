@@ -44,7 +44,7 @@ function seedExploreCtaVisibility(
   const savedIds = new Set(
     (incoming?.dashboard?.widgets ?? [])
       .map((w) => w?.id)
-      .filter((id): id is string => Boolean(id))
+      .filter((id): id is StudentDashboardWidgetId => Boolean(id))
   );
   const pairs: Array<[StudentDashboardWidgetId, StudentDashboardWidgetId]> = [
     ["exploreMemberships", "myMembership"],

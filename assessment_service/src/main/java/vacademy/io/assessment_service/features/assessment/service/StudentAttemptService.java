@@ -61,6 +61,9 @@ public class StudentAttemptService {
     @Autowired
     AttemptDataParserService attemptDataParserService;
 
+    @Autowired
+    AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
+
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt) {
         return studentAttemptRepository.save(studentAttempt);
     }
@@ -79,6 +82,9 @@ public class StudentAttemptService {
         if (!unreleased.isEmpty()) {
             studentAttemptRepository.saveAll(unreleased);
             log.info("[AUTO-RELEASE] Released results for {} attempts after assessment end", unreleased.size());
+            // The query only returns attempts that were NOT yet released, so every row here
+            // is a genuine transition — no re-notification risk on a repeated cron pass.
+            assessmentWorkflowEventPublisher.publishResultReleased(unreleased);
         }
     }
 
@@ -92,11 +98,34 @@ public class StudentAttemptService {
     @Async
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
-        return CompletableFuture.completedFuture(updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
+        return updateStudentAttemptResultAfterMarksCalculationAsync(studentAttemptOptional, null);
+    }
+
+    /** @param endSource see {@link #updateStudentAttemptWithResultAfterMarksCalculation(Optional, String)}. */
+    @Async
+    @CacheEvict(value = "comparisonData", allEntries = true)
+    public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional,
+                                                                                                 String endSource) {
+        return CompletableFuture.completedFuture(
+                updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional, endSource));
     }
 
     @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
+        return updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional, null);
+    }
+
+    /**
+     * @param endSource why this call is ending the attempt (e.g. TIME_EXPIRED), used as the
+     *                  ASSESSMENT_END trigger's endSource. Pass null when the caller has
+     *                  already emitted ASSESSMENT_END itself (the learner submit path) or
+     *                  when ending the attempt is not what this call means — the reason
+     *                  cannot be inferred from here, because callers reach this method with
+     *                  a non-ENDED attempt for several different reasons.
+     */
+    @CacheEvict(value = "comparisonData", allEntries = true)
+    public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional,
+                                                                             String endSource) {
         if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
         String attemptData = studentAttemptOptional.get().getAttemptData();
@@ -123,16 +152,25 @@ public class StudentAttemptService {
             attempt.setResultMarks(totalMarks);
             attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
         }
-        if(!attempt.getStatus().equals(AssessmentAttemptEnum.ENDED.name())){
+        // True only when THIS call is what ends the attempt. On the learner submit path
+        // handleAttemptLiveOrEndedStatusWhenSubmit has already set ENDED and fired
+        // ASSESSMENT_END, so this is false there and the event cannot double-fire.
+        boolean endedByThisCall = !AssessmentAttemptEnum.ENDED.name().equals(attempt.getStatus());
+        if (endedByThisCall) {
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
         }
 
         // Auto-release result based on assessment's result_type
-        if (!isManualEvaluation) {
-            autoReleaseResultIfApplicable(attempt);
-        }
+        boolean justReleased = !isManualEvaluation && autoReleaseResultIfApplicable(attempt);
 
-        return studentAttemptRepository.save(attempt);
+        StudentAttempt saved = studentAttemptRepository.save(attempt);
+        if (endedByThisCall && endSource != null) {
+            assessmentWorkflowEventPublisher.publishAssessmentEnd(saved, endSource);
+        }
+        if (justReleased) {
+            assessmentWorkflowEventPublisher.publishResultReleased(saved, null, null);
+        }
+        return saved;
     }
 
     private boolean isManualEvaluationAssessment(StudentAttempt attempt) {
@@ -166,25 +204,36 @@ public class StudentAttemptService {
     }
 
 
-    private void autoReleaseResultIfApplicable(StudentAttempt attempt) {
+    /**
+     * @return true when this call transitioned the attempt into RELEASED, so the caller can
+     *         fire ASSESSMENT_RESULT_RELEASED exactly once — after the row is saved, and not
+     *         again for an attempt that was already released.
+     */
+    private boolean autoReleaseResultIfApplicable(StudentAttempt attempt) {
         try {
             Assessment assessment = attempt.getRegistration().getAssessment();
             String resultType = assessment.getResultType();
-            if (resultType == null) return;
+            if (resultType == null) return false;
+
+            boolean alreadyReleased = ReleaseResultStatusEnum.RELEASED.name()
+                    .equals(attempt.getReportReleaseStatus());
 
             if (ResultTypeEnum.AUTO_AFTER_SUBMISSION.name().equals(resultType)) {
                 attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
                 attempt.setReportLastReleaseDate(new Date());
+                return !alreadyReleased;
             } else if (ResultTypeEnum.AUTO_AFTER_ASSESSMENT_END.name().equals(resultType)) {
                 Date now = new Date();
                 if (assessment.getBoundEndTime() != null && now.after(assessment.getBoundEndTime())) {
                     attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
                     attempt.setReportLastReleaseDate(now);
+                    return !alreadyReleased;
                 }
             }
         } catch (Exception e) {
             log.error("Failed to auto-release result for attempt {}: {}", attempt.getId(), e.getMessage());
         }
+        return false;
     }
 
     @Transactional

@@ -59,11 +59,25 @@ public enum WorkflowTriggerEvent {
     // a campaign id tagged INBOUND in AI_CALLING_SETTING). Keyed by eventId = responseId.
     LEAD_CALLED_BACK,
 
-    // Assessment (cross-service via internal HTTP)
+    // Assessment (cross-service via internal HTTP). All keyed by eventId = assessmentId.
     ASSESSMENT_CREATE,
+    // DRAFT -> PUBLISHED. ASSESSMENT_CREATE fires on the draft save, before sections and
+    // questions exist, so this is the correct hook for "a new test is available".
+    ASSESSMENT_PUBLISHED,
     ASSESSMENT_START,
     ASSESSMENT_END,
     ASSESSMENT_FORM_SUBMISSION,
+    // Fired when a learner's report actually becomes visible to them — auto-release
+    // (AUTO_AFTER_SUBMISSION / AUTO_AFTER_ASSESSMENT_END) or an admin's manual release.
+    // On MANUAL/AI-evaluated assessments this can be long after ASSESSMENT_END.
+    ASSESSMENT_RESULT_RELEASED,
+    // Emitted per registered learner by the "assessments starting soon" sweep in
+    // assessment_service. Because it is a repeating scan that emits per learner while keying
+    // eventId to the assessment, it defaults to CONTEXT_BASED idempotency over
+    // assessmentId + userId — see WorkflowBuilderService.defaultIdempotencyFor.
+    ASSESSMENT_REMINDER_BEFORE_START,
+    // Emitted per learner when an admin grants extra attempts from the participants screen.
+    ASSESSMENT_REATTEMPT_GRANTED,
 
     // Onboarding. STEP_* are keyed by eventId = onboarding_step.id (the step definition,
     // not the instance) so admins can target a specific step from the trigger config UI.

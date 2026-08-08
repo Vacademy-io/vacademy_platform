@@ -37,6 +37,10 @@ import vacademy.io.admin_core_service.features.media_service.service.MediaServic
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberAllocation;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberConfig;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberContext;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceNumberService;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.media.dto.FileDetailsDTO;
@@ -47,6 +51,7 @@ import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -80,7 +85,8 @@ public class SchoolFeeReceiptService {
 
     private static final String SCHOOL_FEE_RECEIPT_TEMPLATE_TYPE = "SCHOOL_FEE_RECEIPT";
     private static final String RECEIPT_PREFIX = "RCT";
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // DATE_FORMATTER removed with the hardcoded RCT-yyyyMMdd-NNNN receipt number —
+    // the date portion now comes from the institute's configured format tokens.
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     @Autowired
@@ -94,6 +100,10 @@ public class SchoolFeeReceiptService {
 
     @Autowired
     private InstituteRepository instituteRepository;
+
+    // Receipt numbers follow the same admin-configured strategy as invoice numbers.
+    @Autowired
+    private InvoiceNumberService invoiceNumberService;
 
     @Autowired
     private AuthService authService;
@@ -189,7 +199,8 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            String receiptNumber = generateReceiptNumber(instituteId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+            String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
             String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
@@ -206,7 +217,7 @@ public class SchoolFeeReceiptService {
             String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
             // 10. Save to invoice table
-            Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
+            Invoice invoice = saveReceipt(userId, instituteId, receiptAllocation, pdfFileId,
                     amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
                     "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
@@ -301,7 +312,8 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
-            String receiptNumber = generateReceiptNumber(instituteId);
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+            String receiptNumber = receiptAllocation.number();
 
             // 6. Load school fee receipt template
             String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
@@ -318,7 +330,7 @@ public class SchoolFeeReceiptService {
             String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
             // 10. Save to invoice table
-            Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
+            Invoice invoice = saveReceipt(userId, instituteId, receiptAllocation, pdfFileId,
                     amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
                     "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
@@ -391,7 +403,8 @@ public class SchoolFeeReceiptService {
         }
         BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
-        String receiptNumber = generateReceiptNumber(instituteId);
+        InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(instituteId);
+        String receiptNumber = receiptAllocation.number();
         String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
         String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
@@ -402,7 +415,7 @@ public class SchoolFeeReceiptService {
         String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
         // Save invoice record
-        saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
+        saveReceipt(userId, instituteId, receiptAllocation, pdfFileId,
                 totalPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
                 "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
@@ -433,21 +446,46 @@ public class SchoolFeeReceiptService {
 
     // ─── Receipt Number ──────────────────────────────────────────────────────
 
-    private String generateReceiptNumber(String instituteId) {
-        String datePrefix = LocalDateTime.now().format(DATE_FORMATTER);
-        String baseNumber = RECEIPT_PREFIX + "-" + datePrefix + "-";
+    /**
+     * Fee receipts follow the institute's configured invoice-number strategy
+     * ({@code INVOICE_SETTING.numbering}), with {@code {{doc_type}}} rendering as
+     * {@value #RECEIPT_PREFIX} so a single format can distinguish a receipt from an
+     * enrollment invoice.
+     *
+     * <p>Replaces a prefix-derived counter ({@code countByInvoiceNumberStartingWith}) that
+     * silently restarted from 1 whenever the prefix changed — and would have restarted on
+     * every format change once numbering became configurable.
+     */
+    private InvoiceNumberAllocation generateReceiptNumber(String instituteId) {
+        Institute institute = instituteRepository.findById(instituteId).orElse(null);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
 
-        // Find existing receipts with same prefix today
-        long count = invoiceRepository.countByInvoiceNumberStartingWith(baseNumber);
-        String receiptNumber = baseNumber + String.format("%04d", count + 1);
-
-        // Ensure uniqueness
-        while (invoiceRepository.existsByInvoiceNumber(receiptNumber)) {
-            receiptNumber = baseNumber + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+        // A receipt must stay visibly distinct from an invoice. The institute's format only
+        // carries that distinction if it uses {{doc_type}} — the default format does not, so
+        // without this fallback every receipt would silently be numbered "INV-…" the moment
+        // this feature shipped. Falling back to the legacy RCT- shape keeps today's numbers
+        // exactly and lets admins opt in by adding {{doc_type}} to their format.
+        if (!config.usesDocType()) {
+            config = config.withFormat(RECEIPT_PREFIX + "-{{YYYYMMDD}}-{{seq}}");
         }
 
-        log.debug("Generated receipt number: {}", receiptNumber);
-        return receiptNumber;
+        InvoiceNumberContext context = InvoiceNumberContext.builder()
+                .instituteId(instituteId)
+                .instituteName(institute != null ? institute.getInstituteName() : null)
+                .instituteCode(config.getInstituteCode())
+                .instituteStateCode(institute != null ? institute.getStateCode() : null)
+                .instituteCity(institute != null ? institute.getCity() : null)
+                .instituteState(institute != null ? institute.getState() : null)
+                .instituteCountry(institute != null ? institute.getCountry() : null)
+                .subdomain(institute != null ? institute.getSubdomain() : null)
+                .date(LocalDate.now())
+                .docType(RECEIPT_PREFIX)
+                .build();
+
+        InvoiceNumberAllocation allocation = invoiceNumberService.generate(config, context);
+        log.debug("Generated receipt number: {}", allocation.number());
+        return allocation;
     }
 
     // ─── Template Loading ────────────────────────────────────────────────────
@@ -1064,14 +1102,19 @@ public class SchoolFeeReceiptService {
 
     // ─── Save to DB ──────────────────────────────────────────────────────────
 
-    private Invoice saveReceipt(String userId, String instituteId, String receiptNumber,
+    private Invoice saveReceipt(String userId, String instituteId, InvoiceNumberAllocation allocation,
             String pdfFileId, BigDecimal amountPaid,
             BigDecimal totalExpected, BigDecimal totalPaid,
             BigDecimal totalConcession, BigDecimal totalPenalty,
             BigDecimal balanceDue, String currency,
             String source, String sourceId) {
         Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(receiptNumber);
+        invoice.setInvoiceNumber(allocation.number());
+        // The sequence position must be persisted alongside the number — it IS the
+        // institute's counter, so a receipt saved without it is invisible to the next
+        // allocation and its number would eventually be handed out again.
+        invoice.setSeqNo(allocation.seqNo());
+        invoice.setSeqScopeKey(allocation.scopeKey());
         invoice.setUserId(userId);
         invoice.setInstituteId(instituteId);
         invoice.setInvoiceDate(LocalDateTime.now());
@@ -1104,7 +1147,7 @@ public class SchoolFeeReceiptService {
         }
 
         invoice = invoiceRepository.save(invoice);
-        log.debug("School fee receipt saved to database: {}", receiptNumber);
+        log.debug("School fee receipt saved to database: {}", allocation.number());
         return invoice;
     }
 

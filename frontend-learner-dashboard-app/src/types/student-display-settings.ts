@@ -31,6 +31,10 @@ export interface StudentSidebarTabConfig {
  * rather than shown as dead switches.
  */
 export type StudentDashboardWidgetId =
+  // The "Let's get you started" first-run onboarding checklist in the hero
+  // band. Only the default/vibrant hero has one — the play / cleaner-play
+  // heroes show a greeting band instead, which this flag does not affect.
+  | "gettingStarted"
   | "coursesStat"
   | "evaluationStat"
   | "continueLearning"

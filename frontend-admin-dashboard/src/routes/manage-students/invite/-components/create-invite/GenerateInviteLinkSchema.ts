@@ -396,6 +396,10 @@ export const inviteLinkSchema = z.object({
             authEnabled: z.boolean().nullable().default(true),
             authAmount: z.number().min(0).nullable().default(null),
             authRefundable: z.boolean().nullable().default(false),
+            // Days of access kept past expiry while retrying a failed renewal. null = none.
+            gracePeriodDays: z.number().int().min(0).nullable().default(null),
+            // Total subscription term in months; autopay stops after it. null = open-ended.
+            totalDurationMonths: z.number().int().min(1).nullable().default(null),
         })
         .default({
             enabled: false,
@@ -404,6 +408,8 @@ export const inviteLinkSchema = z.object({
             authEnabled: true,
             authAmount: null,
             authRefundable: false,
+            gracePeriodDays: null,
+            totalDurationMonths: null,
         }),
 });
 

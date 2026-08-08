@@ -1025,7 +1025,13 @@ export function DashboardComponent() {
             ) : isPlayTheme ? (
               <PlayDashboardHero {...heroProps} />
             ) : (
-              <DashboardHero {...heroProps} />
+              // Passed only here: the play / cleaner-play heroes have no
+              // first-run checklist to suppress (they render a greeting band
+              // regardless of progress), so the flag has nothing to act on there.
+              <DashboardHero
+                {...heroProps}
+                showGettingStarted={isWidgetVisible("gettingStarted")}
+              />
             )}
 
             {/* Main 2/3 + 1/3 layout */}

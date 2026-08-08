@@ -11,6 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberAllocation;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberConfig;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberContext;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceNumberService;
 import vacademy.io.admin_core_service.features.institute.service.TemplateService;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
@@ -27,6 +32,7 @@ import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -47,11 +53,19 @@ public class ApplicationFeeReceiptService {
     private static final String PDF_TEMPLATE_TYPE = "APPLICATION_FEE_RECEIPT";
     private static final String EMAIL_TEMPLATE_NAME = "Application Fee Invoice Email";
     private static final String RECEIPT_PREFIX = "APP-FEE";
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // DATE_FORMATTER removed with the hardcoded APP-FEE-yyyyMMdd-NNNN receipt number —
+    // the date portion now comes from the institute's configured format tokens.
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     @Autowired
     private InstituteRepository instituteRepository;
+
+    // Receipt numbers follow the same admin-configured strategy as invoice numbers.
+    @Autowired
+    private InvoiceNumberService invoiceNumberService;
+
+    @Autowired
+    private InstituteSettingService instituteSettingService;
 
     @Autowired
     private PaymentOptionRepository paymentOptionRepository;
@@ -114,7 +128,8 @@ public class ApplicationFeeReceiptService {
             }
 
             // 3. Generate receipt number
-            String receiptNumber = generateReceiptNumber();
+            InvoiceNumberAllocation receiptAllocation = generateReceiptNumber(institute);
+            String receiptNumber = receiptAllocation.number();
 
             // 4. Load PDF template (DB first, fallback to default)
             String pdfTemplate = loadPdfTemplate(instituteId);
@@ -130,7 +145,7 @@ public class ApplicationFeeReceiptService {
             String pdfFileId = uploadToS3(pdfBytes, receiptNumber);
 
             // 8. Save Invoice record
-            Invoice invoice = saveInvoice(applicantId, paymentLogId, instituteId, receiptNumber,
+            Invoice invoice = saveInvoice(applicantId, paymentLogId, instituteId, receiptAllocation,
                     pdfFileId, amountPaid, paymentOptionName);
 
             log.info("Application fee invoice saved: {}", receiptNumber);
@@ -178,15 +193,52 @@ public class ApplicationFeeReceiptService {
 
     // ─── Receipt Number ──────────────────────────────────────────────────────
 
-    private String generateReceiptNumber() {
-        String datePrefix = LocalDateTime.now().format(DATE_FORMATTER);
-        String base = RECEIPT_PREFIX + "-" + datePrefix + "-";
-        long count = invoiceRepository.countByInvoiceNumberStartingWith(base);
-        String number = base + String.format("%04d", count + 1);
-        while (invoiceRepository.existsByInvoiceNumber(number)) {
-            number = base + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+    /**
+     * Application-fee receipts follow the institute's configured invoice-number strategy
+     * ({@code INVOICE_SETTING.numbering}), with {@code {{doc_type}}} rendering as
+     * {@value #RECEIPT_PREFIX}.
+     *
+     * <p>Replaces a prefix-derived counter that restarted from 1 whenever the prefix
+     * changed, and a bare {@code existsByInvoiceNumber} check that assumed globally-unique
+     * numbers (no longer true since V432).
+     */
+    private InvoiceNumberAllocation generateReceiptNumber(Institute institute) {
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                readInvoiceSettings(institute));
+
+        // See SchoolFeeReceiptService.generateReceiptNumber — without this, an application-fee
+        // receipt would be numbered "INV-…" under the default format, losing the APP-FEE
+        // prefix it has today. Admins opt in by putting {{doc_type}} in their format.
+        if (!config.usesDocType()) {
+            config = config.withFormat(RECEIPT_PREFIX + "-{{YYYYMMDD}}-{{seq}}");
         }
-        return number;
+
+        InvoiceNumberContext context = InvoiceNumberContext.builder()
+                .instituteId(institute.getId())
+                .instituteName(institute.getInstituteName())
+                .instituteCode(config.getInstituteCode())
+                .instituteStateCode(institute.getStateCode())
+                .instituteCity(institute.getCity())
+                .instituteState(institute.getState())
+                .instituteCountry(institute.getCountry())
+                .subdomain(institute.getSubdomain())
+                .date(LocalDate.now())
+                .docType(RECEIPT_PREFIX)
+                .build();
+
+        return invoiceNumberService.generate(config, context);
+    }
+
+    /** INVOICE_SETTING data map, or null when it is missing/unreadable (config falls back). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readInvoiceSettings(Institute institute) {
+        try {
+            Object settingData = instituteSettingService.getSettingData(institute, "INVOICE_SETTING");
+            return settingData instanceof Map ? (Map<String, Object>) settingData : null;
+        } catch (Exception e) {
+            log.warn("Could not load invoice settings for institute {}: {}", institute.getId(), e.getMessage());
+            return null;
+        }
     }
 
     // ─── Template Loading ────────────────────────────────────────────────────
@@ -405,9 +457,14 @@ public class ApplicationFeeReceiptService {
     // ─── Save Invoice ─────────────────────────────────────────────────────────
 
     private Invoice saveInvoice(String applicantId, String paymentLogId, String instituteId,
-            String receiptNumber, String pdfFileId, BigDecimal amountPaid, String description) {
+            InvoiceNumberAllocation allocation, String pdfFileId, BigDecimal amountPaid, String description) {
         Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(receiptNumber);
+        invoice.setInvoiceNumber(allocation.number());
+        // The sequence position is the institute's counter — persisting the number without
+        // it would leave this receipt invisible to the next allocation, so the same number
+        // could be issued again later.
+        invoice.setSeqNo(allocation.seqNo());
+        invoice.setSeqScopeKey(allocation.scopeKey());
         invoice.setUserId(applicantId); // store applicantId as userId for tracking
         invoice.setInstituteId(instituteId);
         invoice.setInvoiceDate(LocalDateTime.now());

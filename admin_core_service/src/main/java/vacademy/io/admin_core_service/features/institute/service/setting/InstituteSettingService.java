@@ -205,6 +205,22 @@ public class InstituteSettingService {
         country.put("hsnSacCode", "");
         country.put("taxComponents", new ArrayList<>());
         defaultData.put("country", country);
+        // Invoice number strategy. These defaults reproduce the old hardcoded
+        // INV-yyyyMMdd-0001 exactly, so numbering only changes when an admin edits it in
+        // Settings > Invoice Settings > Numbering. See InvoiceNumberConfig.legacyDefault().
+        Map<String, Object> numbering = new HashMap<>();
+        numbering.put("format", "INV-{{YYYYMMDD}}-{{seq}}");
+        numbering.put("seqPadding", 4);
+        numbering.put("seqScope", "DAILY");
+        numbering.put("instituteCode", "");
+        // First month of the financial year for {{FY}}/{{FYY}}/{{FQ}}: 4 = April (India, UK),
+        // 7 = Australia, 1 = calendar year.
+        numbering.put("fyStartMonth", 4);
+        numbering.put("sanitizeTokens", true);
+        // Floor for the sequence, for institutes continuing a series from another accounting
+        // system. 0 = no floor; it can only push the next number forward, never backwards.
+        numbering.put("startFrom", 0);
+        defaultData.put("numbering", numbering);
         GenericSettingRequest request = GenericSettingRequest.builder()
                 .settingName("Invoice Setting")
                 .settingData(defaultData)

@@ -877,6 +877,8 @@ const GenerateInviteLinkDialog = ({
                         authEnabled: autopay?.AUTH_ENABLED !== false,
                         authAmount: autopay?.AUTH_AMOUNT ?? null,
                         authRefundable: autopay?.AUTH_REFUNDABLE === true,
+                        gracePeriodDays: autopay?.GRACE_PERIOD_DAYS ?? null,
+                        totalDurationMonths: autopay?.TOTAL_DURATION_MONTHS ?? null,
                     };
                 })(),
             });

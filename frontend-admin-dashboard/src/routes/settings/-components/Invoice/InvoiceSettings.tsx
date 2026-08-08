@@ -4,6 +4,7 @@ import {
     Check,
     CaretUpDown,
     FileText,
+    Hash,
     Plus,
     Trash,
     Receipt,
@@ -45,12 +46,16 @@ import {
     DEFAULT_INVOICE_SETTINGS,
     PACKAGE_TYPES,
     fetchInvoiceAdminOptions,
+    fetchInvoiceNumberingState,
     fetchInvoiceSettings,
     saveInvoiceSettings,
     type InvoiceSettingsData,
+    type InvoiceNumberingConfig,
     type TaxComponent,
 } from './invoice-settings-service';
 import { InvoiceTemplatesSection } from './InvoiceTemplatesSection';
+import { InvoiceNumberingSection } from './InvoiceNumberingSection';
+import { InvoiceNumberingChangeDialog } from './InvoiceNumberingChangeDialog';
 
 const INJECTABLE_PLACEHOLDERS: Array<{ tag: string; description: string }> = [
     { tag: '{{country}}', description: 'Operating country name' },
@@ -309,21 +314,43 @@ const INVOICE_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
     {
         sections: [
             { id: 'grp-general', label: 'General', icon: Receipt },
+            { id: 'grp-numbering', label: 'Numbering', icon: Hash },
             { id: 'grp-tax', label: 'Country & Tax', icon: Percent },
             { id: 'grp-templates', label: 'Templates', icon: FileText },
         ],
     },
 ];
 
+/** Tokens that make numbering non-sequential — these escalate the save warning. */
+const RISKY_TOKEN_PATTERN =
+    /\{\{\s*(learner_name|learner_initials|learner_state|enrollment_no|plan_name|course_name|level_name|session_name)\b/;
+
+const numberingChanged = (a: InvoiceNumberingConfig, b: InvoiceNumberingConfig) =>
+    a.format !== b.format ||
+    a.seqPadding !== b.seqPadding ||
+    a.seqScope !== b.seqScope ||
+    a.instituteCode !== b.instituteCode ||
+    a.fyStartMonth !== b.fyStartMonth ||
+    a.sanitizeTokens !== b.sanitizeTokens ||
+    a.startFrom !== b.startFrom;
+
 export default function InvoiceSettings() {
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<InvoiceSettingsData>(DEFAULT_INVOICE_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
     const [selectedPkgType, setSelectedPkgType] = useState<string>(PACKAGE_TYPES[0]);
+    const [numberingConfirmOpen, setNumberingConfirmOpen] = useState(false);
 
     const { data, isLoading } = useQuery({
         queryKey: ['invoice-settings'],
         queryFn: fetchInvoiceSettings,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // How many invoices already exist — decides whether changing numbering needs a warning.
+    const { data: numberingState } = useQuery({
+        queryKey: ['invoice-numbering-state'],
+        queryFn: fetchInvoiceNumberingState,
         staleTime: 5 * 60 * 1000,
     });
 
@@ -339,10 +366,31 @@ export default function InvoiceSettings() {
         onSuccess: () => {
             toast.success('Invoice settings saved');
             setHasChanges(false);
+            setNumberingConfirmOpen(false);
             queryClient.invalidateQueries({ queryKey: ['invoice-settings'] });
+            // The next number / current example both move once a new strategy is live.
+            queryClient.invalidateQueries({ queryKey: ['invoice-numbering-state'] });
         },
         onError: () => toast.error('Failed to save invoice settings'),
     });
+
+    /**
+     * Changing the number strategy is confirmed separately: it silently alters every future
+     * invoice number, and once issued a number can't be changed. Only gate when the institute
+     * actually has invoices — the first-time setup case needs no warning.
+     */
+    const numberingIsDirty = data ? numberingChanged(data.numbering, settings.numbering) : false;
+    const numberingIsRisky =
+        RISKY_TOKEN_PATTERN.test(settings.numbering.format) ||
+        (data ? data.numbering.seqScope !== settings.numbering.seqScope : false);
+
+    const handleSave = () => {
+        if (numberingIsDirty && (numberingState?.existingInvoiceCount ?? 0) > 0) {
+            setNumberingConfirmOpen(true);
+            return;
+        }
+        save(settings);
+    };
 
     const update = (patch: Partial<InvoiceSettingsData>) => {
         setSettings((prev) => ({ ...prev, ...patch }));
@@ -439,7 +487,7 @@ export default function InvoiceSettings() {
             maxWidth="max-w-7xl"
             dirty={hasChanges}
             saving={saving}
-            onSave={() => save(settings)}
+            onSave={handleSave}
             onDiscard={() => {
                 if (data) {
                     setSettings(data);
@@ -624,6 +672,15 @@ export default function InvoiceSettings() {
             </Card>
             </section>
 
+            <section id="grp-numbering" className="space-y-6">
+            <InvoiceNumberingSection
+                value={settings.numbering}
+                onChange={(patch) =>
+                    update({ numbering: { ...settings.numbering, ...patch } })
+                }
+            />
+            </section>
+
             <section id="grp-tax" className="space-y-6">
             {/* Country & tax components */}
             <Card>
@@ -800,6 +857,15 @@ export default function InvoiceSettings() {
             <InvoiceTemplatesSection type="INVOICE_EMAIL" />
             </section>
             </SettingsSectionsLayout>
+
+            <InvoiceNumberingChangeDialog
+                open={numberingConfirmOpen}
+                next={settings.numbering}
+                requiresTypedConfirmation={numberingIsRisky}
+                saving={saving}
+                onCancel={() => setNumberingConfirmOpen(false)}
+                onConfirm={() => save(settings)}
+            />
         </SettingsPageShell>
     );
 }

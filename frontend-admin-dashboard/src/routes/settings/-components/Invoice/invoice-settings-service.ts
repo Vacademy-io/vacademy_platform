@@ -2,6 +2,9 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_INSITITUTE_SETTINGS,
     GET_INSTITUTE_USERS,
+    GET_INVOICE_NUMBERING_STATE,
+    GET_INVOICE_NUMBERING_TOKENS,
+    POST_INVOICE_NUMBERING_PREVIEW,
     SAVE_INSTITUTE_SETTING,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -59,6 +62,77 @@ export const PACKAGE_TYPES = [
     'SECURITY_DEPOSIT',
 ] as const;
 
+/** When the invoice-number counter rolls back to 1. */
+export type InvoiceSeqScope = 'NEVER' | 'YEARLY' | 'MONTHLY' | 'DAILY';
+
+/**
+ * Admin-configured invoice number strategy. Stored under
+ * {@link InvoiceSettingsData.numbering}; the backend reads it as
+ * `INVOICE_SETTING.numbering`.
+ */
+export interface InvoiceNumberingConfig {
+    /** Token format, e.g. `{{institute_code}}/{{FY}}/{{seq}}`. Must contain `{{seq}}` once. */
+    format: string;
+    /** Zero-padding for `{{seq}}` when the token carries no `:N` modifier. */
+    seqPadding: number;
+    seqScope: InvoiceSeqScope;
+    /** Short code for `{{institute_code}}`; blank means "derive from the institute name". */
+    instituteCode: string;
+    /** First month of the financial year (1-12) for `{{FY}}`/`{{FYY}}`/`{{FQ}}`. 4 = April. */
+    fyStartMonth: number;
+    /** Uppercase / strip accents / truncate the free-text tokens. */
+    sanitizeTokens: boolean;
+    /**
+     * Floor for the sequence, so an institute migrating from another accounting system can
+     * continue its existing series. 0 = no floor. It is a floor, not a hard set: a value at
+     * or below what has already been issued is ignored rather than reusing a number.
+     */
+    startFrom: number;
+}
+
+/** Matches the backend legacy default — reproduces the old hardcoded `INV-yyyyMMdd-0001`. */
+export const DEFAULT_NUMBERING: InvoiceNumberingConfig = {
+    format: 'INV-{{YYYYMMDD}}-{{seq}}',
+    seqPadding: 4,
+    seqScope: 'DAILY',
+    instituteCode: '',
+    fyStartMonth: 4,
+    sanitizeTokens: true,
+    startFrom: 0,
+};
+
+/** One entry in the click-to-insert palette, served by `GET /numbering/tokens`. */
+export interface InvoiceNumberToken {
+    key: string;
+    label: string;
+    group: 'SEQUENCE' | 'INSTITUTE' | 'LEARNER' | 'DATE' | 'TRANSACTION';
+    example: string;
+    /** Costs an extra DB read; resolved only when the format uses it. */
+    lazy: boolean;
+    /** Makes numbering non-sequential — badged in the palette, warned about on save. */
+    riskyForTax: boolean;
+}
+
+export interface InvoiceNumberPreview {
+    valid: boolean;
+    samples: string[];
+    errors: string[];
+    warnings: string[];
+    nextSequence: number;
+    /** Highest position already issued in this window; a startFrom at or below it is ignored. */
+    highestIssuedSequence: number;
+    maxLength: number;
+}
+
+export interface InvoiceNumberingState {
+    currentFormat: string;
+    seqScope: InvoiceSeqScope;
+    currentExample: string;
+    lastIssuedNumber: string | null;
+    nextSequence: number;
+    existingInvoiceCount: number;
+}
+
 export interface InvoiceSettingsData {
     /** Whether listed prices already include tax. */
     taxIncluded: boolean;
@@ -86,6 +160,11 @@ export interface InvoiceSettingsData {
     /** Auth-service user ids of the admins who receive the copy. */
     adminCopyUserIds: string[];
     country: InvoiceCountryConfig;
+    /**
+     * Invoice number strategy. Editable from the Numbering section; see
+     * {@link InvoiceNumberingConfig}.
+     */
+    numbering: InvoiceNumberingConfig;
     /**
      * Institute-level invoice defaults set from the admin Create-Invoice dialog (Review
      * step "Institute" group) — corrected institute name/address/contact and default
@@ -120,6 +199,7 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettingsData = {
         taxComponents: [],
         taxComponentsByPackageType: {},
     },
+    numbering: DEFAULT_NUMBERING,
 };
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -171,6 +251,39 @@ const normalizeComponents = (arr: unknown): TaxComponent[] =>
           }))
         : [];
 
+const SEQ_SCOPES: InvoiceSeqScope[] = ['NEVER', 'YEARLY', 'MONTHLY', 'DAILY'];
+
+/** Clamp to a range, falling back when the value isn't a usable number. */
+const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(n)));
+};
+
+/**
+ * Fill in a complete numbering config from whatever the API returned. Institutes created
+ * before this feature have no `numbering` block at all, so every field falls back to the
+ * legacy default — which reproduces the old hardcoded `INV-yyyyMMdd-0001` exactly.
+ */
+const normalizeNumbering = (raw: unknown): InvoiceNumberingConfig => {
+    const base = (raw ?? {}) as Partial<InvoiceNumberingConfig>;
+    const scope = SEQ_SCOPES.includes(base.seqScope as InvoiceSeqScope)
+        ? (base.seqScope as InvoiceSeqScope)
+        : DEFAULT_NUMBERING.seqScope;
+    return {
+        format:
+            typeof base.format === 'string' && base.format.trim()
+                ? base.format
+                : DEFAULT_NUMBERING.format,
+        seqPadding: clampInt(base.seqPadding, 1, 12, DEFAULT_NUMBERING.seqPadding),
+        seqScope: scope,
+        instituteCode: typeof base.instituteCode === 'string' ? base.instituteCode : '',
+        fyStartMonth: clampInt(base.fyStartMonth, 1, 12, DEFAULT_NUMBERING.fyStartMonth),
+        sanitizeTokens: base.sanitizeTokens ?? DEFAULT_NUMBERING.sanitizeTokens,
+        startFrom: Math.max(0, Number(base.startFrom) || 0),
+    };
+};
+
 /** Normalize whatever shape the API returns into a complete InvoiceSettingsData. */
 const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): InvoiceSettingsData => {
     const base = raw ?? {};
@@ -205,6 +318,10 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
             taxComponents: normalizeComponents(country.taxComponents),
             taxComponentsByPackageType: byType,
         },
+        // MUST be round-tripped: INVOICE_SETTING writes are a full overwrite, so omitting
+        // this here would let a save from any other section silently wipe the institute's
+        // invoice numbering strategy.
+        numbering: normalizeNumbering(base.numbering),
         // Pass-through only — see the field doc on InvoiceSettingsData.
         instituteNameOverride: base.instituteNameOverride,
         instituteAddressOverride: base.instituteAddressOverride,
@@ -250,6 +367,54 @@ export const fetchInvoiceAdminOptions = async (): Promise<AdminCopyOption[]> => 
             email: u.email ?? '',
         }))
         .filter((u: AdminCopyOption) => !!u.id && !!u.email);
+};
+
+// ─── Numbering ───────────────────────────────────────────────────────────────
+
+/**
+ * Validate a candidate format and render sample numbers. Safe to call on every
+ * keystroke: the backend peeks at the sequence rather than allocating, so previewing
+ * never consumes a number or leaves a gap in the series.
+ */
+export const previewInvoiceNumbering = async (
+    numbering: InvoiceNumberingConfig
+): Promise<InvoiceNumberPreview> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance.post(POST_INVOICE_NUMBERING_PREVIEW, {
+        instituteId,
+        ...numbering,
+    });
+    return response.data;
+};
+
+/** The token palette. Served by the backend so it can't drift from the renderer. */
+export const fetchInvoiceNumberTokens = async (): Promise<InvoiceNumberToken[]> => {
+    const response = await authenticatedAxiosInstance.get(GET_INVOICE_NUMBERING_TOKENS);
+    return Array.isArray(response.data) ? response.data : [];
+};
+
+/**
+ * Current strategy + how many invoices already exist — drives the change warning.
+ * Resolves to a zero-count default rather than throwing, so a failure here degrades to
+ * "no warning shown" instead of blocking the settings page from loading.
+ */
+export const fetchInvoiceNumberingState = async (): Promise<InvoiceNumberingState> => {
+    const instituteId = getCurrentInstituteId();
+    try {
+        const response = await authenticatedAxiosInstance.get(GET_INVOICE_NUMBERING_STATE, {
+            params: { instituteId },
+        });
+        return response.data;
+    } catch {
+        return {
+            currentFormat: DEFAULT_NUMBERING.format,
+            seqScope: DEFAULT_NUMBERING.seqScope,
+            currentExample: '',
+            lastIssuedNumber: null,
+            nextSequence: 1,
+            existingInvoiceCount: 0,
+        };
+    }
 };
 
 export const saveInvoiceSettings = async (data: InvoiceSettingsData): Promise<void> => {

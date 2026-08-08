@@ -1098,6 +1098,12 @@ export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+// Invoice number strategy (Settings > Invoice Settings > Numbering). Preview never
+// consumes a sequence number; the token catalogue is served by the backend so the
+// palette can't drift from what the renderer understands.
+export const POST_INVOICE_NUMBERING_PREVIEW = `${BASE_URL}/admin-core-service/v1/invoices/numbering/preview`;
+export const GET_INVOICE_NUMBERING_TOKENS = `${BASE_URL}/admin-core-service/v1/invoices/numbering/tokens`;
+export const GET_INVOICE_NUMBERING_STATE = `${BASE_URL}/admin-core-service/v1/invoices/numbering/state`;
 export const GET_USER_ACCOUNT_SUMMARY = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/user-account/${userId}/summary`;
 export const GET_USER_ACCOUNT_LEDGER = (userId: string) =>

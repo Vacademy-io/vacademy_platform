@@ -691,9 +691,16 @@ function QuestionCard({
                                 </p>
                             )}
                             {isFailed && (
-                                <p className="text-sm font-medium text-red-600">
-                                    AI could not grade this — needs your review
-                                </p>
+                                <>
+                                    <p className="text-sm font-medium text-red-600">
+                                        AI could not grade this — needs your review
+                                    </p>
+                                    {question.error_detail && (
+                                        <p className="mt-0.5 font-mono text-xs text-neutral-500">
+                                            {question.error_detail}
+                                        </p>
+                                    )}
+                                </>
                             )}
                             {!isCompleted && !isFailed && (
                                 <p className="text-sm text-neutral-600">Pending</p>

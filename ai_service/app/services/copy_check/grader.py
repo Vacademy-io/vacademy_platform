@@ -171,7 +171,7 @@ class CopyCheckGrader:
             response = await self.llm.chat_completion(
                 messages=messages,
                 temperature=0.1,
-                max_tokens=2000,
+                max_tokens=8000,
                 institute_id=self.institute_id,
                 user_id=self.user_id,
                 model=model,
@@ -198,7 +198,7 @@ class CopyCheckGrader:
             retry = await self.llm.chat_completion(
                 messages=retry_messages,
                 temperature=0.0,
-                max_tokens=2000,
+                max_tokens=8000,
                 institute_id=self.institute_id,
                 user_id=self.user_id,
                 # Must pin the same model: this retry's output IS the grade that

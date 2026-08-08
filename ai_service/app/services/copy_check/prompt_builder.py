@@ -212,7 +212,7 @@ def build_grading_prompt(
 - Reference line_ids (e.g. "L1_32") in `annotations[].target`. NEVER output pixel coordinates.
 - Each annotation needs a `page_id` matching the line_id's page.
 - If the student didn't attempt this question, set `marks_awarded = 0`, `extracted_answer = ""`, and `annotations = []`.
-- `extracted_answer` must be a VERBATIM transcription of what the student actually wrote (preserve their errors) — do not correct, rephrase, or complete it. Judge intent/meaning when grading, but never rewrite the student's words here.
+- `extracted_answer` must be a VERBATIM transcription of what the student actually wrote (preserve their errors) — do not correct, rephrase, or complete it. Judge intent/meaning when grading, but never rewrite the student's words here. It is the STUDENT'S HANDWRITING ONLY: never the printed question paper or the question's own text — transcribing the question as the answer is a grading-integrity failure. No line_id citations inside it. If the answer runs past ~250 words, transcribe the first ~250 verbatim and end with '…'. If you cannot find this question's answer on the pages, use "" and grade it unattempted.
 - **Pen-note style**: annotation `text` is written on the copy — imperative, ≤10 words, naming the fix (e.g. 'Cite Section 21 explicitly'). The full why-marks-were-lost explanation goes in `criteria_breakdown[].reason`, NOT on the page.
 - **Justify every cross/circle/strike**: each MUST carry a short non-empty `text` note naming the fix. No null/empty text on cross, circle, or strike annotations.
 - **Strike wrong statements**: use `strike` through an incorrect/irrelevant line with the correction as its note; `underline` emphasises a key correct statement.
@@ -220,6 +220,7 @@ def build_grading_prompt(
 - **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
 - **Credit visibly**: a correct answer (or correct sub-part) MUST get a tick on its conclusion line — correct work never goes unmarked.
 - **Anchor precisely**: `target` is the full line the mark refers to, never a fragment or a guess; when unsure of the exact line, use `margin_note` on the answer's first line.
+- **Notes add information**: `text` on tick/underline is usually null — the mark speaks. Never echo the line's own words back as the note, and never repeat the same note on multiple lines; when several lines earn the same comment, write ONE margin_note that covers them (e.g. 'All three disabilities correct').
 - **Per-criterion trace**: in `criteria_breakdown[].reason`, when `marks < max_marks`, write 'X mark(s) deducted because Y' and reference a `line_id` driving the deduction.
 
 **Output: STRICT JSON only.**

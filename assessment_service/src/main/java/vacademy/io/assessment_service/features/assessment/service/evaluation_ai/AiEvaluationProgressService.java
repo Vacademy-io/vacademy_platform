@@ -256,6 +256,7 @@ public class AiEvaluationProgressService {
                 List<JsonNode> annotations = null;
                 List<JsonNode> criteriaBreakdown = null;
                 Double confidence = null;
+                String errorDetail = null;
 
                 if (questionEval.getEvaluationResultJson() != null) {
                         try {
@@ -288,6 +289,9 @@ public class AiEvaluationProgressService {
                                 }
                                 if (fullResultJson.has("confidence")) {
                                         confidence = fullResultJson.get("confidence").asDouble();
+                                }
+                                if (fullResultJson.hasNonNull("error_detail")) {
+                                        errorDetail = fullResultJson.get("error_detail").asText();
                                 }
                                 if (evaluationDetailsJson == null
                                                 && (annotations != null || criteriaBreakdown != null)) {
@@ -330,6 +334,7 @@ public class AiEvaluationProgressService {
                                 .criteriaBreakdown(criteriaBreakdown)
                                 .rubricVersion(questionEval.getRubricVersion())
                                 .confidence(confidence)
+                                .errorDetail(errorDetail)
                                 .isEdited(questionEval.getIsEdited())
                                 .startedAt(questionEval.getStartedAt())
                                 .completedAt(questionEval.getCompletedAt())

@@ -113,17 +113,23 @@ def _draw_mark(page: Any, rect: Any, style: str) -> None:
 
     colour = _STYLE_COLOR.get(style, _HIGHLIGHT)
 
+    # OCR on cursive hands back fragment-width boxes; a line drawn at that
+    # width renders as a meaningless dash. Floor the drawn span so the mark
+    # reads as an underline/strike, not a speck.
+    line_x1 = min(page.rect.width - 6.0, max(rect.x1, rect.x0 + 45.0))
+
     if style == "circle":
-        page.draw_oval(rect + (-3, -2, 3, 2), color=colour, width=1.3)
+        oval = fitz.Rect(rect.x0 - 3, rect.y0 - 2, max(rect.x1 + 3, rect.x0 + 30.0), rect.y1 + 2)
+        page.draw_oval(oval, color=colour, width=1.3)
         return
 
     if style in ("strike", "strikethrough"):
         mid = rect.y0 + rect.height / 2.0
-        page.draw_line(fitz.Point(rect.x0, mid), fitz.Point(rect.x1, mid), color=colour, width=1.4)
+        page.draw_line(fitz.Point(rect.x0, mid), fitz.Point(line_x1, mid), color=colour, width=1.4)
         return
 
     if style == "underline":
-        page.draw_line(fitz.Point(rect.x0, rect.y1 + 1), fitz.Point(rect.x1, rect.y1 + 1),
+        page.draw_line(fitz.Point(rect.x0, rect.y1 + 1), fitz.Point(line_x1, rect.y1 + 1),
                        color=colour, width=1.4)
         return
 

@@ -5,11 +5,13 @@ import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Entities;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -50,6 +52,9 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoicePackageContextProjection;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberAllocation;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberConfig;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoiceNumberContext;
 import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -61,6 +66,7 @@ import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -87,6 +93,17 @@ public class InvoiceService {
 
     @Autowired
     private InstituteRepository instituteRepository;
+
+    // Owns invoice-number allocation (sequence + the institute's configured format).
+    @Autowired
+    private InvoiceNumberService invoiceNumberService;
+
+    // Self-proxy: saveInvoiceWithMultiplePaymentLogs needs REQUIRES_NEW to honour its own
+    // transaction boundary, and a direct internal call would bypass the Spring proxy and
+    // silently run in the caller's transaction. @Lazy breaks the self-referential cycle.
+    @Autowired
+    @Lazy
+    private InvoiceService self;
 
     @Autowired
     private AuthService authService;
@@ -214,8 +231,14 @@ public class InvoiceService {
     // Shared, reused for the invoice_data_json read/merge helpers below — ObjectMapper is
     // thread-safe and expensive to construct; avoid a fresh instance per call/per invoice row.
     private static final ObjectMapper INVOICE_JSON_MAPPER = new ObjectMapper();
-    private static final String DEFAULT_INVOICE_PREFIX = "INV";
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // Values for the {{doc_type}} invoice-number token — short by design, since they sit
+    // inside a length-capped number rather than being displayed on their own.
+    // (DEFAULT_INVOICE_PREFIX / DATE_FORMATTER went with the hardcoded INV-yyyyMMdd-NNNN
+    // generator; the prefix and date are now format tokens the admin controls.)
+    private static final String DOC_TYPE_ENROLLMENT = "INV";
+    private static final String DOC_TYPE_ADMIN = "ADM";
+    private static final String DOC_TYPE_LIVE_SESSION = "LS";
+
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     // ── Editable-placeholder support (admin invoice preview / overrides) ──────────────
@@ -468,24 +491,21 @@ public class InvoiceService {
             InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(paymentLogs, instituteId);
 
             // 2. Generate invoice number and set it in invoice data
-            String invoiceNumber = generateInvoiceNumber(instituteId);
-            invoiceData.setInvoiceNumber(invoiceNumber);
+            allocateInvoiceNumber(instituteId, invoiceData, DOC_TYPE_ENROLLMENT);
 
             // 3. Load institute-specific template
             String templateHtml = loadInvoiceTemplate(instituteId);
 
-            // 4. Replace placeholders
-            String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
-
-            // 5. Generate PDF
-            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
-
-            // 6. Upload to AWS S3 and get file ID
-            String pdfFileId = uploadInvoiceToS3(pdfBytes, invoiceNumber, instituteId);
-
-            // 7. Save invoice record with payment log(s)
-            Invoice invoice = saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId,
-                    paymentLogs, instituteId);
+            // 4-7. Render the PDF, upload it and save the invoice — retrying with the next
+            // number if two concurrent webhooks allocated the same one. The number is baked
+            // into both the PDF and the S3 filename, so a retry has to redo all of it; this
+            // only fires on a genuine same-instant race (the allocator already skips numbers
+            // that are visibly taken).
+            RenderedInvoice rendered = renderAndSaveWithCollisionRetry(
+                    instituteId, invoiceData, templateHtml, paymentLogs, DOC_TYPE_ENROLLMENT);
+            Invoice invoice = rendered.invoice();
+            byte[] pdfBytes = rendered.pdfBytes();
+            String invoiceNumber = invoice.getInvoiceNumber();
 
             // 8. Send email with PDF attached (don't fail if email fails)
             if (sendEmail) {
@@ -1383,36 +1403,209 @@ public class InvoiceService {
     }
 
     /**
-     * Generate unique invoice number
-     * Format: INV-YYYYMMDD-SEQUENCE
+     * Allocate the next invoice number for this institute, resolving every token the
+     * configured format uses from {@code invoiceData}.
+     *
+     * <p>{@code docType} feeds the {@code {{doc_type}}} token so one configured format can
+     * emit different prefixes per document kind (enrollment invoice vs admin-raised invoice
+     * vs live-session invoice) instead of needing a separate setting for each.
+     *
+     * <p>When {@code invoiceData} is given, the sequence position is stamped onto it so it
+     * reaches the saved {@code Invoice} row — that row IS the counter, so losing it would
+     * make the number re-issuable. Preview/what-if paths must use
+     * {@link #previewInvoiceNumber}, which reserves nothing.
      */
-    private String generateInvoiceNumber(String instituteId) {
-        String datePrefix = LocalDateTime.now().format(DATE_FORMATTER);
-        String baseNumber = DEFAULT_INVOICE_PREFIX + "-" + datePrefix + "-";
+    private InvoiceNumberAllocation allocateInvoiceNumber(String instituteId, InvoiceData invoiceData,
+                                                          String docType) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        InvoiceNumberAllocation allocation = invoiceNumberService.generate(config,
+                buildInvoiceNumberContext(instituteId, institute, config, invoiceData, docType));
+        applyAllocation(invoiceData, allocation);
+        log.debug("Generated invoice number: {} (seq {})", allocation.number(), allocation.seqNo());
+        return allocation;
+    }
 
-        // Count existing invoices for today
-        Long count = invoiceRepository.countByInstituteIdAndInvoiceDate(instituteId, LocalDateTime.now());
-        String sequence = String.format("%04d", count + 1);
+    /** A rendered-and-saved invoice plus the PDF bytes, so the caller can attach them to email. */
+    private record RenderedInvoice(Invoice invoice, byte[] pdfBytes) {}
 
-        String invoiceNumber = baseNumber + sequence;
-
-        // Ensure uniqueness (retry if needed)
-        int maxRetries = 10;
-        int retry = 0;
-        while (invoiceRepository.findByInvoiceNumber(invoiceNumber).isPresent() && retry < maxRetries) {
-            count++;
-            sequence = String.format("%04d", count + 1);
-            invoiceNumber = baseNumber + sequence;
-            retry++;
+    /**
+     * Render the invoice PDF, upload it and persist the row — retrying with the next number
+     * if the insert loses a uniqueness race.
+     *
+     * <p>Because the counter is {@code MAX(invoice.seq_no) + 1} rather than a pre-reserved
+     * ticket, two webhooks firing at the same instant for one institute can compute the same
+     * number; {@code uq_invoice_institute_number} rejects the loser. The number is embedded
+     * in the PDF and in the S3 object name, so recovering means re-rendering and re-uploading
+     * — acceptable because the allocator has already skipped every number it could see taken,
+     * leaving only true simultaneous collisions to reach here.
+     *
+     * <p>Retries use {@link InvoiceNumberService#nextAfterCollision} rather than a fresh
+     * {@code generate}: a clash against a pre-V432 invoice (whose {@code seq_no} is NULL)
+     * leaves {@code MAX(seq_no)} unchanged, so recomputing would return the same number
+     * forever.
+     */
+    private RenderedInvoice renderAndSaveWithCollisionRetry(String instituteId, InvoiceData invoiceData,
+                                                            String templateHtml, List<PaymentLog> paymentLogs,
+                                                            String docType) {
+        int maxAttempts = 4;
+        for (int attempt = 0; ; attempt++) {
+            String invoiceNumber = invoiceData.getInvoiceNumber();
+            String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
+            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+            String pdfFileId = uploadInvoiceToS3(pdfBytes, invoiceNumber, instituteId);
+            try {
+                // Through the proxy so REQUIRES_NEW applies — a direct call would run in this
+                // transaction and a collision would poison it instead of being retryable.
+                Invoice invoice = self.saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId,
+                        paymentLogs, instituteId);
+                return new RenderedInvoice(invoice, pdfBytes);
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= maxAttempts - 1) {
+                    throw e;
+                }
+                Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+                InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                        institute != null ? getInvoiceSettings(institute) : null);
+                InvoiceNumberAllocation retryAllocation = invoiceNumberService.nextAfterCollision(config,
+                        buildInvoiceNumberContext(instituteId, institute, config, invoiceData, docType),
+                        attempt + 1);
+                log.warn("Invoice number {} collided for institute {} — retrying as {} (attempt {}).",
+                        invoiceNumber, instituteId, retryAllocation.number(), attempt + 1);
+                applyAllocation(invoiceData, retryAllocation);
+            }
         }
+    }
 
-        if (retry >= maxRetries) {
-            // Fallback to UUID-based suffix
-            invoiceNumber = baseNumber + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+    /** Copy a freshly-allocated number + its sequence position onto the in-flight invoice data. */
+    private void applyAllocation(InvoiceData invoiceData, InvoiceNumberAllocation allocation) {
+        if (invoiceData == null) {
+            return;
         }
+        invoiceData.setInvoiceNumber(allocation.number());
+        invoiceData.setSeqNo(allocation.seqNo());
+        invoiceData.setSeqScopeKey(allocation.scopeKey());
+    }
 
-        log.debug("Generated invoice number: {}", invoiceNumber);
-        return invoiceNumber;
+    /**
+     * The number the institute WOULD issue next, without consuming it.
+     *
+     * <p>The admin create-invoice preview re-renders on every keystroke; allocating there
+     * would burn a sequence number per edit and leave permanent gaps in a tax document
+     * series.
+     */
+    private String previewInvoiceNumber(String instituteId, InvoiceData invoiceData, String docType) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        return invoiceNumberService.preview(config,
+                buildInvoiceNumberContext(instituteId, institute, config, invoiceData, docType));
+    }
+
+    private Institute resolveInstituteForNumbering(String instituteId, InvoiceData invoiceData) {
+        if (invoiceData != null && invoiceData.getInstitute() != null) {
+            return invoiceData.getInstitute();
+        }
+        try {
+            return instituteRepository.findById(instituteId).orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not load institute {} for invoice numbering; "
+                    + "institute-based tokens will render empty.", instituteId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Assemble the token values for the number formatter.
+     *
+     * <p>Everything except the last two fields is already in memory — number generation runs
+     * after {@code buildInvoiceData} — so this costs no queries. {@code enrollment_no} and the
+     * course/level/session tokens DO need reads no other invoice code performs, so they are
+     * passed as suppliers and the formatter only invokes them when the configured format
+     * actually contains those tokens.
+     */
+    private InvoiceNumberContext buildInvoiceNumberContext(String instituteId, Institute institute,
+                                                           InvoiceNumberConfig config, InvoiceData invoiceData,
+                                                           String docType) {
+        UserDTO user = invoiceData != null ? invoiceData.getUser() : null;
+        LocalDateTime invoiceDate = invoiceData != null ? invoiceData.getInvoiceDate() : null;
+        UserPlan userPlan = invoiceData != null ? invoiceData.getUserPlan() : null;
+
+        return InvoiceNumberContext.builder()
+                .instituteId(instituteId)
+                .instituteName(institute != null ? institute.getInstituteName() : null)
+                .instituteCode(config.getInstituteCode())
+                .instituteStateCode(institute != null ? institute.getStateCode() : null)
+                .instituteCity(institute != null ? institute.getCity() : null)
+                .instituteState(institute != null ? institute.getState() : null)
+                .instituteCountry(institute != null ? institute.getCountry() : null)
+                .subdomain(institute != null ? institute.getSubdomain() : null)
+                .learnerName(user != null ? user.getFullName() : null)
+                .learnerState(user != null ? user.getRegion() : null)
+                .date(invoiceDate != null ? invoiceDate.toLocalDate() : LocalDate.now())
+                .currency(invoiceData != null ? invoiceData.getCurrency() : null)
+                .paymentVendor(invoiceData != null ? invoiceData.getPaymentMethod() : null)
+                .planName(invoiceData != null && invoiceData.getPaymentPlan() != null
+                        ? invoiceData.getPaymentPlan().getName() : null)
+                .docType(StringUtils.hasText(docType) ? docType : DOC_TYPE_ENROLLMENT)
+                .enrollmentNumberSupplier(() -> lookupEnrollmentNumber(userPlan))
+                .packageContextSupplier(() -> lookupPackageContext(userPlan))
+                .build();
+    }
+
+    /**
+     * {@code ssigm.institute_enrollment_number} for the learner behind this plan. Note the
+     * getter is {@code getInstituteEnrolledNumber()} — the Java field name does not match the
+     * column name (legacy).
+     */
+    private String lookupEnrollmentNumber(UserPlan userPlan) {
+        StudentSessionInstituteGroupMapping mapping = lookupStudentMapping(userPlan);
+        return mapping != null ? mapping.getInstituteEnrolledNumber() : null;
+    }
+
+    /** Course / level / session names, via the same projection the T&C lookup uses. */
+    private InvoicePackageContextProjection lookupPackageContext(UserPlan userPlan) {
+        StudentSessionInstituteGroupMapping mapping = lookupStudentMapping(userPlan);
+        if (mapping == null) {
+            return null;
+        }
+        String packageSessionId = null;
+        if (mapping.getDestinationPackageSession() != null) {
+            packageSessionId = mapping.getDestinationPackageSession().getId();
+        } else if (mapping.getPackageSession() != null) {
+            packageSessionId = mapping.getPackageSession().getId();
+        }
+        if (!StringUtils.hasText(packageSessionId)) {
+            return null;
+        }
+        return packageSessionRepository.findPackageAndLevelByPackageSessionId(packageSessionId).orElse(null);
+    }
+
+    /**
+     * Minimal {@link InvoiceData} carrying just what the number formatter needs for an
+     * admin-raised invoice. Those are not tied to an enrollment, so there is no UserPlan —
+     * {@code {{enrollment_no}}} and the course tokens resolve empty and their separators
+     * collapse.
+     */
+    private InvoiceData numberingDataForAdminInvoice(Institute institute, UserDTO user,
+                                                     LocalDateTime invoiceDate, String currency) {
+        return InvoiceData.builder()
+                .institute(institute)
+                .user(user)
+                .invoiceDate(invoiceDate)
+                .currency(currency)
+                .build();
+    }
+
+    private StudentSessionInstituteGroupMapping lookupStudentMapping(UserPlan userPlan) {
+        if (userPlan == null) {
+            return null;
+        }
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+                .findAllByUserPlanIdAndStatusIn(userPlan.getId(),
+                        List.of("ACTIVE", "INVITED", "ABANDONED_CART", "DETAILS_FILLED"));
+        return (mappings == null || mappings.isEmpty()) ? null : mappings.get(0);
     }
 
     /**
@@ -2462,9 +2655,25 @@ public class InvoiceService {
     }
 
     /**
-     * Save invoice to database with multiple payment logs
+     * Save invoice to database with multiple payment logs.
+     *
+     * <p>Runs in its OWN transaction ({@link Propagation#REQUIRES_NEW}) so an invoice-number
+     * collision can be retried. A unique-constraint violation marks its transaction
+     * rollback-only; if this shared the caller's transaction, catching the exception and
+     * re-saving would fail with {@code UnexpectedRollbackException} instead of retrying — see
+     * {@link #renderAndSaveWithCollisionRetry}.
+     *
+     * <p>Consequence: the invoice, its line items and its payment-log mappings commit
+     * independently of the caller. If the surrounding transaction later rolls back the invoice
+     * survives. That is the safer direction here — the payment log is already committed by the
+     * webhook, and the {@code existsByPaymentLogId} idempotency guard stops a retry creating a
+     * second invoice.
+     *
+     * <p>MUST be invoked through {@code self} (the injected proxy), not directly: a private/
+     * internal call bypasses the Spring proxy and the propagation would silently not apply.
      */
-    private Invoice saveInvoiceWithMultiplePaymentLogs(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Invoice saveInvoiceWithMultiplePaymentLogs(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
             List<PaymentLog> paymentLogs, String instituteId) {
         try {
             if (paymentLogs == null || paymentLogs.isEmpty()) {
@@ -2475,6 +2684,11 @@ public class InvoiceService {
 
             Invoice invoice = new Invoice();
             invoice.setInvoiceNumber(invoiceNumber);
+            // The sequence position must be persisted, not just the rendered number: it IS
+            // the institute's counter, so an invoice saved without it is invisible to the
+            // next allocation and its number would eventually be issued again.
+            invoice.setSeqNo(invoiceData.getSeqNo());
+            invoice.setSeqScopeKey(invoiceData.getSeqScopeKey());
             invoice.setUserId(firstPaymentLog.getUserId());
             invoice.setInstituteId(instituteId);
             invoice.setInvoiceDate(invoiceData.getInvoiceDate());
@@ -2531,6 +2745,13 @@ public class InvoiceService {
             log.debug("Invoice saved to database: {} with {} payment logs", invoiceNumber, paymentLogs.size());
             return invoice;
 
+        } catch (DataIntegrityViolationException e) {
+            // Must escape the generic catch below: this is how an invoice-number collision
+            // reports itself, and renderAndSaveWithCollisionRetry needs to see the real type
+            // to retry with the next number. Wrapping it in VacademyException would make the
+            // retry unreachable.
+            log.warn("Invoice insert violated a constraint (likely a number collision): {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("Error saving invoice to database", e);
             throw new VacademyException("Failed to save invoice: " + e.getMessage());
@@ -2548,6 +2769,9 @@ public class InvoiceService {
         try {
             Invoice invoice = new Invoice();
             invoice.setInvoiceNumber(invoiceNumber);
+            // See saveInvoiceWithMultiplePaymentLogs — the sequence position is the counter.
+            invoice.setSeqNo(invoiceData.getSeqNo());
+            invoice.setSeqScopeKey(invoiceData.getSeqScopeKey());
             invoice.setUserId(paymentLog.getUserId());
 
             // Create payment log mapping for single payment log (legacy support)
@@ -3118,8 +3342,7 @@ public class InvoiceService {
             InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(eligibleLogs, instituteId);
 
             // Generate invoice number
-            String invoiceNumber = generateInvoiceNumber(instituteId);
-            invoiceData.setInvoiceNumber(invoiceNumber);
+            String invoiceNumber = allocateInvoiceNumber(instituteId, invoiceData, DOC_TYPE_ENROLLMENT).number();
 
             // Load template
             String templateHtml = loadInvoiceTemplate(instituteId);
@@ -3208,8 +3431,7 @@ public class InvoiceService {
                     instituteId);
 
             // Generate invoice number and set it in invoice data
-            String invoiceNumber = generateInvoiceNumber(instituteId);
-            invoiceData.setInvoiceNumber(invoiceNumber);
+            String invoiceNumber = allocateInvoiceNumber(instituteId, invoiceData, DOC_TYPE_ENROLLMENT).number();
 
             // Load template
             String templateHtml = loadInvoiceTemplate(instituteId);
@@ -3329,21 +3551,31 @@ public class InvoiceService {
             }
 
             // Invoice number: honour a unique admin override, else auto-generate.
-            String invoiceNumber;
+            // Uniqueness is checked WITHIN the institute — since V432 invoice_number is
+            // unique per (institute_id, invoice_number), not globally.
+            InvoiceNumberAllocation allocation;
             String overrideNumber = baseOverrides.get("invoice_number");
             if (StringUtils.hasText(overrideNumber)
-                    && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty()) {
-                invoiceNumber = overrideNumber.trim();
+                    && invoiceRepository.findByInstituteIdAndInvoiceNumber(
+                            request.getInstituteId(), overrideNumber.trim()).isEmpty()) {
+                // An explicit override is stored unsequenced so a hand-typed number can never
+                // drag the institute's counter forwards (or backwards).
+                allocation = InvoiceNumberAllocation.unsequenced(overrideNumber.trim());
             } else {
                 if (StringUtils.hasText(overrideNumber)) {
                     log.warn("Overridden invoice number '{}' already exists — generating a fresh number instead",
                             overrideNumber);
                 }
-                invoiceNumber = generateInvoiceNumber(request.getInstituteId());
+                allocation = allocateInvoiceNumber(request.getInstituteId(),
+                        numberingDataForAdminInvoice(institute, user, invoiceDate, request.getCurrency()),
+                        DOC_TYPE_ADMIN);
             }
+            String invoiceNumber = allocation.number();
 
             Invoice invoice = new Invoice();
             invoice.setInvoiceNumber(invoiceNumber);
+            invoice.setSeqNo(allocation.seqNo());
+            invoice.setSeqScopeKey(allocation.scopeKey());
             invoice.setUserId(userId);
             invoice.setInstituteId(request.getInstituteId());
             invoice.setInvoiceDate(invoiceDate);
@@ -3929,8 +4161,14 @@ public class InvoiceService {
         BigDecimal subtotal = price.setScale(2, RoundingMode.HALF_UP);
         EffectiveTax tax = computeEffectiveTax(invoiceSettings, subtotal, null, null);
 
+        InvoiceNumberAllocation allocation = allocateInvoiceNumber(instituteId,
+                numberingDataForAdminInvoice(institute, user, LocalDateTime.now(), currency),
+                DOC_TYPE_LIVE_SESSION);
+
         Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(generateInvoiceNumber(instituteId));
+        invoice.setInvoiceNumber(allocation.number());
+        invoice.setSeqNo(allocation.seqNo());
+        invoice.setSeqScopeKey(allocation.scopeKey());
         invoice.setUserId(userId);
         invoice.setInstituteId(instituteId);
         invoice.setInvoiceDate(LocalDateTime.now());
@@ -4393,13 +4631,22 @@ public class InvoiceService {
                 : firstNonBlank(request.getNotes(), invoiceInstituteProfileService.loadAsMap(invoiceSettings).get("notes"));
 
         // Resolve the invoice number exactly like createAdminInvoices: honour a unique admin
-        // override, else the freshly generated next number. This keeps the preview's rendered
-        // {{invoice_number}} equal to what create will actually assign on a collision.
+        // override, else the number that would be issued next. This keeps the preview's
+        // rendered {{invoice_number}} equal to what create will actually assign.
+        //
+        // MUST use previewInvoiceNumber, not generateInvoiceNumber: this endpoint re-renders
+        // on every keystroke in the create-invoice dialog, and allocating here would consume
+        // a sequence number per edit — permanent gaps in a tax document series.
         String overrideNumber = userOverrides.get("invoice_number");
         String invoiceNumber = (StringUtils.hasText(overrideNumber)
-                && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty())
+                && invoiceRepository.findByInstituteIdAndInvoiceNumber(
+                        request.getInstituteId(), overrideNumber.trim()).isEmpty())
                 ? overrideNumber.trim()
-                : generateInvoiceNumber(request.getInstituteId());
+                : previewInvoiceNumber(request.getInstituteId(),
+                        numberingDataForAdminInvoice(institute, user,
+                                request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now(),
+                                request.getCurrency()),
+                        DOC_TYPE_ADMIN);
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)

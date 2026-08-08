@@ -16,16 +16,38 @@ import java.util.List;
 @Getter
 @Setter
 @Entity
-@Table(name = "invoice")
+// Since V432 an invoice number is unique per INSTITUTE, not globally: institutes
+// configure their own number formats (INVOICE_SETTING.numbering), so two of them
+// legitimately issue "INV/2026/0001" on the same day.
+@Table(name = "invoice", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_invoice_institute_number",
+                columnNames = {"institute_id", "invoice_number"})
+})
 public class Invoice {
-    
+
     @Id
     @UuidGenerator
     @Column(name = "id")
     private String id;
 
-    @Column(name = "invoice_number", unique = true, nullable = false, length = 100)
+    // NOTE: deliberately NOT unique = true — see the @Table constraint above.
+    @Column(name = "invoice_number", nullable = false, length = 100)
     private String invoiceNumber;
+
+    /**
+     * Sequence position behind {@code invoiceNumber}, within {@link #seqScopeKey}. The next
+     * number an institute issues is {@code MAX(seq_no) + 1} for that (institute, window) —
+     * the counter lives here rather than in a side table so it can never drift from the
+     * invoices themselves, and so a number is only ever consumed by an invoice that exists.
+     *
+     * <p>NULL for invoices issued before V432.
+     */
+    @Column(name = "seq_no")
+    private Long seqNo;
+
+    /** Reset window this number was allocated in: {@code ALL | YYYY | YYYYMM | YYYYMMDD}. */
+    @Column(name = "seq_scope_key", length = 32)
+    private String seqScopeKey;
 
     // Multiple payment logs supported via InvoicePaymentLogMapping
     // UserPlan can be accessed via: paymentLogMappings -> paymentLog -> userPlan

@@ -41,6 +41,16 @@ public class InvoiceData {
     
     // Invoice details
     private String invoiceNumber;
+    /**
+     * Sequence position behind {@link #invoiceNumber}, and the reset window it belongs to.
+     * These ARE the institute's counter (it lives on the invoice rows, not in a side table),
+     * so they must reach the saved {@code Invoice} — an invoice persisted without them is
+     * invisible to the next allocation and its number would eventually be handed out again.
+     * Null for an admin-supplied override or the uniqueness fallback, which deliberately
+     * do not move the counter.
+     */
+    private Long seqNo;
+    private String seqScopeKey;
     private LocalDateTime invoiceDate;
     private LocalDateTime dueDate;
     

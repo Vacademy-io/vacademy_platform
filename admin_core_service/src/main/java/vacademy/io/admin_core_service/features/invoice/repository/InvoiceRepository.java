@@ -16,7 +16,35 @@ import java.util.Optional;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, String> {
 
-       Optional<Invoice> findByInvoiceNumber(String invoiceNumber);
+       // NOTE: there is deliberately no lookup by bare invoice_number. Since V432 the number
+       // is unique per (institute_id, invoice_number), so a global lookup can match several
+       // rows and would throw NonUniqueResultException. Always scope by institute.
+
+       /** Institute-scoped number lookup. */
+       Optional<Invoice> findByInstituteIdAndInvoiceNumber(String instituteId, String invoiceNumber);
+
+       boolean existsByInstituteIdAndInvoiceNumber(String instituteId, String invoiceNumber);
+
+       /** Drives the "N existing invoices keep their numbers" line in the change warning. */
+       long countByInstituteId(String instituteId);
+
+       /** Most recently issued number, shown as the "current" example in the change warning. */
+       Optional<Invoice> findTopByInstituteIdOrderByCreatedAtDesc(String instituteId);
+
+       /**
+        * Highest sequence position issued by this institute in this reset window, or 0 if
+        * none — so the next number is {@code highestSeqNo(...) + 1}.
+        *
+        * <p>Invoices issued before V432 have {@code seq_no = NULL} and are skipped, which is
+        * why the caller must treat a collision by INCREMENTING its candidate rather than
+        * recomputing this value: a clash against a legacy number would otherwise return the
+        * same MAX forever and loop.
+        *
+        * <p>Served by {@code idx_invoice_seq_allocation (institute_id, seq_scope_key, seq_no DESC)}.
+        */
+       @Query("SELECT COALESCE(MAX(i.seqNo), 0) FROM Invoice i "
+                     + "WHERE i.instituteId = :instituteId AND i.seqScopeKey = :scopeKey")
+       long highestSeqNo(@Param("instituteId") String instituteId, @Param("scopeKey") String scopeKey);
 
        List<Invoice> findByUserIdOrderByCreatedAtDesc(String userId);
 
@@ -47,10 +75,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
                      @Param("startDate") LocalDateTime startDate,
                      @Param("endDate") LocalDateTime endDate,
                      Pageable pageable);
-
-       long countByInvoiceNumberStartingWith(String prefix);
-
-       boolean existsByInvoiceNumber(String invoiceNumber);
 
        @Query("SELECT i FROM Invoice i WHERE i.userId = :userId AND i.instituteId = :instituteId " +
                      "AND i.status = 'PENDING_PAYMENT' AND i.source = 'ADMIN_MANUAL' " +

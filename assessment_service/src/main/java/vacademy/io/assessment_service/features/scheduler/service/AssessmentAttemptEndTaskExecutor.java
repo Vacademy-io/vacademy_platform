@@ -64,7 +64,10 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
         List<TaskExecutionAudit> allTasks =  new ArrayList<>();
 
         attempts.forEach(attempt->{
-            studentAttemptService.updateStudentAttemptResultAfterMarksCalculationAsync(Optional.of(attempt));
+            // TIME_EXPIRED: this executor only picks up attempts whose clock ran out
+            // (isAttemptTimeOver), so it is the one caller that can honestly label the
+            // ASSESSMENT_END it causes.
+            studentAttemptService.updateStudentAttemptResultAfterMarksCalculationAsync(Optional.of(attempt), "TIME_EXPIRED");
             allTasks.add(TaskExecutionAudit.builder()
                     .source(source)
                     .sourceId(attempt.getId())

@@ -819,7 +819,7 @@ export const StudentPaymentHistory = () => {
                 ) : (
                     <InvoicesList
                         invoices={invoicesData || []}
-                        instituteId={instituteDetails.id}
+                        instituteId={instituteDetails?.id ?? ''}
                         onRefresh={invalidateInvoices}
                         onEdit={handleEditInvoice}
                     />

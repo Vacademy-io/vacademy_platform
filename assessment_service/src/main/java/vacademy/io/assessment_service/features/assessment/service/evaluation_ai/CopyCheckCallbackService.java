@@ -7,9 +7,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.CopyCheckCallbackDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
+import vacademy.io.assessment_service.features.assessment.enums.AttemptResultStatusEnum;
+import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.entity.CopyCheckLayout;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
@@ -21,6 +24,7 @@ import vacademy.io.assessment_service.features.learner_assessment.entity.Questio
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -189,20 +193,57 @@ public class CopyCheckCallbackService {
             StudentAttempt attempt = studentAttemptRepository
                     .findById(process.getStudentAttempt().getId())
                     .orElse(null);
+            // A RELEASED result is frozen against background AI writes: a
+            // teacher who evaluated by hand (or bulk-imported marks) and
+            // released while this run was still in flight must not have their
+            // totals, status, or checked copy silently replaced by a late
+            // complete callback. The AI verdicts stay on the review page; the
+            // teacher applies them explicitly via override if wanted.
+            if (attempt != null && ReleaseResultStatusEnum.RELEASED.name().equals(attempt.getReportReleaseStatus())) {
+                log.warn("[copy-check] process {} completed but attempt {} result is already RELEASED — "
+                        + "leaving the attempt untouched", process.getId(), attempt.getId());
+                attempt = null;
+            }
             if (attempt != null) {
                 // Recompute from the successfully-graded questions rather than
                 // trusting the AI's reported total: FAILED questions are excluded
                 // (not counted as a silent 0) until a teacher grades them, which
                 // recomputes this total via AiEvaluationReviewService.
-                double total = questionEvaluationRepository
-                        .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId())
-                        .stream()
+                List<AiQuestionEvaluation> rows = questionEvaluationRepository
+                        .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
+                double total = rows.stream()
                         .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
                         .mapToDouble(q -> q.getMarksAwarded().doubleValue())
                         .sum();
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
-                attempt.setResultStatus("COMPLETED");
+
+                // A copy where some questions never graded is NOT evaluated. The
+                // total above deliberately excludes them, so marking the attempt
+                // COMPLETED would publish a score whose denominator still counts
+                // marks nobody awarded — a 23/100 that is really 23 out of the 60
+                // that got graded. Leave it EVALUATING so it stays in the
+                // teacher's queue until they grade the rest.
+                // Anything non-COMPLETED counts: a row still PENDING here means
+                // its question callback was dropped (they are fire-and-forget
+                // with one retry), and that question's marks are just as absent
+                // from the total as a FAILED one's.
+                long ungraded = rows.stream().filter(q -> !"COMPLETED".equals(q.getStatus())).count();
+                if (ungraded > 0) {
+                    attempt.setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
+                    log.warn("[copy-check] process {} completed with {}/{} question(s) ungraded — "
+                            + "attempt {} left EVALUATING for manual review",
+                            process.getId(), ungraded, rows.size(), attempt.getId());
+                } else {
+                    attempt.setResultStatus("COMPLETED");
+                }
+                // The annotated copy ai_service rendered. Absent when the render
+                // or upload failed, in which case leave whatever is already on
+                // the attempt — a failed render must not wipe a copy a teacher
+                // uploaded by hand.
+                if (StringUtils.hasText(payload.getEvaluatedFileId())) {
+                    attempt.setEvaluatedFileId(payload.getEvaluatedFileId());
+                }
                 studentAttemptRepository.save(attempt);
             }
         }

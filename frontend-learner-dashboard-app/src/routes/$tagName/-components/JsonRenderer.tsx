@@ -980,6 +980,7 @@ const MarqueeRenderer: React.FC<any> = ({
   defaultIcon = '',
   speed = 'medium',
   direction = 'left',
+  pauseOnHover = true,
   backgroundColor = '#1e1b4b', // design-lint-ignore: page-builder default color
   textColor = '#ffffff', // design-lint-ignore: page-builder default color
   iconColor = '#facc15', // design-lint-ignore: page-builder default color
@@ -995,7 +996,7 @@ const MarqueeRenderer: React.FC<any> = ({
       aria-label="Announcements"
     >
       <div
-        className="catalogue-marquee flex items-center gap-10"
+        className={`catalogue-marquee flex items-center gap-10 ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
         style={{
           animationDuration: MARQUEE_SPEED_MAP[speed] || '30s',
           // The keyframes scroll left; 'right' simply plays them backwards.

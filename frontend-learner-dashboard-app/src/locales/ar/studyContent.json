@@ -194,7 +194,8 @@
         "closeDevTools": "يرجى إغلاق أدوات المطوّر لمتابعة عرض هذه الشريحة."
     },
     "mermaid": {
-        "clickToExpand": "انقر للتوسيع"
+        "clickToExpand": "انقر للتوسيع",
+        "scrollForMore": "مرّر لأسفل لعرض المخطط كاملاً"
     },
     "excalidraw": {
         "loading": "جارٍ تحميل الرسم التخطيطي...",

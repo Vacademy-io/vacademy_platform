@@ -20,7 +20,11 @@ export function MarginNote({ box, text, dims, onClick }: MarginNoteProps) {
     const [bx, by, bw, bh] = box;
     const lineRight = (bx + bw) * dims.scale;
     const lineMidY = (by + bh / 2) * dims.scale;
-    const noteLeft = dims.renderedWidth - MARGIN_WIDTH - MARGIN_OFFSET;
+    // On a narrow render (side panel at low zoom) a fixed 180px "margin" lands
+    // in the middle of the handwriting — scale the note down with the page so
+    // it hugs the right edge instead of blanking out the student's work.
+    const noteWidth = Math.min(MARGIN_WIDTH, Math.max(110, dims.renderedWidth * 0.26));
+    const noteLeft = dims.renderedWidth - noteWidth - MARGIN_OFFSET;
     const noteTop = Math.max(0, lineMidY - 12);
 
     return (
@@ -49,13 +53,15 @@ export function MarginNote({ box, text, dims, onClick }: MarginNoteProps) {
                 onClick={onClick}
                 className={cn(
                     'absolute pointer-events-auto cursor-pointer',
-                    'bg-danger-50 text-danger-700 border border-danger-500 rounded-sm',
-                    'px-2 py-1 text-caption shadow-sm',
+                    // Translucent, not opaque: when the note has to sit over
+                    // writing, the writing must stay readable through it.
+                    'bg-danger-50/80 text-danger-700 border border-danger-500 rounded-sm',
+                    'px-1.5 py-0.5 text-caption italic leading-snug shadow-sm',
                 )}
                 style={{
                     left: noteLeft,
                     top: noteTop,
-                    width: MARGIN_WIDTH,
+                    width: noteWidth,
                 }}
             >
                 {text}

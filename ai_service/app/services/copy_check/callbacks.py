@@ -86,6 +86,11 @@ async def question_done(
         # this to keep failed questions out of the released total and flag them
         # for teacher review instead of silently recording a 0.
         "status": verdict.get("status", "COMPLETED"),
+        # Why grading failed (exception class + message, no trace) — admin-side
+        # diagnosis rides to ai_question_evaluation.evaluation_result_json.
+        # This payload is an explicit field list, so forgetting a key here means
+        # the field silently never reaches Java.
+        "error_detail": verdict.get("error_detail"),
     }
     await _post(f"{base_url.rstrip('/')}/copy-check/callback/question", payload)
 
@@ -97,13 +102,19 @@ async def complete(
     total_marks_awarded: float,
     total_max_marks: float,
     questions_evaluated: int,
+    evaluated_file_id: Optional[str] = None,
 ) -> None:
+    # evaluated_file_id is the annotated copy (see annotator.py). Omitted when
+    # rendering or upload failed — Java leaves the existing value alone rather
+    # than clearing it, so a failed render never destroys a copy someone
+    # uploaded by hand.
     await _post(f"{base_url.rstrip('/')}/copy-check/callback/complete", {
         "process_id": process_id,
         "job_id": job_id,
         "total_marks_awarded": total_marks_awarded,
         "total_max_marks": total_max_marks,
         "questions_evaluated": questions_evaluated,
+        "evaluated_file_id": evaluated_file_id,
     })
 
 

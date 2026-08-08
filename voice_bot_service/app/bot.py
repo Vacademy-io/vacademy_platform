@@ -83,7 +83,9 @@ from .config import get_settings
 from . import diagnostics as diag_mod
 from .providers import build_llm, build_stt, build_tts
 from .turntake import (mid_reply_action, is_carrier_announcement,
-                       is_audio_check, ABSORB)
+                       is_audio_check, suppresses_opening, is_repeat,
+                       caller_asked_to_repeat, normalize_spoken, question_topic,
+                       ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +156,8 @@ class TranscriptCollector(FrameProcessor):
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
-        self._on_transcript = on_transcript or (lambda backchannel=False: None)
+        self._on_transcript = on_transcript or (
+            lambda backchannel=False, substantive=False: None)
         # Turn-gate (see DuckGate): for ANY final that lands mid-reply, THIS
         # processor is the decision point — it sits before aggregators.user(),
         # so an absorbed backchannel never reaches the aggregator that would
@@ -356,7 +359,7 @@ class TranscriptCollector(FrameProcessor):
                             messages=[{"role": "user", "content": cue}],
                             run_llm=True), direction)
                     return
-                self._on_transcript()
+                self._on_transcript(substantive=suppresses_opening(text))
                 # Real barge-in. If ducked, the line is already silent and this
                 # makes it formal; if the VAD missed the onset the bot is STILL
                 # TALKING and this is what finally stops it — late beats never.
@@ -378,7 +381,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript()
                 await self._on_absorb(None)
             else:
-                self._on_transcript()
+                self._on_transcript(substantive=suppresses_opening(text))
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
@@ -581,6 +584,134 @@ class TtfbObserver:
         self._seen: list = []
         self._diag = diag
         self.observer = _Obs()
+
+
+class NoRepeatGate(FrameProcessor):
+    """Between the LLM and the TTS: never say the same sentence twice in a call.
+
+    THE PROBLEM the founder kept hearing: the bot re-asks its own closing
+    questions — "kya aap fees ke baare mein jaanna chahenge?", "kya main is
+    WhatsApp number par link bhej doon?" — several turns after it already asked
+    them, because nothing tracks which questions have been put to the caller.
+
+    WHY IN CODE. Four prompt-level attempts failed, each measured over 3+ live
+    conversations against the real model: style rules in the system prompt
+    (1.7 -> 1.7 repeats, and they broke script and gender), no-echo rules with
+    worked examples in the script (3.0 -> 3.0 echoes), deleting the scripted
+    acknowledgement lines the model was parroting (2.7 -> 2.7), and changing
+    model (1.0 -> 0.3, real but reverted for latency). Remembering what you
+    already said is state, and a 16k-character prompt is not where state lives.
+
+    NO LATENCY COST. pipecat's TTS already buffers to a sentence boundary before
+    synthesising (hence "Generating TTS [whole sentence]" in the logs), so
+    holding a sentence here to look at it costs nothing that was not already
+    being spent.
+
+    NEVER SILENT. If every sentence of a reply is a repeat, the LAST one is let
+    through anyway: one repeated question is bad, a reply that vanishes and
+    leaves the caller in silence is worse.
+    """
+
+    _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
+
+    def __init__(self, enabled=None, last_caller_text=None, diag=None):
+        super().__init__()
+        self._enabled = enabled or (lambda: True)
+        self._last_caller_text = last_caller_text or (lambda: "")
+        self._diag = diag
+        self._spoken: list = []
+        self._asked: set = set()      # question TOPICS already put to the caller
+        self._buf = ""
+        self._emitted = 0
+        self._held_tail = ""
+        self._handback = 0
+
+    def _keep(self, sentence: str) -> bool:
+        if not self._enabled():
+            return True
+        if caller_asked_to_repeat(self._last_caller_text()):
+            return True            # they ASKED us to say it again
+        if is_repeat(sentence, self._spoken):
+            return False
+        # Same QUESTION, different words. Sentence similarity cannot see this:
+        # call 597aeb3f asked "Aur wo abhi kis class mein hai?" and then "Raman
+        # abhi kis class mein padh raha hai?", which score ~0.6 against each
+        # other and sailed through.
+        topic = question_topic(sentence)
+        return not (topic and topic in self._asked)
+
+    # Said INSTEAD of a reply that turned out to be entirely a repeat. The first
+    # version of this guard re-emitted the duplicate rather than go silent, and
+    # it fired seven times in one afternoon — so the guard against dead air was
+    # itself producing the repetition the founder was hearing. Hand the turn
+    # back instead, and never with the same words twice running.
+    _HANDBACK = ("Ji, boliye.", "Haan ji?", "Aap batayiye.", "Ji?")
+
+    async def _emit(self, text: str, direction):
+        self._spoken.append(normalize_spoken(text))
+        topic = question_topic(text)
+        if topic:
+            self._asked.add(topic)
+        self._emitted += 1
+        await self.push_frame(LLMTextFrame(text), direction)
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            self._buf, self._emitted, self._held_tail = "", 0, ""
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, InterruptionFrame):
+            # A cancelled reply's unsaid tail was never heard, so it is not
+            # "already said" — but what DID play is still in _spoken.
+            self._buf, self._held_tail = "", ""
+            await self.push_frame(frame, direction)
+            return
+
+        if (isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM
+                and not isinstance(frame, TTSTextFrame)):
+            self._buf += frame.text or ""
+            while True:
+                m = self._SENT_END.search(self._buf)
+                if not m:
+                    break
+                sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
+                if not sentence.strip():
+                    continue
+                if self._keep(sentence):
+                    await self._emit(sentence, direction)
+                else:
+                    self._held_tail = sentence
+                    if self._diag is not None:
+                        self._diag.bump("repeats_suppressed")
+                    logger.info("no-repeat: dropping already-said %r", sentence.strip()[:56])
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame):
+            tail = self._buf.strip()
+            self._buf = ""
+            if tail:
+                if self._keep(tail):
+                    await self._emit(tail, direction)
+                else:
+                    self._held_tail = tail
+                    if self._diag is not None:
+                        self._diag.bump("repeats_suppressed")
+                    logger.info("no-repeat: dropping already-said %r", tail[:56])
+            if self._emitted == 0 and self._held_tail:
+                # Everything was a repeat. Do NOT say it again — hand the turn
+                # back in a few words so the line is not dead either.
+                line = self._HANDBACK[self._handback % len(self._HANDBACK)]
+                self._handback += 1
+                logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
+                self._emitted += 1
+                await self.push_frame(LLMTextFrame(line), direction)
+            await self.push_frame(frame, direction)
+            return
+
+        await self.push_frame(frame, direction)
 
 
 class SentinelGate(FrameProcessor):
@@ -1705,13 +1836,37 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def on_activity(user: bool = True):
         flags["t"] = time.time()
 
+    # WHAT was the bot doing while the line was silent? Call 597aeb3f showed
+    # 8.2s of dead air and the container restart that shipped the next build
+    # destroyed the logs before it could be diagnosed — so the answer has to
+    # travel with the REPORT, which survives restarts, not the log.
+    def _silence_cause(gap: float) -> str:
+        if gap < 2.5:
+            return ""
+        now = time.time()
+        if flags["ducked_since"] > 0:
+            return "ducked_%.1fs" % (now - flags["ducked_since"])
+        st = flags["reply_started_t"]
+        if st and flags["bot_stopped_t"] < st:
+            return "awaiting_playout_%.1fs" % (now - st)   # LLM/TTS composed, no audio
+        if flags["user_speaking"]:
+            return "caller_speaking"
+        if flags["user_stopped_t"] > flags["bot_stopped_t"]:
+            return "after_caller_turn"      # we owed them a reply and did not start one
+        return "both_quiet"
+
     def set_bot_speaking(speaking: bool):
         if speaking:
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
-                diag.sample("dead_air", max(0.0, time.time() - _last))
+                _gap = max(0.0, time.time() - _last)
+                diag.sample("dead_air", _gap)
+                _why = _silence_cause(_gap)
+                if _why:
+                    diag.note_silence(round(_gap, 1), _why)
+                    logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
             diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
@@ -1723,7 +1878,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if speaking and not flags["user_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
-                diag.sample("dead_air", max(0.0, time.time() - _last))
+                _gap = max(0.0, time.time() - _last)
+                diag.sample("dead_air", _gap)
+                _why = _silence_cause(_gap)
+                if _why:
+                    diag.note_silence(round(_gap, 1), _why)
+                    logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
             if flags["bot_speaking"]:
                 diag.bump("barge_ins")
         elif not speaking and flags["user_speaking"]:
@@ -1833,8 +1993,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         ),
     )
 
-    def on_transcript(backchannel: bool = False):
+    def on_transcript(backchannel: bool = False, substantive: bool = False):
         flags["transcript_t"] = time.time()
+        if substantive:
+            flags["substantive_t"] = flags["transcript_t"]
         if not backchannel and flags["end_pending_since"] != 0.0:
             flags["end_pending_since"] = 0.0
             outcome.end_requested = False
@@ -1914,6 +2076,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      bot_spoke_once=lambda: flags["bot_spoke_once"])
     played_transcript = PlayedTranscriptRecorder(outcome)
 
+    no_repeat = NoRepeatGate(
+        enabled=lambda: settings.no_repeat_enabled,
+        last_caller_text=lambda: (outcome.transcript[-1].get("text", "")
+                                  if outcome.transcript
+                                  and outcome.transcript[-1].get("role") == "user" else ""),
+        diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing)
@@ -1925,6 +2093,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         aggregators.user(),
         llm,
         sentinel,
+        no_repeat,
         tts,
         duck,
         transport.output(),
@@ -1997,14 +2166,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
+        # SUBSTANTIVE speech only. This used to test transcript_t, i.e. ANY
+        # transcript, so one stray word decided whether we opened at all — and
+        # on a voicemail the stray words are the operator's own recording
+        # arriving in fragments. Calls 0d61b32a ('Your call.') and 9668da21
+        # ('Hi.' / 'If you record your') both lost their opening to a fragment
+        # on 2026-08-06, and the model improvised a replacement, which is how
+        # one of them delivered its introduction twice.
         while time.time() - connect_t < settings.greet_delay_secs:
-            if flags["transcript_t"] > connect_t + 0.05:
+            if flags["substantive_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
         while (time.time() - connect_t < 2.5
                and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
-            if flags["transcript_t"] > connect_t + 0.05:
+            if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return

@@ -1924,14 +1924,14 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onChange={(c) => updateProp('textColor', c)}
             />
 
-            {/* Sticky Header */}
-            <div className="flex items-center justify-between">
-                <Label className="text-xs">Sticky Header</Label>
-                <Switch
-                    checked={config?.globalSettings?.stickyHeader || false}
-                    onCheckedChange={(c) => updateGlobalSettings({ stickyHeader: c })}
-                />
-            </div>
+{/* Sticky Header toggle REMOVED (2026-07-29): it wrote
+                globalSettings.stickyHeader, which nothing ever read — the learner
+                header is unconditionally `fixed`, and both the page offset
+                (pt-16 md:pt-20) and the mobile action bar are built around that.
+                Wiring it was the wrong fix: every existing site has the toggle
+                reading "off" while being sticky, so honouring the value would
+                silently un-stick every live header. The header is sticky by
+                design; offering a switch that does nothing was the bug. */}
 
             {/* Navigation Links */}
             <div className="space-y-2">

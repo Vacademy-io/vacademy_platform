@@ -7,8 +7,15 @@ import { RouteMatcher } from "../../-services/route-matcher";
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
   tagName?: string;
+  /** Author-picked surface colours. The editor has always offered these; the
+   *  footer ignored them and stayed on the .catalogue-footer token, so the
+   *  pickers appeared to do nothing. */
+  backgroundColor?: string;
+  textColor?: string;
 }> = ({
   layout,
+  backgroundColor,
+  textColor,
   leftSection,
   rightSection1,
   rightSection2,
@@ -128,7 +135,13 @@ export const FooterComponent: React.FC<FooterProps & {
   const linkClassesLeft = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer text-start";
 
   return (
-    <footer className="catalogue-footer">
+    <footer
+      className="catalogue-footer"
+      style={{
+        ...(backgroundColor ? { backgroundColor } : {}), // design-lint-ignore: author-picked page-builder color
+        ...(textColor ? { color: textColor } : {}), // design-lint-ignore: author-picked page-builder color
+      }}
+    >
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         <div className={`grid ${getGridCols()} gap-6 lg:gap-8`}>
           {/* Left Section - Company Info */}

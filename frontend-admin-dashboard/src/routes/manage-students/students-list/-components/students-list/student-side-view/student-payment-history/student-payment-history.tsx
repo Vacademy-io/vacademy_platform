@@ -8,14 +8,18 @@ import {
     fetchUserAccountLedger,
     markInvoicePaidManual,
     rejectInvoice,
-    getInvoiceDownloadUrl,
+    fetchInvoiceById,
 } from '@/services/invoice-service';
+import { downloadInvoicePdf as downloadNamedInvoicePdf } from '@/services/invoice-pdf';
+import { InvoicePreviewDialog } from '@/components/common/invoice/invoice-preview-dialog';
 import type { InvoiceDTO, UserAccountSummaryDTO, UserAccountLedgerEntryDTO } from '@/services/invoice-service';
 import {
     FileText,
     Wallet,
     Plus,
     DownloadSimple,
+    Eye,
+    PencilSimple,
     CaretLeft,
     CaretRight,
     Receipt,
@@ -241,10 +245,13 @@ const InvoicesList = ({
     invoices,
     instituteId,
     onRefresh,
+    onEdit,
 }: {
     invoices: InvoiceDTO[];
     instituteId: string;
     onRefresh?: () => void;
+    /** Opens the Create-Invoice dialog in edit mode for an unpaid admin invoice. */
+    onEdit?: (invoiceId: string) => void;
 }) => {
     const [page, setPage] = useState(0);
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -253,6 +260,8 @@ const InvoicesList = ({
     // AlertDialog rather than firing straight from the row (same gate as the sub-org panel).
     const [cancelTarget, setCancelTarget] = useState<{ id: string; number: string } | null>(null);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
+    // Inline PDF preview — view an invoice without downloading it first.
+    const [previewTarget, setPreviewTarget] = useState<InvoiceDTO | null>(null);
     const totalPages = Math.ceil(invoices.length / INVOICES_PER_PAGE);
     const paged = invoices.slice(page * INVOICES_PER_PAGE, (page + 1) * INVOICES_PER_PAGE);
 
@@ -273,13 +282,9 @@ const InvoicesList = ({
         },
     });
 
-    const handleDownload = (invoice: InvoiceDTO) => {
-        if (invoice.pdf_url) {
-            window.open(invoice.pdf_url, '_blank');
-        } else if (invoice.pdf_file_id) {
-            window.open(getInvoiceDownloadUrl(invoice.id), '_blank');
-        }
-    };
+    // Downloads via the shared helper so the file lands as Invoice-<number>.pdf rather than
+    // under the opaque storage key a plain window.open would produce.
+    const handleDownload = (invoice: InvoiceDTO) => downloadNamedInvoicePdf(invoice);
 
     const handleCopyLink = async (invoiceId: string, link: string) => {
         try {
@@ -383,14 +388,24 @@ const InvoicesList = ({
                                         </div>
                                     </div>
                                     {canDownload && (
-                                        <button
-                                            onClick={() => handleDownload(inv)}
-                                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-                                            title="Download Invoice PDF"
-                                        >
-                                            <DownloadSimple className="size-3.5" />
-                                            Download
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={() => setPreviewTarget(inv)}
+                                                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                                                title="Preview the invoice PDF without downloading it"
+                                            >
+                                                <Eye className="size-3.5" />
+                                                Preview
+                                            </button>
+                                            <button
+                                                onClick={() => void handleDownload(inv)}
+                                                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                                                title="Download Invoice PDF"
+                                            >
+                                                <DownloadSimple className="size-3.5" />
+                                                Download
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                                 {/* Action row: payment link + mark paid for actionable invoices */}
@@ -407,6 +422,16 @@ const InvoicesList = ({
                                                 ) : (
                                                     <><Copy className="size-3" /> Copy Payment Link</>
                                                 )}
+                                            </button>
+                                        )}
+                                        {isAdminManual && isPending && onEdit && (
+                                            <button
+                                                onClick={() => onEdit(inv.id)}
+                                                className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
+                                                title="Edit this unpaid invoice — keeps the same invoice number"
+                                            >
+                                                <PencilSimple className="size-3" />
+                                                Edit
                                             </button>
                                         )}
                                         {isAdminManual && isPending && (
@@ -500,6 +525,10 @@ const InvoicesList = ({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            <InvoicePreviewDialog
+                invoice={previewTarget}
+                onClose={() => setPreviewTarget(null)}
+            />
         </>
     );
 };
@@ -636,6 +665,17 @@ export const StudentPaymentHistory = () => {
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const queryClient = useQueryClient();
     const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+    // Editing an existing unpaid invoice reuses the Create-Invoice dialog. The list row only
+    // holds a summary, so the full invoice (line items) is fetched before opening.
+    const [editSource, setEditSource] = useState<InvoiceDTO | null>(null);
+    const handleEditInvoice = async (invoiceId: string) => {
+        try {
+            setEditSource(await fetchInvoiceById(invoiceId));
+            setCreateInvoiceOpen(true);
+        } catch {
+            toast.error('Could not load invoice to edit');
+        }
+    };
 
     const {
         data: invoicesData,
@@ -763,7 +803,11 @@ export const StudentPaymentHistory = () => {
                         userName={selectedStudent.full_name}
                         instituteId={instituteDetails.id}
                         open={createInvoiceOpen}
-                        onOpenChange={setCreateInvoiceOpen}
+                        onOpenChange={(o) => {
+                            setCreateInvoiceOpen(o);
+                            if (!o) setEditSource(null);
+                        }}
+                        editInvoice={editSource}
                         onSuccess={invalidateInvoices}
                     />
                 )}
@@ -777,6 +821,7 @@ export const StudentPaymentHistory = () => {
                         invoices={invoicesData || []}
                         instituteId={instituteDetails.id}
                         onRefresh={invalidateInvoices}
+                        onEdit={handleEditInvoice}
                     />
                 )}
             </ProfileSectionCard>

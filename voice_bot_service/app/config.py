@@ -369,6 +369,14 @@ class Settings:
     # Gemini "thinking" tokens before the first reply token. 0 = off, which is
     # what a phone agent wants: measured 2.43s -> 0.51s TTFB on the Mumbai box.
     # Raise ONLY if a future agent genuinely needs reasoning, and re-measure.
+    # Suppress a sentence the bot has already said in this call. Off = the old
+    # behaviour, in case a deployment ever needs it back in a hurry.
+    no_repeat_enabled: bool = field(
+        default_factory=lambda: _env("NO_REPEAT_ENABLED", "true").lower() == "true")
+    # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
+    # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
+    edge_tts_voice: str = field(
+        default_factory=lambda: _env("EDGE_TTS_VOICE", "hi-IN-SwaraNeural"))
     vertex_thinking_budget: int = field(
         default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
     reply_inflight_grace_secs: float = field(

@@ -36,8 +36,10 @@ import {
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 
 import { fetchInvoiceSettings } from '@/routes/settings/-components/Invoice/invoice-settings-service';
+import { downloadInvoicePdf, shareInvoiceOnWhatsApp } from '@/services/invoice-pdf';
 import {
     createAdminInvoice,
+    updateAdminInvoice,
     previewAdminInvoice,
     type AdminCreateInvoiceRequest,
     type AdminInvoicePaymentLinkResponse,
@@ -94,9 +96,24 @@ interface CreateInvoiceDialogProps {
      * regular item.
      */
     duplicateFrom?: InvoiceDTO | null;
+    /**
+     * When set, the dialog edits THIS existing invoice instead of creating a new one:
+     * the form seeds from it (including its dates), and saving PUTs to the update
+     * endpoint — same invoice number, PDF regenerated. Only unpaid invoices are
+     * editable; the server enforces that. Takes precedence over `duplicateFrom`.
+     */
+    editInvoice?: InvoiceDTO | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** ISO timestamp → the `yyyy-MM-dd` an <input type="date"> expects (local calendar day). */
+function toDateInputValue(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 function fmt(amount: number, currency: string): string {
     const sym = CURRENCY_SYMBOLS[currency] ?? currency;
@@ -111,10 +128,12 @@ function fmt(amount: number, currency: string): string {
 function SuccessView({
     result,
     userName,
+    isEditing,
     onClose,
 }: {
     result: AdminInvoicePaymentLinkResponse;
     userName: string;
+    isEditing?: boolean;
     onClose: () => void;
 }) {
     const [copied, setCopied] = useState(false);
@@ -129,13 +148,35 @@ function SuccessView({
         }
     };
 
-    const whatsappText = encodeURIComponent(
-        `Hi ${userName}, your invoice ${result.invoice_number} for ${fmt(result.total_amount, result.currency)} is ready. Pay here: ${result.payment_link}`
-    );
+    // The invoice shape the PDF helpers need (id + number + url).
+    const pdfSource = {
+        id: result.invoice_id,
+        invoice_number: result.invoice_number,
+        pdf_url: result.pdf_url,
+    };
+
+    const handleWhatsAppShare = async () => {
+        const via = await shareInvoiceOnWhatsApp({
+            invoice: pdfSource,
+            recipientName: userName,
+            amountLabel: fmt(result.total_amount, result.currency),
+            paymentLink: result.payment_link,
+        });
+        // Be honest about what actually got shared: only the Web Share path attaches the
+        // real PDF; the fallback can only carry links (WhatsApp deep links can't take files).
+        if (via === 'link') {
+            toast.info('WhatsApp opened with the payment and PDF links');
+        }
+    };
 
     return (
         <div className="flex flex-col items-center gap-6 px-6 py-8 text-center">
-            <StatusChip status="SUCCESS" text="Invoice Created!" textSize="text-subtitle" showIcon />
+            <StatusChip
+                status="SUCCESS"
+                text={isEditing ? 'Invoice Updated!' : 'Invoice Created!'}
+                textSize="text-subtitle"
+                showIcon
+            />
 
             <div className="w-full max-w-sm rounded-lg border border-success-200 bg-success-50 p-4 text-left">
                 <div className="mb-1 flex items-center gap-2">
@@ -171,21 +212,21 @@ function SuccessView({
             )}
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-                {result.payment_link && (
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => window.open(`https://wa.me/?text=${whatsappText}`, '_blank')}
-                    >
-                        <WhatsappLogo className="mr-1.5 size-4" />
-                        Share on WhatsApp
-                    </MyButton>
-                )}
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onAsyncClick={handleWhatsAppShare}
+                    loadingText="Preparing…"
+                >
+                    <WhatsappLogo className="mr-1.5 size-4" />
+                    Share on WhatsApp
+                </MyButton>
                 {result.pdf_url && (
                     <MyButton
                         buttonType="secondary"
                         scale="small"
-                        onClick={() => window.open(result.pdf_url!, '_blank')}
+                        onAsyncClick={() => downloadInvoicePdf(pdfSource)}
+                        loadingText="Downloading…"
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
                         Download PDF
@@ -343,7 +384,9 @@ export function CreateInvoiceDialog({
     onOpenChange,
     onSuccess,
     duplicateFrom,
+    editInvoice,
 }: CreateInvoiceDialogProps) {
+    const isEditing = !!editInvoice;
     const [successResult, setSuccessResult] = useState<AdminInvoicePaymentLinkResponse | null>(null);
     const [step, setStep] = useState<'items' | 'review'>('items');
 
@@ -397,10 +440,13 @@ export function CreateInvoiceDialog({
         if (!open) return;
         setTaxEnabledOverride(null);
         setTaxRatePercentText(null);
-        if (duplicateFrom) {
+        // Edit takes precedence over duplicate; both seed from an existing invoice's items,
+        // but only edit carries the original's due date forward.
+        const seedFrom = editInvoice || duplicateFrom;
+        if (seedFrom) {
             form.reset({
                 line_items:
-                    duplicateFrom.line_items
+                    seedFrom.line_items
                         .filter((li) => li.item_type !== 'TAX')
                         .map((li) => ({
                             description: li.description,
@@ -408,9 +454,9 @@ export function CreateInvoiceDialog({
                             unit_price: li.unit_price || 0,
                             item_type: li.item_type || 'SERVICE',
                         })) || [{ description: '', quantity: 1, unit_price: 0, item_type: 'SERVICE' }],
-                due_date: '',
-                currency: duplicateFrom.currency || defaultCurrency,
-                notes: duplicateFrom.notes || '',
+                due_date: editInvoice?.due_date ? toDateInputValue(editInvoice.due_date) : '',
+                currency: seedFrom.currency || defaultCurrency,
+                notes: seedFrom.notes || '',
             });
         } else {
             form.reset({
@@ -421,7 +467,7 @@ export function CreateInvoiceDialog({
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, duplicateFrom]);
+    }, [open, duplicateFrom, editInvoice]);
 
     const { fields, append, remove } = useFieldArray({
         control: form.control,
@@ -501,6 +547,9 @@ export function CreateInvoiceDialog({
             invoice_date: invoiceDate,
             notes: ov.notes || undefined,
             overrides: ov,
+            // Editing: tell preview which invoice this is, so its own number isn't treated as
+            // a collision and swapped for a freshly-generated one in the rendered preview.
+            editing_invoice_id: editInvoice?.id,
             // Only sent when the admin actually touched the tax controls — otherwise the
             // institute's INVOICE_SETTING default applies, same as before this feature.
             tax_enabled: taxEnabledOverride ?? undefined,
@@ -567,7 +616,37 @@ export function CreateInvoiceDialog({
 
     const handleCreate = async () => {
         const values = form.getValues();
-        const results = await createAdminInvoice(buildRequest(values, overrides, reviewDates));
+        const req = buildRequest(values, overrides, reviewDates);
+
+        if (editInvoice) {
+            // Edit: same invoice number, PDF regenerated server-side. The update endpoint
+            // returns the refreshed InvoiceDTO; map it onto the shape SuccessView renders.
+            const updated = await updateAdminInvoice(editInvoice.id, instituteId, {
+                line_items: req.line_items,
+                currency: req.currency,
+                due_date: req.due_date,
+                invoice_date: req.invoice_date,
+                notes: req.notes,
+                overrides: req.overrides,
+                tax_enabled: req.tax_enabled,
+                tax_rate_percent: req.tax_rate_percent,
+            });
+            setSuccessResult({
+                invoice_id: updated.id,
+                invoice_number: updated.invoice_number,
+                user_id: updated.user_id,
+                total_amount: updated.total_amount,
+                currency: updated.currency,
+                status: updated.status,
+                due_date: updated.due_date,
+                payment_link: updated.payment_link ?? '',
+                pdf_url: updated.pdf_url ?? null,
+            });
+            onSuccess();
+            return;
+        }
+
+        const results = await createAdminInvoice(req);
         const userResult = results.find((r) => r.user_id === userId) ?? results[0];
         if (!userResult) throw new Error('No invoice returned from server');
         setSuccessResult(userResult);
@@ -814,7 +893,12 @@ export function CreateInvoiceDialog({
     const dialogContent = (
         <div className="flex flex-col overflow-hidden">
             {successResult ? (
-                <SuccessView result={successResult} userName={userName} onClose={handleClose} />
+                <SuccessView
+                    result={successResult}
+                    userName={userName}
+                    isEditing={isEditing}
+                    onClose={handleClose}
+                />
             ) : step === 'review' && resolvedValues ? (
                 <>
                     <ReviewStep
@@ -841,9 +925,9 @@ export function CreateInvoiceDialog({
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={handleCreate}
-                            loadingText="Creating…"
+                            loadingText={isEditing ? 'Saving…' : 'Creating…'}
                         >
-                            Create Invoice
+                            {isEditing ? 'Save Changes' : 'Create Invoice'}
                         </MyButton>
                     </div>
                 </>
@@ -872,7 +956,9 @@ export function CreateInvoiceDialog({
         ? `Invoice — ${userName}`
         : step === 'review'
           ? `Review Invoice — ${userName}`
-          : `Create Invoice — ${userName}`;
+          : isEditing
+            ? `Edit Invoice ${editInvoice?.invoice_number ?? ''} — ${userName}`
+            : `Create Invoice — ${userName}`;
 
     return (
         <MyDialog

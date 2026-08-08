@@ -17,6 +17,7 @@ export type { VoiceOption, TtsModelId, TtsModelMeta } from './tts-catalog';
 export {
     FALLBACK_VOICES,
     TTS_MODELS,
+    creditLine,
     normalizeTtsModel,
     resolveTtsModel,
     voicesForModel,

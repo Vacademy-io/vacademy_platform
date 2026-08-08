@@ -708,8 +708,31 @@
     outline: none;
   }
 
+  /* Leading-icon variant. A `pl-*` utility cannot do this job: `.catalogue-input`
+     lives in this same @layer at equal specificity and sets the `padding`
+     SHORTHAND, so it re-declares padding-left and — being later in source order
+     — wins. The result was the icon sitting on top of the placeholder. Pair
+     with an icon absolutely positioned at `left-3`. */
+  .catalogue-input-icon-start {
+    padding-left: var(--space-10);
+  }
+
+  /* Trailing room for a clear button, same reasoning as above. */
+  .catalogue-input-icon-end {
+    padding-right: var(--space-10);
+  }
+
   .catalogue-input::placeholder {
     color: hsl(var(--catalogue-text-placeholder));
+  }
+
+  /* Safari renders its own clear affordance for type="search" on top of ours. */
+  .catalogue-input[type="search"]::-webkit-search-decoration,
+  .catalogue-input[type="search"]::-webkit-search-cancel-button,
+  .catalogue-input[type="search"]::-webkit-search-results-button,
+  .catalogue-input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
   }
 
   .catalogue-input:focus {

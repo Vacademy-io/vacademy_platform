@@ -207,8 +207,14 @@ public class AiAgentService {
                     agent.getId(), voice, engine, TtsVoiceCatalog.defaultVoice(engine));
             voice = null;
         }
-        agent.setVoice(voice != null ? voice.trim().toLowerCase(java.util.Locale.ROOT)
-                                     : TtsVoiceCatalog.defaultVoice(engine));
+        // Store the CATALOG's spelling, not the caller's and not a lowercased one.
+        // Google voice ids are case-sensitive at the vendor; lowercasing them here
+        // made every Chirp3-HD selection unusable, and because the bot falls back
+        // to Sarvam rather than dying, the only symptom was "I picked a female
+        // voice and the call is still male".
+        String canonicalVoice = TtsVoiceCatalog.canonicalVoice(engine, voice);
+        agent.setVoice(canonicalVoice != null ? canonicalVoice
+                                              : TtsVoiceCatalog.defaultVoice(engine));
     }
 
     private AiAgentDTO toDto(AiAgent a) {

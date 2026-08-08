@@ -1187,7 +1187,10 @@ export const AddCourseStep1 = ({
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent
                                                         align="end"
-                                                        className="w-48"
+                                                        // The edit-course dialog stacks above the
+                                                        // default popover layer, so the menu needs
+                                                        // the top-modal tier to stay visible there.
+                                                        className="z-popover-above-top-modal w-48"
                                                     >
                                                         <DropdownMenuItem
                                                             onSelect={() =>

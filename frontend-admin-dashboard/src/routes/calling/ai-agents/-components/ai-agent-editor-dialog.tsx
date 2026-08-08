@@ -30,6 +30,7 @@ import {
     EXPRESSIVENESS_OPTIONS,
     FALLBACK_VOICES,
     TTS_MODELS,
+    creditLine,
     resolveTtsModel,
     voicesForModel,
     patchForModelChange,
@@ -237,6 +238,11 @@ export function AiAgentEditorDialog({
                         </Select>
                         <p className="text-caption text-neutral-500">
                             {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
+                                {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
+                                    <span className="mt-0.5 block font-medium text-neutral-700">
+                                        {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
+                                    </span>
+                                )}
                         </p>
                     </div>
                     <div className="space-y-1.5">

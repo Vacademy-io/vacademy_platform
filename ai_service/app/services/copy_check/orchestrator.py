@@ -20,7 +20,7 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import callbacks, cancellation
+from . import annotator, callbacks, cancellation
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
@@ -149,6 +149,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         total_awarded = 0.0
         total_max = 0.0
         evaluated = 0
+        # Kept so the annotator can draw every verdict in one pass at the end;
+        # the per-question callback already fired for each of these.
+        verdicts: list[dict[str, Any]] = []
         for q in questions:
             cancellation.check(job_id, process_id)
             try:
@@ -191,20 +194,39 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                         "criteria_breakdown": [],
                         "annotations": [],
                         "status": "FAILED",
+                        # Diagnosis without pod logs. Still kept out of `feedback`
+                        # so no provider error or stack trace reaches a student —
+                        # this rides along to ai_question_evaluation instead, where
+                        # only admins read it. Class name + message, not a trace.
+                        "error_detail": f"{type(retry_err).__name__}: {retry_err}"[:500],
                     }
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
             evaluated += 1
+            verdict.setdefault("question_number", q.get("question_number") or evaluated)
+            verdicts.append(verdict)
             await callbacks.question_done(
                 callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
             )
 
-        # 4. Done.
+        # 4. Burn the corrections onto the copy so the admin screens that resolve
+        # a checked copy through evaluated_file_id have a file to show. Best
+        # effort by design: grading is already done and reported, so a render or
+        # upload failure returns None and the evaluation still completes.
+        # Checkpoint first: a cancel that landed after the last question's check
+        # would otherwise render, upload, and bill a copy the teacher stopped.
+        cancellation.check(job_id, process_id)
+        evaluated_file_id = await annotator.render_and_upload(
+            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
+        )
+
+        # 5. Done.
         await callbacks.complete(
             callback_base, process_id, job_id,
             total_marks_awarded=round(total_awarded, 2),
             total_max_marks=round(total_max, 2),
             questions_evaluated=evaluated,
+            evaluated_file_id=evaluated_file_id,
         )
         logger.info(
             "copy-check job %s complete: %s/%s, %d Mathpix crops used, %d tokens",

@@ -99,6 +99,13 @@ public class CopyCheckCallbackDto {
         // backward-compat with older ai_service builds.
         @JsonProperty("status")
         private String status;
+
+        // Why grading failed, when status is FAILED — exception class and
+        // message, never a stack trace. Persisted on the evaluation row so the
+        // next failure is diagnosable from the API instead of ai_service pod
+        // logs. Admin-facing only; the student-visible text stays in `feedback`.
+        @JsonProperty("error_detail")
+        private String errorDetail;
     }
 
     @Data
@@ -120,6 +127,12 @@ public class CopyCheckCallbackDto {
 
         @JsonProperty("questions_evaluated")
         private Integer questionsEvaluated;
+
+        // media-service fileId of the annotated copy ai_service rendered. Null
+        // when rendering or upload failed — treat as "no new copy", never as
+        // "clear the existing one".
+        @JsonProperty("evaluated_file_id")
+        private String evaluatedFileId;
     }
 
     @Data

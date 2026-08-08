@@ -8,7 +8,7 @@
  * plus the rules for combining an engine with a voice.
  */
 
-export type TtsModelId = 'google' | 'smallest' | 'rumik' | 'sarvam';
+export type TtsModelId = 'google' | 'edge' | 'smallest' | 'rumik' | 'sarvam';
 
 export interface VoiceOption {
     id: string;
@@ -22,6 +22,14 @@ export interface TtsModelMeta {
     label: string;
     /** Shown under the picker — the price consequence, in the customer's terms. */
     note: string;
+    /** Credits/min for the AI leg on this engine (surcharge already applied). */
+    aiCreditsPerMin?: number;
+    /** Credits/min for the telephony leg. */
+    telephonyCreditsPerMin?: number;
+    /** This engine's adjustment in credits/min — negative means a discount. */
+    ttsCreditsPerMin?: number;
+    /** What a minute on this engine really costs the institute. */
+    totalCreditsPerMin?: number;
     defaultVoice: string;
 }
 
@@ -35,6 +43,16 @@ export const TTS_MODELS: TtsModelMeta[] = [
         // Sarvam's Rs 2.34), with ~1,280 free minutes a month.
         note: 'Recommended — clearest Hindi, and cheaper per minute than Sarvam.',
         defaultVoice: 'hi-IN-Chirp3-HD-Achird',
+    },
+    {
+        id: 'edge',
+        label: 'Microsoft Edge (free)',
+        // Costs us nothing per character, so it is sold at a flat Rs 2/minute.
+        // Slower to first audio than Chirp3-HD (0.27s vs 0.18s, measured), and
+        // despite "offline" it calls Microsoft's public endpoint — a network
+        // dependency with no SLA behind it.
+        note: 'Free TTS — no vendor charge, so it is sold cheaper. Starts ~0.1s slower.',
+        defaultVoice: 'hi-IN-SwaraNeural',
     },
     {
         id: 'smallest',
@@ -92,6 +110,12 @@ const SARVAM_MALE = [
     'sunny', 'mani', 'gokul', 'vijay', 'mohit', 'rehan', 'soham',
 ];
 
+// Microsoft Edge read-aloud. Only five voices exist for India; names are
+// locale-prefixed and end in Neural, which is how the bot spots one that
+// belongs to another vendor.
+const EDGE_FEMALE = ['hi-IN-SwaraNeural', 'en-IN-NeerjaNeural', 'en-IN-NeerjaExpressiveNeural'];
+const EDGE_MALE = ['hi-IN-MadhurNeural', 'en-IN-PrabhatNeural'];
+
 const tag = (ids: string[], gender: string, model: TtsModelId): VoiceOption[] =>
     ids.map((id) => ({ id, gender, model }));
 
@@ -99,6 +123,8 @@ const tag = (ids: string[], gender: string, model: TtsModelId): VoiceOption[] =>
 export const FALLBACK_VOICES: VoiceOption[] = [
     ...tag(GOOGLE_MALE, 'male', 'google'),
     ...tag(GOOGLE_FEMALE, 'female', 'google'),
+    ...tag(EDGE_FEMALE, 'female', 'edge'),
+    ...tag(EDGE_MALE, 'male', 'edge'),
     ...tag(SMALLEST_MALE, 'male', 'smallest'),
     ...tag(SMALLEST_FEMALE, 'female', 'smallest'),
     ...tag(RUMIK_FEMALE, 'female', 'rumik'),
@@ -117,6 +143,7 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
         return 'rumik';
     if (m === 'sarvam' || m.startsWith('sarvam') || m.startsWith('bulbul')) return 'sarvam';
     if (m === 'google' || m.startsWith('google') || m.startsWith('chirp')) return 'google';
+    if (m === 'edge' || m.startsWith('edge') || m.startsWith('microsoft')) return 'edge';
     if (m === 'smallest' || m.startsWith('smallest') || m.startsWith('lightning'))
         return 'smallest';
     return null;
@@ -184,4 +211,20 @@ export function patchForModelChange(
         ? palette.find((v) => v.id.toLowerCase() === currentVoice.trim().toLowerCase())
         : undefined;
     return { ttsModel: model, voice: hit ? hit.id : defaultVoiceFor(model) };
+}
+
+/**
+ * "3 credits per minute — 2 AI + 1 telephony"
+ *
+ * Picking an engine is a pricing decision, and the prose note only ever
+ * mentioned Sarvam's surcharge — the smallest part of the bill. A minute is
+ * billed on TWO legs, so show both. Returns null when the API served no pricing
+ * (the annotator degrades rather than 500s) and callers keep the prose note.
+ */
+export function creditLine(m?: TtsModelMeta | null): string | null {
+    if (!m || m.totalCreditsPerMin == null) return null;
+    const n = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+    const line = `${n(m.totalCreditsPerMin)} credits per minute`;
+    if (m.aiCreditsPerMin == null || m.telephonyCreditsPerMin == null) return line;
+    return `${line} — ${n(m.aiCreditsPerMin)} AI calling + ${n(m.telephonyCreditsPerMin)} telephony`;
 }

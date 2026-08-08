@@ -136,6 +136,12 @@ class CallDiagnostics:
     # context. NOTE the name must match bump()'s argument EXACTLY — bump() is
     # getattr/setattr with a bare except, so a typo silently counts nothing.
     carrier_announcements: int = 0
+    # Sentences dropped because the bot had already said them this call.
+    repeats_suppressed: int = 0
+    # (seconds, what the bot was doing) for every silence over 2.5s. Travels with
+    # the REPORT, which survives the container restarts that keep destroying the
+    # logs before a dead-air call can be diagnosed.
+    silences: List[Any] = field(default_factory=list)
     # Consecutive times the bot re-delivered a reply it had just been cut off
     # on. 1-2 is normal recovery; a run of them is the restart loop that made
     # call 77cb4b47 unlistenable.
@@ -187,6 +193,10 @@ class CallDiagnostics:
             setattr(self, name, getattr(self, name) + by)
         except Exception:
             pass
+
+    def note_silence(self, secs: float, cause: str) -> None:
+        if len(self.silences) < 20:
+            self.silences.append({"secs": secs, "cause": cause})
 
     def sample(self, name: str, value: float) -> None:
         try:
@@ -525,6 +535,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "duckAbsorbs": d.duck_absorbs,
                 "duckTimeoutResumes": d.duck_timeout_resumes,
                 "carrierAnnouncements": d.carrier_announcements,
+                "repeatsSuppressed": d.repeats_suppressed,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
@@ -535,6 +546,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "answersDeletedSamples": d.answers_deleted_samples or None,
                 "answersDeletedSrc": "measured" if d.answers_deleted is not None else None,
             },
+            "silences": d.silences or None,
             "latency": {
                 "llmTtfbP50": _p(d.llm_ttfb, 50), "llmTtfbP95": _p(d.llm_ttfb, 95),
                 "sttTtfbP50": _p(d.stt_ttfb, 50), "sttTtfbP95": _p(d.stt_ttfb, 95),

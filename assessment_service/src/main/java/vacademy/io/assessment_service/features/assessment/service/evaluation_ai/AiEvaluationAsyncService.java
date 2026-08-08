@@ -93,7 +93,18 @@ public class AiEvaluationAsyncService {
                 // per-question grading) stays as the fallback until cutover.
                 if (useAiServicePipeline) {
                         log.info("[copy-check] feature flag ON — delegating process {} to ai_service", processId);
-                        copyCheckOrchestratorService.dispatch(processId, attemptId, preferredModel);
+                        try {
+                                copyCheckOrchestratorService.dispatch(processId, attemptId, preferredModel);
+                        } catch (Exception e) {
+                                // Nothing else catches this — we are the top of an @Async thread, and
+                                // dispatch's own transaction (including any FAILED marker it tried to
+                                // write) has already rolled back. Record the failure separately so the
+                                // process does not sit at PENDING forever.
+                                log.error("[copy-check] dispatch failed for process {}, attempt {}", processId,
+                                                attemptId, e);
+                                copyCheckOrchestratorService.markDispatchFailed(processId,
+                                                "dispatch failed: " + e.getMessage());
+                        }
                         return;
                 }
 

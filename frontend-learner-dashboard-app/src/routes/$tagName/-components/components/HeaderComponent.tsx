@@ -25,12 +25,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
   useAuthModal?: boolean;
   catalogueData?: CourseCatalogueData;
   tagName?: string;
+  /** Author-picked surface colour. The editor has always offered this control;
+   *  the header ignored it entirely and stayed on the bg-catalogue-bg token, so
+   *  "I changed the header background and nothing happened" was the correct
+   *  observation — the picker was wired to nothing. */
+  backgroundColor?: string;
+  textColor?: string;
 }> = ({
   navigation = [],
   authLinks = [],
   useAuthModal = false,
   catalogueData,
   tagName = "home",
+  backgroundColor,
+  textColor,
 }) => {
     const [togle, settogle] = useState(false);
     const navigate = useNavigate();
@@ -423,10 +431,14 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     return (
       <header
-        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-catalogue-bg border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
+        // Only fall back to the theme token when the author picked nothing —
+        // an inline colour must beat the class, so the class is omitted when set.
+        className={`fixed top-0 start-0 end-0 z-catalogue-fixed border-b border-catalogue-border-subtle w-full ${backgroundColor ? '' : 'bg-catalogue-bg'} ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
-          '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
+          '--header-height-mobile': 'var(--catalogue-header-height-mobile)',
+          ...(backgroundColor ? { backgroundColor } : {}), // design-lint-ignore: author-picked page-builder color
+          ...(textColor ? { color: textColor } : {}), // design-lint-ignore: author-picked page-builder color
         } as React.CSSProperties}
       >
         {/* Container with consistent responsive padding */}

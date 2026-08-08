@@ -34,6 +34,7 @@ export type AnnotationStyle =
     | 'tick'
     | 'cross'
     | 'circle'
+    | 'strike'
     | 'underline'
     | 'margin_note'
     | 'region_note';
@@ -46,10 +47,23 @@ export interface Annotation {
     question_id?: string;
 }
 
+/** A question's circled mark, anchored beside its answer on the sheet —
+ *  the way a checked copy carries "4.5" in the margin next to the work. */
+export interface QuestionScoreMarker {
+    /** line/region id whose y-position anchors the badge */
+    target: string;
+    page_id: string;
+    /** already-formatted marks, e.g. "4.5" */
+    label: string;
+    /** e.g. "/ 10" — shown small under the marks */
+    outOf?: string;
+}
+
 interface Props {
     pdfContainerEl: HTMLElement | null;
     layoutMap: LayoutMap | null;
     annotations: Annotation[];
+    scores?: QuestionScoreMarker[];
     onAnnotationClick?: (annotation: Annotation) => void;
 }
 
@@ -83,6 +97,7 @@ export function PdfAnnotationOverlay({
     pdfContainerEl,
     layoutMap,
     annotations,
+    scores,
     onAnnotationClick,
 }: Props) {
     const scales: PageScaleMap = usePdfScale(pdfContainerEl, layoutMap);
@@ -98,11 +113,29 @@ export function PdfAnnotationOverlay({
         return grouped;
     }, [annotations, targetIndex]);
 
+    const scoresByPage = useMemo(() => {
+        const grouped: Record<
+            string,
+            Array<QuestionScoreMarker & { box: [number, number, number, number] }>
+        > = {};
+        for (const marker of scores ?? []) {
+            const box = targetIndex.get(marker.target);
+            if (!box) continue;
+            (grouped[marker.page_id] ??= []).push({ ...marker, box });
+        }
+        return grouped;
+    }, [scores, targetIndex]);
+
     if (!layoutMap) return null;
+
+    const pageIds = Array.from(
+        new Set([...Object.keys(byPage), ...Object.keys(scoresByPage)])
+    );
 
     return (
         <>
-            {Object.entries(byPage).map(([pageId, items]) => {
+            {pageIds.map((pageId) => {
+                const items = byPage[pageId] ?? [];
                 const dims = scales[pageId];
                 if (!dims) return null;
                 return createPortal(
@@ -111,6 +144,30 @@ export function PdfAnnotationOverlay({
                         style={{ zIndex: 5 }}
                         data-overlay-page={pageId}
                     >
+                        {(scoresByPage[pageId] ?? []).map((marker, i) => {
+                            const midY = (marker.box[1] + marker.box[3] / 2) * dims.scale;
+                            return (
+                                <div
+                                    key={`score:${pageId}:${marker.target}:${i}`}
+                                    className="absolute flex flex-col items-center justify-center rounded-full border-2 border-danger-500 bg-white/85 text-danger-600"
+                                    style={{
+                                        left: dims.renderedWidth - 48,
+                                        top: Math.max(4, midY - 20),
+                                        width: 40,
+                                        height: 40,
+                                    }}
+                                >
+                                    <span className="text-body font-semibold leading-none">
+                                        {marker.label}
+                                    </span>
+                                    {marker.outOf && (
+                                        <span className="text-[9px] leading-none opacity-80">
+                                            {marker.outOf}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
                         {items.map((ann, i) => {
                             const key = `${pageId}:${ann.target}:${ann.style}:${i}`;
                             if (ann.style === 'margin_note') {
@@ -130,6 +187,7 @@ export function PdfAnnotationOverlay({
                                     style={ann.style}
                                     target={{ box: ann.box }}
                                     dims={dims}
+                                    text={ann.text}
                                     onClick={() => onAnnotationClick?.(ann)}
                                 />
                             );

@@ -174,7 +174,8 @@
         "closeDevTools": "Please close developer tools to continue viewing this slide."
     },
     "mermaid": {
-        "clickToExpand": "Click to expand"
+        "clickToExpand": "Click to expand",
+        "scrollForMore": "Scroll down to see the full diagram"
     },
     "excalidraw": {
         "loading": "Loading diagram...",

@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment.manager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -209,7 +210,13 @@ public class AdminManualEvaluationManager {
         attempt.setTotalMarks(totalMarks);
         attempt.setResultMarks(totalMarks);
         attempt.setResultStatus(AttemptResultStatusEnum.COMPLETED.name());
-        attempt.setEvaluatedFileId(request.getFileId());
+        // Only overwrite when this submit actually carries a checked copy. A
+        // blank id means "marks only" — clearing the column there silently
+        // destroyed a copy attached by an earlier submit (or by the AI
+        // pipeline), and the evaluator had no way to tell it had happened.
+        if (StringUtils.hasText(request.getFileId())) {
+            attempt.setEvaluatedFileId(request.getFileId());
+        }
 
         // Manual evaluation IS the release for these assessments — once the admin
         // submits marks, the learner's report should become available. Without

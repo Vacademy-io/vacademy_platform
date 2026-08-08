@@ -14,8 +14,6 @@ import {
     getSubOrgFinanceDetail,
     getScopedInvites,
     getInvoicesByUser,
-    downloadInvoicePdf,
-    buildInvoiceFilename,
     type SubOrgFinanceDetail,
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
@@ -29,6 +27,8 @@ import {
     type UserAccountSummaryDTO,
     type UserAccountLedgerEntryDTO,
 } from '@/services/invoice-service';
+import { downloadInvoicePdf as downloadNamedInvoicePdf } from '@/services/invoice-pdf';
+import { InvoicePreviewDialog } from '@/components/common/invoice/invoice-preview-dialog';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
@@ -55,7 +55,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Copy, CopySimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
+import { Bell, Copy, CopySimple, Eye, PencilSimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
@@ -296,6 +296,11 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     // Pending confirm for the destructive Reject action (AlertDialog, not window.confirm).
     const [rejectTarget, setRejectTarget] = useState<{ id: string; number: string } | null>(null);
+    // Inline PDF preview (view the invoice without downloading it).
+    const [previewTarget, setPreviewTarget] = useState<InvoiceSummary | null>(null);
+    // "Edit" — like Duplicate, needs the full invoice (line items) before opening the dialog.
+    const [editSource, setEditSource] = useState<InvoiceDTO | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const handleCopyInvoiceLink = async (invoiceId: string, link: string) => {
         try {
@@ -379,6 +384,21 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             toast.error('Could not load invoice to duplicate');
         } finally {
             setDuplicatingId(null);
+        }
+    };
+
+    // "Edit" — the row is only a summary, so fetch the full invoice (line items + notes)
+    // before opening the Create-Invoice dialog in edit mode.
+    const handleEditInvoice = async (invoiceId: string) => {
+        setEditingId(invoiceId);
+        try {
+            const full = await fetchInvoiceById(invoiceId);
+            setEditSource(full);
+            setCreateInvoiceOpen(true);
+        } catch {
+            toast.error('Could not load invoice to edit');
+        } finally {
+            setEditingId(null);
         }
     };
 
@@ -1154,6 +1174,19 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                         {rejectingId === inv.id ? 'Rejecting…' : 'Reject'}
                                                     </button>
                                                 )}
+                                                {/* ADMIN_MANUAL pending — Edit in place (same invoice number) */}
+                                                {isAdminInvoicePending && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleEditInvoice(inv.id)}
+                                                        disabled={editingId === inv.id}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                        title="Edit this unpaid invoice — keeps the same invoice number"
+                                                    >
+                                                        <PencilSimple className="size-3" />
+                                                        {editingId === inv.id ? 'Loading…' : 'Edit'}
+                                                    </button>
+                                                )}
                                                 {/* ADMIN_MANUAL — Duplicate (available on any status, not just pending) */}
                                                 {isAdminManual && !isSfpRow && typeof inv.id === 'string' && (
                                                     <button
@@ -1187,19 +1220,18 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                 {/* PDF view / download — all row types when available */}
                                                 {url ? (
                                                     <>
-                                                        <a
-                                                            href={url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                            title="View PDF in new tab"
-                                                        >
-                                                            <ExternalLink className="h-3 w-3" />
-                                                            View PDF
-                                                        </a>
                                                         <button
                                                             type="button"
-                                                            onClick={() => downloadInvoicePdf(url, buildInvoiceFilename(inv))}
+                                                            onClick={() => setPreviewTarget(inv)}
+                                                            className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                            title="Preview the invoice PDF without downloading it"
+                                                        >
+                                                            <Eye className="h-3 w-3" />
+                                                            Preview
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void downloadNamedInvoicePdf(inv)}
                                                             className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
                                                             title="Download invoice PDF"
                                                         >
@@ -1268,9 +1300,13 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     open={createInvoiceOpen}
                     onOpenChange={(o) => {
                         setCreateInvoiceOpen(o);
-                        if (!o) setDuplicateSource(null);
+                        if (!o) {
+                            setDuplicateSource(null);
+                            setEditSource(null);
+                        }
                     }}
                     duplicateFrom={duplicateSource}
+                    editInvoice={editSource}
                     onSuccess={() => {
                         queryClient.invalidateQueries({
                             queryKey: ['sub-org-admin-invoices', adminUserId],
@@ -1298,6 +1334,12 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                         });
                     }
                 }}
+            />
+
+            {/* Inline PDF preview — view the invoice without downloading it. */}
+            <InvoicePreviewDialog
+                invoice={previewTarget}
+                onClose={() => setPreviewTarget(null)}
             />
 
             {/* Reject confirm — a terminal, money-voiding action, so it's gated behind an

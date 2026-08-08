@@ -171,6 +171,24 @@ public class InvoiceController {
     }
 
     /**
+     * Edit an unpaid admin invoice in place — line items, currency, dates, notes, per-invoice
+     * tax and editable template values — keeping the SAME invoice number and regenerating the
+     * PDF. Only PENDING_PAYMENT invoices are editable (see the service for why).
+     *
+     * <p>{@code PUT /v1/invoices/{invoiceId}?instituteId=xxx}
+     */
+    @PutMapping("/{invoiceId}")
+    public ResponseEntity<InvoiceDTO> updateAdminInvoice(
+            @PathVariable String invoiceId,
+            @RequestParam String instituteId,
+            @Valid @RequestBody vacademy.io.admin_core_service.features.invoice.dto.AdminUpdateInvoiceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(
+                invoiceService.updateAdminInvoice(invoiceId, instituteId, request, userDetails));
+    }
+
+    /**
      * Void a PENDING_PAYMENT admin invoice created in error (wrong amount, wrong
      * learner, …). Terminal — flips status to REJECTED, disables the payment link, and
      * the invoice can never be marked paid afterward. The row + PDF are kept for

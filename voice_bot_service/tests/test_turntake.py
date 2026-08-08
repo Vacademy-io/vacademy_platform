@@ -6,7 +6,7 @@ The word-list decisions are the product behavior the founder signed off
 The asymmetry under test: when unsure, INTERRUPT — wrongly stopping the bot
 costs a moment; wrongly steamrolling the caller costs the call.
 """
-from app.turntake import mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement
+from app.turntake import mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement, suppresses_opening
 from app.callstate import (
     CallState, WatchdogConfig, watchdog_decide, apply_decision,
     NONE, DUCK_RESUME, CAP_FAREWELL, ARM_STOP, ORPHAN_ASK, NUDGE,
@@ -199,3 +199,29 @@ def test_real_callers_are_not_mistaken_for_the_network():
     for t in ("Haan ji main parent bol raha hoon", "Raman", "Class eighth mein hai",
               "Hello", "fees kitni hogi?", "68 percent aaye the"):
         assert not is_carrier_announcement(t), t
+
+
+# ── voicemail fragments (2026-08-06, calls 0d61b32a / 9668da21) ───────────
+def test_every_fragment_that_killed_a_live_opening_is_caught():
+    """Sarvam splits the SAME operator sentence differently on different calls.
+    One call gave 'Your call has been forwarded to voicemail.' (matched); the
+    next gave 'Your call.' + 'Has been forwarded to voicemail.' — the first
+    fragment matched nothing, counted as the callee, and killed our opening."""
+    for frag in ("Your call.", "Has been forwarded to voicemail.",
+                 "If you record your", "forwarded to voicemail",
+                 "The person you're", "trying to reach"):
+        assert is_carrier_announcement(frag), frag
+
+
+def test_a_greeting_or_fragment_never_suppresses_our_opening():
+    for t in ("Hi.", "Hello.", "Your call.", "If you record your", "हेलो", ""):
+        assert not suppresses_opening(t), t
+
+
+def test_a_caller_who_really_takes_over_still_suppresses_it():
+    """The greet-skip exists for a reason: someone who answers with a real
+    question should get an answer, not a scripted pitch over the top of it."""
+    for t in ("aap kaun bol rahe hain bhai",
+              "main abhi busy hoon baad mein call karein",
+              "haan ji main parent bol raha hoon"):
+        assert suppresses_opening(t), t

@@ -6,19 +6,19 @@ export function sanitizeMermaidCode(code: string): string {
     if (!code) return '';
     let sanitized = code.trim();
 
-    // Remove any text that appears after common Mermaid ending patterns
-    // This helps clean up incomplete extractions
-    const endPatterns = [
-        /\n\s*<-->/,  // Catches stray connection syntax at the end
-        /\n\s*-->/,   // Catches incomplete arrows
-    ];
-
-    endPatterns.forEach(pattern => {
-        const match = sanitized.match(pattern);
-        if (match && match.index) {
-            sanitized = sanitized.substring(0, match.index);
-        }
-    });
+    // Drop a DANGLING connector left behind by an incomplete extraction — an
+    // arrow at the very end with nothing after it.
+    // Only a TRAILING arrow is removed. This used to cut the code at the first
+    // line that began with an arrow, which silently deleted the rest of any
+    // diagram written with the (valid) wrapped style:
+    //     flowchart TD
+    //         A([PREPARE])
+    //         --> B([SIGNAL])
+    // leaving a single node that then rendered as one huge orphan box.
+    const danglingConnector = /\n[ \t]*(<-->|<--|-->|---|-\.->|==>|===)[ \t]*$/;
+    while (danglingConnector.test(sanitized)) {
+        sanitized = sanitized.replace(danglingConnector, '');
+    }
 
     // Fix 1: Quote labels with parentheses
     // Before: C[Azure App Service (Web App)]

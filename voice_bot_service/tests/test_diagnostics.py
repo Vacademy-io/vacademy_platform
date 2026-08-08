@@ -476,3 +476,27 @@ def test_headline_still_follows_caller_experience_within_a_severity():
     diag.max_reply_restarts = 4                                  # REPLY_LOOP RED
     v = dg.verdict(diag)
     assert v["headline"] == dg.BOT_SILENT, v
+
+
+def test_dead_air_carries_its_cause_into_the_report():
+    """Call 597aeb3f had 8.2s of dead air and the container restart that shipped
+    the next build destroyed the logs before it could be diagnosed. The cause
+    has to travel with the REPORT, which survives restarts."""
+    diag = dg.CallDiagnostics()
+    diag.note_silence(8.2, "awaiting_playout_8.0s")
+    diag.note_silence(3.1, "ducked_3.0s")
+    p = dg.to_payload(diag)
+    assert p["silences"] == [{"secs": 8.2, "cause": "awaiting_playout_8.0s"},
+                             {"secs": 3.1, "cause": "ducked_3.0s"}]
+
+
+def test_silence_notes_are_bounded():
+    """A pathological call must not post a megabyte of silence notes."""
+    diag = dg.CallDiagnostics()
+    for i in range(200):
+        diag.note_silence(3.0, "both_quiet")
+    assert len(diag.silences) == 20
+
+
+def test_a_clean_call_reports_no_silences_key_value():
+    assert dg.to_payload(dg.CallDiagnostics())["silences"] is None

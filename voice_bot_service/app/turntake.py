@@ -146,6 +146,14 @@ _CARRIER_PHRASES = (
     "is unreachable", "not reachable", "incoming call facility",
     # Fragments — see the note above. Only ever consulted inside the
     # answering-machine window at the very start of a call.
+    # Sarvam splits the SAME operator sentence at different points on different
+    # calls, so match the pieces, not the sentence. Live evidence 2026-08-06:
+    # one call produced 'Your call has been forwarded to voicemail.' (matched)
+    # and the next produced 'Your call.' then 'Has been forwarded to voicemail.'
+    # — the first fragment matched nothing, counted as the callee, and killed
+    # our opening before the second fragment could arm anything.
+    "your call", "been forwarded", "forwarded to", "record your", "leave a",
+    "the person you", "trying to reach",
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
@@ -187,3 +195,112 @@ def is_audio_check(text: str, max_words: int = 3) -> bool:
     if not ws or len(ws) > max_words:
         return False
     return any(w in _AUDIO_CHECK_WORDS for w in ws)
+
+
+def suppresses_opening(text: str, min_words: int = 4) -> bool:
+    """Should this caller utterance make us SKIP our scripted opening?
+
+    Only something substantive should. The greet gate used to skip on ANY
+    transcript, so a single stray word decided it — and on a voicemail the
+    stray words are the operator's own recording arriving in fragments
+    ('Hi.', 'Your call.', 'If you record your'). Three calls on 2026-08-06 lost
+    their opening that way, and the model improvised a replacement, which is how
+    one of them delivered its introduction twice.
+
+    A caller who genuinely opens with "who is this, why are you calling me" is
+    substantive and still takes over. "Hello?" is not.
+    """
+    t = (text or "").strip()
+    if not t or is_carrier_announcement(t) or is_audio_check(t):
+        return False
+    return len(_words(t)) >= min_words
+
+
+# ── saying the same thing twice ────────────────────────────────────────────
+# FOUR prompt-level attempts failed to stop this, each measured over 3+ live
+# conversations: style rules in the system prompt (1.7 -> 1.7 repeats, and it
+# broke script and gender), no-echo rules with GALAT/SAHI examples in the script
+# (3.0 -> 3.0 echoes), removing the scripted acknowledgement lines the model was
+# parroting (2.7 -> 2.7), and swapping the model (helps, 1.0 -> 0.3, but the
+# founder reverted for latency). The prompt is ~16k characters; it is saturated.
+#
+# What actually repeats is not the pitch — it is the bot's OWN CLOSING
+# QUESTIONS: "kya aap fees ke baare mein jaanna chahenge?" and "kya main is
+# WhatsApp number par link bhej doon?", asked again several turns later, because
+# nothing tracks which questions have already been put to the caller. That is
+# state, and state belongs in code.
+_ASK_AGAIN_WORDS = frozenset({
+    "repeat", "again", "dobara", "phir", "dubara", "samajh", "sunai", "sunayi",
+    "kya", "pardon", "sorry", "दोबारा", "फिर", "समझ", "सुनाई",
+})
+
+
+def caller_asked_to_repeat(text: str) -> bool:
+    """Did the caller ASK us to say it again? Then repeating is correct."""
+    ws = set(_words(text))
+    if not ws:
+        return False
+    return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
+        len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
+
+
+def is_repeat(sentence: str, spoken, threshold: float = 0.80) -> bool:
+    """Has this sentence already been said, in these words or near enough?
+
+    Fuzzy on purpose: the model re-renders its own question slightly differently
+    every time ("Kya aap iski fees ke baare mein jaanna chahenge" vs "chahengi"),
+    and an exact match would catch none of the real cases.
+
+    Short fragments are never repeats — "haan", "theek hai", "achha" legitimately
+    recur, and suppressing them would strip the bot of every acknowledgement.
+    """
+    import difflib
+    t = " ".join((sentence or "").split()).casefold()
+    if len(t) < 22:
+        return False
+    for prev in spoken or ():
+        if difflib.SequenceMatcher(None, prev, t).ratio() >= threshold:
+            return True
+    return False
+
+
+def normalize_spoken(sentence: str) -> str:
+    return " ".join((sentence or "").split()).casefold()
+
+
+# ── asking the same QUESTION twice, in different words ─────────────────────
+# Sentence similarity catches a re-rendered sentence but not a paraphrase. Live
+# call 597aeb3f asked for the class twice — "Aur wo abhi kis class mein hai?"
+# then "Raman abhi kis class mein padh raha hai?" — which score about 0.6
+# against each other and sailed through a 0.80 gate.
+#
+# A counselling call asks a FIXED, SMALL set of questions, so the robust key is
+# not the wording but the SUBJECT: name, class, marks, weak subject, fees, the
+# quiz link, the counselling slot. Ask about the same subject twice and it is a
+# repeat however it is phrased.
+_QUESTION_TOPICS = (
+    ("child_name", ("naam", "नाम", "name")),
+    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
+    ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
+    ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
+    ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
+    ("quiz_link", ("link", "लिंक", "quiz", "क्विज़", "whatsapp", "व्हाट्सएप")),
+    ("counselling", ("counselling", "counseling", "काउंसलिंग", "session", "सेशन",
+                     "slot", "book kar")),
+    ("program_more", ("aur jaanna", "और जानना", "baare mein aur", "और बताना")),
+)
+
+
+def question_topic(sentence: str):
+    """Which of our standard questions is this, if any? None = not one of them.
+
+    Only classifies actual QUESTIONS — a statement that merely mentions fees is
+    not the fees question, and suppressing it would gut the pitch.
+    """
+    t = " ".join((sentence or "").split()).casefold()
+    if not t or ("?" not in t and "？" not in t):
+        return None
+    for topic, cues in _QUESTION_TOPICS:
+        if any(c in t for c in cues):
+            return topic
+    return None

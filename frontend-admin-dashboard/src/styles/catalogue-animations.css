@@ -138,6 +138,14 @@
     animation-play-state: paused;
 }
 
+/* Opt OUT of hover-pause. The marquee editor offers a "Pause on hover" toggle;
+   the rule above applied unconditionally, so turning it off did nothing. Needs
+   !important to beat the equal-specificity :hover rule above regardless of
+   source order. */
+.catalogue-marquee-nopause:hover {
+    animation-play-state: running !important;
+}
+
 /* Reduced-motion override for the marquee. MUST come after the base
    .catalogue-marquee rule above — equal specificity means document order
    decides the cascade, so placing it earlier makes it dead CSS. */

@@ -8,6 +8,8 @@ import {
     BellRinging,
     DeviceMobile,
     WhatsappLogo,
+    Alarm,
+    HandWaving,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -90,7 +92,7 @@ const InlineTemplateBlock = ({
 }: {
     icon: React.ReactNode;
     label: string;
-    description: string;
+    description?: string;
     enabled: boolean;
     onToggle: (v: boolean) => void;
     primaryLabel: string;
@@ -101,12 +103,14 @@ const InlineTemplateBlock = ({
     idPrefix: string;
 }) => (
     <div className="py-3">
-        <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-1 items-start gap-3">
-                <div className="mt-0.5 text-neutral-500">{icon}</div>
+        <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-1 items-center gap-3">
+                <div className="text-neutral-500">{icon}</div>
                 <div className="flex-1">
                     <div className="text-sm font-medium text-neutral-800">{label}</div>
-                    <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+                    {description && (
+                        <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+                    )}
                 </div>
             </div>
             <Switch checked={enabled} onCheckedChange={onToggle} />
@@ -176,8 +180,7 @@ const WhatsappBlock = ({
                     <div className="flex-1">
                         <div className="text-sm font-medium text-neutral-800">WhatsApp</div>
                         <div className="mt-0.5 text-xs text-neutral-500">
-                            Send via an approved WhatsApp template. Requires WhatsApp to be
-                            configured for the institute.
+                            Requires an approved Meta template.
                         </div>
                     </div>
                 </div>
@@ -300,7 +303,6 @@ const TriggerCard = ({
             <InlineTemplateBlock
                 icon={<EnvelopeSimple size={18} />}
                 label="Email"
-                description="Send an email notification."
                 enabled={trigger.email.enabled}
                 onToggle={(v) => onChannelChange('email', { enabled: v })}
                 primaryLabel="Subject"
@@ -314,7 +316,6 @@ const TriggerCard = ({
             <InlineTemplateBlock
                 icon={<BellRinging size={18} />}
                 label="In-app alert"
-                description="Show an alert in the notification bell."
                 enabled={trigger.system_alert.enabled}
                 onToggle={(v) => onChannelChange('system_alert', { enabled: v })}
                 primaryLabel="Title"
@@ -328,7 +329,6 @@ const TriggerCard = ({
             <InlineTemplateBlock
                 icon={<DeviceMobile size={18} />}
                 label="Push notification"
-                description="Send a push notification to mobile devices."
                 enabled={trigger.push.enabled}
                 onToggle={(v) => onChannelChange('push', { enabled: v })}
                 primaryLabel="Title"
@@ -416,6 +416,18 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
     const setAssignmentFlag = (key: 'notify_student' | 'notify_mentor', v: boolean) =>
         setSettings((prev) => ({ ...prev, assignment: { ...prev.assignment, [key]: v } }));
 
+    const setReminderField = (key: 'enabled' | 'hours_before', v: boolean | number) =>
+        setSettings((prev) => ({
+            ...prev,
+            session_reminder: { ...prev.session_reminder, [key]: v },
+        }));
+
+    const setCheckinField = (key: 'enabled' | 'inactivity_days', v: boolean | number) =>
+        setSettings((prev) => ({
+            ...prev,
+            checkin_reminder: { ...prev.checkin_reminder, [key]: v },
+        }));
+
     const reset = () => setSettings(initial);
 
     const save = async () => {
@@ -454,9 +466,7 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                             Mentorship Settings
                         </h2>
                         <p className="text-sm text-neutral-500">
-                            For each mentorship trigger, choose which channels notify the learner and
-                            edit the message templates. Email, in-app alert and push are on by
-                            default; WhatsApp needs an approved template.
+                            Choose how learners are notified for each mentorship event.
                         </p>
                     </div>
                 )}
@@ -478,7 +488,7 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<UsersThree size={20} />}
                 title="Mentor Assigned"
-                description="When a mentor is assigned to a student (manually or via round-robin)."
+                description="When a mentor is assigned to a student."
                 idPrefix="assignment"
                 trigger={settings.assignment}
                 onChannelChange={(channel, patch) => updateChannel('assignment', channel, patch)}
@@ -513,7 +523,7 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<CalendarPlus size={20} />}
                 title="Session Booked"
-                description="When a learner books a 1:1 session with their mentor. Email is off by default because the booking page sends its own confirmation."
+                description="When a learner books a 1:1 session."
                 idPrefix="booking"
                 trigger={settings.booking}
                 onChannelChange={(channel, patch) => updateChannel('booking', channel, patch)}
@@ -524,13 +534,118 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<CalendarX size={20} />}
                 title="Session Cancelled"
-                description="When a mentorship session is cancelled."
+                description="When a session is cancelled."
                 idPrefix="cancellation"
                 trigger={settings.cancellation}
                 onChannelChange={(channel, patch) => updateChannel('cancellation', channel, patch)}
                 waTemplates={waTemplates}
                 waLoading={waLoading}
             />
+
+            <TriggerCard
+                icon={<Alarm size={20} />}
+                title="Session Reminder"
+                description="Before an upcoming session."
+                idPrefix="session-reminder"
+                trigger={settings.session_reminder}
+                onChannelChange={(channel, patch) =>
+                    updateChannel('session_reminder', channel, patch)
+                }
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Send session reminders</span>
+                        <Switch
+                            checked={settings.session_reminder.enabled}
+                            onCheckedChange={(v) => setReminderField('enabled', v)}
+                        />
+                    </div>
+                    {settings.session_reminder.enabled && (
+                        <div className="flex items-center justify-between gap-4 py-2">
+                            <Label
+                                htmlFor="session-reminder-hours"
+                                className="text-sm font-normal text-neutral-700"
+                            >
+                                Hours before the session
+                            </Label>
+                            <Input
+                                id="session-reminder-hours"
+                                type="number"
+                                min={1}
+                                max={168}
+                                value={settings.session_reminder.hours_before}
+                                onChange={(e) =>
+                                    // Clamp to the backend's accepted range so the UI never
+                                    // shows a value the scheduler won't actually use.
+                                    setReminderField(
+                                        'hours_before',
+                                        Math.min(168, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
+                                }
+                                className="w-24"
+                            />
+                        </div>
+                    )}
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
+
+            <TriggerCard
+                icon={<HandWaving size={20} />}
+                title="Check-in Nudge"
+                description="When a learner hasn't met their mentor for a while."
+                idPrefix="checkin-reminder"
+                trigger={settings.checkin_reminder}
+                onChannelChange={(channel, patch) =>
+                    updateChannel('checkin_reminder', channel, patch)
+                }
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Send check-in nudges</span>
+                        <Switch
+                            checked={settings.checkin_reminder.enabled}
+                            onCheckedChange={(v) => setCheckinField('enabled', v)}
+                        />
+                    </div>
+                    {settings.checkin_reminder.enabled && (
+                        <div className="flex items-center justify-between gap-4 py-2">
+                            <Label
+                                htmlFor="checkin-days"
+                                className="text-sm font-normal text-neutral-700"
+                            >
+                                Days without a session
+                            </Label>
+                            <Input
+                                id="checkin-days"
+                                type="number"
+                                min={1}
+                                max={365}
+                                value={settings.checkin_reminder.inactivity_days}
+                                onChange={(e) =>
+                                    // Clamp to the backend's accepted range (see intCfg 1..365).
+                                    setCheckinField(
+                                        'inactivity_days',
+                                        Math.min(365, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
+                                }
+                                className="w-24"
+                            />
+                        </div>
+                    )}
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
         </div>
     );
 }

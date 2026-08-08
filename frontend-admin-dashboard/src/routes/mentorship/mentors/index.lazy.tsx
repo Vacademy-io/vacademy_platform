@@ -13,6 +13,16 @@ import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
@@ -21,6 +31,7 @@ import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
 import { BulkAssignDialog } from '../-components/BulkAssignDialog';
+import { MentorAvatar } from '../-components/MentorAvatar';
 
 export const Route = createLazyFileRoute('/mentorship/mentors/')({
     component: MentorsRoute,
@@ -32,12 +43,6 @@ function MentorsRoute() {
             <MentorsPage />
         </LayoutContainer>
     );
-}
-
-function initials(name?: string | null): string {
-    if (!name) return '?';
-    const parts = name.trim().split(/\s+/);
-    return (parts[0]?.[0] ?? '').concat(parts.length > 1 ? (parts[1]?.[0] ?? '') : '').toUpperCase() || '?';
 }
 
 function MentorsPage() {
@@ -55,6 +60,7 @@ function MentorsPage() {
     const [bulkOpen, setBulkOpen] = useState(false);
     const [assignMentor, setAssignMentor] = useState<MentorDTO | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
+    const [confirmRemove, setConfirmRemove] = useState<MentorDTO | null>(null);
 
     const mentors = data?.mentors ?? [];
 
@@ -167,15 +173,17 @@ function MentorsPage() {
                             key={m.id}
                             className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
                         >
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 text-body font-semibold text-primary-600">
-                                    {initials(m.display_name || m.name)}
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-body font-medium text-neutral-700">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <MentorAvatar
+                                    fileId={m.profile_image_file_id}
+                                    name={m.display_name || m.name}
+                                    className="size-10 text-body"
+                                />
+                                <div className="flex min-w-0 flex-col">
+                                    <span className="truncate text-body font-medium text-neutral-700">
                                         {m.display_name || m.name || 'Mentor'}
                                     </span>
-                                    <span className="text-caption text-neutral-400">{m.title || m.email || ''}</span>
+                                    <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
@@ -237,7 +245,7 @@ function MentorsPage() {
                                     type="button"
                                     buttonType="text"
                                     scale="small"
-                                    onClick={() => remove(m)}
+                                    onClick={() => setConfirmRemove(m)}
                                     aria-label={`Remove ${m.display_name || m.name || 'mentor'}`}
                                     title="Remove this mentor"
                                 >
@@ -270,6 +278,39 @@ function MentorsPage() {
                     }}
                 />
             )}
+
+            <AlertDialog
+                open={!!confirmRemove}
+                onOpenChange={(o) => {
+                    if (!o) setConfirmRemove(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            Remove {confirmRemove?.display_name || confirmRemove?.name || 'this mentor'}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {confirmRemove?.assigned_student_count
+                                ? `Their ${confirmRemove.assigned_student_count} assigned student${confirmRemove.assigned_student_count === 1 ? '' : 's'} will be unassigned. `
+                                : ''}
+                            Their account stays untouched.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-danger-500 hover:bg-danger-600"
+                            onClick={() => {
+                                if (confirmRemove) void remove(confirmRemove);
+                                setConfirmRemove(null);
+                            }}
+                        >
+                            Remove mentor
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

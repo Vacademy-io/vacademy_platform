@@ -33,8 +33,14 @@ import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
+import { getInstituteId } from "@/constants/helper";
+import {
+  handleGetMyMentors,
+  type MyMentor,
+} from "@/routes/my-mentors/-services/my-mentors-service";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
   SquaresFour,
@@ -121,14 +127,22 @@ export const MySidebar = ({
 
   const { permissions } = useStudentPermissions();
   const isIOS = useIsIOS();
-  const [filteredSidebarItems, setFilteredSidebarItems] = useState<
-    SidebarItemsType[]
+  const [configuredTabs, setConfiguredTabs] = useState<
+    StudentSidebarTabConfig[]
   >([]);
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
   const [studentData, setStudentData] = useState<Student | null>(null);
+
+  // The learner's assigned mentors drive the My Mentors tab (see
+  // ensureMentorTab). Shares the widget's query cache key.
+  const [instituteId, setInstituteId] = useState<string | undefined>();
+  useEffect(() => {
+    getInstituteId().then((id) => setInstituteId(id ?? undefined));
+  }, []);
+  const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
 
   // Identity footer: read the logged-in learner from Preferences (same
   // storage the hamburger sheet uses) so the sidebar can show who is
@@ -270,6 +284,63 @@ export const MySidebar = ({
     return next;
   };
 
+  // The My Mentors tab is data-driven: the moment the learner actually has a
+  // mentor assigned, surface the tab even if the institute's display settings
+  // leave it hidden (the default), so the learner can find and contact their
+  // mentor without any admin configuration. With exactly one mentor the tab
+  // carries the mentor's name so it's recognisable at a glance; an
+  // admin-customised label always wins. Learners with no mentors keep whatever
+  // the admin configured (hidden by default — the page has its own empty state).
+  const ensureMentorTab = (
+    tabs: StudentSidebarTabConfig[],
+    mentors: MyMentor[]
+  ): StudentSidebarTabConfig[] => {
+    if (mentors.length === 0) return tabs;
+    const soleMentorName =
+      mentors.length === 1
+        ? (mentors[0]?.display_name || mentors[0]?.name || "").trim()
+        : "";
+    const mentorLabel = soleMentorName
+      ? `Mentor · ${soleMentorName.split(/\s+/)[0]}`
+      : "My Mentors";
+    const next = tabs.slice();
+    const existingIndex = next.findIndex((t) => t.id === "my-mentors");
+    if (existingIndex >= 0) {
+      const existing = next[existingIndex] as StudentSidebarTabConfig;
+      next[existingIndex] = {
+        ...existing,
+        visible: true,
+        label: existing.label || mentorLabel,
+      };
+      return next;
+    }
+    const chatIndex = next.findIndex((t) => t.id === "chat");
+    const dashboardIndex = next.findIndex((t) => t.id === "dashboard");
+    const insertAt =
+      chatIndex >= 0
+        ? chatIndex + 1
+        : dashboardIndex >= 0
+          ? dashboardIndex + 1
+          : next.length;
+    next.splice(insertAt, 0, {
+      id: "my-mentors",
+      label: mentorLabel,
+      route: "/my-mentors",
+      order: 0,
+      visible: true,
+    });
+    return next;
+  };
+
+  const filteredSidebarItems = useMemo(
+    () =>
+      transformTabsToSidebarItems(
+        ensureMentorTab(configuredTabs, myMentorsQuery.data ?? [])
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [configuredTabs, myMentorsQuery.data]
+  );
+
   useEffect(() => {
     // Load display settings + chat-enabled flag and compute sidebar items.
     // getChatEnabled fails closed (chat hidden) when the flag is
@@ -278,11 +349,9 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
-        const tabs = ensureChatTab(
-          (settings?.sidebar?.tabs || []).slice(),
-          chatEnabled
+        setConfiguredTabs(
+          ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
         );
-        setFilteredSidebarItems(transformTabsToSidebarItems(tabs));
       }
     );
 

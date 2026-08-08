@@ -202,13 +202,14 @@ const getInstituteId = (): string => {
 };
 
 // Merge a persisted channel object (or legacy boolean) onto the default channel.
-const mergeChannel = <T extends { enabled: boolean }>(def: T, raw: unknown): T => {
+// Exported for unit tests only — call sites go through getMentorshipSettings.
+export const mergeChannel = <T extends { enabled: boolean }>(def: T, raw: unknown): T => {
     if (typeof raw === 'boolean') return { ...def, enabled: raw };
     if (raw && typeof raw === 'object') return { ...def, ...(raw as Partial<T>) };
     return def;
 };
 
-const mergeTrigger = <T extends MentorshipTriggerSettings>(def: T, raw: unknown): T => {
+export const mergeTrigger = <T extends MentorshipTriggerSettings>(def: T, raw: unknown): T => {
     const p = (raw ?? {}) as Partial<Record<keyof MentorshipTriggerSettings, unknown>> &
         Record<string, unknown>;
     return {

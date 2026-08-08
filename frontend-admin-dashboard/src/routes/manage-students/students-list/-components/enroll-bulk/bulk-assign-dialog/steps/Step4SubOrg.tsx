@@ -27,6 +27,8 @@ import {
 
 /** Sentinel value for the "create a new organisation" entry in the picker. */
 const CREATE_NEW = '__CREATE_NEW__';
+/** Sentinel for "enroll without linking an organisation". */
+const SKIP = '__SKIP__';
 
 interface Props {
     selectedPackageSessions: SelectedPackageSession[];
@@ -85,18 +87,34 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
         packageSessionId: ps.packageSessionId,
     });
 
-    const isCreatingNew = !ps.subOrgId && !!ps.newSubOrg;
-    const pickerValue = ps.subOrgId ?? (isCreatingNew ? CREATE_NEW : '');
+    const isSkipped = !!ps.subOrgSkipped;
+    const isCreatingNew = !isSkipped && !ps.subOrgId && !!ps.newSubOrg;
+    const pickerValue = isSkipped ? SKIP : (ps.subOrgId ?? (isCreatingNew ? CREATE_NEW : ''));
     const selectedSubOrg = subOrgs.find((s) => s.sub_org_id === ps.subOrgId);
     const role: SubOrgRoleChoice = ps.subOrgRole ?? 'STAFF';
 
     const handlePick = (value: string) => {
+        if (value === SKIP) {
+            onUpdate({
+                subOrgSkipped: true,
+                subOrgId: null,
+                subOrgName: null,
+                newSubOrg: undefined,
+            });
+            return;
+        }
         if (value === CREATE_NEW) {
-            onUpdate({ subOrgId: null, subOrgName: null, newSubOrg: { name: '' } });
+            onUpdate({
+                subOrgSkipped: false,
+                subOrgId: null,
+                subOrgName: null,
+                newSubOrg: { name: '' },
+            });
             return;
         }
         const picked = subOrgs.find((s) => s.sub_org_id === value);
         onUpdate({
+            subOrgSkipped: false,
             subOrgId: value,
             subOrgName: picked?.name ?? null,
             newSubOrg: undefined,
@@ -135,6 +153,9 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
                                 <SelectItem value={CREATE_NEW}>
                                     + Create new organisation
                                 </SelectItem>
+                                <SelectItem value={SKIP}>
+                                    Don’t link an organisation
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     )}
@@ -144,6 +165,13 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
                         </p>
                     )}
                 </div>
+
+                {isSkipped && (
+                    <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-600">
+                        Enrolled as an ordinary {learnerTerm.toLowerCase()} with no organisation
+                        link. Runs the standard enrollment automation, not the sub-org member one.
+                    </div>
+                )}
 
                 {selectedSubOrg && (
                     <div className="rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2.5">
@@ -221,7 +249,7 @@ const SubOrgConfigRow = ({ ps, onUpdate }: RowProps) => {
                     </div>
                 )}
 
-                <div>
+                <div className={isSkipped ? 'hidden' : undefined}>
                     <Label className="mb-1 text-xs text-neutral-500">
                         Role inside the organisation
                     </Label>

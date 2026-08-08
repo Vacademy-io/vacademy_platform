@@ -20,23 +20,32 @@ export interface StudentSidebarTabConfig {
 }
 
 // Dashboard
+/**
+ * Every id the dashboard actually renders. Keep in sync with the admin app's
+ * StudentDashboardWidgetId — the admin writes these, the dashboard reads them.
+ *
+ * RETIRED ids (assessmentsStat, activityTrend, dailyProgress, myClasses,
+ * referAFriend) are deliberately absent: nothing reads them, so an admin
+ * toggling them changed nothing. They stay listed in the admin app's
+ * RETIRED_WIDGET_IDS so old saved entries are filtered out of the settings UI
+ * rather than shown as dead switches.
+ */
 export type StudentDashboardWidgetId =
   | "coursesStat"
-  | "assessmentsStat"
   | "evaluationStat"
   | "continueLearning"
   | "learningAnalytics"
-  | "activityTrend"
-  | "dailyProgress"
   | "liveClasses"
   | "thisWeekAttendance"
-  | "referAFriend"
-  | "myClasses"
   | "myMembership"
   | "myBooks"
   | "upcomingLiveClasses"
   | "myMentors"
   | "myOrders"
+  // Bottom-of-page commerce CTAs. Separate from myMembership / myBooks so the
+  // widget and the "go buy more" button can be controlled independently.
+  | "exploreMemberships"
+  | "exploreBooks"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {

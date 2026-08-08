@@ -82,6 +82,17 @@ public class AssignmentItemDTO {
      */
     private NewSubOrgDTO newSubOrg;
 
+    /**
+     * The admin deliberately chose NOT to link this enrollment to any sub-organization, even
+     * though the package session is org-associated. Enrolls the member with no sub_org stamp
+     * and fires LEARNER_BATCH_ENROLLMENT rather than SUB_ORG_MEMBER_ENROLLMENT.
+     *
+     * <p>Distinct from simply omitting {@link #subOrgId}: without this flag an org-associated
+     * package session falls back to resolving a sub-org from custom-field answers and throws
+     * when it can't, which is the correct guard against a half-configured request.
+     */
+    private boolean skipSubOrg;
+
     @Data
     @Builder
     @AllArgsConstructor

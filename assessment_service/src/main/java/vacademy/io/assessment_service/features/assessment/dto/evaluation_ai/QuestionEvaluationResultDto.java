@@ -58,6 +58,12 @@ public class QuestionEvaluationResultDto {
         @JsonProperty("confidence")
         private Double confidence;
 
+        // Why automatic grading failed (exception class + message, admin-facing;
+        // set only when status is FAILED). Without this on the wire, "AI could
+        // not grade this" is diagnosable only from ai_service pod logs.
+        @JsonProperty("error_detail")
+        private String errorDetail;
+
         // True once a teacher has overridden this question on the review page.
         @JsonProperty("is_edited")
         private Boolean isEdited;

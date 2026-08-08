@@ -61,6 +61,9 @@ export interface QuestionProgress {
     evaluation_details_json?: EvaluationDetailsJson;
     annotations?: QuestionAnnotation[];
     rubric_version?: number;
+    /** Why automatic grading failed (exception class + message) — set only on
+     *  FAILED questions, admin-facing. */
+    error_detail?: string | null;
     is_edited?: boolean;
     started_at?: string;
     completed_at?: string;

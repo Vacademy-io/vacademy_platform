@@ -82,6 +82,41 @@ public class SupportAlertService {
     }
 
     /**
+     * The customer replied on an existing ticket: alert Sentry→Slack and email the support
+     * recipients — the same audience as a new ticket (global + institute alert emails + the
+     * institute's assigned engineers), so a reply is never quieter than the ticket it started.
+     */
+    public void onCustomerReply(SupportTicket ticket, String replyBody, String senderName,
+                                List<String> recipientEmails) {
+        try {
+            String summary = String.format("💬 %s replied on %s: %s",
+                    safe(senderName, "Customer"),
+                    safe(ticket.getInstituteName(), ticket.getInstituteId()),
+                    ticket.getSubject());
+
+            Map<String, String> tags = new HashMap<>();
+            tags.put("alert_type", "support_customer_reply");
+            tags.put("priority", String.valueOf(ticket.getPriority()));
+            tags.put("institute_id", String.valueOf(ticket.getInstituteId()));
+            tags.put("ticket_id", String.valueOf(ticket.getId()));
+            SentryLogger.logWarning(summary, tags);
+
+            if (recipientEmails == null || recipientEmails.isEmpty()) {
+                return;
+            }
+            String subject = customerReplySubject(ticket);
+            String body = buildCustomerReplyEmail(ticket, replyBody, senderName);
+            List<EmailUserDto> users = new ArrayList<>();
+            for (String email : recipientEmails) {
+                users.add(recipient(null, email));
+            }
+            sendEmail(subject, body, ticket.getId(), users);
+        } catch (Exception e) {
+            log.error("Failed to dispatch customer-reply alert for {}: {}", ticket.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
      * A support agent replied: tell the person who raised the ticket, by email and by in-app
      * system alert.
      *
@@ -243,6 +278,32 @@ public class SupportAlertService {
                 + escape(firstMessageBody) + "</div>";
 
         return shell("New support issue", ticket, body,
+                "Open it in the support console to reply.");
+    }
+
+    /**
+     * The team-facing alert when a customer replies. Same triage chrome as the new-ticket mail;
+     * the content is who spoke and what they said, with the ticket's post-reply status — a reply
+     * can silently reopen a resolved ticket, and that is exactly what the reader needs to notice.
+     */
+    private String buildCustomerReplyEmail(SupportTicket ticket, String replyBody, String senderName) {
+        String meta = metaRow("Institute", safe(ticket.getInstituteName(), ticket.getInstituteId()))
+                + metaRow("From", safe(senderName, "Customer"))
+                + metaRow("Status", String.valueOf(ticket.getStatus()))
+                + metaRow("Category", String.valueOf(ticket.getCategory()));
+
+        String body =
+                priorityPill(ticket)
+                + "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\""
+                + " style=\"width:100%;margin:0 0 16px;font-size:14px;line-height:1.6\">"
+                + meta + "</table>"
+                + "<div style=\"margin:0 0 4px;font-size:13px;font-weight:600;color:#6b7280\">"
+                + "Their reply</div>"
+                + "<div style=\"margin:0;padding:2px 0 2px 14px;border-left:3px solid " + BRAND + ";"
+                + "font-size:15px;line-height:1.6;color:#111827;white-space:pre-wrap\">"
+                + escape(replyBody) + "</div>";
+
+        return shell("Customer replied", ticket, body,
                 "Open it in the support console to reply.");
     }
 
@@ -427,6 +488,14 @@ public class SupportAlertService {
 
     String replySubject(SupportTicket ticket) {
         return "Re: " + ticket.getSubject() + " [" + reference(ticket) + "]";
+    }
+
+    /** Team-facing: who spoke leads, mirroring {@link #newTicketSubject}'s institute-first order. */
+    String customerReplySubject(SupportTicket ticket) {
+        return String.format("Reply · %s · %s [%s]",
+                safe(ticket.getInstituteName(), ticket.getInstituteId()),
+                ticket.getSubject(),
+                reference(ticket));
     }
 
     String resolvedSubject(SupportTicket ticket) {

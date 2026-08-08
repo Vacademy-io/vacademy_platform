@@ -183,6 +183,9 @@ public class SupportTicketService {
         ticket.setMessageCount(ticket.getMessageCount() + 1);
         ticketRepository.save(ticket);
 
+        alertService.onCustomerReply(ticket, alertBody(body, request.getAttachments()),
+                message.getSenderName(), configService.resolveAlertEmails(instituteId));
+
         return toDetailDto(ticket, false);
     }
 

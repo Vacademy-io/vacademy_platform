@@ -10,6 +10,7 @@ import {
     GET_USER_ACCOUNT_SUMMARY,
     GET_USER_ACCOUNT_LEDGER,
     POST_MARK_INVOICE_PAID_MANUAL,
+    PUT_UPDATE_INVOICE,
 } from '@/constants/urls';
 
 // Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
@@ -177,6 +178,38 @@ export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDTO> {
 }
 
 /**
+ * Body for editing an existing unpaid invoice. Mirrors the create request minus
+ * user/institute, which are fixed for the life of an invoice.
+ */
+export interface AdminUpdateInvoiceRequest {
+    line_items: AdminInvoiceLineItemRequest[];
+    currency: string;
+    due_date: string;
+    invoice_date?: string;
+    notes?: string;
+    overrides?: Record<string, string>;
+    tax_enabled?: boolean;
+    tax_rate_percent?: number;
+}
+
+/**
+ * Edits an unpaid (PENDING_PAYMENT) invoice in place, keeping the same invoice number and
+ * regenerating the PDF. The server rejects the call for PAID/REJECTED invoices.
+ */
+export async function updateAdminInvoice(
+    invoiceId: string,
+    instituteId: string,
+    request: AdminUpdateInvoiceRequest
+): Promise<InvoiceDTO> {
+    const response = await authenticatedAxiosInstance.put<InvoiceDTO>(
+        PUT_UPDATE_INVOICE(invoiceId),
+        request,
+        { params: { instituteId } }
+    );
+    return response.data;
+}
+
+/**
  * Voids a PENDING_PAYMENT admin invoice created in error. Terminal — the payment link
  * stops working and it can never be marked paid afterward. `reason` is optional.
  */
@@ -213,6 +246,11 @@ export interface AdminCreateInvoiceRequest {
     notes?: string;
     /** Per-invoice edits to dynamic template values, keyed by placeholder name. */
     overrides?: Record<string, string>;
+    /**
+     * PREVIEW-ONLY: id of the invoice being edited, so its own invoice_number isn't
+     * mistaken for a collision and replaced with a freshly-generated one.
+     */
+    editing_invoice_id?: string;
     /** Turn tax off entirely for this invoice, regardless of the institute's default. */
     tax_enabled?: boolean;
     /** Override the tax rate (percentage, e.g. 18) for this invoice only. Ignored when tax_enabled is false. */

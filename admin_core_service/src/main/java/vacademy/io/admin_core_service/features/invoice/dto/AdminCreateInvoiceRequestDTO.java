@@ -67,4 +67,13 @@ public class AdminCreateInvoiceRequestDTO {
      * {@code false}.
      */
     private BigDecimal taxRatePercent;
+
+    /**
+     * PREVIEW-ONLY: the id of the invoice currently being EDITED, if any. Lets
+     * {@code previewAdminInvoice} treat that invoice's own {@code invoice_number} as
+     * available rather than as a collision — without it, previewing an edit would see the
+     * number already in the DB, assume a clash, and render a freshly-generated number that
+     * doesn't match the invoice actually being edited. Ignored by the create path.
+     */
+    private String editingInvoiceId;
 }

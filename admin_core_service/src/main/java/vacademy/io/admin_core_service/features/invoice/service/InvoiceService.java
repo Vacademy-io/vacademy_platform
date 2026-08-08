@@ -3462,6 +3462,146 @@ public class InvoiceService {
     }
 
     /**
+     * Edits an admin invoice IN PLACE — line items, currency, dates, notes, per-invoice tax
+     * and the editable template placeholders — then recomputes the totals and regenerates the
+     * PDF under the SAME invoice number.
+     *
+     * <p>Only a {@code PENDING_PAYMENT} invoice may be edited. A PAID invoice represents money
+     * that actually moved (and a tax document already issued), and a REJECTED one is voided —
+     * for both, the correct flow is Reject + Duplicate (issue a corrected invoice), not a
+     * silent in-place rewrite of a document the customer may already hold.
+     *
+     * <p>The billed user and institute are intentionally NOT editable: re-billing someone else
+     * is a new invoice, not an edit of this one.
+     */
+    @Transactional
+    public InvoiceDTO updateAdminInvoice(String invoiceId, String instituteId,
+            AdminUpdateInvoiceRequestDTO request, CustomUserDetails userDetails) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        if (instituteId != null && !instituteId.equals(invoice.getInstituteId())) {
+            throw new VacademyException("Invoice does not belong to this institute");
+        }
+        if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            throw new VacademyException("Only a PENDING_PAYMENT invoice can be edited (current status: "
+                    + invoice.getStatus() + "). Reject it and create a corrected invoice instead.");
+        }
+
+        // Capture into finals: `invoice` is reassigned by the save() calls below, so it can't
+        // be referenced from the lambdas.
+        final String invoiceInstituteId = invoice.getInstituteId();
+        final String invoiceUserId = invoice.getUserId();
+        Institute institute = instituteRepository.findById(invoiceInstituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found: " + invoiceInstituteId));
+        UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(invoiceUserId))
+                .stream().findFirst()
+                .orElseThrow(() -> new VacademyException("Invoice user not found: " + invoiceUserId));
+
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+
+        BigDecimal subtotal = request.getLineItems().stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        EffectiveTax effectiveTax = computeEffectiveTax(invoiceSettings, subtotal,
+                request.getTaxEnabled(), request.getTaxRatePercent());
+
+        // Single-user by definition (an invoice bills exactly one user), so user-scoped
+        // overrides are honoured just like the single-user create path.
+        Map<String, String> overrides = sanitizeOverrides(request.getOverrides(), true);
+        Map<String, String> currentInstituteProfile = invoiceInstituteProfileService.loadAsMap(invoiceSettings);
+        String effectiveNotes = overrides.containsKey("notes")
+                ? overrides.get("notes")
+                : firstNonBlank(request.getNotes(), currentInstituteProfile.get("notes"));
+
+        // invoice_number is never a text override — the persisted number is authoritative and
+        // an edit must not renumber the document.
+        Map<String, String> renderOverrides = new HashMap<>(overrides);
+        renderOverrides.remove("invoice_number");
+        if (StringUtils.hasText(effectiveNotes)) {
+            renderOverrides.put("notes", effectiveNotes);
+        }
+
+        // ── Apply the edit ──
+        invoice.setSubtotal(subtotal);
+        invoice.setTaxAmount(effectiveTax.taxAmount());
+        invoice.setTotalAmount(effectiveTax.totalAmount());
+        invoice.setTaxIncluded(effectiveTax.taxIncluded());
+        invoice.setCurrency(request.getCurrency());
+        invoice.setDueDate(request.getDueDate());
+        if (request.getInvoiceDate() != null) {
+            invoice.setInvoiceDate(request.getInvoiceDate());
+        }
+
+        // Persist notes + overrides (so a later PDF regeneration reproduces this edit) and stamp
+        // the audit trail, without clobbering unrelated keys already in the blob (e.g. a prior
+        // reject audit). mergeInvoiceDataJson is a read-modify-write over the same object.
+        Map<String, Object> dataJson = new HashMap<>();
+        dataJson.put("notes", StringUtils.hasText(effectiveNotes) ? effectiveNotes : "");
+        dataJson.put("overrides", renderOverrides);
+        dataJson.put("editedBy", userDetails != null ? userDetails.getUserId() : "system");
+        dataJson.put("editedAt", LocalDateTime.now().toString());
+        invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), dataJson));
+
+        invoice = invoiceRepository.save(invoice);
+
+        // Replace line items wholesale — an edit redefines the whole set (rows added, removed,
+        // reordered), so diffing individual rows would be more fragile than a clean rewrite.
+        List<InvoiceLineItem> existingLineItems = invoiceLineItemRepository.findByInvoiceId(invoice.getId());
+        if (existingLineItems != null && !existingLineItems.isEmpty()) {
+            invoiceLineItemRepository.deleteAll(existingLineItems);
+            // Flush the deletes before the inserts so both sets never coexist (the listing and
+            // the regenerated PDF both read this table).
+            invoiceLineItemRepository.flush();
+        }
+        for (AdminInvoiceLineItemRequestDTO itemReq : request.getLineItems()) {
+            InvoiceLineItem lineItem = new InvoiceLineItem();
+            lineItem.setInvoice(invoice);
+            lineItem.setItemType(StringUtils.hasText(itemReq.getItemType()) ? itemReq.getItemType() : "SERVICE");
+            lineItem.setDescription(itemReq.getDescription());
+            lineItem.setQuantity(itemReq.getQuantity());
+            lineItem.setUnitPrice(itemReq.getUnitPrice());
+            lineItem.setAmount(itemReq.getUnitPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
+            invoiceLineItemRepository.save(lineItem);
+        }
+
+        // Remember the admin's Bill-To / institute edits for next time, same as create.
+        try {
+            Map<String, String> currentBp =
+                    invoiceBillingProfileService.loadAsMap(invoiceUserId, invoiceInstituteId);
+            invoiceBillingProfileService.upsert(invoiceUserId, invoiceInstituteId,
+                    billingEditsFromOverrides(renderOverrides, user, currentBp));
+            invoiceInstituteProfileService.upsert(institute, invoiceSettings,
+                    instituteEditsFromOverrides(overrides, institute, currentInstituteProfile));
+        } catch (Exception e) {
+            log.warn("Failed to persist remembered profiles while editing invoice {}: {}",
+                    invoiceId, e.getMessage());
+        }
+
+        // Regenerate the PDF under the SAME invoice number. Best-effort: a render failure must
+        // not roll back the edit itself — the amounts on the row are already correct, and
+        // /download regenerates on demand from the persisted row anyway.
+        try {
+            String pdfFileId = generateAndUploadAdminInvoicePdf(invoice, user, institute,
+                    request.getLineItems(), subtotal, effectiveTax.taxAmount(), effectiveTax.totalAmount(),
+                    request.getCurrency(), effectiveTax.taxIncluded(), effectiveTax.taxRate(),
+                    effectiveTax.taxLabel(), effectiveNotes, renderOverrides);
+            // NOTE: the superseded PDF object is intentionally left in storage (media service
+            // exposes no delete) — only the pointer moves. Harmless orphan.
+            invoice.setPdfFileId(pdfFileId);
+            invoice = invoiceRepository.save(invoice);
+        } catch (Exception e) {
+            log.error("Failed to regenerate PDF for edited invoice {}: {}", invoice.getInvoiceNumber(),
+                    e.getMessage(), e);
+        }
+
+        log.info("[InvoiceEdit] invoiceId={} invoiceNumber={} editedBy={} newTotal={}",
+                invoiceId, invoice.getInvoiceNumber(),
+                userDetails != null ? userDetails.getUserId() : "system", invoice.getTotalAmount());
+
+        return mapToDTO(invoice);
+    }
+
+    /**
      * Records a manual / offline payment against a PENDING_PAYMENT admin invoice.
      * Mirrors the CPO side-view recordOfflinePayment flow but binds to an Invoice
      * instead of a UserPlan — the resulting PaymentLog has {@code userPlan=null}
@@ -4395,9 +4535,14 @@ public class InvoiceService {
         // Resolve the invoice number exactly like createAdminInvoices: honour a unique admin
         // override, else the freshly generated next number. This keeps the preview's rendered
         // {{invoice_number}} equal to what create will actually assign on a collision.
+        // When previewing an EDIT, the invoice's own number is already in the DB — that's not a
+        // collision, so treat a match on the invoice being edited as available.
         String overrideNumber = userOverrides.get("invoice_number");
-        String invoiceNumber = (StringUtils.hasText(overrideNumber)
-                && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty())
+        boolean numberAvailable = StringUtils.hasText(overrideNumber)
+                && invoiceRepository.findByInvoiceNumber(overrideNumber.trim())
+                        .map(existing -> existing.getId().equals(request.getEditingInvoiceId()))
+                        .orElse(true);
+        String invoiceNumber = numberAvailable
                 ? overrideNumber.trim()
                 : generateInvoiceNumber(request.getInstituteId());
 

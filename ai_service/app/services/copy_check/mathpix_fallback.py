@@ -14,9 +14,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from ..mathpix_service import MathpixService
+from .page_images import download_pdf, rasterize_pages
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +50,13 @@ class MathpixFallback:
 
         with tempfile.TemporaryDirectory(prefix="mathpix-crops-") as tmp:
             pdf_path = Path(tmp) / "input.pdf"
-            await _download(pdf_url, pdf_path)
-            page_imgs = await asyncio.get_event_loop().run_in_executor(
-                None, _rasterize_pages, pdf_path,
-            )
+            await download_pdf(pdf_url, pdf_path)
+            # 200 DPI matches the layout_map's box coordinates (full_res px), so
+            # crops line up. rasterize_pages returns [(page_id, img)]; keyed by
+            # page_id here for the crop lookup below.
+            page_imgs = dict(await asyncio.get_event_loop().run_in_executor(
+                None, rasterize_pages, pdf_path,
+            ))
             for page, line in flagged:
                 if not self.can_run:
                     logger.info("Mathpix budget exhausted (%d crops), skipping rest", self._used)
@@ -74,47 +76,6 @@ class MathpixFallback:
                 except Exception as e:
                     logger.warning(f"Mathpix crop OCR failed for {line.get('line_id')}: {e}")
         return layout_map
-
-
-async def _download(url: str, dest: Path) -> None:
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        async with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            with dest.open("wb") as f:
-                async for chunk in resp.aiter_bytes(chunk_size=1 << 16):
-                    f.write(chunk)
-
-
-def _rasterize_pages(pdf_path: Path) -> dict[str, Any]:
-    """Return {page_id: PIL.Image} for all pages of the PDF at 200 DPI.
-
-    Handles all PyMuPDF colorspaces (gray/RGB/CMYK) since PDFs in the wild
-    aren't always sRGB. A naive Image.frombytes("RGB", …) corrupts the buffer
-    for pix.n != 3.
-    """
-    import fitz  # PyMuPDF
-    from PIL import Image
-
-    out: dict[str, Any] = {}
-    doc = fitz.open(pdf_path)
-    try:
-        matrix = fitz.Matrix(200 / 72.0, 200 / 72.0)
-        for i, page in enumerate(doc):
-            pix = page.get_pixmap(matrix=matrix, alpha=False)
-            mode_map = {1: "L", 3: "RGB", 4: "CMYK"}
-            mode = mode_map.get(pix.n)
-            if mode is None:
-                # Drop alpha or unknown channels via an intermediate RGB pixmap.
-                pix_rgb = fitz.Pixmap(fitz.csRGB, pix)
-                img = Image.frombytes("RGB", (pix_rgb.width, pix_rgb.height), pix_rgb.samples)
-            else:
-                img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-                if mode != "RGB":
-                    img = img.convert("RGB")
-            out[f"p{i + 1}"] = img
-    finally:
-        doc.close()
-    return out
 
 
 def _crop_to_base64(img, box: list[int]) -> str:

@@ -50,12 +50,31 @@ def build_criteria_prompt(
 
 # ---------------------------- Grading prompt ---------------------------------
 
-GRADING_SYSTEM = (
+_GRADING_INTRO_TEXT = (
     "You are an expert evaluator. Grade the student's handwritten answer based "
     "strictly on the provided rubric. The student's pages have been OCR'd into "
     "a numbered transcript of line_ids — when you flag an error or correctness, "
     "you MUST reference the line_id (e.g. \"L1_32\"), never pixel coordinates. "
-    "Ignore OCR/spelling errors; focus on intent and meaning.\n\n"
+    "Ignore OCR/spelling errors; focus on intent and meaning."
+)
+
+# Vision path: the real page images are attached. The OCR is demoted to an
+# assistive hint so the model reads the handwriting itself instead of grading a
+# printed-text OCR of handwriting (the accuracy bug this pipeline change fixes).
+_GRADING_INTRO_VISION = (
+    "You are an expert evaluator. The student's ACTUAL handwritten answer pages "
+    "are ATTACHED AS IMAGES — read the handwriting directly from the image(s); "
+    "the image is the source of truth. A best-effort OCR transcript is also "
+    "provided as a numbered list of line_ids, but it is ASSISTIVE ONLY and may "
+    "contain recognition errors: use it only (a) as a hint when the handwriting "
+    "is hard to read and (b) to choose the line_id to anchor each annotation to "
+    "— never grade from the OCR alone. When you flag an error or correctness, "
+    "you MUST reference the line_id (e.g. \"L1_32\"), never pixel coordinates. "
+    "Grade against the rubric and award partial credit. Ignore spelling/OCR "
+    "errors; focus on intent and meaning."
+)
+
+_ANNOTATION_DISCIPLINE = (
     "ANNOTATION DISCIPLINE (these rules are non-negotiable — teachers rely on "
     "them to audit your grading):\n"
     "1. WRITE LIKE A TEACHER'S PEN. Annotation `text` is written ON the copy, "
@@ -98,6 +117,11 @@ GRADING_SYSTEM = (
     "budget; for a fully-correct multi-part answer, tick the overall "
     "conclusion line."
 )
+
+# Text-only path (legacy) and vision path share the same annotation discipline;
+# only the intro differs in where the model is told to read the answer from.
+GRADING_SYSTEM = _GRADING_INTRO_TEXT + "\n\n" + _ANNOTATION_DISCIPLINE
+GRADING_SYSTEM_VISION = _GRADING_INTRO_VISION + "\n\n" + _ANNOTATION_DISCIPLINE
 
 
 def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
@@ -185,12 +209,28 @@ def build_grading_prompt(
     question: dict[str, Any],
     rubric: dict[str, Any],
     layout_map: dict[str, Any],
+    vision: bool = False,
 ) -> str:
     max_marks = float(rubric.get("max_marks") or question.get("max_marks") or 10)
     rubric_json = json.dumps(rubric, indent=2)
+    if vision:
+        source_instruction = (
+            "The student's actual answer page(s) are ATTACHED AS IMAGE(S). READ "
+            "THE HANDWRITING FROM THE IMAGE(S) — that is the source of truth. The "
+            "OCR transcript below is ASSISTIVE ONLY (it may misread handwriting); "
+            "use it only as a hint and to pick the line_ids for your annotations, "
+            "never as the sole basis for the grade.\n\n"
+        )
+        transcript_header = (
+            "**Assistive OCR transcript (line_id + text per page — MAY CONTAIN "
+            "ERRORS; rely on the attached image, not this text):**"
+        )
+    else:
+        source_instruction = ""
+        transcript_header = "**Student's OCR'd transcript (line_id + text per page):**"
     return f"""Grade the student's handwritten answer.
 
-**Question ID:** {question['question_id']}
+{source_instruction}**Question ID:** {question['question_id']}
 **Question type:** {question.get('question_type')}
 **Question:**
 {question['question_text']}
@@ -201,7 +241,7 @@ def build_grading_prompt(
 **Evaluation rubric (JSON):**
 {rubric_json}
 
-**Student's OCR'd transcript (line_id + text per page):**
+{transcript_header}
 {_transcript_for_prompt(layout_map)}
 
 **Type-specific instructions:**

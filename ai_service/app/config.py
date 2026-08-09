@@ -204,6 +204,24 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
+    # ---- Copy-check VISION grading ----------------------------------------
+    # When true (product default), the copy-check pipeline sends the actual
+    # answer-sheet page image(s) to a vision LLM and grades the handwriting from
+    # the image, using PaddleOCR only as an assistive text hint + annotation
+    # anchor. When false, it falls back to the legacy text-only OCR grader
+    # unchanged. Toggle with COPY_CHECK_VISION_GRADING=false.
+    copy_check_vision_grading: bool = True
+    # DPI to rasterize pages at for the LLM (150–200 is plenty for handwriting;
+    # higher just inflates the payload). Longest side is then downscaled to
+    # copy_check_vision_max_image_px before JPEG encoding.
+    copy_check_vision_dpi: int = 150
+    copy_check_vision_max_image_px: int = 2000
+    # Cost guards: pages sent per question, and total image sends per copy.
+    copy_check_vision_max_pages_per_question: int = 3
+    copy_check_vision_max_images_per_copy: int = 40
+    # Hard ceiling on pages rasterized from one PDF (pathological-document guard).
+    copy_check_vision_max_pages_per_copy: int = 50
+
     # Internal service-to-service auth.
     # Used by admin_core_service when calling /credits/v1/internal/* endpoints
     # (credit-pack purchase fulfillment from the Razorpay webhook handler).

@@ -5,8 +5,9 @@ import { UsersThree } from "@phosphor-icons/react";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { EmptyState, ErrorState, LoadingState } from "@/components/design-system/states";
 import { getInstituteId } from "@/constants/helper";
-import { handleGetMyMentors } from "./-services/my-mentors-service";
+import { handleGetMyMentors, type MyMentor } from "./-services/my-mentors-service";
 import { MentorCard } from "./-components/MentorCard";
+import { MentorChatSheet } from "./-components/MentorChatSheet";
 
 export const Route = createFileRoute("/my-mentors/")({
     component: MyMentorsRoute,
@@ -22,6 +23,8 @@ function MyMentorsRoute() {
 
 function MyMentorsPage() {
     const [instituteId, setInstituteId] = useState<string | undefined>();
+    // Mentor whose chat drawer is open — chat happens without leaving this page.
+    const [chatMentor, setChatMentor] = useState<MyMentor | null>(null);
 
     useEffect(() => {
         getInstituteId().then((id) => setInstituteId(id ?? undefined));
@@ -52,10 +55,23 @@ function MyMentorsPage() {
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {mentors.map((m) => (
-                        <MentorCard key={m.id} mentor={m} instituteId={instituteId} />
+                        <MentorCard
+                            key={m.id}
+                            mentor={m}
+                            instituteId={instituteId}
+                            onMessage={setChatMentor}
+                        />
                     ))}
                 </div>
             )}
+
+            <MentorChatSheet
+                mentor={chatMentor}
+                open={!!chatMentor}
+                onOpenChange={(o) => {
+                    if (!o) setChatMentor(null);
+                }}
+            />
         </div>
     );
 }

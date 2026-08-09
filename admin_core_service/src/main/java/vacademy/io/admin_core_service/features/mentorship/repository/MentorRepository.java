@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.mentorship.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
@@ -11,6 +13,8 @@ import java.util.Optional;
 public interface MentorRepository extends JpaRepository<Mentor, String> {
 
     List<Mentor> findByInstituteIdAndStatusNot(String instituteId, String excludedStatus);
+
+    Page<Mentor> findByInstituteIdAndStatusNot(String instituteId, String excludedStatus, Pageable pageable);
 
     Optional<Mentor> findByInstituteIdAndUserIdAndStatusNot(String instituteId, String userId, String excludedStatus);
 

@@ -56,6 +56,12 @@ export interface BbbMeetingConfig {
     mute_on_start?: boolean;
     webcams_only_for_moderator?: boolean;
     guest_policy?: string;
+    // Lock settings — restrict students only; the host keeps full access
+    disable_private_chat?: boolean;
+    disable_public_chat?: boolean;
+    disable_shared_notes?: boolean;
+    hide_user_list?: boolean;
+    end_when_no_moderator?: boolean;
 }
 
 export interface FeedbackQuestionConfig {
@@ -339,6 +345,11 @@ export function transformFormToDTOStep1(
         bbbMuteOnStart,
         bbbWebcamsOnlyForModerator,
         bbbGuestPolicy,
+        bbbDisablePrivateChat,
+        bbbDisablePublicChat,
+        bbbDisableSharedNotes,
+        bbbHideUserList,
+        bbbEndWhenNoModerator,
         feedbackEnabled,
         feedbackCompulsory,
         feedbackQuestions,
@@ -422,6 +433,11 @@ export function transformFormToDTOStep1(
             mute_on_start: bbbMuteOnStart ?? true,
             webcams_only_for_moderator: bbbWebcamsOnlyForModerator ?? false,
             guest_policy: bbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+            disable_private_chat: bbbDisablePrivateChat ?? false,
+            disable_public_chat: bbbDisablePublicChat ?? false,
+            disable_shared_notes: bbbDisableSharedNotes ?? false,
+            hide_user_list: bbbHideUserList ?? false,
+            end_when_no_moderator: bbbEndWhenNoModerator ?? false,
         } : null,
         feedback_config: feedbackEnabled ? {
             enabled: true,

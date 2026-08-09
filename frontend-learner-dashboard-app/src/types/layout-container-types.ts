@@ -8,6 +8,8 @@ export enum sideBarStateType{
 export interface subItemsType {
     subItem: string;
     subItemLink: string | undefined;
+    /** Optional query params for the link (e.g. open a mentor chat directly). */
+    subItemSearch?: Record<string, string>;
 }
 
 export interface SidebarItemsType {

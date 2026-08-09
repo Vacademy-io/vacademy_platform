@@ -178,3 +178,15 @@ export interface MentorAvailabilityRequest {
     custom_meeting_link?: string;
     allocate_google_meet?: boolean;
 }
+
+/** Spring Page envelope (snake_case serialization) for paginated endpoints. */
+export interface PageResponse<T> {
+    content: T[];
+    total_pages: number;
+    total_elements: number;
+    /** Current 0-indexed page. */
+    number: number;
+    size: number;
+    last?: boolean;
+    first?: boolean;
+}

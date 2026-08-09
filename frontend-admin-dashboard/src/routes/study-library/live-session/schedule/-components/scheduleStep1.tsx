@@ -293,6 +293,11 @@ export default function ScheduleStep1() {
             bbbWebcamsOnlyForModerator:
                 liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
             bbbGuestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+            bbbDisablePrivateChat: liveSessionSettings.defaultBbbDisablePrivateChat ?? false,
+            bbbDisablePublicChat: liveSessionSettings.defaultBbbDisablePublicChat ?? false,
+            bbbDisableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
+            bbbHideUserList: liveSessionSettings.defaultBbbHideUserList ?? false,
+            bbbEndWhenNoModerator: liveSessionSettings.defaultBbbEndWhenNoModerator ?? false,
             // Zoom meeting defaults (only used when platform = Zoom with an account).
             // Seeding them here means the Zoom settings panel and the step-2 DTO
             // builder both read the institute defaults without extra wiring.
@@ -432,6 +437,36 @@ export default function ScheduleStep1() {
         ) {
             form.setValue('bbbGuestPolicy', bbbGuestDefault);
         }
+        const snapBbbLockBool = (
+            name:
+                | 'bbbDisablePrivateChat'
+                | 'bbbDisablePublicChat'
+                | 'bbbDisableSharedNotes'
+                | 'bbbHideUserList'
+                | 'bbbEndWhenNoModerator',
+            def: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== def) {
+                form.setValue(name, def);
+            }
+        };
+        snapBbbLockBool(
+            'bbbDisablePrivateChat',
+            liveSessionSettings.defaultBbbDisablePrivateChat ?? false
+        );
+        snapBbbLockBool(
+            'bbbDisablePublicChat',
+            liveSessionSettings.defaultBbbDisablePublicChat ?? false
+        );
+        snapBbbLockBool(
+            'bbbDisableSharedNotes',
+            liveSessionSettings.defaultBbbDisableSharedNotes ?? false
+        );
+        snapBbbLockBool('bbbHideUserList', liveSessionSettings.defaultBbbHideUserList ?? false);
+        snapBbbLockBool(
+            'bbbEndWhenNoModerator',
+            liveSessionSettings.defaultBbbEndWhenNoModerator ?? false
+        );
     }, [
         liveSessionSettings.feedbackEnabled,
         liveSessionSettings.defaultFeedbackEnabled,
@@ -446,6 +481,11 @@ export default function ScheduleStep1() {
         liveSessionSettings.defaultBbbMuteOnStart,
         liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
         liveSessionSettings.defaultBbbGuestPolicy,
+        liveSessionSettings.defaultBbbDisablePrivateChat,
+        liveSessionSettings.defaultBbbDisablePublicChat,
+        liveSessionSettings.defaultBbbDisableSharedNotes,
+        liveSessionSettings.defaultBbbHideUserList,
+        liveSessionSettings.defaultBbbEndWhenNoModerator,
         isEdit,
         form,
     ]);
@@ -863,6 +903,11 @@ export default function ScheduleStep1() {
             bbbMuteOnStart: schedule.bbb_config?.mute_on_start ?? true,
             bbbWebcamsOnlyForModerator: schedule.bbb_config?.webcams_only_for_moderator ?? false,
             bbbGuestPolicy: (schedule.bbb_config?.guest_policy as 'ALWAYS_ACCEPT' | 'ASK_MODERATOR' | 'ALWAYS_DENY') ?? 'ALWAYS_ACCEPT',
+            bbbDisablePrivateChat: schedule.bbb_config?.disable_private_chat ?? false,
+            bbbDisablePublicChat: schedule.bbb_config?.disable_public_chat ?? false,
+            bbbDisableSharedNotes: schedule.bbb_config?.disable_shared_notes ?? false,
+            bbbHideUserList: schedule.bbb_config?.hide_user_list ?? false,
+            bbbEndWhenNoModerator: schedule.bbb_config?.end_when_no_moderator ?? false,
             feedbackEnabled: schedule.feedback_config?.enabled ?? false,
             feedbackCompulsory: schedule.feedback_config?.allow_skip === false,
             feedbackQuestions: schedule.feedback_config?.questions ?? DEFAULT_FEEDBACK_QUESTIONS,
@@ -2387,7 +2432,11 @@ export default function ScheduleStep1() {
             {/* BBB Meeting Configuration */}
             {isBbbPlatform && (
                 <div className="rounded-lg border border-primary-200 bg-primary-50/30 p-4">
-                    <h4 className="mb-3 text-sm font-semibold">Vacademy Meet Settings</h4>
+                    <h4 className="text-sm font-semibold">Vacademy Meet Settings</h4>
+                    <p className="mb-3 mt-0.5 text-xs text-neutral-500">
+                        Restrictions apply to participants only — the host always keeps full
+                        access.
+                    </p>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <FormField
                             control={control}
@@ -2436,7 +2485,7 @@ export default function ScheduleStep1() {
                                             className="size-4 rounded border-gray-300"
                                         />
                                     </FormControl>
-                                    <FormLabel className="text-sm font-normal">Mute participants on join</FormLabel>
+                                    <FormLabel className="text-sm font-normal">Mute participants when they join</FormLabel>
                                 </FormItem>
                             )}
                         />
@@ -2457,6 +2506,91 @@ export default function ScheduleStep1() {
                                 </FormItem>
                             )}
                         />
+                        <FormField
+                            control={control}
+                            name="bbbDisablePrivateChat"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants can&apos;t private message each other</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
+                            name="bbbDisablePublicChat"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants can&apos;t send messages in class chat</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
+                            name="bbbDisableSharedNotes"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants can&apos;t edit shared notes</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
+                            name="bbbHideUserList"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants can&apos;t see who else is in the class</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
+                            name="bbbEndWhenNoModerator"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">End class automatically after the host leaves</FormLabel>
+                                </FormItem>
+                            )}
+                        />
                     </div>
                     <div className="mt-3">
                         <FormField
@@ -2472,7 +2606,7 @@ export default function ScheduleStep1() {
                                             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:w-64"
                                         >
                                             <option value="ALWAYS_ACCEPT">Always accept</option>
-                                            <option value="ASK_MODERATOR">Ask moderator to approve</option>
+                                            <option value="ASK_MODERATOR">Ask host to approve</option>
                                             <option value="ALWAYS_DENY">Always deny guests</option>
                                         </select>
                                     </FormControl>

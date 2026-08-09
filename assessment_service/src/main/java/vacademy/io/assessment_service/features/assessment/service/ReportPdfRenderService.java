@@ -2,14 +2,20 @@ package vacademy.io.assessment_service.features.assessment.service;
 
 import com.itextpdf.html2pdf.ConverterProperties;
 import com.itextpdf.html2pdf.HtmlConverter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.service.render.ReportRenderResources;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 
 /**
  * HTML -> PDF for the standard branded student report. Nothing else: no I/O
@@ -22,19 +28,36 @@ import java.io.ByteArrayOutputStream;
  * ConverterProperties/FontProvider, prebuilt CSS) is added in PR3; this 3-arg
  * overload keeps working unchanged by building a default resources value
  * internally at that point.
+ *
+ * <p>Report v2: when {@code assessment.report.v2.enabled} is true (default),
+ * the HTML comes from {@link StudentReportHtmlV2Builder} — enriched with
+ * class analytics from {@link StudentReportAnalyticsService} and the
+ * assessment's evaluation type / schedule (fetched here, since neither is on
+ * the DTO chain). Any v2 failure falls back to the legacy
+ * {@link HtmlBuilderService} output so a release/export batch never dies on
+ * the new path.
  */
+@Slf4j
 @Service
 public class ReportPdfRenderService {
 
     @Autowired
     private HtmlBuilderService htmlBuilderService;
 
+    @Autowired
+    private StudentReportHtmlV2Builder studentReportHtmlV2Builder;
+
+    @Autowired
+    private StudentReportAnalyticsService studentReportAnalyticsService;
+
+    @Autowired
+    private AssessmentRepository assessmentRepository;
+
+    @Value("${assessment.report.v2.enabled:true}")
+    private boolean reportV2Enabled;
+
     public byte[] render(StudentReportOverallDetailDto detail, StudentComparisonDto comparison, ReportClassContext ctx) {
-        String html = htmlBuilderService.generateStudentReportHtml(
-                ctx.getAssessmentName(), detail, comparison, ctx.getOptionDistribution(), ctx.getBranding());
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        HtmlConverter.convertToPdf(html, out, new ConverterProperties());
-        return out.toByteArray();
+        return renderInternal(detail, comparison, ctx, null);
     }
 
     /**
@@ -46,11 +69,76 @@ public class ReportPdfRenderService {
      */
     public byte[] render(StudentReportOverallDetailDto detail, StudentComparisonDto comparison,
                           ReportClassContext ctx, ReportRenderResources resources) {
-        String html = htmlBuilderService.generateStudentReportHtml(
-                ctx.getAssessmentName(), detail, comparison, ctx.getOptionDistribution(), ctx.getBranding());
+        return renderInternal(detail, comparison, ctx, resources);
+    }
+
+    private byte[] renderInternal(StudentReportOverallDetailDto detail, StudentComparisonDto comparison,
+                                   ReportClassContext ctx, ReportRenderResources resources) {
+        String html = buildHtml(detail, comparison, ctx);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ConverterProperties props = resources != null ? resources.getConverterProperties() : new ConverterProperties();
         HtmlConverter.convertToPdf(html, out, props);
         return out.toByteArray();
+    }
+
+    private String buildHtml(StudentReportOverallDetailDto detail, StudentComparisonDto comparison,
+                              ReportClassContext ctx) {
+        if (reportV2Enabled) {
+            try {
+                return buildV2Html(detail, comparison, ctx);
+            } catch (Exception e) {
+                log.warn("[report-v2] Falling back to legacy report builder for assessment {}: {}",
+                        ctx.getAssessmentId(), e.getMessage(), e);
+            }
+        }
+        return htmlBuilderService.generateStudentReportHtml(
+                ctx.getAssessmentName(), detail, comparison, ctx.getOptionDistribution(), ctx.getBranding());
+    }
+
+    private String buildV2Html(StudentReportOverallDetailDto detail, StudentComparisonDto comparison,
+                                ReportClassContext ctx) {
+        Assessment assessment = ctx.getAssessmentId() != null
+                ? assessmentRepository.findById(ctx.getAssessmentId()).orElse(null)
+                : null;
+        String evaluationType = assessment != null ? assessment.getEvaluationType() : null;
+        boolean autoEvaluated = !"MANUAL".equalsIgnoreCase(evaluationType);
+
+        String attemptId = detail != null && detail.getQuestionOverallDetailDto() != null
+                ? detail.getQuestionOverallDetailDto().getAttemptId()
+                : null;
+        Double totalMarks = comparison != null && comparison.getTotalMarks() != null
+                ? comparison.getTotalMarks()
+                : ctx.getTotalMarks();
+
+        StudentReportAnalyticsService.StudentReportAnalytics analytics = studentReportAnalyticsService.compute(
+                ctx.getAssessmentId(), ctx.getInstituteId(), attemptId,
+                ctx.getFullLeaderboard(), detail, totalMarks, autoEvaluated);
+
+        return studentReportHtmlV2Builder.build(StudentReportHtmlV2Builder.Input.builder()
+                .assessmentName(ctx.getAssessmentName())
+                .reportDetail(detail)
+                .comparison(comparison)
+                .branding(ctx.getBranding())
+                .evaluationType(evaluationType)
+                .examDate(assessment != null ? assessment.getBoundStartTime() : null)
+                .assessmentDurationMinutes(assessment != null ? assessment.getDuration() : null)
+                .studentName(resolveStudentName(ctx.getFullLeaderboard(), attemptId))
+                .fullLeaderboard(ctx.getFullLeaderboard())
+                .sections(ctx.getSections())
+                .analytics(analytics)
+                .build());
+    }
+
+    /** The student's display name only exists on the cohort leaderboard rows — match by attempt id. */
+    private String resolveStudentName(List<LeaderBoardDto> leaderboard, String attemptId) {
+        if (leaderboard == null || attemptId == null) {
+            return null;
+        }
+        return leaderboard.stream()
+                .filter(row -> row != null && attemptId.equals(row.getAttemptId()))
+                .map(LeaderBoardDto::getStudentName)
+                .filter(name -> name != null && !name.isBlank())
+                .findFirst()
+                .orElse(null);
     }
 }

@@ -89,6 +89,13 @@ public class LiveSessionStep1RequestDTO {
         private Boolean muteOnStart;
         private Boolean webcamsOnlyForModerator;
         private String guestPolicy;
+        // Lock settings — restrict viewers (students) only; moderators are unaffected
+        private Boolean disablePrivateChat;
+        private Boolean disablePublicChat;
+        private Boolean disableSharedNotes;
+        private Boolean hideUserList;
+        // Auto-end the meeting shortly after the last moderator leaves
+        private Boolean endWhenNoModerator;
     }
 
     @Data

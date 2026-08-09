@@ -520,11 +520,9 @@ public class WorkflowBuilderService {
     private void persistTriggers(String workflowId, WorkflowBuilderDTO dto, Map<String, String[]> webhookByEventId) {
         if (!"EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) || dto.getTrigger() == null) return;
         WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
-        // See createWorkflow's original note: periodic-scan triggers need EVENT_BASED idempotency
-        // for cross-replica exactly-once; everything else is fine with a per-request UUID key.
-        String defaultIdempotencySettings = isPeriodicScanTrigger(trig.getTriggerEventName())
-                ? "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventType\":true,\"includeEventId\":true}"
-                : "{\"strategy\":\"UUID\"}";
+        // Default dedup strategy depends on how the event is emitted — see
+        // defaultIdempotencyFor. Explicit settings on the DTO still win (resolveIdempotencySettings).
+        String defaultIdempotencySettings = defaultIdempotencyFor(trig.getTriggerEventName());
         String idempotencySettings = resolveIdempotencySettings(trig, defaultIdempotencySettings);
         Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();
 
@@ -931,5 +929,45 @@ public class WorkflowBuilderService {
         return "LIVE_SESSION_END".equals(eventName)
                 || "LIVE_SESSION_START".equals(eventName)
                 || "MEMBERSHIP_EXPIRY".equals(eventName);
+    }
+
+    /**
+     * Default idempotency for a trigger event, used when the caller supplies none.
+     *
+     * <p>Three shapes, picked by how the event is emitted:
+     * <ul>
+     *   <li><b>EVENT_BASED</b> for periodic scans keyed by a per-recipient eventId
+     *       ({@link #isPeriodicScanTrigger}) — the key is trigger+type+eventId, so it
+     *       dedups exactly once per entity across replicas.</li>
+     *   <li><b>CONTEXT_BASED</b> for periodic scans that emit once per LEARNER but key eventId
+     *       to the parent entity. ASSESSMENT_REMINDER_BEFORE_START is emitted per registered
+     *       learner with eventId = assessmentId (so admins can still scope a trigger to one
+     *       assessment), which means EVENT_BASED would collapse an entire assessment's
+     *       reminders into a single execution and only the first learner would ever be
+     *       notified. Keying on assessmentId + userId keeps the per-learner fan-out while
+     *       reminding each learner exactly once per assessment.</li>
+     *   <li><b>UUID</b> for one-shot request handlers, which need no dedup.</li>
+     * </ul>
+     */
+    private static String defaultIdempotencyFor(String eventName) {
+        if (isPeriodicScanTrigger(eventName)) {
+            return "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventType\":true,\"includeEventId\":true}";
+        }
+        if ("ASSESSMENT_REMINDER_BEFORE_START".equals(eventName)) {
+            // CONTEXT_BASED, deliberately NOT CONTEXT_TIME_WINDOW. That strategy buckets on
+            // tumbling wall-clock windows (floor(now / ttl) * ttl), so any ttl short enough to
+            // allow a future second reminder stage is also short enough for two sweeps of the
+            // same "starting soon" assessment to land in adjacent buckets and re-notify the
+            // entire cohort. A reminder is a once-per-learner-per-assessment fact, which is
+            // exactly what CONTEXT_BASED expresses — with no boundary to straddle.
+            //
+            // includeTriggerId is stated explicitly (it already defaults to true) because the
+            // key depends on it: without the trigger id every trigger row on this event shares
+            // one key, and an institute running two reminder workflows — one email, one
+            // WhatsApp — would have the second rejected as a duplicate of the first.
+            return "{\"strategy\":\"CONTEXT_BASED\",\"includeTriggerId\":true,"
+                    + "\"contextFields\":[\"assessmentId\",\"userId\"]}";
+        }
+        return "{\"strategy\":\"UUID\"}";
     }
 }

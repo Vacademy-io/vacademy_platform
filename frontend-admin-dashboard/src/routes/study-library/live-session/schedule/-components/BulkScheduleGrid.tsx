@@ -335,6 +335,11 @@ export function BulkScheduleGrid() {
                 webcamsOnlyForModerator:
                     liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
                 guestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+                disablePrivateChat: liveSessionSettings.defaultBbbDisablePrivateChat ?? false,
+                disablePublicChat: liveSessionSettings.defaultBbbDisablePublicChat ?? false,
+                disableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
+                hideUserList: liveSessionSettings.defaultBbbHideUserList ?? false,
+                endWhenNoModerator: liveSessionSettings.defaultBbbEndWhenNoModerator ?? false,
                 defaultPlatform: initialPlatform,
                 defaultDescription: '',
             },
@@ -794,6 +799,39 @@ export function BulkScheduleGrid() {
         ) {
             form.setValue('sharedOptions.guestPolicy', bbbGuestDefault);
         }
+        const snapBbbLockBool = (
+            name:
+                | 'sharedOptions.disablePrivateChat'
+                | 'sharedOptions.disablePublicChat'
+                | 'sharedOptions.disableSharedNotes'
+                | 'sharedOptions.hideUserList'
+                | 'sharedOptions.endWhenNoModerator',
+            def: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== def) {
+                form.setValue(name, def);
+            }
+        };
+        snapBbbLockBool(
+            'sharedOptions.disablePrivateChat',
+            liveSessionSettings.defaultBbbDisablePrivateChat ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.disablePublicChat',
+            liveSessionSettings.defaultBbbDisablePublicChat ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.disableSharedNotes',
+            liveSessionSettings.defaultBbbDisableSharedNotes ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.hideUserList',
+            liveSessionSettings.defaultBbbHideUserList ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.endWhenNoModerator',
+            liveSessionSettings.defaultBbbEndWhenNoModerator ?? false
+        );
     }, [
         liveSessionSettings.feedbackEnabled,
         liveSessionSettings.defaultFeedbackEnabled,
@@ -808,6 +846,11 @@ export function BulkScheduleGrid() {
         liveSessionSettings.defaultBbbMuteOnStart,
         liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
         liveSessionSettings.defaultBbbGuestPolicy,
+        liveSessionSettings.defaultBbbDisablePrivateChat,
+        liveSessionSettings.defaultBbbDisablePublicChat,
+        liveSessionSettings.defaultBbbDisableSharedNotes,
+        liveSessionSettings.defaultBbbHideUserList,
+        liveSessionSettings.defaultBbbEndWhenNoModerator,
         form,
     ]);
 
@@ -968,6 +1011,11 @@ export function BulkScheduleGrid() {
                         ? shared.webcamsOnlyForModerator
                         : undefined,
                     bbbGuestPolicy: isBbb ? shared.guestPolicy : undefined,
+                    bbbDisablePrivateChat: isBbb ? shared.disablePrivateChat : undefined,
+                    bbbDisablePublicChat: isBbb ? shared.disablePublicChat : undefined,
+                    bbbDisableSharedNotes: isBbb ? shared.disableSharedNotes : undefined,
+                    bbbHideUserList: isBbb ? shared.hideUserList : undefined,
+                    bbbEndWhenNoModerator: isBbb ? shared.endWhenNoModerator : undefined,
                 };
                 const dto = transformFormToDTOStep1(
                     synthetic,
@@ -1703,7 +1751,7 @@ export function BulkScheduleGrid() {
                                     name="sharedOptions.muteOnStart"
                                     render={({ field }) => (
                                         <label className="flex items-center justify-between text-sm">
-                                            <span>Mute participants on join</span>
+                                            <span>Mute participants when they join</span>
                                             <Switch
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
@@ -1742,7 +1790,7 @@ export function BulkScheduleGrid() {
                                                         Always accept
                                                     </SelectItem>
                                                     <SelectItem value="ASK_MODERATOR">
-                                                        Ask moderator to approve
+                                                        Ask host to approve
                                                     </SelectItem>
                                                     <SelectItem value="ALWAYS_DENY">
                                                         Always deny guests
@@ -1754,6 +1802,80 @@ export function BulkScheduleGrid() {
                                 </div>
                             </div>
                         )}
+                        {/* Lock settings apply regardless of recording, so they sit
+                            outside the recordSession conditional above. */}
+                        <div className="mt-3 border-t border-neutral-200 pt-3">
+                            <div className="text-xs font-medium text-neutral-600">
+                                Participant restrictions — the host always keeps full access
+                            </div>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disablePrivateChat"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t private message each other</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disablePublicChat"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t send messages in class chat</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disableSharedNotes"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t edit shared notes</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.hideUserList"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t see who else is in the class</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.endWhenNoModerator"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>End class after the host leaves</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </SectionCard>

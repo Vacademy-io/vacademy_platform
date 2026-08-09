@@ -242,10 +242,14 @@ public class WorkflowCatalogController {
         eventMeta.put("FOLLOW_UP_OVERDUE", new String[]{"Follow-up Overdue", "Fires when a lead follow-up has crossed its SLA deadline", "CRM", "AUDIENCE"});
         eventMeta.put("LEAD_STATUS_CHANGED", new String[]{"Lead Status Changed", "Fires when a lead's status/tier changes (carries oldStatus and newStatus)", "CRM", "AUDIENCE"});
         // Assessment
-        eventMeta.put("ASSESSMENT_CREATE", new String[]{"Assessment Created", "Fires when a new assessment is created", "Assessment", "ASSESSMENT"});
-        eventMeta.put("ASSESSMENT_START", new String[]{"Assessment Started", "Fires when a student starts an assessment attempt", "Assessment", "ASSESSMENT"});
-        eventMeta.put("ASSESSMENT_END", new String[]{"Assessment Ended", "Fires when a student submits an assessment", "Assessment", "ASSESSMENT"});
-        eventMeta.put("ASSESSMENT_FORM_SUBMISSION", new String[]{"Assessment Form Submission", "Fires when an assessment registration form is submitted", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_CREATE", new String[]{"Assessment Created", "Fires when a new assessment is saved as a draft", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_PUBLISHED", new String[]{"Assessment Published", "Fires when an assessment goes from draft to published and becomes visible to learners", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_START", new String[]{"Assessment Started", "Fires when a student opens an assessment and an attempt is created", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_END", new String[]{"Assessment Ended", "Fires when a student's attempt ends — on submit, or when the timer expires (see endSource)", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_FORM_SUBMISSION", new String[]{"Assessment Form Submission", "Fires when someone registers through an assessment's public registration form", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_RESULT_RELEASED", new String[]{"Assessment Result Released", "Fires when a learner's result becomes visible to them, automatically or via manual release", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_REMINDER_BEFORE_START", new String[]{"Assessment Starting Soon", "Fires for each registered learner shortly before an assessment opens", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_REATTEMPT_GRANTED", new String[]{"Assessment Reattempt Granted", "Fires for each learner an admin grants extra attempts to", "Assessment", "ASSESSMENT"});
 
         List<CatalogItemDTO> events = new ArrayList<>();
         for (WorkflowTriggerEvent event : WorkflowTriggerEvent.values()) {
@@ -339,6 +343,113 @@ public class WorkflowCatalogController {
                 ctxVar("newStatus", "New status"),
                 ctxVar("conversionStatus", "Conversion status")));
 
+        // Assessment events. Emitted cross-service by assessment_service's
+        // AssessmentTriggerContextBuilder — these lists must stay in step with it, since
+        // this endpoint is what an admin picks notification tokens from.
+        List<Map<String, String>> assessment = new ArrayList<>(List.of(
+                ctxVar("instituteId", "Institute ID"),
+                ctxVar("assessmentId", "Assessment ID"),
+                ctxVar("assessmentName", "Assessment name"),
+                // playMode carries AssessmentModeEnum; assessmentType is a free-form label set
+                // from the create request, so do NOT document the enum value space against it —
+                // a condition written on those values would never match.
+                ctxVar("assessmentType", "Assessment type label set when the assessment was created"),
+                ctxVar("playMode", "Play mode (EXAM / MOCK / PRACTICE / SURVEY / ASSIGNMENT / MANUAL_UPLOAD)"),
+                ctxVar("evaluationType", "Evaluation type (AUTO / MANUAL / AI)"),
+                ctxVar("assessmentStatus", "Assessment status (DRAFT / PUBLISHED)"),
+                ctxVar("resultType", "Result release type"),
+                ctxVar("boundStartTime", "Assessment start time (ISO timestamp)"),
+                ctxVar("boundEndTime", "Assessment end time (ISO timestamp)"),
+                ctxVar("durationMinutes", "Duration in minutes"),
+                ctxVar("batchId", "Batch / package session ID (when the assessment has exactly one)"),
+                ctxVar("packageSessionId", "Package session ID (alias of batchId)"),
+                ctxVar("batchIds", "All batch IDs the assessment is registered to"),
+                ctxVar("packageSessionIds", "All package session IDs (alias of batchIds)")));
+
+        // Learner-scoped events add the attempt and the student behind it. Keys the builder
+        // omits when null are NOT listed for an event that cannot have them yet — an admin
+        // picking a token here must get a value, not an empty string.
+        List<Map<String, String>> attemptStart = new ArrayList<>(assessment);
+        attemptStart.addAll(List.of(
+                ctxVar("attemptId", "Attempt ID"),
+                ctxVar("attemptNumber", "Attempt number"),
+                ctxVar("attemptStatus", "Attempt status (PREVIEW / LIVE / ENDED)"),
+                ctxVar("startTime", "Attempt start time (ISO timestamp)"),
+                ctxVar("registrationId", "Registration ID"),
+                ctxVar("userId", "Learner user ID"),
+                ctxVar("studentName", "Learner name"),
+                ctxVar("studentEmail", "Learner email"),
+                ctxVar("studentMobile", "Learner mobile"),
+                ctxVar("username", "Learner username")));
+
+        // Only once the attempt is over do submitTime / totalTimeInSeconds exist.
+        List<Map<String, String>> attempt = new ArrayList<>(attemptStart);
+        attempt.addAll(List.of(
+                ctxVar("submitTime", "Attempt submit time (ISO timestamp)"),
+                ctxVar("totalTimeInSeconds", "Time taken in seconds")));
+
+        List<Map<String, String>> attemptEnd = new ArrayList<>(attempt);
+        attemptEnd.add(ctxVar("endSource", "How the attempt ended (SUBMITTED / TIME_EXPIRED)"));
+
+        // Result events add scoring on top of the attempt keys.
+        List<Map<String, String>> result = new ArrayList<>(attempt);
+        result.addAll(List.of(
+                ctxVar("marks", "Marks scored"),
+                ctxVar("totalMarks", "Total achievable marks"),
+                ctxVar("percentage", "Percentage scored"),
+                ctxVar("resultStatus", "Result status"),
+                ctxVar("reportReleaseStatus", "Report release status"),
+                ctxVar("reportPdfFileId", "Generated report PDF file ID")));
+        // rank / percentile are intentionally NOT advertised. AssessmentTriggerContextBuilder
+        // can carry them, but no emit site computes them today, so listing them would offer an
+        // admin a token that always resolves empty. Add them here the day a call site fills
+        // them in — not before.
+
+        // Registration form submissions carry the registrant, but no attempt yet.
+        List<Map<String, String>> formSubmission = new ArrayList<>(assessment);
+        formSubmission.addAll(List.of(
+                ctxVar("registrationId", "Registration ID"),
+                ctxVar("userId", "Registrant user ID"),
+                ctxVar("studentName", "Registrant name"),
+                ctxVar("studentEmail", "Registrant email"),
+                ctxVar("studentMobile", "Registrant mobile"),
+                ctxVar("username", "Registrant username"),
+                ctxVar("registrationSource", "Registration source (e.g. OPEN_REGISTRATION)")));
+
+        // Learner identity without an attempt — these events are per-learner but fire before
+        // (reminder) or outside (reattempt grant) any single attempt.
+        List<Map<String, String>> assessmentLearner = new ArrayList<>(assessment);
+        assessmentLearner.addAll(List.of(
+                ctxVar("registrationId", "Registration ID"),
+                ctxVar("userId", "Learner user ID"),
+                ctxVar("studentName", "Learner name"),
+                ctxVar("studentEmail", "Learner email"),
+                ctxVar("studentMobile", "Learner mobile"),
+                ctxVar("username", "Learner username")));
+
+        List<Map<String, String>> reminder = new ArrayList<>(assessmentLearner);
+        reminder.addAll(List.of(
+                ctxVar("minutesToStart", "Minutes until this assessment opens"),
+                ctxVar("reminderWindowMinutes", "Look-ahead window of the reminder sweep")));
+
+        List<Map<String, String>> reattemptGranted = new ArrayList<>(assessmentLearner);
+        reattemptGranted.addAll(List.of(
+                ctxVar("attemptsGranted", "How many attempts this grant added"),
+                ctxVar("attemptsAllowed", "Total attempts the learner is now allowed"),
+                ctxVar("attemptsRemaining", "Attempts left (allowed minus attempts already taken)"),
+                ctxVar("grantedBy", "User ID of the admin who granted them")));
+
+        // ASSESSMENT_CREATE fires on the very first save of a brand-new draft row, before any
+        // batch is registered to it, so the batch tokens are always absent there. Offering
+        // them would hand an admin a token that is guaranteed empty for this event.
+        List<Map<String, String>> assessmentCreated = new ArrayList<>(assessment.stream()
+                .filter(v -> !BATCH_KEYS.contains(v.get("key")))
+                .toList());
+        assessmentCreated.add(ctxVar("createdBy", "User ID of the admin who created it"));
+
+        List<Map<String, String>> assessmentPublished = new ArrayList<>(assessment);
+        assessmentPublished.add(ctxVar("publishedBy", "User ID of the admin who published it"));
+
         Map<String, List<Map<String, String>>> out = new LinkedHashMap<>();
         out.put(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), base);
         out.put(WorkflowTriggerEvent.LEAD_TAT_REMINDER_BEFORE.name(), sla);
@@ -346,8 +457,20 @@ public class WorkflowCatalogController {
         out.put(WorkflowTriggerEvent.FOLLOW_UP_DUE.name(), sla);
         out.put(WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(), sla);
         out.put(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), status);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_CREATE.name(), assessmentCreated);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_PUBLISHED.name(), assessmentPublished);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_START.name(), attemptStart);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_END.name(), attemptEnd);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_FORM_SUBMISSION.name(), formSubmission);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_RESULT_RELEASED.name(), result);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_REMINDER_BEFORE_START.name(), reminder);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_REATTEMPT_GRANTED.name(), reattemptGranted);
         return ResponseEntity.ok(out);
     }
+
+    /** Batch/package-session tokens, absent on events that fire before any batch is attached. */
+    private static final List<String> BATCH_KEYS =
+            List.of("batchId", "packageSessionId", "batchIds", "packageSessionIds");
 
     private static Map<String, String> ctxVar(String key, String label) {
         Map<String, String> m = new LinkedHashMap<>();

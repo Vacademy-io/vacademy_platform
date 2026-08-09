@@ -33,8 +33,14 @@ import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
+import { getInstituteId } from "@/constants/helper";
+import {
+  handleGetMyMentors,
+  type MyMentor,
+} from "@/routes/my-mentors/-services/my-mentors-service";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
   SquaresFour,
@@ -121,14 +127,25 @@ export const MySidebar = ({
 
   const { permissions } = useStudentPermissions();
   const isIOS = useIsIOS();
-  const [filteredSidebarItems, setFilteredSidebarItems] = useState<
-    SidebarItemsType[]
+  const [configuredTabs, setConfiguredTabs] = useState<
+    StudentSidebarTabConfig[]
   >([]);
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
   const [studentData, setStudentData] = useState<Student | null>(null);
+  // Whether the institute's chat FEATURE is on (independent of the In-App
+  // Messages tab's visibility) — gates the per-mentor chat entries.
+  const [chatFeatureEnabled, setChatFeatureEnabled] = useState(false);
+
+  // The learner's assigned mentors drive the My Mentors tab (see
+  // ensureMentorTab). Shares the widget's query cache key.
+  const [instituteId, setInstituteId] = useState<string | undefined>();
+  useEffect(() => {
+    getInstituteId().then((id) => setInstituteId(id ?? undefined));
+  }, []);
+  const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
 
   // Identity footer: read the logged-in learner from Preferences (same
   // storage the hamburger sheet uses) so the sidebar can show who is
@@ -221,9 +238,16 @@ export const MySidebar = ({
                   SystemTerms.LiveSession
                 );
               }
+              // Routes may carry a query string (e.g. /my-mentors?chat=<userId>
+              // for the per-mentor chat entries); TanStack Link needs the
+              // search params separated from the pathname.
+              const [path, query] = (s.route || "/").split("?");
               return {
                 subItem: subLabel || humanizeText(s.id),
-                subItemLink: s.route || "/",
+                subItemLink: path || "/",
+                subItemSearch: query
+                  ? Object.fromEntries(new URLSearchParams(query))
+                  : undefined,
               };
             })
           : undefined;
@@ -270,6 +294,90 @@ export const MySidebar = ({
     return next;
   };
 
+  // The My Mentors tab is data-driven: the moment the learner actually has a
+  // mentor assigned, surface the tab even if the institute's display settings
+  // leave it hidden (the default), so the learner can find and contact their
+  // mentor without any admin configuration. Each mentor gets their own
+  // sub-entry that opens their chat directly (/my-mentors?chat=<userId>); an
+  // admin-customised label always wins. Learners with no mentors keep whatever
+  // the admin configured (hidden by default — the page has its own empty state).
+  const ensureMentorTab = (
+    tabs: StudentSidebarTabConfig[],
+    mentors: MyMentor[],
+    chatOn: boolean
+  ): StudentSidebarTabConfig[] => {
+    if (mentors.length === 0) return tabs;
+    const soleMentorName =
+      mentors.length === 1
+        ? (mentors[0]?.display_name || mentors[0]?.name || "").trim()
+        : "";
+    const mentorLabel = soleMentorName
+      ? `Mentor · ${soleMentorName.split(/\s+/)[0]}`
+      : "My Mentors";
+    // One chat entry per mentor (capped so a big list can't flood the rail),
+    // after an "All mentors" entry for the full page with booking. When the
+    // institute's chat feature is OFF the chat entries would be dead links, so
+    // the tab collapses to a plain link (booking still works there).
+    const mentorSubTabs = chatOn
+      ? [
+          {
+            id: "my-mentors-all",
+            label: "All mentors",
+            route: "/my-mentors",
+            order: 1,
+            visible: true,
+          },
+          ...mentors.slice(0, 6).map((m, i) => ({
+            id: `my-mentor-chat-${m.user_id}`,
+            label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
+            // Opens the full In-App Messages screen with this mentor's
+            // conversation selected (resolved by /chat's ?dm= handling).
+            route: `/chat?dm=${encodeURIComponent(m.user_id)}`,
+            order: i + 2,
+            visible: true,
+          })),
+        ]
+      : undefined;
+    const next = tabs.slice();
+    const existingIndex = next.findIndex((t) => t.id === "my-mentors");
+    if (existingIndex >= 0) {
+      const existing = next[existingIndex] as StudentSidebarTabConfig;
+      next[existingIndex] = {
+        ...existing,
+        visible: true,
+        label: existing.label || mentorLabel,
+        subTabs: mentorSubTabs,
+      };
+      return next;
+    }
+    const chatIndex = next.findIndex((t) => t.id === "chat");
+    const dashboardIndex = next.findIndex((t) => t.id === "dashboard");
+    const insertAt =
+      chatIndex >= 0
+        ? chatIndex + 1
+        : dashboardIndex >= 0
+          ? dashboardIndex + 1
+          : next.length;
+    next.splice(insertAt, 0, {
+      id: "my-mentors",
+      label: mentorLabel,
+      route: "/my-mentors",
+      order: 0,
+      visible: true,
+      subTabs: mentorSubTabs,
+    });
+    return next;
+  };
+
+  const filteredSidebarItems = useMemo(
+    () =>
+      transformTabsToSidebarItems(
+        ensureMentorTab(configuredTabs, myMentorsQuery.data ?? [], chatFeatureEnabled)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [configuredTabs, myMentorsQuery.data, chatFeatureEnabled]
+  );
+
   useEffect(() => {
     // Load display settings + chat-enabled flag and compute sidebar items.
     // getChatEnabled fails closed (chat hidden) when the flag is
@@ -278,11 +386,10 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
-        const tabs = ensureChatTab(
-          (settings?.sidebar?.tabs || []).slice(),
-          chatEnabled
+        setChatFeatureEnabled(chatEnabled);
+        setConfiguredTabs(
+          ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
         );
-        setFilteredSidebarItems(transformTabsToSidebarItems(tabs));
       }
     );
 

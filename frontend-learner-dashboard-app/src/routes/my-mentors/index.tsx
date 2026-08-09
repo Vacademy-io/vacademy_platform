@@ -10,6 +10,11 @@ import { MentorCard } from "./-components/MentorCard";
 import { MentorChatSheet } from "./-components/MentorChatSheet";
 
 export const Route = createFileRoute("/my-mentors/")({
+    // ?chat=<mentor user id> opens that mentor's chat drawer directly — the
+    // sidebar's per-mentor entries deep-link here.
+    validateSearch: (search: Record<string, unknown>): { chat?: string } => ({
+        chat: typeof search.chat === "string" && search.chat ? search.chat : undefined,
+    }),
     component: MyMentorsRoute,
 });
 
@@ -25,6 +30,8 @@ function MyMentorsPage() {
     const [instituteId, setInstituteId] = useState<string | undefined>();
     // Mentor whose chat drawer is open — chat happens without leaving this page.
     const [chatMentor, setChatMentor] = useState<MyMentor | null>(null);
+    const { chat } = Route.useSearch();
+    const navigate = Route.useNavigate();
 
     useEffect(() => {
         getInstituteId().then((id) => setInstituteId(id ?? undefined));
@@ -32,6 +39,16 @@ function MyMentorsPage() {
 
     const { data, isLoading, isError, refetch } = useQuery(handleGetMyMentors(instituteId));
     const mentors = data ?? [];
+
+    // Sidebar deep link: open the requested mentor's chat, then drop the param
+    // so closing the drawer doesn't reopen it.
+    useEffect(() => {
+        if (!chat || mentors.length === 0) return;
+        const target = mentors.find((m) => m.user_id === chat);
+        if (target) setChatMentor(target);
+        navigate({ search: {}, replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chat, mentors]);
 
     return (
         <div className="flex flex-col gap-6 p-4 sm:p-6">

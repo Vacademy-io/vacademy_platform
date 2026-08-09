@@ -64,7 +64,11 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                                         "[.ui-play_&]:rounded-lg [.ui-play_&]:data-[active=true]:bg-play-highlight [.ui-play_&]:data-[active=true]:text-play-ink"
                                     )}
                                 >
-                                    <Link to={item.subItemLink} onClick={onClick}>
+                                    <Link
+                                        to={item.subItemLink}
+                                        search={item.subItemSearch}
+                                        onClick={onClick}
+                                    >
                                         <span className="truncate">{item.subItem}</span>
                                     </Link>
                                 </SidebarMenuSubButton>

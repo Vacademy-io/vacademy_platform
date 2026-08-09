@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.mentorship.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -166,20 +168,33 @@ public class MentorAssignmentService {
         if (rows.isEmpty()) return List.of();
         Map<String, UserDTO> users = hydrate(rows.stream()
                 .map(MentorStudentAssignment::getStudentUserId).collect(Collectors.toList()));
-        return rows.stream().map(a -> {
-            UserDTO u = users.get(a.getStudentUserId());
-            return MenteeDTO.builder()
-                    .assignmentId(a.getId())
-                    .mentorId(a.getMentorId())
-                    .studentUserId(a.getStudentUserId())
-                    .packageSessionId(a.getPackageSessionId())
-                    .assignmentMethod(a.getAssignmentMethod())
-                    .name(u != null ? u.getFullName() : null)
-                    .email(u != null ? u.getEmail() : null)
-                    .mobileNumber(u != null ? u.getMobileNumber() : null)
-                    .profilePicFileId(u != null ? u.getProfilePicFileId() : null)
-                    .build();
-        }).collect(Collectors.toList());
+        return rows.stream().map(a -> toMenteeDTO(a, users)).collect(Collectors.toList());
+    }
+
+    /** Paginated "my mentees"; identity hydration is per-page. */
+    public Page<MenteeDTO> menteesForMentorPaged(String instituteId, String mentorUserId,
+                                                 int pageNo, int pageSize) {
+        Page<MentorStudentAssignment> page = assignmentRepository.findByInstituteIdAndMentorUserIdAndStatus(
+                instituteId, mentorUserId, MentorStatus.ACTIVE.name(),
+                PageRequest.of(Math.max(0, pageNo), Math.min(Math.max(1, pageSize), 100)));
+        Map<String, UserDTO> users = hydrate(page.getContent().stream()
+                .map(MentorStudentAssignment::getStudentUserId).collect(Collectors.toList()));
+        return page.map(a -> toMenteeDTO(a, users));
+    }
+
+    private static MenteeDTO toMenteeDTO(MentorStudentAssignment a, Map<String, UserDTO> users) {
+        UserDTO u = users.get(a.getStudentUserId());
+        return MenteeDTO.builder()
+                .assignmentId(a.getId())
+                .mentorId(a.getMentorId())
+                .studentUserId(a.getStudentUserId())
+                .packageSessionId(a.getPackageSessionId())
+                .assignmentMethod(a.getAssignmentMethod())
+                .name(u != null ? u.getFullName() : null)
+                .email(u != null ? u.getEmail() : null)
+                .mobileNumber(u != null ? u.getMobileNumber() : null)
+                .profilePicFileId(u != null ? u.getProfilePicFileId() : null)
+                .build();
     }
 
     /** Mentors assigned to the calling student. */

@@ -37,7 +37,15 @@ import {
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
-import { useDeleteMentor, useMentorDashboard, useProvisionBookingPage } from '../-hooks/use-mentorship';
+import {
+    useDeleteMentor,
+    useMentorDashboard,
+    useMentorsPaged,
+    useProvisionBookingPage,
+} from '../-hooks/use-mentorship';
+import { MyPagination } from '@/components/design-system/pagination';
+
+const MENTORS_PAGE_SIZE = 20;
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
@@ -64,6 +72,10 @@ function MentorsPage() {
 
     const instituteId = getInstituteId();
     const { data, isLoading, isError, refetch } = useMentorDashboard(instituteId);
+    // The visible list is paginated; the dashboard keeps stats + the full list for dialogs.
+    const [page, setPage] = useState(0);
+    const mentorsPage = useMentorsPaged(instituteId, page, MENTORS_PAGE_SIZE);
+    const pagedMentors = mentorsPage.data?.content ?? [];
     const deleteMentor = useDeleteMentor();
     const provisionBooking = useProvisionBookingPage();
 
@@ -169,7 +181,7 @@ function MentorsPage() {
                 />
             </div>
 
-            {isLoading ? (
+            {isLoading || mentorsPage.isLoading ? (
                 <div className="flex flex-col gap-3">
                     {[1, 2, 3].map((i) => (
                         <div
@@ -187,21 +199,29 @@ function MentorsPage() {
                         </div>
                     ))}
                 </div>
-            ) : isError ? (
+            ) : isError || mentorsPage.isError ? (
                 <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                     <div className="flex items-center gap-2">
                         <WarningCircle size={18} weight="fill" className="text-danger-600" />
                         <p className="text-body text-danger-600">Couldn&apos;t load mentors.</p>
                     </div>
-                    <MyButton type="button" buttonType="secondary" scale="small" onClick={() => refetch()}>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => {
+                            refetch();
+                            mentorsPage.refetch();
+                        }}
+                    >
                         Retry
                     </MyButton>
                 </div>
-            ) : mentors.length === 0 ? (
+            ) : (mentorsPage.data?.total_elements ?? 0) === 0 ? (
                 <EmptyMentors onAdd={() => setAddOpen(true)} />
             ) : (
                 <div className="flex flex-col gap-3">
-                    {mentors.map((m) => (
+                    {pagedMentors.map((m) => (
                         <div
                             key={m.id}
                             className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
@@ -305,6 +325,13 @@ function MentorsPage() {
                             </div>
                         </div>
                     ))}
+                    {(mentorsPage.data?.total_pages ?? 0) > 1 && (
+                        <MyPagination
+                            currentPage={page}
+                            totalPages={mentorsPage.data?.total_pages ?? 1}
+                            onPageChange={setPage}
+                        />
+                    )}
                 </div>
             )}
 

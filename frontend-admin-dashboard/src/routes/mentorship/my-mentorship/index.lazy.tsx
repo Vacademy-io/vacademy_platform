@@ -20,7 +20,10 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { createDirectConversation } from '@/services/chat/chatApi';
-import { useMyMentees, useMyMentorProfile } from '../-hooks/use-mentorship';
+import { useMyMenteesPaged, useMyMentorProfile } from '../-hooks/use-mentorship';
+import { MyPagination } from '@/components/design-system/pagination';
+
+const MENTEES_PAGE_SIZE = 20;
 import { initiateMyGoogle } from '../-services/mentorship-service';
 import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
@@ -53,14 +56,19 @@ function MyMentorshipPage() {
 
     const navigate = useNavigate();
     const instituteId = getInstituteId();
-    const { data, isLoading, isError, refetch } = useMyMentees(instituteId);
+    const [menteePage, setMenteePage] = useState(0);
+    const { data, isLoading, isError, refetch } = useMyMenteesPaged(
+        instituteId,
+        menteePage,
+        MENTEES_PAGE_SIZE
+    );
     const profileQuery = useMyMentorProfile(instituteId);
     const [messagingId, setMessagingId] = useState<string | null>(null);
     const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
-    const mentees = data ?? [];
+    const mentees = data?.content ?? [];
     const profile = profileQuery.data;
 
     const connectGoogle = async () => {
@@ -239,7 +247,7 @@ function MyMentorshipPage() {
                     Mentees
                     {!isLoading && !isError && (
                         <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-500">
-                            {mentees.length}
+                            {data?.total_elements ?? mentees.length}
                         </span>
                     )}
                 </h3>
@@ -274,7 +282,7 @@ function MyMentorshipPage() {
                         Retry
                     </MyButton>
                 </div>
-            ) : mentees.length === 0 ? (
+            ) : (data?.total_elements ?? 0) === 0 ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
                     <div className="flex flex-col gap-1">
@@ -327,6 +335,13 @@ function MyMentorshipPage() {
                             </div>
                         </div>
                     ))}
+                    {(data?.total_pages ?? 0) > 1 && (
+                        <MyPagination
+                            currentPage={menteePage}
+                            totalPages={data?.total_pages ?? 1}
+                            onPageChange={setMenteePage}
+                        />
+                    )}
                 </div>
             )}
 

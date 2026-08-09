@@ -8,8 +8,10 @@ import {
     fetchDashboard,
     fetchMenteeCalls,
     fetchMentors,
+    fetchMentorsPaged,
     fetchMyBookingPage,
     fetchMyMentees,
+    fetchMyMenteesPaged,
     fetchMyMentorProfile,
     fetchMySchedule,
     fetchStudentTimeline,
@@ -76,10 +78,30 @@ export const useMentors = (instituteId: string | undefined) =>
         staleTime: 30 * 1000,
     });
 
+export const useMentorsPaged = (instituteId: string | undefined, pageNo: number, pageSize: number) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.mentors, instituteId, 'paged', pageNo, pageSize],
+        queryFn: () => fetchMentorsPaged(instituteId ?? '', pageNo, pageSize),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
 export const useMyMentees = (instituteId: string | undefined) =>
     useQuery({
         queryKey: [MENTORSHIP_KEYS.myMentees, instituteId],
         queryFn: () => fetchMyMentees(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+export const useMyMenteesPaged = (
+    instituteId: string | undefined,
+    pageNo: number,
+    pageSize: number
+) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.myMentees, instituteId, 'paged', pageNo, pageSize],
+        queryFn: () => fetchMyMenteesPaged(instituteId ?? '', pageNo, pageSize),
         enabled: !!instituteId,
         staleTime: 30 * 1000,
     });

@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { ArrowSquareOut, CalendarBlank, Envelope, User, WarningCircle } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { MyButton } from '@/components/design-system/button';
@@ -24,10 +25,18 @@ const bookingTitle = (booking: BookingInstanceDTO): string =>
 const MeetingRow = ({ booking, showHost }: { booking: BookingInstanceDTO; showHost: boolean }) => {
     const start = parseUtc(booking.scheduled_start_utc);
     const end = parseUtc(booking.scheduled_end_utc);
+    const cancelled = booking.status === 'CANCELLED';
+    // The title is often the invitee's name already — don't repeat it below.
+    const showInvitee = !!booking.invitee_name && booking.invitee_name !== bookingTitle(booking);
 
     return (
-        <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
+        <div
+            className={cn(
+                'flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between',
+                cancelled && 'bg-neutral-50'
+            )}
+        >
+            <div className={cn('flex min-w-0 items-start gap-3', cancelled && 'opacity-60')}>
                 <div className="flex w-24 shrink-0 flex-col text-body text-neutral-600">
                     <span className="font-semibold text-neutral-700">
                         {format(start, 'h:mm a')}
@@ -42,13 +51,18 @@ const MeetingRow = ({ booking, showHost }: { booking: BookingInstanceDTO; showHo
                         {showHost && booking.host_name && (
                             <span className="flex items-center gap-1">
                                 <User className="size-3.5" />
-                                {booking.host_name}
+                                Hosted by{' '}
+                                <span className="font-medium text-neutral-600">
+                                    {booking.host_name}
+                                </span>
                             </span>
                         )}
-                        {booking.invitee_name && (
+                        {showInvitee && (
                             <span className="flex items-center gap-1">
-                                <User className="size-3.5" />
-                                {booking.invitee_name}
+                                with{' '}
+                                <span className="font-medium text-neutral-600">
+                                    {booking.invitee_name}
+                                </span>
                             </span>
                         )}
                         {booking.invitee_email && (
@@ -66,7 +80,7 @@ const MeetingRow = ({ booking, showHost }: { booking: BookingInstanceDTO; showHo
                     status={statusToChip(booking.status)}
                     textSize="text-caption"
                 />
-                {booking.meet_link && (
+                {booking.meet_link && !cancelled && (
                     <MyButton
                         type="button"
                         buttonType="secondary"

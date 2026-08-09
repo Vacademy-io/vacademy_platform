@@ -141,6 +141,13 @@ public interface InstitutePulseRepository extends JpaRepository<StudentAttempt, 
      *
      * <p>A NULL {@code server_last_sync} is treated as stalled — the attempt is LIVE but the
      * server has never heard from the client.
+     *
+     * <p><b>MANUAL (pen-and-paper) assessments get a different stall rule.</b> Learners on these
+     * tests legitimately background the app for an hour-plus while writing on paper, so "no sync
+     * for {@code stalledSeconds}" would flag most of the cohort mid-test (observed 18 of 21 on
+     * 2026-08-08). For them, silence only becomes a risk once the learner is inside the last
+     * {@code manualReturnSeconds} of their personal clock and still hasn't reconnected to upload
+     * — the moment an admin can actually act on. AUTO/typed assessments keep the original rule.
      */
     @Query(value = """
             SELECT sa.id           AS attemptId,
@@ -161,10 +168,17 @@ public interface InstitutePulseRepository extends JpaRepository<StudentAttempt, 
                       SELECT 1 FROM assessment_batch_registration abr
                       WHERE abr.assessment_id = a.id AND abr.batch_id = :batchId))
               AND (
-                    sa.server_last_sync IS NULL
-                 OR now() - sa.server_last_sync > make_interval(secs => :stalledSeconds)
-                 OR sa.start_time + make_interval(mins => sa.max_time) - now()
+                    sa.start_time + make_interval(mins => sa.max_time) - now()
                         < make_interval(secs => :autoSubmitSeconds)
+                 OR (
+                        (sa.server_last_sync IS NULL
+                         OR now() - sa.server_last_sync > make_interval(secs => :stalledSeconds))
+                    AND (
+                            a.evaluation_type IS DISTINCT FROM 'MANUAL'
+                         OR sa.start_time + make_interval(mins => sa.max_time) - now()
+                                < make_interval(secs => :manualReturnSeconds)
+                        )
+                    )
               )
             ORDER BY secondsRemaining ASC NULLS LAST
             LIMIT :limitCount
@@ -173,6 +187,7 @@ public interface InstitutePulseRepository extends JpaRepository<StudentAttempt, 
                                                 @Param("batchId") String batchId,
                                                 @Param("stalledSeconds") long stalledSeconds,
                                                 @Param("autoSubmitSeconds") long autoSubmitSeconds,
+                                                @Param("manualReturnSeconds") long manualReturnSeconds,
                                                 @Param("limitCount") int limitCount);
 
     /**

@@ -1,22 +1,21 @@
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarPlus, ChatCircle } from "@phosphor-icons/react";
-import { toast } from "sonner";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard, ModernCardContent } from "@/components/design-system/modern-card";
-import { openDirectConversation } from "@/services/chat/chatApi";
 import type { MyMentor } from "../-services/my-mentors-service";
 import { MentorAvatar } from "./MentorAvatar";
 
 export function MentorCard({
     mentor,
     instituteId,
+    onMessage,
 }: {
     mentor: MyMentor;
     instituteId: string | undefined;
+    /** Open the in-place chat drawer for this mentor. */
+    onMessage: (mentor: MyMentor) => void;
 }) {
     const navigate = useNavigate();
-    const [messaging, setMessaging] = useState(false);
     const canBook = !!mentor.booking_page_slug && !!instituteId;
 
     const book = () => {
@@ -25,22 +24,6 @@ export function MentorCard({
             to: "/booking-response",
             search: { instituteId, slug: mentor.booking_page_slug, authed: "1" },
         });
-    };
-
-    const message = async () => {
-        setMessaging(true);
-        try {
-            const conv = await openDirectConversation({
-                targetUserId: mentor.user_id,
-                targetUserName: mentor.name ?? undefined,
-                targetUserRole: "TEACHER",
-            });
-            navigate({ to: "/chat", search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
-        } finally {
-            setMessaging(false);
-        }
     };
 
     return (
@@ -85,8 +68,7 @@ export function MentorCard({
                                 type="button"
                                 buttonType="secondary"
                                 scale="medium"
-                                onClick={message}
-                                disable={messaging}
+                                onClick={() => onMessage(mentor)}
                                 className="flex-1"
                             >
                                 <ChatCircle size={16} /> Message

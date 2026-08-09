@@ -135,6 +135,9 @@ export const MySidebar = ({
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
   const [studentData, setStudentData] = useState<Student | null>(null);
+  // Whether the institute's chat FEATURE is on (independent of the In-App
+  // Messages tab's visibility) — gates the per-mentor chat entries.
+  const [chatFeatureEnabled, setChatFeatureEnabled] = useState(false);
 
   // The learner's assigned mentors drive the My Mentors tab (see
   // ensureMentorTab). Shares the widget's query cache key.
@@ -300,7 +303,8 @@ export const MySidebar = ({
   // the admin configured (hidden by default — the page has its own empty state).
   const ensureMentorTab = (
     tabs: StudentSidebarTabConfig[],
-    mentors: MyMentor[]
+    mentors: MyMentor[],
+    chatOn: boolean
   ): StudentSidebarTabConfig[] => {
     if (mentors.length === 0) return tabs;
     const soleMentorName =
@@ -311,23 +315,27 @@ export const MySidebar = ({
       ? `Mentor · ${soleMentorName.split(/\s+/)[0]}`
       : "My Mentors";
     // One chat entry per mentor (capped so a big list can't flood the rail),
-    // after an "All mentors" entry for the full page with booking.
-    const mentorSubTabs = [
-      {
-        id: "my-mentors-all",
-        label: "All mentors",
-        route: "/my-mentors",
-        order: 1,
-        visible: true,
-      },
-      ...mentors.slice(0, 6).map((m, i) => ({
-        id: `my-mentor-chat-${m.user_id}`,
-        label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
-        route: `/my-mentors?chat=${encodeURIComponent(m.user_id)}`,
-        order: i + 2,
-        visible: true,
-      })),
-    ];
+    // after an "All mentors" entry for the full page with booking. When the
+    // institute's chat feature is OFF the chat entries would be dead links, so
+    // the tab collapses to a plain link (booking still works there).
+    const mentorSubTabs = chatOn
+      ? [
+          {
+            id: "my-mentors-all",
+            label: "All mentors",
+            route: "/my-mentors",
+            order: 1,
+            visible: true,
+          },
+          ...mentors.slice(0, 6).map((m, i) => ({
+            id: `my-mentor-chat-${m.user_id}`,
+            label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
+            route: `/my-mentors?chat=${encodeURIComponent(m.user_id)}`,
+            order: i + 2,
+            visible: true,
+          })),
+        ]
+      : undefined;
     const next = tabs.slice();
     const existingIndex = next.findIndex((t) => t.id === "my-mentors");
     if (existingIndex >= 0) {
@@ -362,10 +370,10 @@ export const MySidebar = ({
   const filteredSidebarItems = useMemo(
     () =>
       transformTabsToSidebarItems(
-        ensureMentorTab(configuredTabs, myMentorsQuery.data ?? [])
+        ensureMentorTab(configuredTabs, myMentorsQuery.data ?? [], chatFeatureEnabled)
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [configuredTabs, myMentorsQuery.data]
+    [configuredTabs, myMentorsQuery.data, chatFeatureEnabled]
   );
 
   useEffect(() => {
@@ -376,6 +384,7 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
+        setChatFeatureEnabled(chatEnabled);
         setConfiguredTabs(
           ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
         );

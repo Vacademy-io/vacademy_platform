@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.Top3CorrectResponseDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionClassStatsDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionStatusDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 
@@ -294,4 +295,32 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             ORDER BY aur.user_id, sa.start_time DESC;
             """, nativeQuery = true)
     List<String> findDistinctAttemptIdsForAssessment(@Param("assessmentId") String assessmentId);
+
+    /**
+     * Per-question class-wide stats for the v2 student report (easy misses /
+     * expertise / potential): for every question of the assessment, how many
+     * cohort rows exist and how many of them are CORRECT
+     * (question_wise_marks.status values are QuestionResponseEnum: CORRECT /
+     * INCORRECT / PARTIAL_CORRECT / PENDING), plus the highest mark anyone
+     * achieved on the question. Same cohort filter as
+     * {@link #findSectionWiseAggregation}: institute-scoped, submitted
+     * attempts only.
+     */
+    @Query(value = """
+            SELECT
+                qwm.question_id AS questionId,
+                COUNT(*) AS totalCount,
+                SUM(CASE WHEN qwm.status = 'CORRECT' THEN 1 ELSE 0 END) AS correctCount,
+                MAX(qwm.marks) AS maxMarks
+            FROM question_wise_marks qwm
+            JOIN student_attempt sa ON sa.id = qwm.attempt_id
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            WHERE qwm.assessment_id = :assessmentId
+            AND aur.institute_id = :instituteId
+            AND sa.status IN ('LIVE', 'ENDED')
+            GROUP BY qwm.question_id
+            """, nativeQuery = true)
+    List<QuestionClassStatsDto> findQuestionClassStatsForAssessment(
+            @Param("assessmentId") String assessmentId,
+            @Param("instituteId") String instituteId);
 }

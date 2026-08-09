@@ -643,6 +643,11 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
 
     const [assessmentDetails, setAssessmentDetails] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    // Bumped once the edit data is loaded and the form is reset, so the rich-text
+    // editor remounts and initializes with the fetched instructions. Without this,
+    // TipTap mounts empty (before the async fetch) and never picks up the value that
+    // arrives via form.reset — so saved instructions look blank when editing.
+    const [editorHydrationKey, setEditorHydrationKey] = useState(0);
 
     useEffect(() => {
         setIsLoading(true);
@@ -682,7 +687,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             instituteDetails?.subjects || [],
                 savedData?.subject_selection || ''
                         ) || '',
-            assessmentInstructions: savedData?.instructions.content || '',
+            assessmentInstructions: savedData?.instructions?.content || '',
                     liveDateRange: {
                 startDate: convertDateFormat(savedData?.boundation_start_date || '') || '',
                 endDate: convertDateFormat(savedData?.boundation_end_date || '') || '',
@@ -725,6 +730,9 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
         if (assessmentId !== 'defaultId') {
             const formData = getFormResetData();
             form.reset(formData);
+            // Remount the rich-text editor so it re-initializes with the freshly
+            // loaded instructions (TipTap only reads `content` on mount).
+            setEditorHydrationKey((k) => k + 1);
         }
     }, [assessmentDetails, currentStep, instituteDetails?.subjects, assessmentId]);
 
@@ -823,6 +831,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     <FormItem>
                                         <FormControl>
                                             <RichTextEditor
+                                                key={`assessment-instructions-${editorHydrationKey}`}
                                                 onChange={field.onChange}
                                                 onBlur={field.onBlur}
                                                 value={field.value}

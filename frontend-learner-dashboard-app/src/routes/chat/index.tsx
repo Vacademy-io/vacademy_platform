@@ -26,14 +26,15 @@ function ChatRoute() {
   const navigate = Route.useNavigate();
   const resolvingRef = useRef(false);
 
-  // ?dm=: resolve the direct conversation, then swap the param for the
-  // resolved conversation id (replace, so Back doesn't re-trigger it).
+  // ?dm=: resolve the direct conversation and add the resolved conversation
+  // id next to it (replace, so Back doesn't re-trigger). dm stays in the URL
+  // so the sidebar can map the open chat back to its mentor entry.
   useEffect(() => {
-    if (!dm || resolvingRef.current) return;
+    if (!dm || conversationId || resolvingRef.current) return;
     resolvingRef.current = true;
     openDirectConversation({ targetUserId: dm, targetUserRole: "TEACHER" })
       .then((conv) =>
-        navigate({ search: { conversationId: conv.id }, replace: true }),
+        navigate({ search: { conversationId: conv.id, dm }, replace: true }),
       )
       .catch(() => {
         toast.error("Couldn't open the chat. Please try again.");
@@ -43,14 +44,19 @@ function ChatRoute() {
         resolvingRef.current = false;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dm]);
+  }, [dm, conversationId]);
 
   return (
     // fullWidth: the chat screen is a full-bleed master-detail surface and
     // manages its own internal padding, so opt out of the centered content
     // contract. enableChatbotPanel is disabled to avoid two side panels.
     <LayoutContainer fullWidth enableChatbotPanel={false}>
-      <ChatScreen initialConversationId={conversationId} />
+      {/* Keyed by conversation so switching mentors via the sidebar remounts
+          the screen and honors the new deep link (its guard is once-only). */}
+      <ChatScreen
+        key={conversationId ?? "chat"}
+        initialConversationId={conversationId}
+      />
     </LayoutContainer>
   );
 }

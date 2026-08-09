@@ -14,6 +14,8 @@ interface MeetingsListProps {
     showHost?: boolean;
     emptyTitle: string;
     emptyDescription: string;
+    /** Extra content under the empty state (e.g. a next-meeting hint). */
+    emptyExtra?: React.ReactNode;
 }
 
 const bookingTitle = (booking: BookingInstanceDTO): string =>
@@ -90,6 +92,7 @@ export const MeetingsList = ({
     showHost = false,
     emptyTitle,
     emptyDescription,
+    emptyExtra,
 }: MeetingsListProps) => {
     if (isLoading) {
         return (
@@ -119,6 +122,7 @@ export const MeetingsList = ({
                 <CalendarBlank className="size-8 text-neutral-300" />
                 <p className="text-body font-semibold text-neutral-700">{emptyTitle}</p>
                 <p className="text-caption text-neutral-500">{emptyDescription}</p>
+                {emptyExtra}
             </div>
         );
     }

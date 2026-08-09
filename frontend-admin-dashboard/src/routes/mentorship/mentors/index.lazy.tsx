@@ -6,6 +6,8 @@ import {
     CalendarPlus,
     Copy,
     DotsThreeVertical,
+    GraduationCap,
+    Handshake,
     Plus,
     Trash,
     UsersThree,
@@ -139,10 +141,32 @@ function MentorsPage() {
                 </div>
             </div>
 
+            {/* The flow in one glance — clears up "what do I do here?" for new admins. */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+                <HowStep n={1} text="Add a mentor from your team" />
+                <HowStep n={2} text="Assign students to them" />
+                <HowStep n={3} text="Learners book 1:1s & message them from their app" />
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Stat label="Mentors" value={data?.total_mentors ?? 0} />
-                <Stat label="Active assignments" value={data?.total_active_assignments ?? 0} />
-                <Stat label="Students mentored" value={data?.distinct_mentees ?? 0} />
+                <Stat
+                    icon={<UsersThree size={20} weight="duotone" />}
+                    label="Mentors"
+                    value={data?.total_mentors ?? 0}
+                    hint="Team members mentoring students"
+                />
+                <Stat
+                    icon={<Handshake size={20} weight="duotone" />}
+                    label="Active assignments"
+                    value={data?.total_active_assignments ?? 0}
+                    hint="Mentor–student pairs right now"
+                />
+                <Stat
+                    icon={<GraduationCap size={20} weight="duotone" />}
+                    label="Students mentored"
+                    value={data?.distinct_mentees ?? 0}
+                    hint="Students with at least one mentor"
+                />
             </div>
 
             {isLoading ? (
@@ -342,11 +366,40 @@ function MentorsPage() {
     );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function HowStep({ n, text }: { n: number; text: string }) {
     return (
-        <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="text-caption text-neutral-400">{label}</span>
-            <span className="text-h2 font-semibold text-neutral-700">{value}</span>
+        <span className="flex items-center gap-2 text-caption text-neutral-500">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-600">
+                {n}
+            </span>
+            {text}
+        </span>
+    );
+}
+
+function Stat({
+    icon,
+    label,
+    value,
+    hint,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: number;
+    hint: string;
+}) {
+    return (
+        <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+            <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                {icon}
+            </span>
+            <div className="flex min-w-0 flex-col">
+                <span className="text-h2 font-semibold leading-tight text-neutral-700">{value}</span>
+                <span className="text-caption font-medium text-neutral-600">{label}</span>
+                <span className="truncate text-caption text-neutral-400" title={hint}>
+                    {hint}
+                </span>
+            </div>
         </div>
     );
 }

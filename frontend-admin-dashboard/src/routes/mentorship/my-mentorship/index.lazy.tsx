@@ -141,6 +141,7 @@ function MyMentorshipPage() {
             )}
 
             {profile && (
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
                     <div className="flex items-center gap-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
@@ -171,9 +172,7 @@ function MyMentorshipPage() {
                         </MyButton>
                     )}
                 </div>
-            )}
 
-            {profile && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
                     <div className="flex items-center gap-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
@@ -230,12 +229,20 @@ function MyMentorshipPage() {
                         )}
                     </div>
                 </div>
+                </div>
             )}
 
             <MyScheduleCard instituteId={instituteId} />
 
             <div className="flex flex-col">
-                <h3 className="text-title font-semibold text-neutral-700">Mentees</h3>
+                <h3 className="flex items-center gap-2 text-title font-semibold text-neutral-700">
+                    Mentees
+                    {!isLoading && !isError && (
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-500">
+                            {mentees.length}
+                        </span>
+                    )}
+                </h3>
                 <p className="text-caption text-neutral-500">Students assigned to you for mentorship.</p>
             </div>
 

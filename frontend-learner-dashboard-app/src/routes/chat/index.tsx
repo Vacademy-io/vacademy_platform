@@ -1,9 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { ChatScreen } from "@/components/chat/ChatScreen";
-import { openDirectConversation } from "@/services/chat/chatApi";
+import {
+  openDirectConversation,
+  type ChatConversationResponse,
+} from "@/services/chat/chatApi";
+
+// Module-level dedupe for ?dm= resolution: StrictMode double-mounts the route,
+// and two racing resolutions can end with one failing (and previously wiping
+// the URL). One shared promise per target user keeps it single-flight.
+const dmResolutions = new Map<string, Promise<ChatConversationResponse>>();
 
 export const Route = createFileRoute("/chat/")({
   // Accept ?conversationId= so a chat push deep-link opens the conversation,
@@ -24,25 +32,36 @@ export const Route = createFileRoute("/chat/")({
 function ChatRoute() {
   const { conversationId, dm } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const resolvingRef = useRef(false);
 
   // ?dm=: resolve the direct conversation and add the resolved conversation
   // id next to it (replace, so Back doesn't re-trigger). dm stays in the URL
-  // so the sidebar can map the open chat back to its mentor entry.
+  // so the sidebar can map the open chat back to its mentor entry. On failure
+  // the URL is left untouched (a refresh retries) — never cleared.
   useEffect(() => {
-    if (!dm || conversationId || resolvingRef.current) return;
-    resolvingRef.current = true;
-    openDirectConversation({ targetUserId: dm, targetUserRole: "TEACHER" })
-      .then((conv) =>
-        navigate({ search: { conversationId: conv.id, dm }, replace: true }),
-      )
-      .catch(() => {
-        toast.error("Couldn't open the chat. Please try again.");
-        navigate({ search: {}, replace: true });
+    if (!dm || conversationId) return;
+    let cancelled = false;
+    let pending = dmResolutions.get(dm);
+    if (!pending) {
+      pending = openDirectConversation({
+        targetUserId: dm,
+        targetUserRole: "TEACHER",
+      }).finally(() => dmResolutions.delete(dm));
+      dmResolutions.set(dm, pending);
+    }
+    pending
+      .then((conv) => {
+        if (!cancelled) {
+          navigate({ search: { conversationId: conv.id, dm }, replace: true });
+        }
       })
-      .finally(() => {
-        resolvingRef.current = false;
+      .catch(() => {
+        if (!cancelled) {
+          toast.error("Couldn't open the chat. Please try again.");
+        }
       });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dm, conversationId]);
 

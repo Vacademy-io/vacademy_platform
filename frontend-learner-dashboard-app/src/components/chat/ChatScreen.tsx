@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import axios from "axios";
 import {
   PencilSimpleLine,
@@ -92,6 +93,7 @@ export function ChatScreen({
   initialConversationId?: string;
 } = {}) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [currentUserId, setCurrentUserId] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
@@ -213,20 +215,40 @@ export function ChatScreen({
     (conv: ChatConversationResponse) => {
       setSelectedId(conv.id);
       void loadThread(conv);
+      // Keep the URL in sync with the open conversation so refresh restores
+      // it and the sidebar's per-mentor chat mapping follows the selection
+      // (dm carries the other user's id for direct chats only).
+      void navigate({
+        to: "/chat",
+        search: {
+          conversationId: conv.id,
+          dm: conv.type === "DIRECT" ? (conv.otherUserId ?? undefined) : undefined,
+        },
+        replace: true,
+      });
     },
-    [loadThread],
+    [loadThread, navigate],
   );
 
-  // Deep-link: open the conversation from ?conversationId= (chat push tap) once it's in the list.
-  const deepLinkedRef = useRef(false);
+  // Deep-link: open the conversation from ?conversationId= (chat push tap or a
+  // sidebar mentor entry). Reacts to every change, not just the first, so
+  // switching mentors from the sidebar switches the thread in place.
+  const refetchedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (deepLinkedRef.current || !initialConversationId) return;
+    if (!initialConversationId || initialConversationId === selectedIdRef.current) {
+      return;
+    }
     const match = conversations.find((c) => c.id === initialConversationId);
     if (match) {
-      deepLinkedRef.current = true;
       handleSelect(match);
+      return;
     }
-  }, [initialConversationId, conversations, handleSelect]);
+    // A just-created conversation may not be in the list yet — refetch once.
+    if (refetchedForRef.current !== initialConversationId) {
+      refetchedForRef.current = initialConversationId;
+      void refetchConversations();
+    }
+  }, [initialConversationId, conversations, handleSelect, refetchConversations]);
 
   const handleLoadMore = useCallback(async () => {
     if (!selectedConv) return;

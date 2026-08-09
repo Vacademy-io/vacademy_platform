@@ -70,12 +70,9 @@ function ChatRoute() {
     // manages its own internal padding, so opt out of the centered content
     // contract. enableChatbotPanel is disabled to avoid two side panels.
     <LayoutContainer fullWidth enableChatbotPanel={false}>
-      {/* Keyed by conversation so switching mentors via the sidebar remounts
-          the screen and honors the new deep link (its guard is once-only). */}
-      <ChatScreen
-        key={conversationId ?? "chat"}
-        initialConversationId={conversationId}
-      />
+      {/* ChatScreen reacts to conversationId changes in place (its deep-link
+          effect re-runs on every change) — no remount key needed. */}
+      <ChatScreen initialConversationId={conversationId} />
     </LayoutContainer>
   );
 }

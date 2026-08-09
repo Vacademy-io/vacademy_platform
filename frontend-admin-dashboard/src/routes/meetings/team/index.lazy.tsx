@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { addWeeks } from 'date-fns';
-import { UsersThree } from '@phosphor-icons/react';
+import { CaretUpDown, Check, FunnelSimple, UsersThree } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { MyButton } from '@/components/design-system/button';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { useMeetingsScope, useTeamCalendar } from '../-hooks/use-meetings';
@@ -116,19 +120,11 @@ function TeamMeetingsPage() {
                     </p>
                 </div>
                 {hostOptions.length > 0 && (
-                    <Select value={hostFilter} onValueChange={setHostFilter}>
-                        <SelectTrigger className="w-full sm:w-56">
-                            <SelectValue placeholder="Filter by host" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={ALL_HOSTS_VALUE}>All hosts</SelectItem>
-                            {hostOptions.map((host) => (
-                                <SelectItem key={host.id} value={host.id}>
-                                    {host.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <HostFilter
+                        options={hostOptions}
+                        value={hostFilter}
+                        onChange={setHostFilter}
+                    />
                 )}
             </div>
 
@@ -143,5 +139,86 @@ function TeamMeetingsPage() {
                 emptyDescription="Meetings hosted by you or your team will appear here."
             />
         </div>
+    );
+}
+
+/** Searchable host filter — type to find a host instead of scrolling a long dropdown. */
+function HostFilter({
+    options,
+    value,
+    onChange,
+}: {
+    options: { id: string; name: string }[];
+    value: string;
+    onChange: (next: string) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const selectedLabel =
+        value === ALL_HOSTS_VALUE
+            ? `All hosts (${options.length})`
+            : (options.find((o) => o.id === value)?.name ?? 'Filter by host');
+
+    const select = (next: string) => {
+        onChange(next);
+        setOpen(false);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="medium"
+                    className="w-full justify-between font-normal sm:w-56 sm:min-w-0"
+                    aria-label="Filter meetings by host"
+                >
+                    <span className="flex min-w-0 items-center gap-2">
+                        <FunnelSimple size={16} className="shrink-0 text-neutral-400" />
+                        <span className="truncate">{selectedLabel}</span>
+                    </span>
+                    <CaretUpDown size={14} className="shrink-0 text-neutral-400" />
+                </MyButton>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0" align="end">
+                <Command>
+                    <CommandInput placeholder="Search host…" />
+                    <CommandList>
+                        <CommandEmpty>No host found.</CommandEmpty>
+                        <CommandGroup>
+                            <CommandItem
+                                value="All hosts"
+                                onSelect={() => select(ALL_HOSTS_VALUE)}
+                                className="gap-2"
+                            >
+                                <Check
+                                    size={14}
+                                    className={cn(
+                                        value === ALL_HOSTS_VALUE ? 'opacity-100' : 'opacity-0'
+                                    )}
+                                />
+                                All hosts ({options.length})
+                            </CommandItem>
+                            {options.map((host) => (
+                                <CommandItem
+                                    key={host.id}
+                                    value={host.name}
+                                    onSelect={() => select(host.id)}
+                                    className="gap-2"
+                                >
+                                    <Check
+                                        size={14}
+                                        className={cn(
+                                            value === host.id ? 'opacity-100' : 'opacity-0'
+                                        )}
+                                    />
+                                    <span className="truncate">{host.name}</span>
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
     );
 }

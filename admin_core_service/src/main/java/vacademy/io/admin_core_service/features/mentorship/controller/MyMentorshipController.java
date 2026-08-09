@@ -31,11 +31,22 @@ public class MyMentorshipController {
     private final MentorService mentorService;
     private final InstituteAccessValidator instituteAccessValidator;
 
+    /**
+     * The caller's mentees. With {@code pageNo}/{@code pageSize} present the response
+     * is a Spring {@code Page}; without them the legacy full array is returned so
+     * older clients keep working.
+     */
     @GetMapping("/my-mentees")
-    public ResponseEntity<List<MenteeDTO>> myMentees(
+    public ResponseEntity<?> myMentees(
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
+        if (pageNo != null || pageSize != null) {
+            return ResponseEntity.ok(assignmentService.menteesForMentorPaged(instituteId,
+                    user.getUserId(), pageNo == null ? 0 : pageNo, pageSize == null ? 20 : pageSize));
+        }
         return ResponseEntity.ok(assignmentService.menteesForMentor(instituteId, user.getUserId()));
     }
 

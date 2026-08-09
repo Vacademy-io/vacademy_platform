@@ -15,7 +15,12 @@ import { SidebarItemProps } from "../../../../types/layout-container-types";
 export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemProps) => {
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
-    const isChildActive = subItems?.some((item) => item.subItemLink === currentRoute);
+    // Sub-items carrying search params (e.g. the per-mentor chat shortcuts to
+    // /chat?dm=…) are action links, not locations — they must never claim the
+    // active state just because their pathname matches the current page.
+    const isChildActive = subItems?.some(
+        (item) => !item.subItemSearch && item.subItemLink === currentRoute
+    );
 
     return (
         <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
@@ -55,7 +60,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                             <SidebarMenuSubItem key={item.subItem}>
                                 <SidebarMenuSubButton
                                     asChild
-                                    isActive={item.subItemLink === currentRoute}
+                                    isActive={!item.subItemSearch && item.subItemLink === currentRoute}
                                     className={cn(
                                         "h-8 rounded-md text-body text-nav-text",
                                         "hover:bg-nav-surface-hover/60 focus-visible:ring-2 focus-visible:ring-ring",

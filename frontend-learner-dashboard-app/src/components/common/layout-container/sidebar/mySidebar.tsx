@@ -330,7 +330,9 @@ export const MySidebar = ({
           ...mentors.slice(0, 6).map((m, i) => ({
             id: `my-mentor-chat-${m.user_id}`,
             label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
-            route: `/my-mentors?chat=${encodeURIComponent(m.user_id)}`,
+            // Opens the full In-App Messages screen with this mentor's
+            // conversation selected (resolved by /chat's ?dm= handling).
+            route: `/chat?dm=${encodeURIComponent(m.user_id)}`,
             order: i + 2,
             visible: true,
           })),

@@ -31,6 +31,7 @@ public class AssessmentNotificationService {
     private final NotificationService notificationService;
     private final AuthService authService;
     private final AdminCoreServiceClient adminCoreServiceClient;
+    private final vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
 
     @Value("${scheduling.time.frame}")
     private Integer timeFrameInMinutes;
@@ -44,12 +45,24 @@ public class AssessmentNotificationService {
     }
 
     public void sendNotificationsWhenAssessmentsAboutToStart() {
-        getUpcomingAssessments().forEach(assessment ->
-                sendNotificationToUsers(
-                        "Upcoming Assessment Reminder",
-                        AssessmentNotificaionEmailBody.EMAIL_BODY_WHEN_ASSESSMENT_ABOUT_TO_START,
-                        assessment
-                )
+        getUpcomingAssessments().forEach(assessment -> {
+                    // Resolved once and shared with the trigger below — the email and the
+                    // workflow go to the same people, so this should not be two queries.
+                    List<AssessmentUserRegistration> userRegistrations =
+                            getActiveUsersForAssessment(assessment.getId());
+                    sendNotificationToUsers(
+                            "Upcoming Assessment Reminder",
+                            AssessmentNotificaionEmailBody.EMAIL_BODY_WHEN_ASSESSMENT_ABOUT_TO_START,
+                            assessment,
+                            userRegistrations
+                    );
+                    // Trigger ASSESSMENT_REMINDER_BEFORE_START workflow. The built-in email
+                    // above is fixed-template and always-on; the trigger is what lets an
+                    // institute send their own reminder (WhatsApp, different copy, an extra
+                    // nudge to a parent) off the same sweep.
+                    assessmentWorkflowEventPublisher.publishReminderBeforeStart(
+                            assessment, userRegistrations, timeFrameInMinutes);
+                }
         );
     }
 
@@ -75,7 +88,12 @@ public class AssessmentNotificationService {
     }
 
     private void sendNotificationToUsers(String subject, String body, Assessment assessment) {
-        List<AssessmentUserRegistration> userRegistrations = getActiveUsersForAssessment(assessment.getId());
+        sendNotificationToUsers(subject, body, assessment, getActiveUsersForAssessment(assessment.getId()));
+    }
+
+    /** Overload for callers that already hold the recipient list and should not re-query it. */
+    private void sendNotificationToUsers(String subject, String body, Assessment assessment,
+                                         List<AssessmentUserRegistration> userRegistrations) {
         NotificationDTO notificationDTO = buildNotificationDTO(subject, body, assessment, userRegistrations);
         notificationService.sendEmailToUsers(notificationDTO, null);
     }

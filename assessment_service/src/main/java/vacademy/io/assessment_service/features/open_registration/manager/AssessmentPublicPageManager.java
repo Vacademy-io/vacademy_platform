@@ -32,6 +32,9 @@ public class AssessmentPublicPageManager {
     AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
     @Autowired
+    vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
+
+    @Autowired
     AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
 
     @Autowired
@@ -155,15 +158,19 @@ public class AssessmentPublicPageManager {
                 registration.setRegistrationTime(new Date());
                 registration.setReattemptCount((participantDTO.getReattemptCount() == null)
                         ? assessment.get().getReattemptCount() : participantDTO.getReattemptCount());
-                assessmentUserRegistrationRepository.save(registration);
+                AssessmentUserRegistration reactivated = assessmentUserRegistrationRepository.save(registration);
+                // A reactivated soft-deleted row is still a fresh form submission from the
+                // registrant's point of view; only the "already active" case below is a no-op.
+                assessmentWorkflowEventPublisher.publishFormSubmission(reactivated, assessment.get());
                 return ResponseEntity.ok("Registered successfully");
             }
             // An active registration already exists — treat a repeat submission as idempotent.
             return ResponseEntity.ok("Already registered");
         }
 
+        AssessmentUserRegistration registration;
         try {
-            addUserToAssessment(participantDTO, userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get(), registerOpenAssessmentRequestDto.getCustomFieldRequestList());
+            registration = addUserToAssessment(participantDTO, userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get(), registerOpenAssessmentRequestDto.getCustomFieldRequestList());
         } catch (DataIntegrityViolationException e) {
             String rootCause = e.getMostSpecificCause().getMessage();
             if (rootCause != null && rootCause.contains("assessment_user_registration_unique")) {
@@ -174,6 +181,10 @@ public class AssessmentPublicPageManager {
             // Any other integrity violation is a different problem — don't mislabel it.
             throw e;
         }
+
+        // Emitted outside the try above so a failure in here can never be caught and
+        // reported to the registrant as a duplicate-registration conflict.
+        assessmentWorkflowEventPublisher.publishFormSubmission(registration, assessment.get());
         return ResponseEntity.ok("Registered successfully");
     }
 

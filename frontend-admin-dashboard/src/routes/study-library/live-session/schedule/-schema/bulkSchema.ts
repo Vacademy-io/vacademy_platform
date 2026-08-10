@@ -142,6 +142,16 @@ export const bulkSharedOptionsSchema = z.object({
     guestPolicy: z
         .enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY'])
         .default('ALWAYS_ACCEPT'),
+    /** Students cannot start private chats (the host still can message them). */
+    disablePrivateChat: z.boolean().default(false),
+    /** Students cannot type in the public chat. */
+    disablePublicChat: z.boolean().default(false),
+    /** Students cannot edit the shared notes. */
+    disableSharedNotes: z.boolean().default(false),
+    /** Students cannot see the participant list. */
+    hideUserList: z.boolean().default(false),
+    /** Auto-end the meeting shortly after the last moderator leaves. */
+    endWhenNoModerator: z.boolean().default(false),
     /**
      * Default streaming platform for new rows. The "Add row" button stamps
      * each new row's platform with this value so admins don't have to set it

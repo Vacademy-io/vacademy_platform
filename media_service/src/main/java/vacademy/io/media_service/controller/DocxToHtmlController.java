@@ -209,7 +209,17 @@ public class DocxToHtmlController {
     }
 
     private boolean isHtmlFile(MultipartFile file) {
-        return "text/html".equals(file.getContentType());
+        if ("text/html".equals(file.getContentType())) {
+            return true;
+        }
+        // Some clients send .html as application/octet-stream; without this it would be
+        // handed to the DOCX converter and fail with a 500 instead of parsing.
+        String name = file.getOriginalFilename();
+        if (name == null) {
+            return false;
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".html") || lower.endsWith(".htm");
     }
 
     private List<QuestionDTO> extractQuestionsFromHtml(MultipartFile file, String questionIdentifier,
@@ -265,10 +275,71 @@ public class DocxToHtmlController {
         return i;
     }
 
+    // The walk below reads <p> elements only, because that is what mammoth emits for
+    // every DOCX line. Hand-authored HTML uploads rarely look like that — a whole paper
+    // inside one <pre>, or lines separated by <br>/<div> — and used to parse as zero
+    // questions. Reshape those into <p> lines first so one line still means one line.
+    private static Document parseAndNormalizeParagraphs(String htmlContent) {
+        Document doc = Jsoup.parse(htmlContent);
+
+        // <pre> keeps its line breaks as real newlines. Mammoth never emits <pre>, so
+        // splitting these cannot change how an existing DOCX upload parses.
+        for (Element pre : doc.select("pre")) {
+            replaceWithParagraphs(pre, pre.html().split("\\r?\\n"));
+        }
+
+        if (!doc.select("p").isEmpty()) {
+            return doc;
+        }
+
+        // Everything below only runs for documents that would otherwise yield zero
+        // questions. Turn pretty-printing off first so html() gives back the source
+        // markup rather than jsoup's re-indentation, which would add phantom lines.
+        doc.outputSettings().prettyPrint(false);
+
+        // No paragraphs to walk: promote leaf blocks, splitting <br>-separated runs.
+        String blockSelector = "div, li, td, h1, h2, h3, h4, h5, h6";
+        for (Element block : doc.select(blockSelector)) {
+            // Element.select() matches the element itself, so ask the children instead.
+            if (block.children().select(blockSelector + ", p").isEmpty()) {
+                replaceWithParagraphs(block, block.html().split(BR_SPLIT_REGEX));
+            }
+        }
+
+        // Still nothing — a body of bare text and <br>s. Treat the body as one block.
+        if (doc.select("p").isEmpty() && doc.body() != null) {
+            replaceWithParagraphs(doc.body(), doc.body().html().split(BR_SPLIT_REGEX + "|\\r?\\n"));
+        }
+
+        return doc;
+    }
+
+    private static final String BR_SPLIT_REGEX = "(?i)<br\\s*/?>";
+
+    // Swap a node for one <p> per non-blank line, keeping each line's inline markup.
+    private static void replaceWithParagraphs(Element source, String[] lines) {
+        Element container = new Element("div");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                container.appendChild(new Element("p").append(trimmed));
+            }
+        }
+        if (container.children().isEmpty()) {
+            return; // nothing usable in there — leave the original node untouched
+        }
+        if ("body".equals(source.tagName())) {
+            source.empty();
+            source.appendChild(container);
+        } else {
+            source.replaceWith(container);
+        }
+    }
+
     public List<QuestionDTO> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier,
             String answerIdentifier, String explanationIdentifier) {
 
-        Document doc = Jsoup.parse(htmlContent);
+        Document doc = parseAndNormalizeParagraphs(htmlContent);
         Elements paragraphs = doc.select("p");
 
         List<QuestionDTO> questions = new ArrayList<>();

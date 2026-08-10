@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.mentorship.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -114,6 +116,19 @@ public class MentorService {
         return mentors.stream()
                 .map(m -> toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())))
                 .collect(Collectors.toList());
+    }
+
+    /** Paginated mentor list; identity hydration and assignment counts are per-page. */
+    public Page<MentorDTO> listPaged(String instituteId, int pageNo, int pageSize) {
+        Page<Mentor> page = mentorRepository.findByInstituteIdAndStatusNot(
+                instituteId, MentorStatus.DELETED.name(),
+                PageRequest.of(Math.max(0, pageNo), Math.min(Math.max(1, pageSize), 100)));
+        if (page.isEmpty()) return page.map(m -> null);
+
+        Map<String, UserDTO> users = hydrate(
+                page.getContent().stream().map(Mentor::getUserId).collect(Collectors.toList()));
+        Map<String, Integer> counts = activeCountsByMentorId(instituteId);
+        return page.map(m -> toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())));
     }
 
     public MentorDTO getById(String mentorId, String instituteId) {

@@ -87,12 +87,13 @@ public class MentorshipNotificationService {
     private static final Defaults ASSIGNMENT_STUDENT = new Defaults(
             "MENTOR_ASSIGNED", true,
             "You have a new mentor",
-            "<p>Hi {{name}},</p><p>You've been assigned a mentor: <b>{{mentor_name}}</b>. "
-                    + "Open <b>My Mentors</b> to book a session or send a message.</p>",
+            "<p>Hi {{name}},</p><p><b>{{mentor_name}}</b> is now your mentor. "
+                    + "Open <b>My Mentors</b> in your dashboard sidebar to message them directly "
+                    + "or book a 1:1 session.</p>",
             "You have a new mentor",
-            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book a session or message them.",
+            "{{mentor_name}} is now your mentor. Open My Mentors in the sidebar to message them or book a session.",
             "You have a new mentor",
-            "You've been assigned a mentor: {{mentor_name}}. Open My Mentors to book or message.",
+            "{{mentor_name}} is now your mentor. Open My Mentors to message them or book a session.",
             "Mentor Assigned - Student");
 
     private static final Defaults BOOKING = new Defaults(
@@ -116,6 +117,30 @@ public class MentorshipNotificationService {
             "Mentor session cancelled",
             "Your session \"{{session_title}}\" was cancelled.",
             "Mentor Session Cancelled");
+
+    private static final Defaults SESSION_REMINDER = new Defaults(
+            "MENTOR_REMINDER", true,
+            "Reminder: your mentor session is coming up",
+            "<p>Hi {{name}},</p><p>Your session <b>{{session_title}}</b> with <b>{{mentor_name}}</b> "
+                    + "starts at <b>{{session_datetime}}</b>. Open <b>My Mentors</b> if you need the "
+                    + "joining link.</p>",
+            "Upcoming mentor session",
+            "\"{{session_title}}\" with {{mentor_name}} starts at {{session_datetime}}.",
+            "Upcoming mentor session",
+            "\"{{session_title}}\" with {{mentor_name}} starts at {{session_datetime}}.",
+            "Mentor Session Reminder");
+
+    private static final Defaults CHECKIN_REMINDER = new Defaults(
+            "MENTOR_CHECKIN", true,
+            "Time to catch up with your mentor?",
+            "<p>Hi {{name}},</p><p>It's been a while since your last session with "
+                    + "<b>{{mentor_name}}</b>. Open <b>My Mentors</b> to book a 1:1 or send them "
+                    + "a message.</p>",
+            "Catch up with your mentor",
+            "It's been a while since you connected with {{mentor_name}}. Book a session or send them a message.",
+            "Catch up with your mentor",
+            "It's been a while since you connected with {{mentor_name}}. Book a session or message them.",
+            "Mentor Check-in Reminder");
 
     // ---------------------------------------------------------------- triggers
 
@@ -182,6 +207,83 @@ public class MentorshipNotificationService {
                     trigger, vars, cancelled ? CANCELLATION : BOOKING);
         } catch (Exception e) {
             log.warn("mentorship booking notification failed (institute {}): {}", instituteId, e.getMessage());
+        }
+    }
+
+    /**
+     * Reminder ahead of an upcoming mentorship session. Fired by
+     * {@code MentorshipReminderScheduler}, which owns due-time computation and
+     * once-per-booking dedup; this method only resolves config + delivers.
+     */
+    public void notifySessionReminder(String instituteId, String mentorDisplayName, String inviteeUserId,
+                                      String inviteeEmail, String inviteePhone, String inviteeName,
+                                      String title, String whenText) {
+        try {
+            Map<String, Object> trigger = section(instituteId, "session_reminder");
+            if (!flag(trigger, "enabled", true)) return;
+            UserDTO invitee = (inviteeUserId != null && !inviteeUserId.isBlank())
+                    ? hydrate(List.of(inviteeUserId)).get(inviteeUserId) : null;
+            String name = firstNonBlank(inviteeName, invitee != null ? invitee.getFullName() : null, "there");
+            String email = firstNonBlank(inviteeEmail, invitee != null ? invitee.getEmail() : null, null);
+            String phone = firstNonBlank(inviteePhone, invitee != null ? invitee.getMobileNumber() : null, null);
+            Map<String, String> vars = baseVars(name, name,
+                    firstNonBlank(mentorDisplayName, "your mentor", "your mentor"),
+                    firstNonBlank(title, "Mentor session", "Mentor session"),
+                    whenText == null ? "" : whenText);
+            deliverToLearner(instituteId, inviteeUserId, invitee, email, phone, trigger, vars, SESSION_REMINDER);
+        } catch (Exception e) {
+            log.warn("mentorship session reminder failed (institute {}): {}", instituteId, e.getMessage());
+        }
+    }
+
+    /**
+     * Nudge a student who hasn't had a session with their mentor for the configured
+     * inactivity window (also fired by the scheduler). Master flag defaults OFF —
+     * unlike the other triggers this one emails out of the blue, so institutes opt in.
+     */
+    public void notifyCheckinReminder(String instituteId, String studentUserId, String mentorDisplayName) {
+        try {
+            Map<String, Object> trigger = section(instituteId, "checkin_reminder");
+            if (!flag(trigger, "enabled", false)) return;
+            UserDTO student = hydrate(List.of(studentUserId)).get(studentUserId);
+            String name = nameOf(student, "there");
+            Map<String, String> vars = baseVars(name, name,
+                    firstNonBlank(mentorDisplayName, "your mentor", "your mentor"), "", "");
+            deliverToLearner(instituteId, studentUserId, student,
+                    student != null ? student.getMobileNumber() : null, trigger, vars, CHECKIN_REMINDER);
+        } catch (Exception e) {
+            log.warn("mentorship check-in reminder failed (institute {}): {}", instituteId, e.getMessage());
+        }
+    }
+
+    // ---------------------------------------------------- scheduler-facing config
+
+    /**
+     * Master on/off of a trigger section. {@code def} mirrors each trigger's default:
+     * {@code session_reminder} true, {@code checkin_reminder} false (opt-in).
+     */
+    public boolean triggerEnabled(String instituteId, String key, boolean def) {
+        return flag(section(instituteId, key), "enabled", def);
+    }
+
+    /** Lead time (hours before start) for the session reminder. Default 24h, clamped 1..168. */
+    public int sessionReminderHoursBefore(String instituteId) {
+        return intCfg(section(instituteId, "session_reminder"), "hours_before", 24, 1, 168);
+    }
+
+    /** Inactivity window (days) for the check-in nudge; also its re-nudge cadence. Default 14, clamped 1..365. */
+    public int checkinInactivityDays(String instituteId) {
+        return intCfg(section(instituteId, "checkin_reminder"), "inactivity_days", 14, 1, 365);
+    }
+
+    private static int intCfg(Map<String, Object> cfg, String key, int def, int min, int max) {
+        if (cfg == null) return def;
+        try {
+            Object v = cfg.get(key);
+            int n = v instanceof Number num ? num.intValue() : Integer.parseInt(String.valueOf(v));
+            return Math.max(min, Math.min(max, n));
+        } catch (Exception e) {
+            return def;
         }
     }
 

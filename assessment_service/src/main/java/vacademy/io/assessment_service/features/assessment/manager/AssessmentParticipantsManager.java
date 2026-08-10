@@ -68,6 +68,9 @@ public class AssessmentParticipantsManager {
     AssessmentService assessmentService;
 
     @Autowired
+    vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
+
+    @Autowired
     AssessmentRepository assessmentRepository;
 
     @Autowired
@@ -460,6 +463,13 @@ public class AssessmentParticipantsManager {
             registration.setReattemptCount(current + attemptsToGrant);
         }
         assessmentUserRegistrationRepository.saveAll(toUpdate);
+
+        // Trigger ASSESSMENT_REATTEMPT_GRANTED workflow. Every registration in toUpdate was
+        // filtered to this assessment above, so the first one's assessment is the right one
+        // for all of them.
+        assessmentWorkflowEventPublisher.publishReattemptGranted(toUpdate,
+                toUpdate.get(0).getAssessment(), attemptsToGrant,
+                user != null ? user.getUserId() : null);
 
         return ResponseEntity.ok("Reattempt granted to " + toUpdate.size() + " participant(s)");
     }
@@ -1249,6 +1259,7 @@ public class AssessmentParticipantsManager {
             }
         });
         sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
+        publishResultReleasedFor(reportMap);
     }
 
     private void handleParticipantsReportCreationForManualAssessment(List<StudentAttempt> attemptList,
@@ -1266,6 +1277,7 @@ public class AssessmentParticipantsManager {
             reportMap.put(attempt, participantPdfReport);
         });
         sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
+        publishResultReleasedFor(reportMap);
     }
 
     /**
@@ -1285,6 +1297,33 @@ public class AssessmentParticipantsManager {
         } catch (Exception e) {
             log.warn("Failed to evict comparisonData cache after release: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Fires ASSESSMENT_RESULT_RELEASED for the learners who actually got a report.
+     *
+     * <p>Keyed off the same map that drives the result email rather than off
+     * {@link #updateAttemptDataReleaseData}, because that method is also called for attempts
+     * that get NO report and NO email: ones that were never submitted (a registered no-show
+     * on the "release all" path) and ones whose PDF generation failed. Emitting from there
+     * would tell a learner who never sat the assessment that their result is out, and would
+     * announce a report that does not exist.
+     *
+     * <p>Deliberately not suppressed for an attempt that was already RELEASED: two of the
+     * three admin release paths do not filter released attempts, and the existing behaviour
+     * on a re-release is to regenerate the report and re-email — so a deliberate re-release
+     * after a revaluation should reach an institute's workflow too.
+     *
+     * <p>Also deliberately not gated on the resultNotifications setting that
+     * {@link #sendNotificationToStudent} honours: that switch turns off Vacademy's built-in
+     * email, and an institute may well have turned it off precisely because they built their
+     * own workflow to replace it.
+     */
+    private void publishResultReleasedFor(Map<StudentAttempt, byte[]> reportMap) {
+        if (reportMap.isEmpty()) {
+            return;
+        }
+        assessmentWorkflowEventPublisher.publishResultReleased(new ArrayList<>(reportMap.keySet()));
     }
 
     /**

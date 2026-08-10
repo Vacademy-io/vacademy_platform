@@ -15,7 +15,17 @@ import { SidebarItemProps } from "../../../../types/layout-container-types";
 export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemProps) => {
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
-    const isChildActive = subItems?.some((item) => item.subItemLink === currentRoute);
+    const currentSearch = router.state.location.search as Record<string, unknown>;
+    // A sub-item is active when its pathname matches AND every search param it
+    // carries matches the URL — so the per-mentor chat entries (/chat?dm=<id>)
+    // highlight exactly the mentor whose conversation is open, never each other.
+    const isSubItemActive = (item: NonNullable<typeof subItems>[number]): boolean =>
+        item.subItemLink === currentRoute &&
+        (!item.subItemSearch ||
+            Object.entries(item.subItemSearch).every(
+                ([key, value]) => currentSearch?.[key] === value
+            ));
+    const isChildActive = subItems?.some(isSubItemActive);
 
     return (
         <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
@@ -55,7 +65,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                             <SidebarMenuSubItem key={item.subItem}>
                                 <SidebarMenuSubButton
                                     asChild
-                                    isActive={item.subItemLink === currentRoute}
+                                    isActive={isSubItemActive(item)}
                                     className={cn(
                                         "h-8 rounded-md text-body text-nav-text",
                                         "hover:bg-nav-surface-hover/60 focus-visible:ring-2 focus-visible:ring-ring",
@@ -64,7 +74,11 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                                         "[.ui-play_&]:rounded-lg [.ui-play_&]:data-[active=true]:bg-play-highlight [.ui-play_&]:data-[active=true]:text-play-ink"
                                     )}
                                 >
-                                    <Link to={item.subItemLink} onClick={onClick}>
+                                    <Link
+                                        to={item.subItemLink}
+                                        search={item.subItemSearch}
+                                        onClick={onClick}
+                                    >
                                         <span className="truncate">{item.subItem}</span>
                                     </Link>
                                 </SidebarMenuSubButton>

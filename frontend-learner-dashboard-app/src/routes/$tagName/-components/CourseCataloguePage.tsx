@@ -613,6 +613,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           steps={catalogueData.globalSettings.courseFinder.steps}
           mandatory={catalogueData.globalSettings.courseFinder.mandatory}
           stepLabels={catalogueData.globalSettings.courseFinder.stepLabels}
+          levelGroups={catalogueData.globalSettings.courseFinder.levelGroups}
           options={courseFinderOptions}
           onComplete={handleCourseFinderComplete}
           onSkip={handleCourseFinderSkip}

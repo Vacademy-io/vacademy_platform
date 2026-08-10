@@ -37,9 +37,23 @@ export interface GeneratePagePayload {
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
+    /** Pin one of the composer's design languages instead of letting it choose —
+     *  the mechanism behind "same brief, a different direction". */
+    design_language?: DesignLanguageId;
     auto_images?: boolean;
     run_id?: string;
 }
+
+/** The composer's design languages (server-side `_DESIGN_LANGUAGES`). An unknown
+ *  value is ignored by the server, never echoed into the prompt. */
+export type DesignLanguageId =
+    | 'editorial-serif'
+    | 'swiss-minimal'
+    | 'bold-modern'
+    | 'dark-tech'
+    | 'warm-community'
+    | 'corporate-trust'
+    | 'directory-reference';
 
 export interface GeneratedPage {
     id: string;
@@ -125,6 +139,9 @@ export const editAiPage = async (payload: EditPagePayload): Promise<EditPageResp
 export interface BrandKit {
     label: string;
     themePreset: string;
+    /** Exact brand hex (#rrggbb) when the institute's real colour is known —
+     *  overrides the preset's hue. Absent means "use the preset's palette". */
+    primaryColor?: string | null;
     atmosphere: { canvas: string; intensity: string };
     headingScale: string;
     borderRadius: string;
@@ -153,6 +170,10 @@ export interface GenerateSitePayload {
     terminology?: Record<string, string>;
     source_url?: string;
     auto_images?: boolean;
+    /** Reference screenshots for the whole site — analysed once server-side and
+     *  shared by every page, so the site comes out in one design language. */
+    inspiration_image_urls?: string[];
+    design_language?: DesignLanguageId;
 }
 
 export interface GenerateSiteResponse {
@@ -246,13 +267,20 @@ export const brandKitToGlobalPatch = (kit: BrandKit): Record<string, any> => {
     const fonts: Record<string, any> = { enabled: true, family: bodyStack };
     // Only a genuinely different heading font is worth storing.
     if (headStack && headStack !== bodyStack) fonts.headingFamily = headStack;
+    const theme: Record<string, any> = {
+        preset: kit.themePreset,
+        atmosphere: { canvas: kit.atmosphere.canvas, intensity: kit.atmosphere.intensity },
+        headingScale: kit.headingScale,
+        borderRadius: kit.borderRadius,
+    };
+    // A kit that names an exact brand colour must apply it; a kit that doesn't
+    // must CLEAR any previous one, otherwise switching kits keeps the old hue
+    // and the new preset never visibly takes effect.
+    theme.primaryColor = /^#[0-9a-fA-F]{6}$/.test(kit.primaryColor || '')
+        ? (kit.primaryColor as string)
+        : undefined;
     return {
-        theme: {
-            preset: kit.themePreset,
-            atmosphere: { canvas: kit.atmosphere.canvas, intensity: kit.atmosphere.intensity },
-            headingScale: kit.headingScale,
-            borderRadius: kit.borderRadius,
-        },
+        theme,
         motion: { personality: kit.motion },
         fonts,
     };

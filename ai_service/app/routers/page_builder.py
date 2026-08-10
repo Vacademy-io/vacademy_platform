@@ -39,6 +39,7 @@ from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.llm_json import generate_json
 from ..services.model_selection import resolve_models
+from ..utils.json_extract import extract_and_sanitize_json
 
 logger = logging.getLogger(__name__)
 
@@ -470,30 +471,177 @@ async def _describe_attachments(
         return ""
 
 
-async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
-    """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
-    palette direction, serif-vs-sans display, layout patterns). Structure/mood
-    only — never content. Best-effort; returns '' on any failure."""
+async def _analyze_inspiration(
+    image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]
+) -> Dict[str, Any]:
+    """Vision pass over inspiration screenshots → a STRUCTURED design spec.
+
+    This used to return 4–6 prose bullets of mood adjectives capped at 400
+    tokens, which is why "build me something like this" produced pages that
+    resembled the reference only in vibe: the composer received no palette, no
+    section order and no layout detail — while the copilot's attachment pass
+    (_describe_attachments) transcribed all of that. The fidelity was inverted,
+    worst exactly where the admin cares most (the first build).
+
+    Returns a dict the composer can act on mechanically — real hex colours for
+    theme.primaryColor, enum values it can copy into globalSettings, and a
+    section-by-section blueprint. Empty dict on any failure (never blocks the
+    build). Structure and treatment only: their COPY, logos and images stay
+    theirs.
+    """
     from ..services.chat_llm_client import ChatLLMClient
     from ..services.api_key_resolver import ApiKeyResolver
 
     client = ChatLLMClient(ApiKeyResolver(db))
+    urls = [u for u in image_urls if isinstance(u, str) and u][:3]
+    if not urls:
+        return {}
+    # Inline as data URLs for the same reason the copilot pass does: provider-side
+    # fetching of our media URLs is unreliable, and a silently unseen screenshot
+    # produces confident nonsense.
+    inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in urls))
+    attachments = [{"type": "image", "url": d} for d, _ in inlined if d] or [
+        {"type": "image", "url": u} for u in urls
+    ]
+
     messages = [{
         "role": "user",
         "content": (
-            "These are screenshots of websites an education institute admires. Give a concise DESIGN "
-            "BRIEF (NOT their content) to guide building a NEW page: overall mood (editorial / premium / "
-            "playful / techy / minimal), color-palette direction, whether the display type reads serif or "
-            "sans, and layout patterns (hero style, use of stat cards, marquee tickers, feature cards, "
-            "testimonials). 4–6 short bullet points. Do NOT transcribe or suggest copying their text, "
-            "logos, or images."
+            "These are screenshots of website(s) an education institute wants their new site to look "
+            "like. Reverse-engineer the DESIGN so it can be rebuilt. Return ONLY JSON:\n"
+            "{\n"
+            '  "mood": "<one line: e.g. editorial and calm / bold and high-contrast / warm community>",\n'
+            '  "palette": {"primary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "ink": "#rrggbb"},\n'
+            '  "typography": {"heading": "serif"|"sans"|"display", "body": "serif"|"sans", '
+            '"scale": "editorial"|"default"|"compact", "weight": "light"|"regular"|"bold"},\n'
+            '  "shape": {"radius": "sharp"|"rounded"|"pill", "density": "airy"|"balanced"|"dense", '
+            '"borders": "hairline"|"none"|"heavy", "shadows": "none"|"soft"|"strong"},\n'
+            '  "atmosphere": {"canvas": "flat"|"soft"|"mesh"|"aurora", "intensity": "subtle"|"medium"|"bold"},\n'
+            '  "sections": [{"role": "<hero|logos|features|stats|steps|courses|testimonials|faq|cta|'
+            'directory|table|gallery|team|pricing|contact>", "layout": "<split image right | centered | '
+            'full-bleed | 3-column cards | 2-column | horizontal rail | bordered table | accordion>", '
+            '"notes": "<what makes this band look the way it does>"}],\n'
+            '  "signatureMoves": ["<the 3–6 specific details that give this design its character — e.g. '
+            'oversized numerals, hairline dividers, pill badges above headings, dark inverted CTA band, '
+            'generous whitespace, tinted card headers>"],\n'
+            '  "avoid": ["<treatments that would BREAK this look — e.g. gradients, glassmorphism, drop shadows>"]\n'
+            "}\n"
+            "Rules: palette colours MUST be real hex values sampled from the screenshot (primary = the "
+            "colour used on buttons/links/accents; background = the dominant page surface; ink = body "
+            "text). List `sections` in the order they appear, top to bottom, one entry per visible band. "
+            "Describe STRUCTURE AND TREATMENT ONLY — do NOT transcribe their headlines, marketing copy, "
+            "brand name or logo, and never suggest reusing their images."
         ),
-        "attachments": [{"type": "image", "url": u} for u in image_urls[:3]],
+        "attachments": attachments,
     }]
     resp = await client.chat_completion(
-        messages, temperature=0.2, max_tokens=400, institute_id=institute_id, user_id=user_id
+        messages, temperature=0.2, max_tokens=1600, institute_id=institute_id, user_id=user_id
     )
-    return _clean_string((resp.get("content") or "").strip())
+    return _coerce_inspiration_spec(resp.get("content") or "")
+
+
+_INSPO_SECTION_ROLES = {
+    "hero", "logos", "features", "stats", "steps", "courses", "testimonials", "faq", "cta",
+    "directory", "table", "gallery", "team", "pricing", "contact", "about", "video", "banner",
+}
+
+
+def _coerce_inspiration_spec(raw: str) -> Dict[str, Any]:
+    """Parse + clamp the vision pass's JSON. Enum fields are validated against
+    the values the theme engine actually supports so the composer can copy them
+    into globalSettings verbatim; colours must be real hex. Free-text fields are
+    scrubbed and length-capped. Falls back to {"notes": <prose>} when the model
+    ignored the JSON contract, so a malformed reply still carries direction."""
+    text = (raw or "").strip()
+    if not text:
+        return {}
+    data: Any = None
+    try:
+        cleaned = extract_and_sanitize_json(text)
+        if cleaned:
+            data = json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        data = None
+    if not isinstance(data, dict):
+        return {"notes": _clean_string(text)[:1200]}
+
+    spec: Dict[str, Any] = {}
+    mood = data.get("mood")
+    if isinstance(mood, str) and mood.strip():
+        spec["mood"] = _clean_string(mood)[:160]
+
+    palette_in = data.get("palette")
+    if isinstance(palette_in, dict):
+        palette = {
+            k: coerce_hex_color(palette_in.get(k))
+            for k in ("primary", "accent", "background", "ink")
+        }
+        palette = {k: v for k, v in palette.items() if v}
+        if palette:
+            spec["palette"] = palette
+
+    typo_in = data.get("typography")
+    if isinstance(typo_in, dict):
+        typo = {}
+        if typo_in.get("heading") in ("serif", "sans", "display"):
+            typo["heading"] = typo_in["heading"]
+        if typo_in.get("body") in ("serif", "sans"):
+            typo["body"] = typo_in["body"]
+        if typo_in.get("scale") in _HEADING_SCALES:
+            typo["scale"] = typo_in["scale"]
+        if typo_in.get("weight") in ("light", "regular", "bold"):
+            typo["weight"] = typo_in["weight"]
+        if typo:
+            spec["typography"] = typo
+
+    shape_in = data.get("shape")
+    if isinstance(shape_in, dict):
+        shape = {}
+        if shape_in.get("radius") in _RADII:
+            shape["radius"] = shape_in["radius"]
+        if shape_in.get("density") in ("airy", "balanced", "dense"):
+            shape["density"] = shape_in["density"]
+        if shape_in.get("borders") in ("hairline", "none", "heavy"):
+            shape["borders"] = shape_in["borders"]
+        if shape_in.get("shadows") in ("none", "soft", "strong"):
+            shape["shadows"] = shape_in["shadows"]
+        if shape:
+            spec["shape"] = shape
+
+    atm_in = data.get("atmosphere")
+    if isinstance(atm_in, dict):
+        atm = {}
+        if atm_in.get("canvas") in _ATMOSPHERES:
+            atm["canvas"] = atm_in["canvas"]
+        if atm_in.get("intensity") in _INTENSITIES:
+            atm["intensity"] = atm_in["intensity"]
+        if atm:
+            spec["atmosphere"] = atm
+
+    sections_in = data.get("sections")
+    if isinstance(sections_in, list):
+        sections = []
+        for item in sections_in[:14]:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip().lower()
+            entry: Dict[str, Any] = {"role": role if role in _INSPO_SECTION_ROLES else "section"}
+            for key, cap in (("layout", 80), ("notes", 220)):
+                val = item.get(key)
+                if isinstance(val, str) and val.strip():
+                    entry[key] = _clean_string(val)[:cap]
+            sections.append(entry)
+        if sections:
+            spec["sections"] = sections
+
+    for key, cap, limit in (("signatureMoves", 160, 8), ("avoid", 120, 6)):
+        val = data.get(key)
+        if isinstance(val, list):
+            items = [_clean_string(str(x))[:cap] for x in val[:limit] if isinstance(x, str) and x.strip()]
+            if items:
+                spec[key] = items
+
+    return spec
 
 
 # ─── Request / response models ──────────────────────────────────────────────
@@ -518,9 +666,14 @@ class GeneratePageRequest(BaseModel):
     route_slug: Optional[str] = None
     institute_name: Optional[str] = None
     images: List[PageImage] = Field(default_factory=list)
-    # Screenshots of sites the admin likes — analysed for LAYOUT/MOOD only
-    # (never content), producing a design brief that steers the composer.
+    # Screenshots of sites the admin wants theirs to look like — reverse-
+    # engineered into a structured design spec (palette hexes, typography, a
+    # section-by-section blueprint) that the composer builds against. Their
+    # CONTENT is never copied; only the design is.
     inspiration_image_urls: List[str] = Field(default_factory=list)
+    # Pin the design language (see _DESIGN_LANGUAGES) instead of letting the
+    # model choose — lets the wizard offer "same brief, different direction".
+    design_language: Optional[str] = None
     # The institute's OWN existing website — we extract its real copy so the
     # rebuilt page keeps their actual content ("rebuild my site").
     source_url: Optional[str] = None
@@ -645,31 +798,231 @@ _PREMIUM_EXEMPLAR = json.dumps({
 
 # ─── Prompt ──────────────────────────────────────────────────────────────────
 
+def _inspiration_block(inspiration: Any) -> str:
+    """Render the reverse-engineered reference design as a STRUCTURAL constraint.
+
+    The old version pasted mood adjectives under a heading that said "direction
+    ONLY", which the model reasonably read as "ignore the layout". The spec is
+    now the page's plan: its section list becomes the section list, its palette
+    becomes theme.primaryColor, its typography becomes the font pairing."""
+    if isinstance(inspiration, str):
+        text = inspiration.strip()
+        return (
+            "## REFERENCE DESIGN (screenshots the admin wants their site to look like)\n" + text
+            + "\nMatch this direction. Never reuse their copy, logo or images."
+        ) if text else ""
+    if not isinstance(inspiration, dict) or not inspiration:
+        return ""
+
+    lines = [
+        "## REFERENCE DESIGN — MATCH THIS",
+        "The admin gave screenshots of the site they want theirs to look like; a vision pass "
+        "reverse-engineered it into the spec below. Treat it as the PLAN for this page, not as vague "
+        "inspiration — a visitor should recognise the same design language. The one thing you must NOT "
+        "reuse is their CONTENT: every headline, sentence, statistic, logo and image comes from this "
+        "institute's own brief and provided assets.",
+        json.dumps(inspiration, ensure_ascii=False),
+        "HOW TO APPLY IT:",
+    ]
+    palette = inspiration.get("palette") if isinstance(inspiration.get("palette"), dict) else {}
+    primary = palette.get("primary")
+    if primary:
+        lines.append(
+            f"- COLOUR: set globalSettings.theme.primaryColor to \"{primary}\" (the reference's own "
+            "accent colour) and choose the preset whose family sits closest to it. This is the single "
+            "strongest cue that the page matches — do not substitute a preset colour for it."
+        )
+    else:
+        lines.append(
+            "- COLOUR: no reliable colour was sampled — pick the preset that best fits the mood, and set "
+            "theme.primaryColor only if the institute's own brand colour is known."
+        )
+    typo = inspiration.get("typography") if isinstance(inspiration.get("typography"), dict) else {}
+    if typo:
+        head = typo.get("heading")
+        want = (
+            "a SERIF display face (Playfair Display / Fraunces / DM Serif Display)" if head == "serif"
+            else "a distinctive display sans (Space Grotesk / Outfit)" if head == "display"
+            else "a clean sans (Inter / Figtree / Mulish)"
+        )
+        lines.append(
+            f"- TYPE: the reference's headings read '{head or 'sans'}' — use {want} for fonts.headingFamily "
+            f"over a sans body, and headingScale '{typo.get('scale', 'default')}'."
+        )
+    shape = inspiration.get("shape") if isinstance(inspiration.get("shape"), dict) else {}
+    if shape.get("radius"):
+        lines.append(f"- SHAPE: borderRadius '{shape['radius']}'; density reads '{shape.get('density', 'balanced')}'.")
+    atm = inspiration.get("atmosphere") if isinstance(inspiration.get("atmosphere"), dict) else {}
+    if atm.get("canvas"):
+        lines.append(
+            f"- SURFACE: atmosphere canvas '{atm['canvas']}', intensity '{atm.get('intensity', 'subtle')}'. "
+            "If the reference is flat and paper-like, DO honour that — forcing a mesh gradient onto a "
+            "deliberately flat design is the most common way a rebuild stops looking like its reference."
+        )
+    sections = inspiration.get("sections") if isinstance(inspiration.get("sections"), list) else []
+    if sections:
+        lines.append(
+            "- STRUCTURE: build the page in the SAME ORDER as `sections`, mapping each role onto the "
+            "closest component in the vocabulary (hero→heroSection, logos→logoCloud, features→featureGrid, "
+            "stats→statsHighlights, steps→stepsProcess, courses→courseCatalog, testimonials→"
+            "testimonialSection, faq→tabsAccordion, cta→ctaBanner, directory/table→detailBlocks or "
+            "htmlBlock, gallery→imageGallery, team→teamSection, pricing→pricingTable, contact→contactForm "
+            "or leadForm). Honour each entry's `layout`. Drop a section only when this institute has no "
+            "content for it, and add one only when the brief needs it — do not silently fall back to the "
+            "default landing-page rhythm."
+        )
+    moves = inspiration.get("signatureMoves") if isinstance(inspiration.get("signatureMoves"), list) else []
+    if moves:
+        lines.append(
+            "- SIGNATURE DETAILS: reproduce these with our style vocabulary (chips, eyebrows, "
+            "sectionHeading highlights, featureGrid style/headerVariant, ornaments, surface tints): "
+            + "; ".join(moves)
+        )
+    avoid = inspiration.get("avoid") if isinstance(inspiration.get("avoid"), list) else []
+    if avoid:
+        lines.append(
+            "- DO NOT USE (these would break the look, even where the design rules below suggest them): "
+            + "; ".join(avoid)
+        )
+    if inspiration.get("notes"):
+        lines.append("- NOTES: " + str(inspiration["notes"]))
+    return "\n".join(lines)
+
+
+# A LIBRARY of design languages, not one house style. With a single exemplar and
+# an imperative doctrine ("ALWAYS open with a badge + 3 stat chips + a marquee"),
+# every brief converged on the same page — competent but unmistakably templated,
+# and unable to follow a reference that looked nothing like it. The model now
+# commits to ONE language chosen for the brand, so a law academy and a coding
+# bootcamp come out looking like different studios made them.
+_DESIGN_LANGUAGES: List[Dict[str, str]] = [
+    {
+        "id": "editorial-serif",
+        "fits": "premium, established or story-led brands; law/UPSC/medical academies; anything selling credibility",
+        "theme": "preset default|slate|forest, atmosphere soft + subtle, headingScale editorial, borderRadius rounded",
+        "fonts": "headingFamily Playfair Display | Fraunces | DM Serif Display over an Inter or Mulish body",
+        "moves": "one oversized serif headline with lots of air; sectionHeading highlight style 'underline' (not gradient); "
+                 "restrained single accent; statsHighlights as plain large numerals; featureGrid style 'tinted' or plain cards; "
+                 "photography over illustration",
+        "avoid": "glass cards, gradient text, marquee tickers, glow orbs — they cheapen an editorial page",
+    },
+    {
+        "id": "swiss-minimal",
+        "fits": "clarity-first technical coaching, exam prep, engineering; briefs heavy on facts, schedules or syllabi",
+        "theme": "preset slate|default, atmosphere flat + subtle, headingScale compact, borderRadius sharp",
+        "fonts": "Inter or Figtree for both heading and body — no display face",
+        "moves": "strict grid; everything left-aligned; hairline borders (detailBlocks); dense label:value strips; "
+                 "monochrome or no icons; tight vertical rhythm; tables over cards",
+        "avoid": "gradients, drop shadows, glassmorphism, ornaments, decorative badges",
+    },
+    {
+        "id": "bold-modern",
+        "fits": "energetic outcome-driven programs; placement training, bootcamps, skilling, cohort courses",
+        "theme": "preset ocean|violet, atmosphere mesh + medium, headingScale default, borderRadius rounded",
+        "fonts": "headingFamily Space Grotesk | Outfit over an Inter body",
+        "moves": "hero with eyebrow badge, two CTAs and three statChips; featureGrid style 'panel' with ONE headerVariant "
+                 "'solid' pillar; logoCloud in 'marquee' as a ticker; gradient CTA band; a single glow-orb ornament",
+        "avoid": "serif display faces, hairline-table layouts",
+    },
+    {
+        "id": "dark-tech",
+        "fits": "engineering, AI/ML, coding and cybersecurity programs; audiences who read as developers",
+        "theme": "preset midnight, atmosphere aurora + medium, headingScale default, borderRadius rounded",
+        "fonts": "headingFamily Space Grotesk over an Inter body",
+        "moves": "dark hero that fills the fold; featureGrid style 'glass' or 'gradient-border'; technical chips "
+                 "(languages, tools, versions); glow-orb ornaments; stepsProcess variant 'timeline-cards'",
+        "avoid": "pastel tints, warm pills, light paper surfaces",
+    },
+    {
+        "id": "warm-community",
+        "fits": "schools, pre-schools, arts, music, sports, hobby classes, NGOs; parent and child audiences",
+        "theme": "preset sunset|amber|rose, atmosphere soft + medium, headingScale default, borderRadius pill",
+        "fonts": "headingFamily Fraunces | Nunito over a Mulish or Nunito body",
+        "moves": "rounded pill shapes everywhere; hero with an image collage; testimonialSection with ratings; "
+                 "featureGrid style 'tinted' with friendly iconName; generous colour",
+        "avoid": "dark inverted bands, sharp corners, corporate greys",
+    },
+    {
+        "id": "corporate-trust",
+        "fits": "B2B training, universities, certification bodies, placement/HR-facing pages",
+        "theme": "preset slate|ocean, atmosphere soft + subtle, headingScale default, borderRadius rounded",
+        "fonts": "Inter | Lato | Open Sans body, optionally a Newsreader heading",
+        "moves": "logoCloud as a STATIC partner grid (not a marquee); a stats band of verifiable numbers; teamSection "
+                 "with credentials; pricingTable; one muted accent used sparingly",
+        "avoid": "playful ornaments, aurora canvases, gradient text, countdown timers",
+    },
+    {
+        "id": "directory-reference",
+        "fits": "catalogues, book stores, program indexes, fee tables, syllabus and policy pages — information, not persuasion",
+        "theme": "preset default|slate, atmosphere flat + subtle, headingScale compact, borderRadius rounded",
+        "fonts": "Inter or Figtree for both",
+        "moves": "NO hero — the fold belongs to the content; detailBlocks hairline grids; label:value spec strips; "
+                 "an anchor list at the top; one well-built htmlBlock for a dense bordered table",
+        "avoid": "marketing heroes, stat chips, gradients, testimonials, countdowns",
+    },
+]
+
+
+def _design_language_block(preferred: Optional[str] = None) -> str:
+    lines = [
+        "## DESIGN LANGUAGES — pick exactly ONE and commit to it",
+        "These are seven different houses, not a ranking. Choose the one that genuinely fits THIS "
+        "institute's subject, audience and brief, then apply its theme, fonts and signature moves "
+        "consistently and respect its `avoid` list even where the DESIGN RULES below suggest otherwise. "
+        "Do NOT blend two languages, and do NOT default to bold-modern because it is listed third — a "
+        "law academy, a pre-school and a cybersecurity bootcamp must not come out looking alike. "
+        "When a REFERENCE DESIGN is supplied, it wins: pick the language closest to it and let the "
+        "reference override any conflicting detail.",
+    ]
+    for lang in _DESIGN_LANGUAGES:
+        lines.append(
+            f"- **{lang['id']}** — fits: {lang['fits']}\n"
+            f"  theme: {lang['theme']}\n  fonts: {lang['fonts']}\n"
+            f"  signature moves: {lang['moves']}\n  avoid: {lang['avoid']}"
+        )
+    # Allowlist, never the raw string: design_language arrives from the client and
+    # is interpolated into the prompt, so an unknown value must be dropped rather
+    # than echoed (a free-text field that reaches a prompt is an injection surface).
+    if preferred in {lang["id"] for lang in _DESIGN_LANGUAGES}:
+        lines.append(f"The admin explicitly asked for the '{preferred}' language — use it.")
+    return "\n".join(lines)
+
+
 _PREMIUM_DOCTRINE = [
     "Design like a senior product designer for a premium education brand — NOT a generic template. "
     "Compare your output to award-winning cohort/coaching landing pages: confident, editorial, spacious.",
-    "ALWAYS return globalSettings that suit the brand: pick a theme preset (not 'default' unless the brand is truly neutral), "
-    "an atmosphere (soft/mesh/aurora give the page depth — flat looks cheap), an editorial headingScale for premium/story brands, "
-    "and a FONT PAIRING. For an editorial/premium feel, set fonts.headingFamily to a SERIF display face (Playfair Display / "
-    "Fraunces / DM Serif Display) and keep fonts.family a clean SANS body (Inter / Mulish / Outfit) — serif headlines over sans "
-    "paragraphs is the single biggest 'premium' signal. For a modern/techy brand use Space Grotesk/Outfit headings on an Inter body. "
-    "Motion: calm or balanced.",
-    "On a LANDING page, OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
-    "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold. "
+    "ALWAYS return globalSettings, and take theme, atmosphere, headingScale, borderRadius and the FONT PAIRING from the "
+    "DESIGN LANGUAGE you chose — that section, not this one, decides the look. Two rules hold across all languages: "
+    "(1) a font PAIRING (a display/serif heading over a sans body) reads more designed than one family used for everything, "
+    "unless the language explicitly calls for a single family; (2) when the institute's real brand colour or a reference "
+    "design's accent colour is known, set theme.primaryColor to that exact hex — the 9 presets are starting points, and a "
+    "page in the brand's own colour is immediately more convincing than a page in ours. Motion: calm or balanced.",
+    "On a LANDING page, open with a heroSection that FILLS THE FOLD: put it on a section shell (style.layout.width 'wide') "
+    "with minHeight '80vh' + contentAlign 'center'. The chosen language decides the treatment — whether it is split with an "
+    "image, centered, or full-bleed; whether an eyebrow badge and statChips belong (they suit bold-modern, they cheapen "
+    "editorial-serif and swiss-minimal); and how many CTAs. Always give the headline something SPECIFIC to say. "
     "On a DIRECTORY/reference page the fold belongs to the CONTENT, not to a hero — see the ARCHETYPE section, which overrides this.",
-    "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
+    "Introduce dense sections with a sectionHeading rather than letting cards start cold. A highlight on ONE key phrase is what "
+    "makes a page feel designed — but match its style to the language: 'gradient' for bold-modern and dark-tech, 'underline' for "
+    "editorial-serif and corporate-trust, and no highlight at all for swiss-minimal or directory-reference.",
     "For a DIVISIONS / two-pillars / plan-comparison / 'what you get' section, use featureGrid with style 'panel' (columns 2 or 3): each feature is a card with a "
     "tinted HEADER band (props: badge, iconName, title, description) over a body of `bullets`. Make ONE pillar stand out by setting its headerVariant 'solid' "
     "(brand-colored header, white text) while the others stay headerVariant 'tint' — this is the single most 'designed' section pattern. Do NOT use plain 'cards' "
     "for divisions/comparisons.",
-    "Prefer rich components over plain ones: featureGrid with style 'glass'/'gradient-border'/'tinted' and chips, stepsProcess ALWAYS with variant 'timeline-cards' or "
-    "'alternating' plus nodeStyle 'icon' (plain numbered steps look dated), logoCloud in 'marquee' layout as a ticker of announcements, testimonialSection with ratings, "
-    "trustChip. NEVER use the plain 'banner' component for a hero.",
+    "Reach past the plainest form of every component, in the direction your language points: featureGrid has style "
+    "'glass'/'gradient-border'/'tinted'/'panel' and per-feature chips; stepsProcess has variant 'timeline-cards' and "
+    "'alternating' plus nodeStyle 'icon' (bare numbered steps look dated in every language); logoCloud has a 'marquee' ticker "
+    "layout and a static grid; testimonialSection has ratings; trustChip exists. Restraint is a legitimate choice — "
+    "swiss-minimal and editorial-serif look BETTER plain — but plainness must be the language's decision, never a default. "
+    "NEVER use the plain 'banner' component for a hero.",
     "Feature/accordion icons: ALWAYS set iconName from the icon library (GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb, ShieldCheck, "
     "ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle, Wrench, Sparkle, Medal, Briefcase, Globe) — never rely on the emoji 'icon' field; emojis read cheap.",
     "Theme preset: commit to a COLOR that fits the brand's subject (ocean/midnight = tech & engineering, forest = growth & science, sunset/amber = energetic, "
-    "rose/violet = creative, slate = corporate). Use 'default' ONLY when the institute's own brand color should shine through unchanged.",
-    "Add tasteful depth: an ornaments glow-orb behind a feature section, a subtle backgroundLayers gradient on the CTA, atmosphere on the hero. Keep it restrained — one accent per section.",
+    "rose/violet = creative, slate = corporate). Prefer an exact theme.primaryColor over a preset whenever the brand's real "
+    "colour is known; use 'default' with no primaryColor only when the institute's own configured colour should shine through unchanged.",
+    "Depth is language-dependent, and one accent per section is the ceiling in all of them: glow-orb ornaments and gradient CTA "
+    "bands belong to bold-modern and dark-tech; editorial-serif wants whitespace and a hairline rule instead; swiss-minimal and "
+    "directory-reference want NO decoration at all. A flat page is not automatically cheap — an undecided page is.",
     "Rhythm: AT MOST ONE hero; alternate section surface tints; end with a CTA (and contact if a contact page). "
     "Section count and whether a live courseCatalog belongs at all are decided by the ARCHETYPE and COMMERCE sections below — "
     "never add courseCatalog, cartComponent or any price/enrol element to a page whose brief says it is informational.",
@@ -871,7 +1224,7 @@ _NO_COMMERCE_RULE = (
 )
 
 
-def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "", site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
+def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration: Any = None, site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     parts.append(
         "You are the page composer for Vacademy's catalogue website builder. You produce ONE page as "
@@ -886,10 +1239,15 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         vocab = [c for c in vocab if c.get("type") not in ("header", "footer")]
     parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
+    parts.append(_design_language_block(req.design_language))
     parts.append("## DESIGN RULES\n- " + "\n- ".join(_PREMIUM_DOCTRINE))
     parts.append(
-        "## PREMIUM EXEMPLAR (a page at the quality bar you must hit — study its globalSettings, hero, "
-        "highlighted heading, glass feature cards, marquee ticker and CTA; do NOT copy its content)\n"
+        "## STRUCTURAL EXEMPLAR — read for SHAPE, not for style\n"
+        "Valid in-schema JSON at the level of polish you must hit: study how it nests props, puts the hero "
+        "on a section shell, sets iconName rather than emoji, and uses ctaBanner's real contract. Its own "
+        "styling choices are illustrative only and blend more than one language — do NOT carry over its "
+        "forest/mesh/Playfair theme, its marquee ticker or its stat chips unless the language you chose "
+        "calls for them. Never copy its content.\n"
         + _PREMIUM_EXEMPLAR
     )
 
@@ -922,11 +1280,8 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
             "keep their real facts, program names, numbers and about-us copy; improve the writing and "
             "structure, do NOT invent different facts)\n" + site_corpus
         )
-    if inspiration_brief:
-        parts.append(
-            "## INSPIRATION (the admin shared screenshots of sites they admire — a design DIRECTION for "
-            "layout/mood/theme ONLY, never copy their text or images)\n" + inspiration_brief
-        )
+    if inspiration:
+        parts.append(_inspiration_block(inspiration))
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
 
@@ -951,14 +1306,16 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         parts.append(_NO_COMMERCE_RULE)
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object of this exact shape (no markdown, no commentary):\n"
-        '{"globalSettings": {"theme": {"preset": "...", "atmosphere": {"canvas": "...", "intensity": "..."}, '
+        '{"globalSettings": {"theme": {"preset": "...", "primaryColor": "#rrggbb (optional — see below)", '
+        '"atmosphere": {"canvas": "...", "intensity": "..."}, '
         '"headingScale": "...", "borderRadius": "..."}, "fonts": {"enabled": true, "family": "<sans body font '
         'label>", "headingFamily": "<serif/display heading font label — omit to reuse the body font>"}, '
         '"motion": {"personality": "..."}}, '
         '"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
         '"components": [{"id": "<kebab-id>", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}, …]}}\n'
         "6–12 components. Do NOT include header or footer components — the site provides global ones. "
-        "globalSettings is REQUIRED — a plain default theme makes the page look cheap."
+        "globalSettings is REQUIRED — a plain default theme makes the page look cheap.\n"
+        "Allowed globalSettings values:\n" + _theme_value_reference()
     )
     return "\n\n".join(parts)
 
@@ -1111,10 +1468,37 @@ def sanitize_component(
     return cleaned
 
 
-def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
+_HEX6_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_HEX3_RE = re.compile(r"^#[0-9a-fA-F]{3}$")
+
+
+def coerce_hex_color(value: Any) -> Optional[str]:
+    """Normalize a model-supplied brand color to the `#rrggbb` form the
+    renderers accept (catalogue-theme.ts matches /^#[0-9a-fA-F]{6}$/ exactly, so
+    a 3-digit or upper-case hex would be silently ignored). Returns None for
+    anything that is not a hex color — colour NAMES are rejected on purpose:
+    'blue' would be dropped by the renderer anyway, and passing it through would
+    make the editor's swatch show a value the page never uses."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if _HEX6_RE.match(v):
+        return v.lower()
+    if _HEX3_RE.match(v):
+        return ("#" + "".join(c * 2 for c in v[1:])).lower()
+    return None
+
+
+def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Clamp the model's globalSettings to valid values (the theme presets,
     atmospheres, fonts, etc. the renderers actually support). Font label OR a
-    known stack maps to a stack; anything else falls back to Inter."""
+    known stack maps to a stack; anything else falls back to Inter.
+
+    `base` is the settings already on the site. Keys the model DIDN'T send fall
+    back to the base instead of to a hardcoded default — required by the chrome
+    editor, whose prompt says "include ONLY the keys you actually changed": with
+    no base, "switch the theme to ocean" also reset atmosphere, heading scale,
+    radius and the brand color to defaults."""
     if not isinstance(raw, dict):
         return None
     theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
@@ -1122,29 +1506,57 @@ def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
     fonts_in = raw.get("fonts") if isinstance(raw.get("fonts"), dict) else {}
     motion_in = raw.get("motion") if isinstance(raw.get("motion"), dict) else {}
 
+    base = base if isinstance(base, dict) else {}
+    base_theme = base.get("theme") if isinstance(base.get("theme"), dict) else {}
+    base_atm = base_theme.get("atmosphere") if isinstance(base_theme.get("atmosphere"), dict) else {}
+    base_fonts = base.get("fonts") if isinstance(base.get("fonts"), dict) else {}
+    base_motion = base.get("motion") if isinstance(base.get("motion"), dict) else {}
+
+    def _pick(incoming: Any, allowed: set, previous: Any, fallback: str) -> str:
+        if incoming in allowed:
+            return incoming
+        return previous if previous in allowed else fallback
+
     _known_stacks = set(_FONT_STACKS.values())
-    fam = fonts_in.get("family")
-    font_stack = _FONT_STACKS.get(fam) or (fam if fam in _known_stacks else "Inter, sans-serif")
+
+    def _stack(label: Any) -> Optional[str]:
+        return _FONT_STACKS.get(label) or (label if label in _known_stacks else None)
+
+    font_stack = _stack(fonts_in.get("family")) or _stack(base_fonts.get("family")) or "Inter, sans-serif"
     # Optional separate heading font (serif display over sans body).
-    head = fonts_in.get("headingFamily")
-    head_stack = _FONT_STACKS.get(head) or (head if head in _known_stacks else None)
+    head_stack = _stack(fonts_in.get("headingFamily"))
+    if head_stack is None and "headingFamily" not in fonts_in:
+        head_stack = _stack(base_fonts.get("headingFamily"))
 
     fonts_out: Dict[str, Any] = {"enabled": True, "family": font_stack}
     if head_stack and head_stack != font_stack:
         fonts_out["headingFamily"] = head_stack
 
-    return {
-        "theme": {
-            "preset": theme_in.get("preset") if theme_in.get("preset") in _THEME_PRESETS else "default",
-            "atmosphere": {
-                "canvas": atm_in.get("canvas") if atm_in.get("canvas") in _ATMOSPHERES else "soft",
-                "intensity": atm_in.get("intensity") if atm_in.get("intensity") in _INTENSITIES else "subtle",
-            },
-            "headingScale": theme_in.get("headingScale") if theme_in.get("headingScale") in _HEADING_SCALES else "default",
-            "borderRadius": theme_in.get("borderRadius") if theme_in.get("borderRadius") in _RADII else "rounded",
+    theme_out: Dict[str, Any] = {
+        "preset": _pick(theme_in.get("preset"), _THEME_PRESETS, base_theme.get("preset"), "default"),
+        "atmosphere": {
+            "canvas": _pick(atm_in.get("canvas"), _ATMOSPHERES, base_atm.get("canvas"), "soft"),
+            "intensity": _pick(atm_in.get("intensity"), _INTENSITIES, base_atm.get("intensity"), "subtle"),
         },
+        "headingScale": _pick(theme_in.get("headingScale"), _HEADING_SCALES, base_theme.get("headingScale"), "default"),
+        "borderRadius": _pick(theme_in.get("borderRadius"), _RADII, base_theme.get("borderRadius"), "rounded"),
+    }
+    # Exact brand color. Supported end-to-end by both renderers
+    # (applyCataloguePrimaryColor / buildPrimaryScaleVars) and by the editor's
+    # color picker, but until now this clamp DROPPED it — so the AI could only
+    # ever choose one of the 9 presets while a human could match a brand exactly.
+    # An explicit null/"" clears it back to the preset's own palette.
+    if "primaryColor" in theme_in:
+        primary = coerce_hex_color(theme_in.get("primaryColor"))
+        if primary:
+            theme_out["primaryColor"] = primary
+    elif coerce_hex_color(base_theme.get("primaryColor")):
+        theme_out["primaryColor"] = coerce_hex_color(base_theme.get("primaryColor"))
+
+    return {
+        "theme": theme_out,
         "fonts": fonts_out,
-        "motion": {"personality": motion_in.get("personality") if motion_in.get("personality") in _MOTIONS else "calm"},
+        "motion": {"personality": _pick(motion_in.get("personality"), _MOTIONS, base_motion.get("personality"), "calm")},
     }
 
 
@@ -1216,15 +1628,18 @@ async def estimate_page_generation(
 async def _compose_one_page(
     body: GeneratePageRequest, catalog: Dict[str, Any], db, institute_id: str, actor_user_id: Optional[str],
     fixed_global: Optional[Dict[str, Any]] = None,
+    inspiration: Optional[Dict[str, Any]] = None,
 ) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str], str, str]:
     """Compose ONE page end-to-end: inspiration/site-import → prompt → LLM →
     auto-images → sanitize → bill. Returns (page, global_settings, warnings,
     model, run_id). Raises HTTPException(502) if the LLM call fails.
     When fixed_global is set, the theme is pinned (multi-page consistency)."""
-    inspiration_brief = ""
-    if body.inspiration_image_urls:
+    # A caller composing several pages analyses the screenshots once and passes
+    # the spec in — the vision pass is the same for every page of a site.
+    inspiration = dict(inspiration or {})
+    if not inspiration and body.inspiration_image_urls:
         try:
-            inspiration_brief = await _analyze_inspiration(
+            inspiration = await _analyze_inspiration(
                 body.inspiration_image_urls, db, institute_id, actor_user_id
             )
         except Exception as e:  # noqa: BLE001
@@ -1237,7 +1652,7 @@ async def _compose_one_page(
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-builder] site import skipped: %s", e)
 
-    prompt = _build_prompt(body, catalog, inspiration_brief, site_corpus, fixed_global)
+    prompt = _build_prompt(body, catalog, inspiration, site_corpus, fixed_global)
     run_id = uuid.uuid4().hex
 
     primary, fallbacks = resolve_models(
@@ -1261,6 +1676,17 @@ async def _compose_one_page(
             logger.warning("[page-builder] auto-image pass skipped: %s", e)
 
     page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
+    # Backstop for the reference colour: if we sampled a real accent hex from the
+    # admin's screenshots and the model still returned a bare preset, apply it.
+    # Matching the reference's colour is the cue people judge first, and it is
+    # the cheapest one to get right, so it should not depend on the model
+    # remembering one line of the prompt.
+    ref_primary = coerce_hex_color((inspiration.get("palette") or {}).get("primary")) if inspiration else None
+    if ref_primary and isinstance(global_settings, dict):
+        theme = global_settings.get("theme")
+        if isinstance(theme, dict) and not theme.get("primaryColor"):
+            theme["primaryColor"] = ref_primary
+            warnings.append(f"Applied the reference design's accent colour ({ref_primary})")
     if fixed_global is not None:
         global_settings = fixed_global  # pin the shared theme across the site
 
@@ -1423,6 +1849,9 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
         '  {"op": "move", "id": "<existing-id>", "afterId": "<existing-id or null>", "note": "<plain-language>"},\n'
         '  {"op": "updateGlobalSettings", "patch": {"theme"|"motion"|"fonts": …}, "note": "<plain-language>"}\n'
         "]}\n"
+        "updateGlobalSettings is how you change the SITE-WIDE look (theme colour, atmosphere, fonts, "
+        "motion). Send only the keys that change — omitted keys keep their current value. Allowed values:\n"
+        + _theme_value_reference() + "\n"
         "propsPatch/stylePatch are SHALLOW-merged into the component's existing props/style — send only "
         "the keys that change. Reference only ids that exist in CURRENT PAGE (except insert's new id). "
         "If the request cannot be satisfied with the vocabulary, return an empty ops list and explain in reply."
@@ -1530,6 +1959,11 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
                 continue
             # Only theme/motion/fonts may be touched conversationally.
             safe = {k: clean_urls(v, allowed_urls, warnings) for k, v in patch.items() if k in _ALLOWED_GLOBAL_KEYS}
+            # ...and only with values the renderers understand. The patch is
+            # shallow-merged straight into globalSettings by the editor, so an
+            # invented preset name ("navy") or a non-hex colour would land in the
+            # saved config and quietly render as no theme at all.
+            safe = _validate_global_patch(safe, warnings)
             if not safe:
                 warnings.append("updateGlobalSettings skipped — no allowed keys")
                 continue
@@ -1645,6 +2079,88 @@ _RADII = {"sharp", "rounded", "pill"}
 _MOTIONS = {"none", "calm", "balanced", "dynamic"}
 
 
+def _theme_value_reference() -> str:
+    """The allowed theme values, listed for the model. The exported catalog only
+    carries a terse shape string, so without this the model had to guess preset
+    and atmosphere names — and had no way to know primaryColor exists at all."""
+    return (
+        f"- theme.preset: {sorted(_THEME_PRESETS)}\n"
+        f"- theme.primaryColor: an exact brand hex like \"#1D4ED8\" (optional). Set it whenever the "
+        f"brand's or the reference design's real colour is known — it overrides the preset's hue and "
+        f"re-tints buttons, links and accents across the site. Presets are only 9 fixed palettes; this "
+        f"is how a page matches a brand EXACTLY. Omit it to use the preset's own colour.\n"
+        f"- theme.atmosphere.canvas: {sorted(_ATMOSPHERES)}; .intensity: {sorted(_INTENSITIES)}\n"
+        f"- theme.headingScale: {sorted(_HEADING_SCALES)}; theme.borderRadius: {sorted(_RADII)}\n"
+        f"- motion.personality: {sorted(_MOTIONS)}\n"
+        f"- fonts.family (body) and fonts.headingFamily (headings): {sorted(_FONT_FAMILIES)}"
+    )
+
+
+def _validate_global_patch(patch: Dict[str, Any], warnings: List[str]) -> Dict[str, Any]:
+    """Drop invalid values out of a conversational globalSettings PATCH.
+
+    Patch semantics, not clamp semantics: an unrecognised value is REMOVED (so
+    the editor's shallow merge leaves the site's current value alone) rather than
+    replaced with a default, which would silently undo settings the admin never
+    mentioned."""
+    out: Dict[str, Any] = {}
+
+    theme_in = patch.get("theme")
+    if isinstance(theme_in, dict):
+        theme_out: Dict[str, Any] = {}
+        for key, allowed in (
+            ("preset", _THEME_PRESETS),
+            ("headingScale", _HEADING_SCALES),
+            ("borderRadius", _RADII),
+        ):
+            if key in theme_in:
+                if theme_in[key] in allowed:
+                    theme_out[key] = theme_in[key]
+                else:
+                    warnings.append(f"Ignored unsupported theme.{key} '{theme_in[key]}'")
+        if "primaryColor" in theme_in:
+            primary = coerce_hex_color(theme_in["primaryColor"])
+            if primary:
+                theme_out["primaryColor"] = primary
+            elif theme_in["primaryColor"] in (None, ""):
+                theme_out["primaryColor"] = None  # explicit reset to the preset palette
+            else:
+                warnings.append("Ignored theme.primaryColor — not a hex colour")
+        atm_in = theme_in.get("atmosphere")
+        if isinstance(atm_in, dict):
+            atm_out = {
+                k: v for k, v in atm_in.items()
+                if (k == "canvas" and v in _ATMOSPHERES) or (k == "intensity" and v in _INTENSITIES)
+            }
+            if atm_out:
+                theme_out["atmosphere"] = atm_out
+        if theme_out:
+            out["theme"] = theme_out
+
+    fonts_in = patch.get("fonts")
+    if isinstance(fonts_in, dict):
+        _known_stacks = set(_FONT_STACKS.values())
+        fonts_out: Dict[str, Any] = {}
+        for key in ("family", "headingFamily"):
+            if key not in fonts_in:
+                continue
+            label = fonts_in[key]
+            stack = _FONT_STACKS.get(label) or (label if label in _known_stacks else None)
+            if stack:
+                fonts_out[key] = stack
+            else:
+                warnings.append(f"Ignored unregistered font '{label}'")
+        if fonts_out:
+            fonts_out["enabled"] = True
+            out["fonts"] = fonts_out
+
+    motion_in = patch.get("motion")
+    if isinstance(motion_in, dict) and motion_in.get("personality") in _MOTIONS:
+        out["motion"] = {"personality": motion_in["personality"]}
+
+    return out
+
+
 class BrandKitRequest(BaseModel):
     institute_name: Optional[str] = None
     brief: Optional[str] = None
@@ -1657,6 +2173,9 @@ class BrandKitRequest(BaseModel):
 class BrandKit(BaseModel):
     label: str
     themePreset: str
+    # Exact brand hex — overrides the preset's hue when the institute's real
+    # colour is known. Optional: omitted means "use the preset's own palette".
+    primaryColor: Optional[str] = None
     atmosphere: Dict[str, str]
     headingScale: str
     borderRadius: str
@@ -1682,6 +2201,7 @@ def _coerce_kit(raw: Any) -> Optional[BrandKit]:
     return BrandKit(
         label=_clean_string(str(raw.get("label") or "Brand theme"))[:40],
         themePreset=preset,
+        primaryColor=coerce_hex_color(raw.get("primaryColor")),
         atmosphere={"canvas": canvas, "intensity": intensity},
         headingScale=raw.get("headingScale") if raw.get("headingScale") in _HEADING_SCALES else "default",
         borderRadius=raw.get("borderRadius") if raw.get("borderRadius") in _RADII else "rounded",
@@ -1723,6 +2243,9 @@ async def derive_brand_kit(
         f"- atmosphere.canvas: {sorted(_ATMOSPHERES)}; atmosphere.intensity: {sorted(_INTENSITIES)}\n"
         f"- headingScale: {sorted(_HEADING_SCALES)}; borderRadius: {sorted(_RADII)}; motion: {sorted(_MOTIONS)}\n"
         f"- fontFamily (body) and headingFontFamily (headings): {sorted(_FONT_FAMILIES)}\n"
+        "You may also set primaryColor to an exact hex like \"#1D4ED8\" — do this when the brand notes name "
+        "or imply a real brand colour, because matching it beats any of the 9 presets. Omit primaryColor "
+        "when no real colour is known. Even with primaryColor set, still pick the closest preset.\n"
         "Make the three genuinely different (e.g. one editorial-serif, one bold-modern, one calm-minimal). "
         "For editorial/premium options pair a SERIF headingFontFamily (Playfair Display / Fraunces / DM Serif "
         "Display) with a SANS fontFamily body — serif headings over sans body reads premium. Set "
@@ -1732,6 +2255,7 @@ async def derive_brand_kit(
         f"Context: {(body.brief or '')[:600]}\n"
         f"Brand notes: {(body.brand_notes or 'none')[:300]}\n\n"
         'Return ONLY JSON: {"kits": [{"label": "...", "themePreset": "...", '
+        '"primaryColor": "#rrggbb (optional)", '
         '"atmosphere": {"canvas": "...", "intensity": "..."}, "headingScale": "...", '
         '"borderRadius": "...", "motion": "...", "fontFamily": "...", "headingFontFamily": "...", '
         '"rationale": "one sentence"}]}'
@@ -1862,6 +2386,11 @@ class GenerateSiteRequest(BaseModel):
     source_url: Optional[str] = None
     auto_images: bool = True
     preferred_model: Optional[str] = None
+    # Reference screenshots for the WHOLE site. Analysed once and shared across
+    # every page — a per-page vision pass would cost N times as much for an
+    # identical answer, and could hand each page a slightly different palette.
+    inspiration_image_urls: List[str] = Field(default_factory=list)
+    design_language: Optional[str] = None
 
 
 class SitePageOut(BaseModel):
@@ -1921,6 +2450,16 @@ async def generate_site(
     shared_global: Optional[Dict[str, Any]] = None
     model_used = _DEFAULT_MODEL
 
+    # One vision pass for the whole site, reused by every page below.
+    shared_inspiration: Dict[str, Any] = {}
+    if body.inspiration_image_urls:
+        try:
+            shared_inspiration = await _analyze_inspiration(
+                body.inspiration_image_urls, db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] site inspiration analysis skipped: %s", e)
+
     for i, pt in enumerate(page_types):
         sub = GeneratePageRequest(
             brief=f"{body.brief.strip()}\n\nThis is {_SITE_PAGE_LABELS[pt]} of the site.",
@@ -1934,10 +2473,12 @@ async def generate_site(
             terminology=body.terminology,
             auto_images=body.auto_images,
             preferred_model=body.preferred_model,
+            design_language=body.design_language,
         )
         try:
             page, gs, w, model_used, _ = await _compose_one_page(
-                sub, catalog, db, institute_id, actor_user_id, fixed_global=shared_global
+                sub, catalog, db, institute_id, actor_user_id, fixed_global=shared_global,
+                inspiration=shared_inspiration,
             )
         except HTTPException:
             if pages:
@@ -2316,6 +2857,9 @@ def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str
     )
     parts.append(
         "## THEME\n" + json.dumps(catalog["globalSettingsSchema"], ensure_ascii=False)
+        + "\nAllowed values — anything else is discarded:\n"
+        + _theme_value_reference()
+        + "\nSend ONLY the theme keys the instruction actually changes; the rest are preserved."
     )
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
@@ -2363,10 +2907,13 @@ def _merge_chrome(current: Dict[str, Any], proposed: Any, warnings: List[str]) -
         return merged
 
     # Theme / fonts / motion — reuse the existing clamp so only supported
-    # presets, atmospheres and font stacks survive.
+    # presets, atmospheres and font stacks survive. `merged` is passed as the
+    # base because the prompt asks for ONLY the changed keys: without it,
+    # "make the theme ocean" also reset atmosphere/headingScale/borderRadius and
+    # wiped the brand color, because the clamp defaults every absent key.
     theme_like = {k: v for k, v in proposed.items() if k in _CHROME_WRITABLE_KEYS}
     if theme_like:
-        coerced = _coerce_global_settings(theme_like)
+        coerced = _coerce_global_settings(theme_like, base=merged)
         if coerced:
             for k in _CHROME_WRITABLE_KEYS:
                 if k in theme_like and k in coerced:

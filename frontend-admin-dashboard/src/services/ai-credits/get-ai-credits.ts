@@ -103,7 +103,11 @@ export type ToolKey =
     // Knowledge Base (V435)
     | 'kb_ingest_page'
     | 'kb_ingest_url'
-    | 'kb_ask';
+    | 'kb_ask'
+    // Question papers from a knowledge base (V436)
+    | 'kb_paper_blueprint'
+    | 'kb_paper_questions'
+    | 'kb_paper_regenerate';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

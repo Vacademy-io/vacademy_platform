@@ -1,7 +1,15 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Books, ListNumbers, Plus, Spinner, WarningCircle } from '@phosphor-icons/react';
+import {
+    ArrowLeft,
+    Books,
+    Exam,
+    ListNumbers,
+    Plus,
+    Spinner,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
@@ -303,6 +311,21 @@ function KnowledgeBaseDetailPage() {
                                         <ListNumbers className="mr-1 size-4" />
                                         What it covers
                                     </MyButton>
+                                    {readySources.length > 0 && (
+                                        <MyButton
+                                            buttonType="secondary"
+                                            scale="medium"
+                                            onClick={() =>
+                                                navigate({
+                                                    to: '/knowledge-base/paper/$kbId',
+                                                    params: { kbId },
+                                                })
+                                            }
+                                        >
+                                            <Exam className="mr-1 size-4" />
+                                            Create question paper
+                                        </MyButton>
+                                    )}
                                     {writable && (
                                         <MyButton
                                             buttonType="primary"

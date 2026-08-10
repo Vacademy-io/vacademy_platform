@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { ArrowRight, ChatCircleDots, Quotes, Sparkle, Spinner } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Card } from '@/components/ui/card';
+import { AnswerMarkdown } from './AnswerMarkdown';
 import { useAskKnowledgeBase } from '../-hooks';
 import type { AskResponse } from '../-types';
 
@@ -87,19 +88,31 @@ export const AskPanel = ({ kbId, kbName, suggestions = [], hasContent }: AskPane
 
     return (
         <Card className="flex flex-col">
-            <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-3">
-                <Sparkle className="size-5 text-primary-500" />
-                <div>
-                    <p className="text-subtitle font-semibold text-neutral-700">
-                        Ask this knowledge base
-                    </p>
-                    <p className="text-caption text-neutral-500">
-                        Answers come only from {kbName}, with the page they came from.
-                    </p>
+            <div className="flex items-start justify-between gap-2 border-b border-neutral-200 px-4 py-3">
+                <div className="flex min-w-0 items-start gap-2">
+                    <Sparkle className="mt-0.5 size-5 shrink-0 text-primary-500" />
+                    <div className="min-w-0">
+                        <p className="text-subtitle font-semibold text-neutral-700">
+                            Ask this knowledge base
+                        </p>
+                        <p className="break-words text-caption text-neutral-500">
+                            Answers come only from {kbName}, with the page they came from.
+                        </p>
+                    </div>
                 </div>
+                {turns.length > 0 && (
+                    <MyButton
+                        buttonType="text"
+                        scale="medium"
+                        onClick={() => setTurns([])}
+                        disable={ask.isPending}
+                    >
+                        Clear
+                    </MyButton>
+                )}
             </div>
 
-            <div ref={scrollRef} className="max-h-96 overflow-y-auto p-4">
+            <div ref={scrollRef} className="max-h-96 min-w-0 overflow-y-auto p-4">
                 {turns.length === 0 && (
                     <div className="flex flex-col gap-3">
                         <p className="text-caption text-neutral-500">
@@ -126,9 +139,12 @@ export const AskPanel = ({ kbId, kbName, suggestions = [], hasContent }: AskPane
                 <div className="flex flex-col gap-5">
                     {turns.map((turn, i) => (
                         <div key={`${i}-${turn.question}`} className="flex flex-col gap-2">
-                            <p className="text-body font-semibold text-neutral-700">
-                                {turn.question}
-                            </p>
+                            <div className="flex items-start gap-2 rounded-md bg-neutral-50 px-3 py-2">
+                                <ChatCircleDots className="mt-0.5 size-4 shrink-0 text-neutral-400" />
+                                <p className="min-w-0 break-words text-body font-medium text-neutral-700">
+                                    {turn.question}
+                                </p>
+                            </div>
 
                             {!turn.response && !turn.error && (
                                 <p className="flex items-center gap-2 text-body text-neutral-500">
@@ -138,14 +154,14 @@ export const AskPanel = ({ kbId, kbName, suggestions = [], hasContent }: AskPane
                             )}
 
                             {turn.error && (
-                                <p className="text-body text-danger-600">{turn.error}</p>
+                                <p className="break-words text-body text-danger-600">
+                                    {turn.error}
+                                </p>
                             )}
 
                             {turn.response && (
                                 <>
-                                    <p className="whitespace-pre-wrap text-body text-neutral-600">
-                                        {turn.response.answer}
-                                    </p>
+                                    <AnswerMarkdown>{turn.response.answer}</AnswerMarkdown>
 
                                     {!turn.response.grounded && (
                                         <p className="text-caption text-warning-600">
@@ -164,8 +180,13 @@ export const AskPanel = ({ kbId, kbName, suggestions = [], hasContent }: AskPane
                                                     key={`${c.source_id}-${ci}`}
                                                     className="flex flex-col gap-1.5"
                                                 >
-                                                    <p className="text-caption text-neutral-600">
-                                                        [{ci + 1}] {c.label}
+                                                    <p className="flex flex-wrap items-center gap-1.5 text-caption text-neutral-600">
+                                                        <span className="shrink-0 rounded bg-white px-1.5 py-0.5 font-medium text-neutral-500">
+                                                            {ci + 1}
+                                                        </span>
+                                                        <span className="min-w-0 break-words">
+                                                            {c.label}
+                                                        </span>
                                                     </p>
                                                     {c.figures.length > 0 && (
                                                         <div className="flex flex-wrap gap-2">

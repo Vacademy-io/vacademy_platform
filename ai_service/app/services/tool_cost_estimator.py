@@ -281,6 +281,33 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ---- Question papers from a knowledge base (V436) -----------------------
+    # request_type 'assessment' is already in the ai_token_usage CHECK — reusing
+    # it avoids another DROP+ADD of that constraint (the V325/V435 trap).
+    # MUST agree with the V436 seeds and FE computeToolCredits.
+    "kb_paper_blueprint": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Priced per question so the preview reads "60 questions ≈ 95 credits".
+    # flat_base covers retrieval + the post-generation validation pass.
+    "kb_paper_questions": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("5"),
+        "per_unit_credits": Decimal("1.5"),
+        "unit_field": "questions",
+        "params": {},
+    },
+    "kb_paper_regenerate": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

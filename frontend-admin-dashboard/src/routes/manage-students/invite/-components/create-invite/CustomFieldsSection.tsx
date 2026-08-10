@@ -41,6 +41,10 @@ export const CustomFieldsSection = ({
     const { fields, move } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     const handleAddCustomField = (
@@ -62,6 +66,7 @@ export const CustomFieldsSection = ({
             <Sortable
                 value={fields}
                 onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                     move(activeIndex, overIndex);
                 }}
                 fast={false}
@@ -86,7 +91,10 @@ export const CustomFieldsSection = ({
                                         isEditing={isEditing}
                                         onToggleRequired={() => toggleIsRequired(field.id)}
                                         onEdit={() => setEditingIndex(isEditing ? null : index)}
-                                        onDelete={() => handleDeleteOpenField(field.id)}
+                                        onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(field.id);
+                                                        }}
                                         dragHandle={
                                             <SortableDragHandle
                                                 variant="ghost"

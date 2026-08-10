@@ -77,6 +77,11 @@ import {
 } from '@/components/common/custom-fields/FormFieldRow';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
 
+// Field ids double as React keys and drag identity, so they must be unique.
+// String(length) collided with seeded ids ('0','1','2') after a delete.
+let newFieldSeq = 0;
+const nextFieldId = () => `new-${Date.now()}-${newFieldSeq++}`;
+
 function getInitialAssessmentCustomFields() {
     // Returns empty — the useEffect below will async-load from the live API.
     return [];
@@ -188,6 +193,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'open_test.custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     // Async-load institute defaults directly from the live backend endpoint.
@@ -329,7 +338,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         if (!source) return;
         // A fresh id keeps this an "added" row for the save-time diff, which
         // matches by id — reusing the source id would read as an edit instead.
-        const newId = String(Date.now());
+        const newId = nextFieldId();
         const updatedFields = [
             ...customFieldsArray.slice(0, sourceIndex + 1),
             { ...source, id: newId, name: `${source.name} (copy)`, oldKey: false, key: '' },
@@ -349,7 +358,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         const updatedFields = [
             ...customFields,
             {
-                id: String(customFields.length), // Use the current array length as the new ID
+                id: nextFieldId(),
                 type,
                 name,
                 oldKey,
@@ -375,7 +384,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         // Create the new field
         const newField = {
-            id: String(customFields.length), // Use the current array length as the new ID
+            id: nextFieldId(),
             type,
             name,
             oldKey,
@@ -418,7 +427,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         config?: CustomFieldConfig
     ) => {
         const newField = {
-            id: String(customFields.length),
+            id: nextFieldId(),
             type,
             name,
             oldKey,

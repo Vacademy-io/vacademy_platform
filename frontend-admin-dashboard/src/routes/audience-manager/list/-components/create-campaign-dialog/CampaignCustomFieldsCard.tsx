@@ -84,6 +84,10 @@ const CampaignCustomFieldsCard = ({
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
     const customFields = getValues('custom_fields');
 
@@ -105,6 +109,7 @@ const CampaignCustomFieldsCard = ({
                         <Sortable
                             value={customFieldsArray}
                             onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                                 moveCustomField(activeIndex, overIndex);
                                 updateFieldOrders();
                             }}
@@ -139,9 +144,10 @@ const CampaignCustomFieldsCard = ({
                                                                 isEditing ? null : index
                                                             )
                                                         }
-                                                        onDelete={() =>
-                                                            handleDeleteOpenField(index)
-                                                        }
+                                                        onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(index);
+                                                        }}
                                                         dragHandle={
                                                             <SortableDragHandle
                                                                 variant="ghost"

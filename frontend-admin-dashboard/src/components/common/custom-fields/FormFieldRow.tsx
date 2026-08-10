@@ -124,8 +124,14 @@ export const FormFieldRow = ({
                     <span className="truncate text-caption text-neutral-500">{label}</span>
                 </span>
 
+                {/* Built-in fields are structurally mandatory — their Required
+                    state is not the admin's to change. */}
                 <span className="flex w-24 shrink-0 justify-center">
-                    <Switch checked={isRequired} onCheckedChange={onToggleRequired} />
+                    <Switch
+                        checked={locked ? true : isRequired}
+                        disabled={locked}
+                        onCheckedChange={locked ? undefined : onToggleRequired}
+                    />
                 </span>
 
                 {/* Built-in fields keep the buttons for column alignment but are

@@ -3559,6 +3559,29 @@ public class AudienceService {
             String newEmail = updates.getEmail();
             String newPhone = updates.getMobileNumber();
             if (StringUtils.hasText(newEmail) || StringUtils.hasText(newPhone)) {
+                // Institute-configured dedup (LEAD_SETTING.data.dedup) — the same check used
+                // at lead creation, so editing a lead's contact info can't silently collide
+                // with another lead the admin's field/scope setting is supposed to catch.
+                // excludeResponseId keeps this row from matching its own not-yet-saved self.
+                // An in-place edit always blocks on a match regardless of action
+                // (REJECT/ALLOW_REASSIGN) — there is no new response here to reassign.
+                String instituteId = response.getAudienceId() != null
+                        ? audienceRepository.findById(response.getAudienceId())
+                                .map(Audience::getInstituteId).orElse(null)
+                        : null;
+                if (StringUtils.hasText(instituteId)) {
+                    leadDeduplicationService
+                            .checkDuplicate(instituteId, response.getAudienceId(), newEmail, newPhone, responseId)
+                            .ifPresent(match -> {
+                                throw new ConflictException(StringUtils.hasText(match.rejectionMessage())
+                                        ? match.rejectionMessage()
+                                        : "A lead already exists with this phone number or email.");
+                            });
+                }
+
+                // Legacy campaign-scoped combined-key check — kept as the baseline safety net
+                // for institutes that haven't configured LEAD_SETTING.data.dedup, and to keep
+                // dedupeKey (used by the enquiry flow's soft-merge) up to date either way.
                 String newKey = leadDeduplicationService.generateDedupeKey(newEmail, newPhone);
                 if (newKey != null && response.getAudienceId() != null) {
                     leadDeduplicationService.findDuplicate(response.getAudienceId(), newKey)

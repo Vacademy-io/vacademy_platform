@@ -2789,9 +2789,14 @@ const EnrollByInvite = ({
               enrollmentData.selectedPayment?.name ||
               "Course Enrollment"
             }
+            // Razorpay caps `description` at 255 chars, and courseData.description
+            // is the invite's rich-text course description — routinely far longer,
+            // which made checkout fail outright. Send the invite name instead: it
+            // is short, identifies the purchase, and still gets capped downstream.
             courseDescription={
-              courseData.description ||
-              enrollmentData.selectedPayment?.description ||
+              inviteData?.name ||
+              courseData.course ||
+              enrollmentData.selectedPayment?.name ||
               "Payment for course enrollment"
             }
             razorpayRef={razorpayRef}

@@ -8,16 +8,38 @@ import {
 import { parseHtmlToString } from "@/lib/utils";
 
 // Razorpay rejects payment creation when `description` exceeds 255 characters
-// (BAD_REQUEST_ERROR: "The description may not be greater than 255 characters").
-// Course descriptions arrive as rich-text HTML, so strip markup and truncate.
-const RAZORPAY_DESCRIPTION_MAX = 255;
+// ("Could not validate payment create request due to: description: the length
+// must be no more than 255"). Callers pass a short label — the enroll-invite
+// name — never the course's rich-text description; this is the last-resort
+// guard for the callers that still pass free text.
+//
+// The cap is measured in BYTES, not JS string length: Razorpay counts the
+// encoded payload, so a 255-char string of ₹ / — / Devanagari is well over the
+// limit even though `String.length` says it fits.
+const RAZORPAY_DESCRIPTION_MAX_BYTES = 255;
+const RAZORPAY_DESCRIPTION_ELLIPSIS = "..."; // ASCII: 1 byte per char
 
 function toRazorpayDescription(raw: string): string {
   const text = parseHtmlToString(raw).replace(/\s+/g, " ").trim();
   if (!text) return "Payment for course enrollment";
-  return text.length > RAZORPAY_DESCRIPTION_MAX
-    ? `${text.slice(0, RAZORPAY_DESCRIPTION_MAX - 1)}…`
-    : text;
+
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).length <= RAZORPAY_DESCRIPTION_MAX_BYTES) {
+    return text;
+  }
+
+  const budget =
+    RAZORPAY_DESCRIPTION_MAX_BYTES - RAZORPAY_DESCRIPTION_ELLIPSIS.length;
+  let truncated = "";
+  let bytes = 0;
+  // Iterate by code point so surrogate pairs are never split in half.
+  for (const char of text) {
+    const size = encoder.encode(char).length;
+    if (bytes + size > budget) break;
+    truncated += char;
+    bytes += size;
+  }
+  return `${truncated.trimEnd()}${RAZORPAY_DESCRIPTION_ELLIPSIS}`;
 }
 
 export interface RazorpayCheckoutFormRef {

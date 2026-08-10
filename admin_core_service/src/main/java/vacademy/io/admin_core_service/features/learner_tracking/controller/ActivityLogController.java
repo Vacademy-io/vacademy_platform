@@ -17,15 +17,20 @@ public class ActivityLogController {
     private final ActivityLogService activityLogService;
     private final ActivityLogRepository activityLogRepository;
 
+    /**
+     * @param search optional free-text filter on the learner (name, email, username, mobile).
+     *               Applied in SQL across the whole batch, so a match on any page is found.
+     */
     @GetMapping("/learner-activity")
     public ResponseEntity<Page<LearnerActivityProjection>> getStudentActivity(
             @RequestParam String slideId,
             @RequestParam(required = false) String packageSessionId,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size,
             @RequestAttribute("user") CustomUserDetails user) {
 
-        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, packageSessionId, page, size, user);
+        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, packageSessionId, search, page, size, user);
         return ResponseEntity.ok(studentActivities);
     }
 

@@ -65,7 +65,13 @@ export const useInviteForm = (initialValues?: InviteForm) => {
                 name,
                 oldKey,
                 isRequired: true,
-                options,
+                // This form's schema keys options by numeric id (unlike the string
+                // ids used elsewhere) — re-index by position at the boundary.
+                options: options?.map((opt, idx) => ({
+                    id: idx,
+                    value: opt.value,
+                    disabled: opt.disabled ?? false,
+                })),
                 status: 'ACTIVE' as const,
             },
         ];
@@ -73,6 +79,24 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         // Update the form state with the new array
         setValue('custom_fields', updatedFields);
     };
+
+    // Index-based: useFieldArray replaces each row's `id` with its own generated
+    // key, so the schema's numeric id isn't reliably readable from the rendered
+    // rows. The array index is unambiguous.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const customFields = getValues('custom_fields');
+        const updatedFields = customFields?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        setValue('custom_fields', updatedFields);
+    };
+
+    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
+
+    const handleUpdateFieldOptions = (index: number, values: string[]) =>
+        patchFieldAt(index, {
+            options: values.map((value, idx) => ({ id: idx, value, disabled: false })),
+        });
 
     const handleDeleteOpenField = (id: number) => {
         const customFields = getValues('custom_fields');
@@ -102,6 +126,8 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         toggleIsRequired,
         handleAddOpenFieldValues,
         handleDeleteOpenField,
+        handleUpdateFieldName,
+        handleUpdateFieldOptions,
         handleCopyClick,
         copySuccess,
     };

@@ -713,6 +713,9 @@ export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCu
         comma_separated_options: field.options
             ? field.options.map((opt) => opt.value).join(',')
             : '', // Join options for dropdowns
+        // Only send a real position. Sending 0 for a legacy row whose order is
+        // unset would stamp field_order=0 and jump it to the top of the form.
+        ...(typeof field.order === 'number' ? { order_field: field.order } : {}),
     };
 };
 

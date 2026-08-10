@@ -1,6 +1,6 @@
 import { MyButton } from '@/components/design-system/button';
 import { Switch } from '@/components/ui/switch';
-import { DotsSixVertical, Plus, TrashSimple } from '@phosphor-icons/react';
+import { DotsSixVertical, PencilSimple, Plus, TrashSimple } from '@phosphor-icons/react';
 import { AddCustomFieldDialog, DropdownOption } from './AddCustomFieldDialog';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 import { InviteForm } from '../../-schema/InviteFormSchema';
@@ -8,6 +8,12 @@ import { MandatoryKeys } from '../../-utils/inviteLinkKeyChecks';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
+import { useState } from 'react';
 
 interface CustomFieldsSectionProps {
     toggleIsRequired: (id: number) => void;
@@ -18,18 +24,27 @@ interface CustomFieldsSectionProps {
         options?: DropdownOption[]
     ) => void;
     handleDeleteOpenField: (id: number) => void;
+    handleUpdateFieldName: (index: number, name: string) => void;
+    handleUpdateFieldOptions: (index: number, values: string[]) => void;
 }
 
 export const CustomFieldsSection = ({
     toggleIsRequired,
     handleAddOpenFieldValues,
     handleDeleteOpenField,
+    handleUpdateFieldName,
+    handleUpdateFieldOptions,
 }: CustomFieldsSectionProps) => {
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { watch, control } = useFormContext<InviteForm>();
     const customFields = watch('custom_fields');
     const { fields, move } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     const handleAddCustomField = (
@@ -43,66 +58,74 @@ export const CustomFieldsSection = ({
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="text-title font-semibold">{`${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} input field`}</p>
+            <div className="flex flex-col">
+                <p className="text-title font-semibold">{`Form Fields (${fields.length})`}</p>
+                <p className="text-caption text-neutral-500">Drag to reorder fields</p>
+            </div>
+            <FormFieldRowHeader />
             <Sortable
                 value={fields}
                 onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                     move(activeIndex, overIndex);
                 }}
                 fast={false}
             >
                 <div className="flex flex-col gap-4">
-                    {fields.map((field) => (
-                        <SortableItem key={field.id} value={field.id} asChild>
-                            <div
-                                className={`flex items-center gap-4 ${
-                                    field.status === 'DELETED' ? 'hidden' : ''
-                                }`}
-                            >
-                                <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                    <h1 className="text-sm">
-                                        {field.name}
-                                        {field.oldKey && (
-                                            <span className="text-subtitle text-danger-600">*</span>
-                                        )}
-                                        {!field.oldKey && field.isRequired && (
-                                            <span className="text-subtitle text-danger-600">*</span>
-                                        )}
-                                    </h1>
-                                    <div className="flex items-center gap-6">
-                                        {!field.oldKey && !MandatoryKeys(field.name) && (
-                                            <MyButton
+                    {fields.map((field, index) => {
+                        const locked = field.oldKey || MandatoryKeys(field.name);
+                        const isEditing = editingIndex === index;
+                        const hasOptions =
+                            field.type === 'dropdown' ||
+                            field.type === 'radio' ||
+                            field.type === 'multi_select';
+                        return (
+                            <SortableItem key={field.id} value={field.id} asChild>
+                                <div className={field.status === 'DELETED' ? 'hidden' : ''}>
+                                    <FormFieldRow
+                                        position={index + 1}
+                                        name={field.name}
+                                        type={field.type}
+                                        isRequired={field.isRequired}
+                                        locked={locked}
+                                        isEditing={isEditing}
+                                        onToggleRequired={() => toggleIsRequired(field.id)}
+                                        onEdit={() => setEditingIndex(isEditing ? null : index)}
+                                        onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(field.id);
+                                                        }}
+                                        dragHandle={
+                                            <SortableDragHandle
+                                                variant="ghost"
+                                                size="icon"
+                                                className="cursor-grab"
                                                 type="button"
-                                                scale="small"
-                                                buttonType="secondary"
-                                                className="min-w-6 !rounded-sm !p-0"
-                                                onClick={() => handleDeleteOpenField(field.id)}
                                             >
-                                                <TrashSimple className="!size-4 text-danger-500" />
-                                            </MyButton>
-                                        )}
-                                        <SortableDragHandle
-                                            variant="ghost"
-                                            size="icon"
-                                            className="cursor-grab"
-                                            type="button"
-                                        >
-                                            <DotsSixVertical size={20} />
-                                        </SortableDragHandle>
-                                    </div>
-                                </div>
-                                {!field.oldKey && !MandatoryKeys(field.name) && (
-                                    <>
-                                        <h1 className="text-sm">Required</h1>
-                                        <Switch
-                                            checked={field.isRequired}
-                                            onCheckedChange={() => toggleIsRequired(field.id)}
+                                                <DotsSixVertical size={18} />
+                                            </SortableDragHandle>
+                                        }
+                                    >
+                                        <InlineFieldEditor
+                                            name={field.name}
+                                            onNameChange={(next) =>
+                                                handleUpdateFieldName(index, next)
+                                            }
+                                            {...(hasOptions
+                                                ? {
+                                                      options: (field.options ?? []).map(
+                                                          (o) => o.value
+                                                      ),
+                                                      onOptionsChange: (next: string[]) =>
+                                                          handleUpdateFieldOptions(index, next),
+                                                  }
+                                                : {})}
                                         />
-                                    </>
-                                )}
-                            </div>
-                        </SortableItem>
-                    ))}
+                                    </FormFieldRow>
+                                </div>
+                            </SortableItem>
+                        );
+                    })}
                 </div>
             </Sortable>
             <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -115,9 +138,9 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() =>
                             handleAddOpenFieldValues('dropdown', 'Gender', false, [
-                                { id: 0, value: 'MALE', disabled: false },
-                                { id: 1, value: 'FEMALE', disabled: false },
-                                { id: 2, value: 'OTHER', disabled: false },
+                                { id: '0', value: 'MALE', disabled: false },
+                                { id: '1', value: 'FEMALE', disabled: false },
+                                { id: '2', value: 'OTHER', disabled: false },
                             ])
                         }
                     >

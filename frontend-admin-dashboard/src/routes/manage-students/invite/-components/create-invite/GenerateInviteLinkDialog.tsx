@@ -490,6 +490,20 @@ const GenerateInviteLinkDialog = ({
         setValue('custom_fields', updatedFields);
     };
 
+    // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const current = form.getValues('custom_fields');
+        const updatedFields = current?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        form.setValue('custom_fields', updatedFields);
+    };
+
+    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
+
+    const handleUpdateFieldOptions = (index: number, values: string[]) =>
+        patchFieldAt(index, { options: values.map((value, i) => ({ id: String(i), value })) });
+
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         // Create the new field
         const newField = {
@@ -988,6 +1002,8 @@ const GenerateInviteLinkDialog = ({
                                 handleEditClick={handleEditClick}
                                 handleDeleteOptionField={handleDeleteOptionField}
                                 handleAddDropdownOptions={handleAddDropdownOptions}
+                                handleUpdateFieldName={handleUpdateFieldName}
+                                handleUpdateFieldOptions={handleUpdateFieldOptions}
                                 handleCloseDialog={handleCloseDialog}
                             />
                             {/* Learner Access Duration Card */}

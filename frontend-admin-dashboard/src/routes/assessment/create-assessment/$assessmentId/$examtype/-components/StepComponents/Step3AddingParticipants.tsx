@@ -12,6 +12,7 @@ import {
     Copy,
     DotsSixVertical,
     DownloadSimple,
+    PencilSimple,
     Plus,
     TrashSimple,
     Users,
@@ -63,9 +64,23 @@ import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sort
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
-import { AddCustomFieldDialog as SharedAddCustomFieldDialog, DropdownOption } from '@/components/common/custom-fields/AddCustomFieldDialog';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    DropdownOption,
+    CustomFieldConfig,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
+
+// Field ids double as React keys and drag identity, so they must be unique.
+// String(length) collided with seeded ids ('0','1','2') after a delete.
+let newFieldSeq = 0;
+const nextFieldId = () => `new-${Date.now()}-${newFieldSeq++}`;
 
 function getInitialAssessmentCustomFields() {
     // Returns empty — the useEffect below will async-load from the live API.
@@ -98,6 +113,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const sectionsInfo = getAllSessions(batches_for_sessions || []);
 
     const [selectedSection, setSelectedSection] = useState(sectionsInfo ? sectionsInfo[0]?.id : '');
+    const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
 
     // Extract batch IDs from preBatchData
     const batchIds = new Set(
@@ -177,6 +193,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'open_test.custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     // Async-load institute defaults directly from the live backend endpoint.
@@ -294,12 +314,51 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         setValue('open_test.custom_fields', updatedFields);
     };
 
+    const patchField = (
+        id: string,
+        patch: Partial<(typeof customFieldsArray)[number]>
+    ) => {
+        const updatedFields = customFieldsArray?.map((field) =>
+            field.id === id ? { ...field, ...patch } : field
+        );
+        setValue('open_test.custom_fields', updatedFields);
+    };
+
+    const handleUpdateFieldName = (id: string, newName: string) => patchField(id, { name: newName });
+
+    const isDuplicateFieldName = (id: string, name: string) =>
+        name.trim().length > 0 &&
+        customFieldsArray.some(
+            (f) => f.id !== id && f.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
+
+    const handleDuplicateField = (id: string) => {
+        const sourceIndex = customFieldsArray.findIndex((f) => f.id === id);
+        const source = customFieldsArray[sourceIndex];
+        if (!source) return;
+        // A fresh id keeps this an "added" row for the save-time diff, which
+        // matches by id — reusing the source id would read as an edit instead.
+        const newId = nextFieldId();
+        const updatedFields = [
+            ...customFieldsArray.slice(0, sourceIndex + 1),
+            { ...source, id: newId, name: `${source.name} (copy)`, oldKey: false, key: '' },
+            ...customFieldsArray.slice(sourceIndex + 1),
+        ].map((f, idx) => ({ ...f, order: idx }));
+        setValue('open_test.custom_fields', updatedFields);
+        setEditingFieldId(newId);
+    };
+
+    const handleUpdateFieldOptions = (id: string, values: string[]) =>
+        patchField(id, {
+            options: values.map((value, idx) => ({ id: String(idx), value })),
+        });
+
     const handleAddOpenFieldValues = (type: string, name: string, oldKey: boolean) => {
         // Add the new field to the array
         const updatedFields = [
             ...customFields,
             {
-                id: String(customFields.length), // Use the current array length as the new ID
+                id: nextFieldId(),
                 type,
                 name,
                 oldKey,
@@ -325,7 +384,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         // Create the new field
         const newField = {
-            id: String(customFields.length), // Use the current array length as the new ID
+            id: nextFieldId(),
             type,
             name,
             oldKey,
@@ -360,14 +419,20 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         setValue('open_test.custom_fields', updatedFields);
     };
 
-    const handleAddCustomField = (type: string, name: string, oldKey: boolean, options?: DropdownOption[]) => {
+    const handleAddCustomField = (
+        type: string,
+        name: string,
+        oldKey: boolean,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) => {
         const newField = {
-            id: String(customFields.length),
+            id: nextFieldId(),
             type,
             name,
             oldKey,
             ...(options && { options: options.map((opt) => ({ id: String(opt.id), value: opt.value, disabled: true })) }),
-            isRequired: true,
+            isRequired: config?.isRequired ?? true,
             key: '',
             order: customFields.length,
         };
@@ -804,7 +869,15 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                 key: 'registration_form_fields',
                             }) === 'REQUIRED' && (
                                 <div className="flex w-full flex-col gap-4">
-                                    <h1>Registration Input Field</h1>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex flex-col">
+                                            <h1>Registration Form Fields</h1>
+                                            <p className="text-caption text-neutral-500">
+                                                Drag to reorder fields and customize them
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <FormFieldRowHeader />
                                     <div className="flex flex-col gap-4">
                                         <Sortable
                                             value={customFieldsArray}
@@ -815,71 +888,91 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                         >
                                             <div className="flex flex-col gap-4">
                                                 {customFieldsArray.map((field, index) => {
+                                                    const isEditingField =
+                                                        editingFieldId === field.id;
+                                                    const hasOptions =
+                                                        field.type === 'dropdown' ||
+                                                        field.type === 'radio' ||
+                                                        field.type === 'multi_select';
                                                     return (
                                                         <SortableItem
                                                             key={field.id}
                                                             value={field.id}
                                                             asChild
                                                         >
-                                                            <div
-                                                                key={index}
-                                                                className="flex items-center gap-4"
-                                                            >
-                                                                <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                                                    <h1 className="text-sm">
-                                                                        {field.name}
-                                                                        {field.oldKey && (
-                                                                            <span className="text-subtitle text-danger-600">
-                                                                                *
-                                                                            </span>
-                                                                        )}
-                                                                        {!field.oldKey &&
-                                                                            field.isRequired && (
-                                                                                <span className="text-subtitle text-danger-600">
-                                                                                    *
-                                                                                </span>
-                                                                            )}
-                                                                    </h1>
-                                                                    <div className="flex items-center gap-6">
-                                                                        {!field.oldKey && (
-                                                                            <MyButton
-                                                                                type="button"
-                                                                                scale="small"
-                                                                                buttonType="secondary"
-                                                                                className="min-w-6 !rounded-sm !p-0"
-                                                                                onClick={() =>
-                                                                                    handleDeleteOpenField(
-                                                                                        field.id
-                                                                                    )
-                                                                                }
-                                                                            >
-                                                                                <TrashSimple className="!size-4 text-danger-500" />
-                                                                            </MyButton>
-                                                                        )}
+                                                            <div>
+                                                                <FormFieldRow
+                                                                    position={index + 1}
+                                                                    name={field.name}
+                                                                    type={field.type}
+                                                                    isRequired={field.isRequired}
+                                                                    locked={field.oldKey}
+                                                                    isEditing={isEditingField}
+                                                                    onToggleRequired={() =>
+                                                                        toggleIsRequired(field.id)
+                                                                    }
+                                                                    onEdit={() =>
+                                                                        setEditingFieldId(
+                                                                            isEditingField
+                                                                                ? null
+                                                                                : field.id
+                                                                        )
+                                                                    }
+                                                                    onDuplicate={() =>
+                                                                        handleDuplicateField(
+                                                                            field.id
+                                                                        )
+                                                                    }
+                                                                    onDelete={() =>
+                                                                        handleDeleteOpenField(
+                                                                            field.id
+                                                                        )
+                                                                    }
+                                                                    dragHandle={
                                                                         <SortableDragHandle
                                                                             variant="ghost"
                                                                             size="icon"
                                                                             className="cursor-grab"
                                                                         >
                                                                             <DotsSixVertical
-                                                                                size={20}
+                                                                                size={18}
                                                                             />
                                                                         </SortableDragHandle>
-                                                                    </div>
-                                                                </div>
-                                                                <h1 className="text-sm">
-                                                                    Required
-                                                                </h1>
-                                                                <Switch
-                                                                    checked={
-                                                                        field.isRequired
                                                                     }
-                                                                    onCheckedChange={() =>
-                                                                        toggleIsRequired(
-                                                                            field.id
-                                                                        )
-                                                                    }
-                                                                />
+                                                                >
+                                                                    <InlineFieldEditor
+                                                                        name={field.name}
+                                                                        onNameChange={(next) =>
+                                                                            handleUpdateFieldName(
+                                                                                field.id,
+                                                                                next
+                                                                            )
+                                                                        }
+                                                                        duplicateName={isDuplicateFieldName(
+                                                                            field.id,
+                                                                            field.name
+                                                                        )}
+                                                                        {...(hasOptions
+                                                                            ? {
+                                                                                  options: (
+                                                                                      field.options ??
+                                                                                      []
+                                                                                  ).map(
+                                                                                      (o) =>
+                                                                                          o.value
+                                                                                  ),
+                                                                                  onOptionsChange:
+                                                                                      (
+                                                                                          next: string[]
+                                                                                      ) =>
+                                                                                          handleUpdateFieldOptions(
+                                                                                              field.id,
+                                                                                              next
+                                                                                          ),
+                                                                              }
+                                                                            : {})}
+                                                                    />
+                                                                </FormFieldRow>
                                                             </div>
                                                         </SortableItem>
                                                     );
@@ -887,7 +980,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                             </div>
                                         </Sortable>
                                     </div>
-                                    <div className="mt-2 flex items-center gap-6">
+                                    <div className="rounded-lg border border-dashed border-neutral-300 py-4 text-center text-caption text-neutral-500">
+                                        Use the buttons below to add a field
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-6">
                                         {!customFields?.some(
                                             (field) => field.name === 'Gender'
                                         ) && (

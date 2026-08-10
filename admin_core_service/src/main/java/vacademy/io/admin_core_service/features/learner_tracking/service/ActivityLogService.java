@@ -28,7 +28,7 @@ public class ActivityLogService {
 
     private final ActivityLogRepository activityLogRepository;
 
-    public Page<LearnerActivityProjection> getStudentActivityBySlide(String slideId, String packageSessionId, int page, int size, CustomUserDetails user) {
+    public Page<LearnerActivityProjection> getStudentActivityBySlide(String slideId, String packageSessionId, String search, int page, int size, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("lastActive").descending());
         // Scope the activity list to learners enrolled in this batch. A slide is shared across
         // multiple batches (chapter_package_session_mapping), so filtering by slideId alone leaks
@@ -36,7 +36,10 @@ public class ActivityLogService {
         List<String> statusList = List.of(
                 LearnerSessionStatusEnum.ACTIVE.name(),
                 LearnerSessionStatusEnum.INACTIVE.name());
-        return activityLogRepository.findStudentActivityBySlideId(slideId, packageSessionId, statusList, pageable);
+        // Search runs in SQL, not on the current page: the client only ever holds one page, so a
+        // client-side filter can never find a learner sitting on a later page. Blank means no filter.
+        String searchTerm = StringUtils.hasText(search) ? search.trim() : null;
+        return activityLogRepository.findStudentActivityBySlideId(slideId, packageSessionId, searchTerm, statusList, pageable);
     }
 
     // Clients generate the activity id, so save() is an upsert: an id that

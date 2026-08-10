@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Check, X } from "@phosphor-icons/react";
 import { PaymentPlan } from "../-utils/helper";
@@ -56,10 +57,30 @@ export const SubscriptionPlanSection = ({
     return null;
   };
 
+  // Longest commitment first — the annual plan leads and is preselected, which is
+  // what an institute wants surfaced. The plan's ORIGINAL position travels with it:
+  // discount_json is keyed by that index (interval_0, interval_1, …), so sorting
+  // without it would hand the monthly plan's discount to the annual one.
+  const orderedPlans = payment_options
+    .map((payment, originalIndex) => ({ payment, originalIndex }))
+    .sort(
+      (a, b) =>
+        Number(b.payment.actual_price ?? 0) - Number(a.payment.actual_price ?? 0)
+    );
+
+  const firstPlan = orderedPlans[0]?.payment;
+  useEffect(() => {
+    if (selectedPayment || !firstPlan) return;
+    onSelect({ ...firstPlan, type: "SUBSCRIPTION" } as SelectedPayment);
+    // onSelect is recreated each render by the parent; keying on the plan id
+    // instead keeps this to a single selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPayment?.id, firstPlan?.id]);
+
   return (
     <div className="flex w-full flex-wrap gap-4">
-      {payment_options.map((payment, idx) => {
-        const discount = getDiscountForInterval(idx);
+      {orderedPlans.map(({ payment, originalIndex }, idx) => {
+        const discount = getDiscountForInterval(originalIndex);
         const originalPrice = payment.elevated_price || payment.actual_price;
         const discountedPrice = calculateDiscountedPrice(
           originalPrice,

@@ -98,8 +98,13 @@ export type ToolKey =
     | 'course_slide_video'
     | 'html_document'
     | 'html_document_edit'
-    | 'copy_check_evaluation';
-export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat';
+    | 'html_document_pdf'
+    | 'copy_check_evaluation'
+    // Knowledge Base (V435)
+    | 'kb_ingest_page'
+    | 'kb_ingest_url'
+    | 'kb_ask';
+export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 
 export interface ToolPricingRow {
@@ -367,6 +372,15 @@ export const computeToolCredits = (
             let divisor = Number(extra.chars_per_unit);
             if (!(divisor > 0)) divisor = 2000;
             total += Math.ceil(chars / divisor) * perUnit;
+            break;
+        }
+        case 'pages': {
+            // Per-page rates: knowledge-base ingestion (kb_ingest_page) and the
+            // PDF-grounding surcharge on HTML documents (html_document_pdf).
+            // Without this case both fell through to flat_base and previewed as
+            // 0 credits for any page count.
+            const pages = Math.max(0, Number(params.num_pages) || 0);
+            total += pages * perUnit;
             break;
         }
         case 'flat': {

@@ -37,4 +37,11 @@ pdfplumber>=0.10.0
 # for selective Mathpix re-OCR. Without this, mathpix.enrich_layout_for_math
 # crashes with "No module named 'fitz'" right after LAYOUT_OCR_DONE.
 pymupdf>=1.24.0
+# youtube-transcript-api — knowledge-base ingestion of YouTube sources
+# (services/kb/parsing.py). Reads the caption tracks YouTube already publishes,
+# so it is free and instant but only works for videos that HAVE captions.
+# NOTE: YouTube rate-limits/blocks caption requests from datacenter IPs, which
+# includes our Hetzner nodes. If that starts biting, route audio through the
+# in-house Whisper transcription (/transcription/v1/*) instead of proxying.
+youtube-transcript-api>=0.6.2
 nh3==0.2.*

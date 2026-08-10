@@ -35,6 +35,7 @@ import { Route as ManageContactsIndexRouteImport } from "./routes/manage-contact
 import { Route as ManageBookingsIndexRouteImport } from "./routes/manage-bookings/index"
 import { Route as LoginIndexRouteImport } from "./routes/login/index"
 import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insights/index"
+import { Route as KnowledgeBaseIndexRouteImport } from "./routes/knowledge-base/index"
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
 import { Route as InstitutePulseIndexRouteImport } from "./routes/institute-pulse/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
@@ -55,6 +56,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as KnowledgeBaseKbIdRouteImport } from "./routes/knowledge-base/$kbId"
 import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
 import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
@@ -384,6 +386,13 @@ const LearnerInsightsIndexRoute = LearnerInsightsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/learner-insights/index.lazy").then((d) => d.Route),
 )
+const KnowledgeBaseIndexRoute = KnowledgeBaseIndexRouteImport.update({
+  id: "/knowledge-base/",
+  path: "/knowledge-base/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/index.lazy").then((d) => d.Route),
+)
 const InstructorCopilotIndexRoute = InstructorCopilotIndexRouteImport.update({
   id: "/instructor-copilot/",
   path: "/instructor-copilot/",
@@ -520,6 +529,13 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const KnowledgeBaseKbIdRoute = KnowledgeBaseKbIdRouteImport.update({
+  id: "/knowledge-base/$kbId",
+  path: "/knowledge-base/$kbId",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/$kbId.lazy").then((d) => d.Route),
+)
 const EngagementEnginesEngineIdRoute =
   EngagementEnginesEngineIdRouteImport.update({
     id: "/engagement-engines/$engineId",
@@ -1775,6 +1791,7 @@ export interface FileRoutesByFullPath {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1795,6 +1812,7 @@ export interface FileRoutesByFullPath {
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
+  "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
@@ -1975,6 +1993,7 @@ export interface FileRoutesByTo {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1995,6 +2014,7 @@ export interface FileRoutesByTo {
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/institute-pulse": typeof InstitutePulseIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
+  "/knowledge-base": typeof KnowledgeBaseIndexRoute
   "/learner-insights": typeof LearnerInsightsIndexRoute
   "/login": typeof LoginIndexRoute
   "/manage-bookings": typeof ManageBookingsIndexRoute
@@ -2177,6 +2197,7 @@ export interface FileRoutesById {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2197,6 +2218,7 @@ export interface FileRoutesById {
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
+  "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
@@ -2380,6 +2402,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2400,6 +2423,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
+    | "/knowledge-base/"
     | "/learner-insights/"
     | "/login/"
     | "/manage-bookings/"
@@ -2580,6 +2604,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2600,6 +2625,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai"
     | "/institute-pulse"
     | "/instructor-copilot"
+    | "/knowledge-base"
     | "/learner-insights"
     | "/login"
     | "/manage-bookings"
@@ -2781,6 +2807,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2801,6 +2828,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
+    | "/knowledge-base/"
     | "/learner-insights/"
     | "/login/"
     | "/manage-bookings/"
@@ -2983,6 +3011,7 @@ export interface RootRouteChildren {
   PricingLazyRoute: typeof PricingLazyRoute
   CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
   EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
+  KnowledgeBaseKbIdRoute: typeof KnowledgeBaseKbIdRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -3003,6 +3032,7 @@ export interface RootRouteChildren {
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
+  KnowledgeBaseIndexRoute: typeof KnowledgeBaseIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   ManageBookingsIndexRoute: typeof ManageBookingsIndexRoute
   ManageContactsIndexRoute: typeof ManageContactsIndexRoute
@@ -3371,6 +3401,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof LearnerInsightsIndexRouteImport
       parentRoute: typeof LearnerInsightsLazyRoute
     }
+    "/knowledge-base/": {
+      id: "/knowledge-base/"
+      path: "/knowledge-base"
+      fullPath: "/knowledge-base/"
+      preLoaderRoute: typeof KnowledgeBaseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/instructor-copilot/": {
       id: "/instructor-copilot/"
       path: "/instructor-copilot"
@@ -3509,6 +3546,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/knowledge-base/$kbId": {
+      id: "/knowledge-base/$kbId"
+      path: "/knowledge-base/$kbId"
+      fullPath: "/knowledge-base/$kbId"
+      preLoaderRoute: typeof KnowledgeBaseKbIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/engagement-engines/$engineId": {
@@ -4593,6 +4637,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingLazyRoute: PricingLazyRoute,
   CounsellorsUserIdRoute: CounsellorsUserIdRoute,
   EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
+  KnowledgeBaseKbIdRoute: KnowledgeBaseKbIdRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4613,6 +4658,7 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstitutePulseIndexRoute: InstitutePulseIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
+  KnowledgeBaseIndexRoute: KnowledgeBaseIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   ManageBookingsIndexRoute: ManageBookingsIndexRoute,
   ManageContactsIndexRoute: ManageContactsIndexRoute,

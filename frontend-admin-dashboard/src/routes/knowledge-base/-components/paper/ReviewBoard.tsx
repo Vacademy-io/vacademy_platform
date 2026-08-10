@@ -4,6 +4,7 @@ import { ArrowClockwise, BookOpen, CheckCircle, WarningCircle } from '@phosphor-
 import { MyButton } from '@/components/design-system/button';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { Card } from '@/components/ui/card';
+import { MathHtml } from './MathHtml';
 import type { Blueprint, PaperIssue, PaperResult, RawPaperQuestion } from '../../-types/paper';
 
 interface ReviewBoardProps {
@@ -76,15 +77,9 @@ export const ReviewBoard = ({
                                 <span className="shrink-0 text-body font-semibold text-neutral-500">
                                     Q{num}.
                                 </span>
-                                <div
+                                <MathHtml
+                                    html={raw.question?.content ?? ''}
                                     className="min-w-0 flex-1 break-words text-body text-neutral-700 [&_img]:my-2 [&_img]:max-h-56 [&_img]:rounded [&_img]:border [&_img]:border-neutral-200"
-                                    // Generated question HTML. The only markup the generator can
-                                    // emit is text plus <img> tags whose src we substituted
-                                    // ourselves from our own S3 — the model never sees a URL, so
-                                    // it cannot inject one.
-                                    dangerouslySetInnerHTML={{
-                                        __html: raw.question?.content ?? '',
-                                    }}
                                 />
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
@@ -131,11 +126,9 @@ export const ReviewBoard = ({
                                             <span className="shrink-0">
                                                 {String.fromCharCode(65 + oi)}.
                                             </span>
-                                            <span
-                                                className="min-w-0 break-words"
-                                                dangerouslySetInnerHTML={{
-                                                    __html: opt.content ?? '',
-                                                }}
+                                            <MathHtml
+                                                html={opt.content ?? ''}
+                                                className="min-w-0 break-words [&_img]:max-h-40 [&_img]:rounded [&_img]:border [&_img]:border-neutral-200"
                                             />
                                             {correct && (
                                                 <CheckCircle className="mt-0.5 size-3.5 shrink-0" />
@@ -151,9 +144,9 @@ export const ReviewBoard = ({
                                 <p className="text-caption font-semibold text-neutral-600">
                                     Marking scheme
                                 </p>
-                                <div
+                                <MathHtml
+                                    html={raw.exp}
                                     className="mt-0.5 break-words text-caption text-neutral-600"
-                                    dangerouslySetInnerHTML={{ __html: raw.exp }}
                                 />
                             </div>
                         )}

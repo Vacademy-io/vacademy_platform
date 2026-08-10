@@ -103,6 +103,48 @@ def repair_invalid_escapes(text: str) -> str:
     return "".join(out)
 
 
+# A control character that came from a JSON escape, mapped back to the LaTeX
+# command it almost certainly was.
+_CONTROL_TO_LATEX = {
+    "\r": "\\r",   # \right, \rho, \rangle
+    "\n": "\\n",   # \nu, \nabla, \neq
+    "\t": "\\t",   # \theta, \times, \to, \text
+    "\b": "\\b",   # \beta, \binom, \bar
+    "\f": "\\f",   # \frac, \forall
+}
+_MATH_SPAN_RE = re.compile(r"\$\$.*?\$\$|\$[^$]*\$", re.DOTALL)
+
+
+def restore_math_control_chars(text: Optional[str]) -> str:
+    """Undo LaTeX that JSON silently ate as control characters.
+
+    THIS IS A DIFFERENT BUG from the unparseable one repair_invalid_escapes
+    fixes, and it is nastier because the JSON parses cleanly. `\\r`, `\\n`,
+    `\\t`, `\\b` and `\\f` ARE valid JSON escapes, so a model writing
+    `"$\\right)$"` with a single backslash produces valid JSON whose value is
+    CARRIAGE-RETURN + "ight)". Nothing errors; the paper just prints "ight)".
+    Observed live in a generated JEE paper.
+
+    A control character immediately followed by a letter, INSIDE a `$…$` span,
+    cannot be anything but this — real formatting never appears mid-formula. The
+    restriction to math spans is what keeps a genuine "line1\\nline2" in prose
+    untouched.
+    """
+    if not text or not any(c in text for c in _CONTROL_TO_LATEX):
+        return text or ""
+
+    def fix_span(match: "re.Match[str]") -> str:
+        span = match.group(0)
+        out: List[str] = []
+        for i, ch in enumerate(span):
+            replacement = _CONTROL_TO_LATEX.get(ch)
+            nxt = span[i + 1] if i + 1 < len(span) else ""
+            out.append(replacement if (replacement and nxt.isalpha()) else ch)
+        return "".join(out)
+
+    return _MATH_SPAN_RE.sub(fix_span, text)
+
+
 def extract_and_sanitize_json(raw: Optional[str]) -> Optional[str]:
     """Strip markdown fences, extract the outermost {...} (or [...]) span, and
     validate it parses. Returns the JSON string, or None if nothing valid found.

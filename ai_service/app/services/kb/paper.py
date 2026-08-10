@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -450,7 +451,11 @@ Return STRICT JSON, no prose, no markdown fence:
       ],
       "correct_options": ["2"],
       "ans": "the answer",
-      "exp": "why, as HTML — the marking scheme for a teacher, not a hint for a student",
+      "marking_steps": [
+        "one short step of the working, in order",
+        "the next step",
+        "the final answer with units"
+      ],
       "question_type": "{row.question_type}",
       "level": "{row.difficulty.lower()}",
       "tags": ["concept names this tests"],
@@ -461,6 +466,13 @@ Return STRICT JSON, no prose, no markdown fence:
 }}
 
 RULES THAT MATTER:
+- "marking_steps" is what a teacher marks from: at most 6 short steps, each one
+  line. NEVER put your reasoning in it. No "Let's re-examine", no "However, the
+  provided solution…", no discussion of whether the source is ambiguous, no
+  mention of these instructions. If the source material is unclear, silently
+  pick the best-supported answer and give clean working for THAT.
+- For MCQS give EXACTLY ONE correct option. If more than one option is
+  defensible, rewrite the options so only one is.
 - Ground EVERY question in the passages. If the passages do not support {row.count}
   distinct questions, return fewer — a padded paper is worse than a short one.
 - "source_passage" and "source_page" must point at the passage you actually used.
@@ -483,6 +495,78 @@ class GeneratedPaper:
     model: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
     per_row: Dict[str, int] = field(default_factory=dict)           # row id → delivered count
+
+
+# Openers that mark the model thinking out loud rather than explaining an answer.
+# Seen verbatim in a real generated paper: pages of "Let's re-examine…",
+# "However, the provided solution…", "I will frame the question to…" — even the
+# system instructions quoted back. A teacher cannot mark from that, and it
+# exposes the model's confusion as if it were the institute's own material.
+_DELIBERATION_MARKERS = (
+    "let's", "lets ", "let us", "however, the provided", "however, the problem",
+    "this suggests", "this implies that the question", "i must", "i will",
+    "i cannot", "i have to", "my previous", "my calculation", "we must choose",
+    "this indicates that the problem", "there must be", "this is a flaw",
+    "assuming the question", "if we are forced", "let's re-", "let's assume",
+    "given the instruction", "given the strict instruction", "do not copy",
+    "the options provided in the source", "the provided solution for",
+    "this is a significant discrepancy", "there is an inconsistency",
+    "this means the problem", "i am unable", "as an ai",
+)
+
+# A marking scheme longer than this is prose, not a scheme.
+MAX_MARKING_SCHEME_CHARS = 1800
+
+
+def _looks_like_deliberation(sentence: str) -> bool:
+    s = sentence.strip().lower()
+    return any(s.startswith(m) or f" {m}" in s[:80] for m in _DELIBERATION_MARKERS)
+
+
+def _restore_math_in_place(q: Dict[str, Any]) -> None:
+    """Repair JSON-eaten LaTeX across every text field of one question."""
+    from ...utils.json_extract import restore_math_control_chars as fix
+
+    question = q.get("question")
+    if isinstance(question, dict) and question.get("content"):
+        question["content"] = fix(question["content"])
+    for opt in q.get("options") or []:
+        if isinstance(opt, dict) and opt.get("content"):
+            opt["content"] = fix(opt["content"])
+    for key in ("ans", "exp"):
+        if q.get(key):
+            q[key] = fix(str(q[key]))
+    steps = q.get("marking_steps")
+    if isinstance(steps, list):
+        q["marking_steps"] = [fix(str(s)) for s in steps]
+
+
+def _clean_marking_scheme(q: Dict[str, Any]) -> str:
+    """Return a marking scheme a teacher can actually mark from.
+
+    Prefers the structured `marking_steps` array (which is far harder to ramble
+    in than free prose). Falls back to `exp`, with deliberation sentences
+    stripped and the whole thing capped — a 6000-character monologue in a
+    printed paper is worse than a short scheme.
+    """
+    steps = q.get("marking_steps")
+    if isinstance(steps, list) and steps:
+        kept = [
+            str(s).strip() for s in steps
+            if str(s).strip() and not _looks_like_deliberation(str(s))
+        ][:8]
+        if kept:
+            return "<br>".join(kept)[:MAX_MARKING_SCHEME_CHARS]
+
+    raw = str(q.get("exp") or "").strip()
+    if not raw:
+        return ""
+
+    # Split on sentence/line boundaries and drop the model's musing.
+    parts = re.split(r"(?<=[.!?])\s+|<br\s*/?>|\n", raw)
+    kept = [p.strip() for p in parts if p.strip() and not _looks_like_deliberation(p)]
+    cleaned = "<br>".join(kept) if kept else raw
+    return cleaned[:MAX_MARKING_SCHEME_CHARS]
 
 
 def _substitute_figures(
@@ -607,10 +691,25 @@ async def generate_questions(
 
             for q in batch[:take]:
                 used_figs: List[Dict[str, Any]] = []
+                # Undo LaTeX that JSON ate as control characters (\right → CR +
+                # "ight"). Must run before anything reads the text.
+                _restore_math_in_place(q)
                 qtext = (q.get("question") or {}).get("content") or ""
                 (q.setdefault("question", {}))["content"] = _substitute_figures(
                     qtext, figures, used_figs
                 )
+                # Options too. Chemistry and maths papers routinely make the
+                # OPTIONS the diagrams ("which structure is the product?"), and
+                # substituting only the question body left literal "[FIG13]"
+                # text in the answer choices — an unanswerable question.
+                for opt in q.get("options") or []:
+                    if isinstance(opt, dict) and opt.get("content"):
+                        opt["content"] = _substitute_figures(
+                            opt["content"], figures, used_figs
+                        )
+                # Build the marking scheme from discrete steps and strip any
+                # deliberation the model leaked into it.
+                q["exp"] = _clean_marking_scheme(q)
                 # Provenance the review board and the teacher both read.
                 q["kb_meta"] = {
                     "row_id": row.id,
@@ -712,6 +811,38 @@ def validate_paper(blueprint: Blueprint, questions: Sequence[Dict[str, Any]]) ->
                         num, "error", "missing_answer",
                         f"Correct option {stray} does not match any option on this question.",
                     ))
+                # MCQS is single-choice. Two correct answers means the student
+                # cannot score it and the auto-evaluation is wrong — seen live on
+                # a generated paper that otherwise "passed all checks".
+                if len(set(map(str, correct))) > 1:
+                    issues.append(PaperIssue(
+                        num, "error", "bad_options",
+                        f"{len(set(map(str, correct)))} options are marked correct, but this "
+                        "is a single-choice question.",
+                    ))
+
+        # Unsubstituted figure placeholders make a question unanswerable.
+        blob = " ".join(
+            [content] + [str((o or {}).get("content") or "") for o in (q.get("options") or [])]
+        )
+        if re.search(r"\[FIG\d+\]", blob):
+            issues.append(PaperIssue(
+                num, "error", "bad_options",
+                "A diagram placeholder was left in the text — the figure did not resolve.",
+            ))
+
+        # The model leaking its own reasoning into the marking scheme.
+        explanation = str(q.get("exp") or "")
+        if len(explanation) > MAX_MARKING_SCHEME_CHARS:
+            issues.append(PaperIssue(
+                num, "warning", "missing_answer",
+                "The marking scheme is unusually long — check it reads as working, not commentary.",
+            ))
+        elif _looks_like_deliberation(explanation):
+            issues.append(PaperIssue(
+                num, "warning", "missing_answer",
+                "The marking scheme reads like the AI thinking aloud rather than working.",
+            ))
         if not q.get("source_page"):
             issues.append(PaperIssue(
                 num, "warning", "coverage",

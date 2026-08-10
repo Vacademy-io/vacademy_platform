@@ -657,7 +657,8 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                     <div className="flex flex-col">
                                         <h1>Registration Form Fields</h1>
                                         <p className="text-caption text-neutral-500">
-                                            Drag to reorder fields and customize them
+                                            Click the pencil to rename a field or edit its
+                                            options
                                         </p>
                                     </div>
                                     <FormFieldRowHeader />
@@ -688,7 +689,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                     onDelete={() =>
                                                         handleDeleteOpenField(fields.id)
                                                     }
-                                                    dragHandle={<DotsSixVertical size={18} />}
+                                                    dragHandle={null}
                                                 >
                                                     <InlineFieldEditor
                                                         name={fields.name}

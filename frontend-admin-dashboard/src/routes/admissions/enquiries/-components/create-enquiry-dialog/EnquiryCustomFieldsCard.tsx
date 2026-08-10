@@ -57,6 +57,10 @@ const EnquiryCustomFieldsCard = ({
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     // Initialize with enquiry location fields on mount
@@ -131,8 +135,12 @@ const EnquiryCustomFieldsCard = ({
                         <div className="flex flex-col gap-4">
                             <FormFieldRowHeader />
                             <Sortable
-                                value={customFieldsArray}
+                                // form is UseFormReturn<any>, so the custom keyName
+                                // erases `id` from the inferred row type. Rows do
+                                // carry the domain id at runtime.
+                                value={customFieldsArray as unknown as { id: string }[]}
                                 onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                                     moveCustomField(activeIndex, overIndex);
                                     updateFieldOrders();
                                 }}
@@ -168,9 +176,10 @@ const EnquiryCustomFieldsCard = ({
                                                                 isEditing ? null : index
                                                             )
                                                         }
-                                                        onDelete={() =>
-                                                            handleDeleteOpenField(index)
-                                                        }
+                                                        onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(index);
+                                                        }}
                                                         dragHandle={
                                                             <SortableDragHandle
                                                                 variant="ghost"

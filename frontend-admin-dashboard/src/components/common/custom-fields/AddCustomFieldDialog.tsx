@@ -119,7 +119,7 @@ export const AddCustomFieldDialog = ({
     };
 
     const buildConfig = (): CustomFieldConfig | undefined => {
-        const config: CustomFieldConfig = { isRequired };
+        const config: CustomFieldConfig = {};
         if (selectedType === 'checkbox') {
             config.defaultValue = checkboxDefault ? 'true' : 'false';
             if (checkboxHeading.trim()) config.heading = checkboxHeading.trim();
@@ -132,6 +132,9 @@ export const AddCustomFieldDialog = ({
             config.maxSizeMB = maxSizeMB;
         }
         if (helpTextEnabled && helpText.trim()) config.helpText = helpText.trim();
+        // Only surface isRequired when it deviates from the default-true that
+        // every caller already applies, so config stays undefined otherwise.
+        if (!isRequired) config.isRequired = false;
         return Object.keys(config).length > 0 ? config : undefined;
     };
 

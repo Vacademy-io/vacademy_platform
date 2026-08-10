@@ -878,8 +878,9 @@ public class AudienceService {
     }
 
     private static final String PHONE_ENQUIRIES_AUDIENCE_NAME = "Phone Enquiries";
+    private static final String SELF_SIGNUPS_AUDIENCE_NAME = "Self Sign-ups";
 
-    /** A lead resolved — or created — from an inbound phone caller. */
+    /** A lead resolved — or created — from an inbound phone caller (also reused for self-signups). */
     public record InboundCallLeadRef(String responseId, String userId, String audienceId) {}
 
     /**
@@ -995,6 +996,82 @@ public class AudienceService {
                             saved.getId(), instituteId);
                     return saved;
                 });
+    }
+
+    /**
+     * Resolve the per-institute "Self Sign-ups" audience, creating a minimal ACTIVE
+     * one on first use so an open learner registration needs no manual campaign setup.
+     */
+    private Audience getOrCreateSelfSignupsAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, SELF_SIGNUPS_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(SELF_SIGNUPS_AUDIENCE_NAME)
+                            .campaignType("SELF_SIGNUP")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Learners who registered themselves without enrolling in a course")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned Self Sign-ups audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Capture a lead for a learner who self-registered (auth_service) without enrolling
+     * in any course/package-session. The auth user already exists — this only creates the
+     * lead-side record so the signup is visible to the institute admin in the Leads list,
+     * since the normal learner list requires a course enrollment to show up at all.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InboundCallLeadRef captureSelfSignupLead(String instituteId, String userId, String name, String email,
+            String mobile) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(userId)) return null;
+
+        // De-dup: if this user is ALREADY a lead anywhere in the institute, reuse it
+        // — never a second lead for the same person.
+        List<String> existing = audienceResponseRepository.findResponseIdByInstituteAndUser(instituteId, userId);
+        if (existing != null && !existing.isEmpty()) {
+            String responseId = existing.get(0);
+            String audienceId = audienceResponseRepository.findById(responseId)
+                    .map(AudienceResponse::getAudienceId).orElse(null);
+            logger.info("Self-signup lead: user {} already a lead (response {}) — reused", userId, responseId);
+            return new InboundCallLeadRef(responseId, userId, audienceId);
+        }
+
+        Audience audience = getOrCreateSelfSignupsAudience(instituteId);
+        AudienceResponse saved = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("SELF_SIGNUP")
+                .sourceId("SELF_SIGNUP")
+                .userId(userId)
+                .parentName(name)
+                .parentEmail(email)
+                .parentMobile(truncateForParentMobileColumn(mobile))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        try {
+            logLeadSubmitted(saved);
+        } catch (Exception e) {
+            logger.error("Self-signup lead {}: logLeadSubmitted failed: {}", saved.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(saved.getId(), saved.getAudienceId(),
+                    instituteId, saved.getSourceType(), saved.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Self-signup lead {}: score failed: {}", saved.getId(), e.getMessage());
+        }
+
+        logger.info("Self-signup lead captured: response={} user={} inst={}",
+                saved.getId(), userId, instituteId);
+        return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
     }
 
     /**

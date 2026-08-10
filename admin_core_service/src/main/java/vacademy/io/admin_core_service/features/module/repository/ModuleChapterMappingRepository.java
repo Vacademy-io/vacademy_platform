@@ -665,10 +665,10 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                                 ELSE NULL
                             END), 0) AS slide_pct
                         FROM chapter_to_slides cts2
-                        JOIN slide s2 ON cts2.slide_id = s2.id AND s2.status IN (:slideStatusList)
+                        JOIN slide s2 ON cts2.slide_id = s2.id AND s2.status IN (:slideStatus)
                         LEFT JOIN learner_operation slo
                             ON slo.source_id = s2.id AND slo.source = 'SLIDE' AND slo.user_id = :userId
-                        WHERE cts2.status IN (:chapterToSlideStatusList)
+                        WHERE cts2.status IN (:chapterToSlidesStatus)
                         GROUP BY cts2.chapter_id, s2.id
                     ) sub
                     GROUP BY sub.chapter_id

@@ -765,6 +765,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              -- Caller-requested audience multi-select (Recent Leads "All audiences"
+                              -- dropdown). Independent of the RBAC :allowedAudienceIdsCsv above, which
+                              -- stays ANDed so a user can never widen past what they were granted.
+                              AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -1026,6 +1030,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              -- Caller-requested audience multi-select (Recent Leads "All audiences"
+                              -- dropdown). Independent of the RBAC :allowedAudienceIdsCsv above, which
+                              -- stays ANDed so a user can never widen past what they were granted.
+                              AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -1213,6 +1221,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("includeUnassigned") Boolean includeUnassigned,
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
@@ -1556,8 +1565,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
 
         /**
          * Institute-level lead-uniqueness setting support (LEAD_SETTING.data.dedup).
-         * All four exclude opted-out and already-flagged-duplicate rows so a lead
-         * that opted out can re-enter, and duplicates don't chain-match.
+         * All six exclude opted-out and already-flagged-duplicate rows so a lead that
+         * opted out can re-enter, and duplicates don't chain-match. excludeResponseId
+         * lets an in-place lead edit (updateLeadProfile) check "does this new value
+         * collide with some OTHER lead" without matching its own not-yet-saved row —
+         * pass null from creation-flow callers, where there is no self to exclude.
          */
         @Query("""
                             SELECT COUNT(ar) > 0 FROM AudienceResponse ar
@@ -1565,10 +1577,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
                             AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND (:excludeResponseId IS NULL OR ar.id <> :excludeResponseId)
                         """)
         boolean existsByAudienceIdAndParentEmailIgnoreCase(
                         @Param("audienceId") String audienceId,
-                        @Param("email") String email);
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         @Query("""
                             SELECT COUNT(ar) > 0 FROM AudienceResponse ar
@@ -1577,10 +1591,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
                             AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND (:excludeResponseId IS NULL OR ar.id <> :excludeResponseId)
                         """)
         boolean existsByInstituteIdAndParentEmailIgnoreCase(
                         @Param("instituteId") String instituteId,
-                        @Param("email") String email);
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         @Query(value = """
                             SELECT COUNT(*) > 0 FROM audience_response ar
@@ -1589,10 +1605,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
                             AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND (COALESCE(:excludeResponseId, '') = '' OR ar.id <> :excludeResponseId)
                         """, nativeQuery = true)
         boolean existsByAudienceIdAndPhoneLast10(
                         @Param("audienceId") String audienceId,
-                        @Param("last10") String last10);
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         @Query(value = """
                             SELECT COUNT(*) > 0 FROM audience_response ar
@@ -1602,10 +1620,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
                             AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND (COALESCE(:excludeResponseId, '') = '' OR ar.id <> :excludeResponseId)
                         """, nativeQuery = true)
         boolean existsByInstituteIdAndPhoneLast10(
                         @Param("instituteId") String instituteId,
-                        @Param("last10") String last10);
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         /**
          * SELECTED-scope variant of the two above — dedup checked across an
@@ -1618,10 +1638,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
                             AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND (:excludeResponseId IS NULL OR ar.id <> :excludeResponseId)
                         """)
         boolean existsByAudienceIdInAndParentEmailIgnoreCase(
                         @Param("audienceIds") java.util.List<String> audienceIds,
-                        @Param("email") String email);
+                        @Param("email") String email,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         @Query(value = """
                             SELECT COUNT(*) > 0 FROM audience_response ar
@@ -1630,10 +1652,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
                             AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
                             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND (COALESCE(:excludeResponseId, '') = '' OR ar.id <> :excludeResponseId)
                         """, nativeQuery = true)
         boolean existsByAudienceIdInAndPhoneLast10(
                         @Param("audienceIds") java.util.List<String> audienceIds,
-                        @Param("last10") String last10);
+                        @Param("last10") String last10,
+                        @Param("excludeResponseId") String excludeResponseId);
 
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 

@@ -118,6 +118,17 @@ public class LeadDeduplicationService {
      *         before) or ALLOW_REASSIGN (let it through, caller applies repeatLeadSettings).
      */
     public Optional<DuplicateMatch> checkDuplicate(String instituteId, String audienceId, String email, String phone) {
+        return checkDuplicate(instituteId, audienceId, email, phone, null);
+    }
+
+    /**
+     * Same as {@link #checkDuplicate(String, String, String, String)}, but excludes a specific
+     * response id from the match — for an in-place lead edit (updateLeadProfile), so checking
+     * "does this new value collide with some OTHER lead" doesn't match the row being edited
+     * against its own not-yet-saved self. Creation-flow callers pass null (nothing to exclude).
+     */
+    public Optional<DuplicateMatch> checkDuplicate(String instituteId, String audienceId, String email, String phone,
+            String excludeResponseId) {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
         if (!settings.enabled()) return Optional.empty();
 
@@ -141,10 +152,12 @@ public class LeadDeduplicationService {
             String last10 = lastNDigits(phone, 10);
             if (last10 == null) return Optional.empty();
             exists = switch (scope) {
-                case INSTITUTE -> audienceResponseRepository.existsByInstituteIdAndPhoneLast10(instituteId, last10);
+                case INSTITUTE -> audienceResponseRepository
+                        .existsByInstituteIdAndPhoneLast10(instituteId, last10, excludeResponseId);
                 case SELECTED -> audienceResponseRepository.existsByAudienceIdInAndPhoneLast10(
-                        settings.audienceIds(), last10);
-                case CAMPAIGN -> audienceResponseRepository.existsByAudienceIdAndPhoneLast10(audienceId, last10);
+                        settings.audienceIds(), last10, excludeResponseId);
+                case CAMPAIGN -> audienceResponseRepository
+                        .existsByAudienceIdAndPhoneLast10(audienceId, last10, excludeResponseId);
             };
             matchedFieldLabel = "phone number";
         } else {
@@ -152,11 +165,11 @@ public class LeadDeduplicationService {
             if (normalizedEmail.isEmpty()) return Optional.empty();
             exists = switch (scope) {
                 case INSTITUTE -> audienceResponseRepository
-                        .existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail);
-                case SELECTED -> audienceResponseRepository
-                        .existsByAudienceIdInAndParentEmailIgnoreCase(settings.audienceIds(), normalizedEmail);
+                        .existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail, excludeResponseId);
+                case SELECTED -> audienceResponseRepository.existsByAudienceIdInAndParentEmailIgnoreCase(
+                        settings.audienceIds(), normalizedEmail, excludeResponseId);
                 case CAMPAIGN -> audienceResponseRepository
-                        .existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail);
+                        .existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail, excludeResponseId);
             };
             matchedFieldLabel = "email";
         }

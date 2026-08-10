@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Warning, ArrowRight } from '@phosphor-icons/react';
+import { Warning, ArrowDown } from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -72,11 +72,13 @@ export function InvoiceNumberingChangeDialog({
         }
     }, [open]);
 
-    const canConfirm = useMemo(() => {
-        if (!acknowledged) return false;
-        if (requiresTypedConfirmation) return typed.trim().toUpperCase() === CONFIRM_WORD;
-        return true;
-    }, [acknowledged, requiresTypedConfirmation, typed]);
+    const canConfirm = useMemo(
+        () =>
+            requiresTypedConfirmation
+                ? typed.trim().toUpperCase() === CONFIRM_WORD
+                : acknowledged,
+        [acknowledged, requiresTypedConfirmation, typed]
+    );
 
     const newExample = preview?.samples?.[0] ?? '—';
     const existingCount = state?.existingInvoiceCount ?? 0;
@@ -92,39 +94,51 @@ export function InvoiceNumberingChangeDialog({
                 </DialogHeader>
 
                 <div className="space-y-4">
-                    {/* Before / after */}
-                    <div className="flex items-center gap-3 rounded-md border border-neutral-200 p-3">
-                        <div className="min-w-0 flex-1">
-                            <p className="text-caption text-neutral-500">Current</p>
-                            <code className="block truncate font-mono text-body text-neutral-700">
-                                {state?.currentExample || state?.currentFormat || '—'}
+                    {/* Before / after. Stacked, not side-by-side: an invoice number can run to
+                        100 characters, and a two-column layout truncates exactly the value the
+                        admin opened this dialog to check. */}
+                    <div className="overflow-hidden rounded-md border border-neutral-200">
+                        <div className="space-y-1 p-3">
+                            <p className="text-caption font-medium uppercase tracking-wider text-neutral-400">
+                                Last invoice used
+                            </p>
+                            {/* Deliberately NOT struck through — that would read as "this
+                                invoice is void" rather than "this format is being replaced". */}
+                            <code className="block break-all font-mono text-body text-neutral-600">
+                                {state?.lastIssuedNumber || state?.currentExample || '—'}
                             </code>
                         </div>
-                        <ArrowRight className="size-4 shrink-0 text-neutral-400" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-caption text-neutral-500">New</p>
-                            <code className="block truncate font-mono text-body text-primary-600">
-                                {newExample}
-                            </code>
+                        <div className="flex items-center gap-2 border-t border-neutral-200 bg-primary-50 p-3">
+                            <ArrowDown className="size-4 shrink-0 text-primary-500" />
+                            <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-caption font-medium uppercase tracking-wider text-primary-600">
+                                    Next invoice will be
+                                </p>
+                                <code className="block break-all font-mono text-body font-medium text-primary-700">
+                                    {newExample}
+                                </code>
+                            </div>
                         </div>
                     </div>
 
-                    <ul className="space-y-1.5 text-caption text-neutral-600">
-                        <li>
-                            <span className="font-medium text-neutral-800">
-                                {existingCount.toLocaleString()} existing{' '}
-                                {existingCount === 1 ? 'invoice' : 'invoices'}
-                            </span>{' '}
-                            keep their current numbers. Nothing is renumbered.
-                        </li>
-                        <li>
-                            Numbering continues from{' '}
-                            <span className="font-medium text-neutral-800">
-                                #{preview?.nextSequence ?? state?.nextSequence ?? 1}
-                            </span>{' '}
-                            — no number is ever reused.
-                        </li>
-                    </ul>
+                    <p className="text-caption text-neutral-600">
+                        {existingCount > 0 ? (
+                            <>
+                                The{' '}
+                                <span className="font-medium text-neutral-800">
+                                    {existingCount.toLocaleString()}
+                                </span>{' '}
+                                {existingCount === 1 ? 'invoice' : 'invoices'} already issued keep
+                                their existing numbers — nothing is renumbered, and no number is
+                                ever reused.
+                            </>
+                        ) : (
+                            <>
+                                This institute has not issued any invoices yet, so nothing is
+                                affected by the change.
+                            </>
+                        )}
+                    </p>
 
                     {requiresTypedConfirmation && (
                         <div className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3">
@@ -140,22 +154,10 @@ export function InvoiceNumberingChangeDialog({
                         </div>
                     )}
 
-                    <div className="flex items-start gap-2">
-                        <Checkbox
-                            id="numbering-ack"
-                            checked={acknowledged}
-                            onCheckedChange={(checked) => setAcknowledged(checked === true)}
-                        />
-                        <Label
-                            htmlFor="numbering-ack"
-                            className="text-caption font-normal leading-snug text-neutral-600"
-                        >
-                            I understand that invoices created from now on will use the new
-                            format.
-                        </Label>
-                    </div>
-
-                    {requiresTypedConfirmation && (
+                    {/* One gate, not two. The risky case escalates to type-to-confirm; the
+                        ordinary case is a single checkbox. Asking for both just trains people
+                        to click through. */}
+                    {requiresTypedConfirmation ? (
                         <div className="space-y-1.5">
                             <Label htmlFor="numbering-confirm" className="text-caption">
                                 Type <span className="font-mono font-medium">{CONFIRM_WORD}</span>{' '}
@@ -168,6 +170,21 @@ export function InvoiceNumberingChangeDialog({
                                 onChange={(e) => setTyped(e.target.value)}
                                 placeholder={CONFIRM_WORD}
                             />
+                        </div>
+                    ) : (
+                        <div className="flex items-start gap-2">
+                            <Checkbox
+                                id="numbering-ack"
+                                checked={acknowledged}
+                                onCheckedChange={(checked) => setAcknowledged(checked === true)}
+                            />
+                            <Label
+                                htmlFor="numbering-ack"
+                                className="text-caption font-normal leading-snug text-neutral-600"
+                            >
+                                I understand that invoices created from now on will use the new
+                                format.
+                            </Label>
                         </div>
                     )}
                 </div>

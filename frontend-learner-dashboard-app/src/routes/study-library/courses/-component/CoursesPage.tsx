@@ -19,6 +19,8 @@ interface CoursesPageProps {
     onSortChange: (value: string) => void;
     selectedLevels: string[];
     setSelectedLevels: (levels: string[]) => void;
+    selectedSessions: string[];
+    setSelectedSessions: (sessions: string[]) => void;
     selectedTags: string[];
     setSelectedTags: (tags: string[]) => void;
     selectedInstructors: string[];
@@ -40,6 +42,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     onSortChange,
     selectedLevels,
     setSelectedLevels,
+    selectedSessions,
+    setSelectedSessions,
     selectedTags,
     setSelectedTags,
     selectedInstructors,
@@ -78,7 +82,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             .catch(() => setHideInstructorName(false));
     }, []);
 
-    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
+    const activeFiltersCount =
+        selectedLevels.length + selectedSessions.length + selectedTags.length + selectedInstructors.length;
 
     // Smooth scroll on page change and dev log
     useEffect(() => {
@@ -205,6 +210,14 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         id,
                                         selectedLevels,
                                         setSelectedLevels
+                                    )
+                                }
+                                selectedSessions={selectedSessions}
+                                onSessionChange={(id) =>
+                                    toggleItem(
+                                        id,
+                                        selectedSessions,
+                                        setSelectedSessions
                                     )
                                 }
                                 selectedTags={selectedTags}

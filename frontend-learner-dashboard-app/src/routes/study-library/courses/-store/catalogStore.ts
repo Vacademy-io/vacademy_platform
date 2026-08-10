@@ -11,8 +11,14 @@ interface Level {
   level_name: string;
 }
 
+interface Session {
+  id: string;
+  session_name: string;
+}
+
 interface InstituteData {
   levels?: Level[];
+  sessions?: Session[];
   tags?: string[];
   [key: string]: any;
 }

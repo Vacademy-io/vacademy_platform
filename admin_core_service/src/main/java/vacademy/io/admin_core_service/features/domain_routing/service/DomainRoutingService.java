@@ -215,6 +215,9 @@ public class DomainRoutingService {
 
             String course = null;
             String coursePlural = null;
+            String level = null;
+            String session = null;
+            String popularTag = null;
             for (JsonNode entry : entries) {
                 String key = entry.path("key").asText(null);
                 String customValue = entry.path("customValue").asText(null);
@@ -225,15 +228,25 @@ public class DomainRoutingService {
                     course = customValue;
                 } else if ("Course_plural".equals(key)) {
                     coursePlural = customValue;
+                } else if ("Level".equals(key)) {
+                    level = customValue;
+                } else if ("Session".equals(key)) {
+                    session = customValue;
+                } else if ("PopularTag".equals(key)) {
+                    popularTag = customValue;
                 }
             }
 
-            if (course == null && coursePlural == null) {
+            if (course == null && coursePlural == null && level == null
+                    && session == null && popularTag == null) {
                 return null;
             }
             return NamingOverridesDto.builder()
                     .course(course)
                     .coursePlural(coursePlural)
+                    .level(level)
+                    .session(session)
+                    .popularTag(popularTag)
                     .build();
         } catch (Exception e) {
             log.warn("Failed to parse NAMING_SETTING for domain routing response", e);

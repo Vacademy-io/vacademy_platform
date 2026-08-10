@@ -2,7 +2,10 @@
  * useLeadDedupSettings — reads the institute lead-uniqueness config subtree
  * persisted at LEAD_SETTING.data.dedup:
  *
- *   { "enabled": false, "field": "EMAIL", "scope": "CAMPAIGN", "audienceIds": [] }
+ *   { "enabled": false, "field": "EMAIL", "scope": "CAMPAIGN", "audienceIds": [],
+ *     "action": "REJECT",
+ *     "repeatLead": { "counsellorMode": "SAME_AS_PREVIOUS", "specificCounsellorId": null,
+ *                     "specificCounsellorName": null, "statusMode": "KEEP_EXISTING" } }
  *
  * Mirrors the backend defaults in
  * admin_core_service/.../features/audience/service/LeadDedupSettingService.java.
@@ -17,6 +20,28 @@ import { fetchLeadSettingRawData } from '@/hooks/use-lead-report-settings';
 export type LeadDedupField = 'EMAIL' | 'PHONE';
 /** SELECTED = a specific admin-chosen set of lead lists (audienceIds). */
 export type LeadDedupScope = 'CAMPAIGN' | 'SELECTED' | 'INSTITUTE';
+/** What happens when a duplicate is found. */
+export type LeadDedupAction = 'REJECT' | 'ALLOW_REASSIGN';
+/** Counsellor handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
+export type RepeatLeadCounsellorMode = 'NONE' | 'SAME_AS_PREVIOUS' | 'SPECIFIC' | 'ROUND_ROBIN';
+/** Status handling for a repeat lead, only read when action === 'ALLOW_REASSIGN'. */
+export type RepeatLeadStatusMode = 'KEEP_EXISTING' | 'RESET_TO_NEW';
+
+/** Raw shape persisted at LEAD_SETTING.data.dedup.repeatLead (backend contract). */
+export interface RepeatLeadSettingsSubtree {
+    counsellorMode?: RepeatLeadCounsellorMode;
+    specificCounsellorId?: string | null;
+    specificCounsellorName?: string | null;
+    statusMode?: RepeatLeadStatusMode;
+}
+
+export interface RepeatLeadSettings {
+    counsellorMode: RepeatLeadCounsellorMode;
+    /** Only meaningful when counsellorMode === 'SPECIFIC'. */
+    specificCounsellorId: string | null;
+    specificCounsellorName: string | null;
+    statusMode: RepeatLeadStatusMode;
+}
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup (backend contract). */
 export interface LeadDedupSettingsSubtree {
@@ -24,6 +49,8 @@ export interface LeadDedupSettingsSubtree {
     field?: LeadDedupField;
     scope?: LeadDedupScope;
     audienceIds?: string[];
+    action?: LeadDedupAction;
+    repeatLead?: RepeatLeadSettingsSubtree;
 }
 
 export interface LeadDedupSettings {
@@ -32,16 +59,43 @@ export interface LeadDedupSettings {
     scope: LeadDedupScope;
     /** Only meaningful when scope === 'SELECTED'. */
     audienceIds: string[];
+    action: LeadDedupAction;
+    /** Only meaningful when action === 'ALLOW_REASSIGN'. */
+    repeatLead: RepeatLeadSettings;
 }
+
+export const REPEAT_LEAD_SETTINGS_DEFAULTS: RepeatLeadSettings = {
+    counsellorMode: 'SAME_AS_PREVIOUS',
+    specificCounsellorId: null,
+    specificCounsellorName: null,
+    statusMode: 'KEEP_EXISTING',
+};
 
 export const LEAD_DEDUP_SETTINGS_DEFAULTS: LeadDedupSettings = {
     enabled: false,
     field: 'EMAIL',
     scope: 'CAMPAIGN',
     audienceIds: [],
+    action: 'REJECT',
+    repeatLead: REPEAT_LEAD_SETTINGS_DEFAULTS,
 };
 
 export const LEAD_DEDUP_SETTINGS_QUERY_KEY = ['lead-dedup-settings'];
+
+const COUNSELLOR_MODES: RepeatLeadCounsellorMode[] = ['NONE', 'SAME_AS_PREVIOUS', 'SPECIFIC', 'ROUND_ROBIN'];
+
+function withRepeatLeadDefaults(subtree: RepeatLeadSettingsSubtree | undefined): RepeatLeadSettings {
+    const counsellorMode =
+        subtree?.counsellorMode && COUNSELLOR_MODES.includes(subtree.counsellorMode)
+            ? subtree.counsellorMode
+            : REPEAT_LEAD_SETTINGS_DEFAULTS.counsellorMode;
+    return {
+        counsellorMode,
+        specificCounsellorId: subtree?.specificCounsellorId ?? null,
+        specificCounsellorName: subtree?.specificCounsellorName ?? null,
+        statusMode: subtree?.statusMode === 'RESET_TO_NEW' ? 'RESET_TO_NEW' : 'KEEP_EXISTING',
+    };
+}
 
 function withDefaults(subtree: LeadDedupSettingsSubtree | undefined): LeadDedupSettings {
     const scope: LeadDedupScope =
@@ -54,6 +108,8 @@ function withDefaults(subtree: LeadDedupSettingsSubtree | undefined): LeadDedupS
         field: subtree?.field === 'PHONE' ? 'PHONE' : LEAD_DEDUP_SETTINGS_DEFAULTS.field,
         scope,
         audienceIds: Array.isArray(audienceIds) ? audienceIds : [],
+        action: subtree?.action === 'ALLOW_REASSIGN' ? 'ALLOW_REASSIGN' : 'REJECT',
+        repeatLead: withRepeatLeadDefaults(subtree?.repeatLead),
     };
 }
 

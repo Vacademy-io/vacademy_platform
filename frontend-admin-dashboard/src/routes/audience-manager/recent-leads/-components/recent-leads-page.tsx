@@ -474,6 +474,18 @@ const RecentLeadsContent = () => {
         counsellorFilters.includes(UNASSIGNED_COUNSELLOR_VALUE) &&
         nonUnassignedCounsellorIds.length === 0;
 
+    // Audience multi-select → request params. Exactly one pick routes to the
+    // per-campaign query (audience_id, which also honours the source filter);
+    // two or more go to the institute-wide query narrowed by audience_ids.
+    // Strictly either/or — sending both would be ambiguous server-side.
+    const audienceParams = useMemo(
+        () => ({
+            audience_id: audienceFilters.length === 1 ? audienceFilters[0] : undefined,
+            audience_ids: audienceFilters.length > 1 ? audienceFilters : undefined,
+        }),
+        [audienceFilters]
+    );
+
     const { data, isLoading, error } = useQuery({
         queryKey: [
             'recent-leads',
@@ -500,8 +512,7 @@ const RecentLeadsContent = () => {
         queryFn: () =>
             fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id:
-                    audienceFilters.length === 1 ? audienceFilters[0] : undefined,
+                ...audienceParams,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
@@ -664,8 +675,7 @@ const RecentLeadsContent = () => {
             setSelectAllLoading(true);
             const res = await fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id:
-                    audienceFilters.length === 1 ? audienceFilters[0] : undefined,
+                ...audienceParams,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
@@ -998,8 +1008,7 @@ const RecentLeadsContent = () => {
             while (!last) {
                 const resp = await fetchRecentLeads({
                     institute_id: instituteId,
-                    audience_id:
-                        audienceFilters.length === 1 ? audienceFilters[0] : undefined,
+                    ...audienceParams,
                     submitted_from_local: startOfDayIso(appliedRange.from),
                     submitted_to_local: endOfDayIso(appliedRange.to),
                     search_query: appliedSearch || undefined,

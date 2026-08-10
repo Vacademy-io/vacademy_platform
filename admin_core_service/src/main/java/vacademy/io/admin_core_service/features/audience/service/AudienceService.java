@@ -2677,6 +2677,30 @@ public class AudienceService {
                 ? String.join(",", filterDTO.getOverallStatuses())
                 : null;
 
+        // Audience multi-select (Recent Leads "All audiences" dropdown). The list can
+        // carry any number of campaign ids:
+        //   0 ids  -> untouched, the caller sees every audience they're allowed to
+        //   1 id   -> collapsed onto audienceId so the request takes the existing
+        //             per-campaign query (which also honours source/dedup filters)
+        //   2+ ids -> left as a CSV that narrows the institute-wide query below
+        // An explicit audienceId always wins, so per-campaign callers are unaffected.
+        List<String> requestedAudienceIds = filterDTO.getAudienceIds() == null
+                ? List.of()
+                : filterDTO.getAudienceIds().stream()
+                        .filter(id -> id != null && !id.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
+        if ((filterDTO.getAudienceId() == null || filterDTO.getAudienceId().isBlank())
+                && requestedAudienceIds.size() == 1) {
+            filterDTO.setAudienceId(requestedAudienceIds.get(0));
+        }
+        String requestedAudienceIdsCsv = (filterDTO.getAudienceId() == null
+                || filterDTO.getAudienceId().isBlank())
+                        && requestedAudienceIds.size() > 1
+                                ? String.join(",", requestedAudienceIds)
+                                : null;
+
         // SECURITY: the campaign-users client sends only audienceId (no instituteId),
         // and every RBAC block below gates on a non-blank instituteId — so the
         // per-campaign list used to skip counsellor-hierarchy and sub-org scoping
@@ -2686,6 +2710,15 @@ public class AudienceService {
         if ((filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())
                 && filterDTO.getAudienceId() != null && !filterDTO.getAudienceId().isBlank()) {
             audienceRepository.findById(filterDTO.getAudienceId())
+                    .map(Audience::getInstituteId)
+                    .ifPresent(filterDTO::setInstituteId);
+        }
+        // Same derivation for the multi-audience case — the institute-wide query it
+        // routes to gates on a non-blank instituteId, and all selected campaigns
+        // belong to one institute.
+        if ((filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())
+                && requestedAudienceIdsCsv != null) {
+            audienceRepository.findById(requestedAudienceIds.get(0))
                     .map(Audience::getInstituteId)
                     .ifPresent(filterDTO::setInstituteId);
         }
@@ -2876,6 +2909,7 @@ public class AudienceService {
                     includeUnassigned,
                     filterDTO.getIsUnassigned(),
                     allowedAudienceIdsCsv,
+                    requestedAudienceIdsCsv,
                     conversionStatusFilter,
                     audienceStatusFilter,
                     filterDTO.getSlaFilter(),

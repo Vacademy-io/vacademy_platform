@@ -266,7 +266,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 </div>
                             </div>
                         </div>
-                    ) : courseData.content.length === 0 ? (
+                    ) : (courseData.content ?? []).length === 0 ? (
                         <div className={cn(
                             "relative overflow-hidden bg-card border rounded-lg shadow-sm px-6 py-12 sm:py-16 text-center",
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",

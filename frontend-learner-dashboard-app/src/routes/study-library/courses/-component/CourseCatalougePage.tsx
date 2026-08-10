@@ -250,7 +250,11 @@ const CourseCatalougePage: React.FC = () => {
 
         if (controller.signal.aborted) return;
 
-        const data = response.data as CoursePackageResponse;
+        const rawData = response.data as CoursePackageResponse;
+        const data: CoursePackageResponse = {
+          ...rawData,
+          content: rawData.content ?? [],
+        };
         if (tabType === "ALL") setAllCourses(data);
         if (tabType === "PROGRESS") setProgressCourses(data);
         if (tabType === "COMPLETED") setCompletedCourses(data);

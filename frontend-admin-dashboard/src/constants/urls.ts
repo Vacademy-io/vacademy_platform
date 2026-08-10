@@ -1167,6 +1167,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 // Institute scope comes from the auth token — no params
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+// Several treatments of ONE section, to choose between. Billed as an edit.
+export const AI_PAGE_BUILDER_SECTION = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/section`;
 // Header / footer / theme — the settings shared by every page.
 export const AI_PAGE_BUILDER_SITE_CHROME = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;

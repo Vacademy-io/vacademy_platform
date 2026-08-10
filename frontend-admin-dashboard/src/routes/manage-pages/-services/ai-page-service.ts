@@ -3,6 +3,7 @@ import {
     AI_PAGE_BUILDER_GENERATE,
     AI_PAGE_BUILDER_ESTIMATE,
     AI_PAGE_BUILDER_EDIT,
+    AI_PAGE_BUILDER_SECTION,
     AI_PAGE_BUILDER_SITE_CHROME,
     AI_PAGE_BUILDER_BRAND_KIT,
     AI_PAGE_BUILDER_IMAGE,
@@ -128,6 +129,46 @@ export interface EditPageResponse {
 export const editAiPage = async (payload: EditPagePayload): Promise<EditPageResponse> => {
     const response = await authenticatedAxiosInstance.post<EditPageResponse>(
         AI_PAGE_BUILDER_EDIT(),
+        payload,
+        { timeout: 180000 }
+    );
+    return response.data;
+};
+
+/* ─── Section variants (regenerate one section, several ways) ──────────── */
+
+export interface SectionVariant {
+    label: string;
+    rationale: string;
+    component: Component;
+}
+
+export interface SectionVariantsResponse {
+    variants: SectionVariant[];
+    run_id: string;
+    model: string;
+    warnings: string[];
+}
+
+export interface SectionVariantsPayload {
+    page: { id: string; components: Component[] };
+    component_id: string;
+    instruction?: string;
+    variant_count?: number;
+    institute_name?: string;
+    images?: AiPageImage[];
+    terminology?: Record<string, string>;
+    global_settings?: Record<string, any>;
+    allow_type_change?: boolean;
+}
+
+/** Ask for N treatments of ONE section. The server drops any version that
+ *  would render broken, so the returned list can be shorter than requested. */
+export const generateSectionVariants = async (
+    payload: SectionVariantsPayload
+): Promise<SectionVariantsResponse> => {
+    const response = await authenticatedAxiosInstance.post<SectionVariantsResponse>(
+        AI_PAGE_BUILDER_SECTION(),
         payload,
         { timeout: 180000 }
     );

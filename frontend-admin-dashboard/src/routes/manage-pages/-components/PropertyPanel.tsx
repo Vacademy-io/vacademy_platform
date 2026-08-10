@@ -22,8 +22,10 @@ import {
     Clipboard,
     ClipboardText as ClipboardPaste,
     Anchor,
+    Sparkle,
 } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
@@ -60,6 +62,8 @@ export const PropertyPanel = () => {
         pasteComponent,
         clipboard,
     } = useEditorStore();
+    // Declared before the early returns below — hooks cannot live behind a branch.
+    const [variantsOpen, setVariantsOpen] = useState(false);
 
     if (!config) return null;
 
@@ -162,6 +166,15 @@ export const PropertyPanel = () => {
                             <Button
                                 variant="ghost"
                                 size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-primary-500"
+                                onClick={() => setVariantsOpen(true)}
+                                title="Try another version of this section (AI)"
+                            >
+                                <Sparkle className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
                                 disabled={isFirst || isNested}
                                 onClick={moveUp}
@@ -201,6 +214,24 @@ export const PropertyPanel = () => {
                         </div>
                     </div>
                 </div>
+
+                <AiSectionVariantsDialog
+                    open={variantsOpen}
+                    onOpenChange={setVariantsOpen}
+                    component={component}
+                    page={{ id: pageId, components: pageComponents }}
+                    globalSettings={config.globalSettings as Record<string, any>}
+                    onApply={(next) =>
+                        // A whole-component swap: updateComponent top-level
+                        // spreads, so style must be sent explicitly or the old
+                        // one survives under the new props. Undo covers it.
+                        updateComponent(pageId, component!.id, {
+                            type: next.type,
+                            props: next.props,
+                            style: next.style,
+                        })
+                    }
+                />
 
                 <div className="flex items-center justify-between">
                     <Label htmlFor="enabled-switch">Enabled</Label>

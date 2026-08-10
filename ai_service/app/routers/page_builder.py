@@ -39,7 +39,7 @@ from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.llm_json import generate_json
 from ..services.model_selection import resolve_models
-from ..services.page_audit import audit_page
+from ..services.page_audit import audit_component, audit_page
 from ..utils.json_extract import extract_and_sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -2236,6 +2236,304 @@ async def edit_page(
         logger.warning("[page-copilot] billing skipped: %s", e)
 
     return EditPageResponse(ops=ops, reply=reply, run_id=run_id, model=model_used, warnings=warnings)
+
+
+# ─── Section variants (regenerate ONE section, several ways) ────────────────
+#
+# The smallest unit of iteration used to be the whole page: /v1/generate at 100
+# credits, or /v1/edit for a described change. When one section came out wrong
+# the admin either hand-fixed it or re-rolled the page and lost the parts that
+# were right — so quality depended on the first attempt being good. This makes
+# it a CHOICE instead: three treatments of one section, side by side, applied in
+# place. Billed as an edit, because that is what it is.
+
+class SectionVariantsRequest(BaseModel):
+    # The page is context, not the target: variants must fit the sections
+    # around them (no repeated headings, consistent tone and surface rhythm).
+    page: Dict[str, Any]
+    component_id: str
+    # Optional steer. Empty means "same section, better / different".
+    instruction: Optional[str] = None
+    variant_count: int = 3
+    institute_name: Optional[str] = None
+    images: List[PageImage] = Field(default_factory=list)
+    terminology: Optional[Dict[str, str]] = None
+    global_settings: Optional[Dict[str, Any]] = None
+    # Let a variant switch component type when the intent calls for it (a plain
+    # card grid becoming a comparison panel, say).
+    allow_type_change: bool = True
+    preferred_model: Optional[str] = None
+
+
+class SectionVariant(BaseModel):
+    label: str
+    rationale: str
+    component: Dict[str, Any]
+
+
+class SectionVariantsResponse(BaseModel):
+    variants: List[SectionVariant]
+    run_id: str
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+def _collect_page_image_urls(node: Any, out: set, depth: int = 0) -> set:
+    """Every image URL already on the page. Variants may reuse these and
+    nothing else — the model cannot invent an image, and this endpoint does not
+    generate them, so the allowlist is exactly what is already trusted."""
+    if depth > 8:
+        return out
+    if isinstance(node, dict):
+        for k, v in node.items():
+            lk = k.lower()
+            if lk in _IMAGE_KEYS and isinstance(v, str) and v:
+                out.add(v)
+            elif lk in _IMAGE_LIST_KEYS and isinstance(v, list):
+                out.update(u for u in v if isinstance(u, str) and u)
+            else:
+                _collect_page_image_urls(v, out, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            _collect_page_image_urls(v, out, depth + 1)
+    elif isinstance(node, str) and node.startswith("https://"):
+        pass
+    return out
+
+
+def _find_component(page: Dict[str, Any], component_id: str) -> Optional[Dict[str, Any]]:
+    for comp in page.get("components") or []:
+        if not isinstance(comp, dict):
+            continue
+        if comp.get("id") == component_id:
+            return comp
+        for slot in (comp.get("props") or {}).get("slots") or []:
+            if isinstance(slot, list):
+                for child in slot:
+                    if isinstance(child, dict) and child.get("id") == component_id:
+                        return child
+    return None
+
+
+def _page_outline(page: Dict[str, Any], focus_id: str) -> List[Dict[str, Any]]:
+    """Types + headings of the surrounding sections. Sending the whole page
+    again would double the prompt for context the model barely needs; what it
+    must not do is repeat a neighbour's heading or clash with the rhythm."""
+    outline: List[Dict[str, Any]] = []
+    for comp in page.get("components") or []:
+        if not isinstance(comp, dict):
+            continue
+        props = comp.get("props") or {}
+        heading = None
+        for key in ("headerText", "title", "heading"):
+            if isinstance(props.get(key), str) and props[key].strip():
+                heading = props[key].strip()[:80]
+                break
+        entry = {"id": comp.get("id"), "type": comp.get("type")}
+        if heading:
+            entry["heading"] = heading
+        if comp.get("id") == focus_id:
+            entry["THIS_IS_THE_SECTION_YOU_ARE_REPLACING"] = True
+        outline.append(entry)
+    return outline
+
+
+def _build_variants_prompt(
+    req: SectionVariantsRequest, target: Dict[str, Any], catalog: Dict[str, Any], count: int
+) -> str:
+    parts: List[str] = [
+        f"You are the section designer for Vacademy's catalogue website builder. Produce {count} "
+        "genuinely DIFFERENT versions of ONE section of an existing page, so the admin can pick.",
+        "WHAT 'DIFFERENT' MEANS: different LAYOUT, density, emphasis and structure — a compact "
+        "3-column grid vs an editorial two-column with a lead paragraph vs a bordered panel with a "
+        "highlighted first item. Three recolourings of the same arrangement are a wasted choice. "
+        "Every version must still: keep the page's existing theme and tone, say something specific "
+        "about THIS institute, avoid repeating a heading used by a neighbouring section, and be "
+        "complete (no empty lists, no placeholder text).",
+    ]
+    vocab = [c for c in catalog["components"] if c.get("type") not in ("header", "footer")]
+    if not req.allow_type_change:
+        vocab = [c for c in vocab if c.get("type") == target.get("type")]
+        parts.append(f"KEEP THE COMPONENT TYPE: every version must be a '{target.get('type')}'.")
+    else:
+        parts.append(
+            f"The current section is a '{target.get('type')}'. Prefer keeping that type; switch to a "
+            "different component only when the instruction genuinely calls for a different kind of "
+            "section, and never to header, footer or productPageOffer (an admin must bind that one "
+            "to a product page by hand, so a generated one renders as nothing)."
+        )
+    parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
+    parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
+
+    if req.institute_name:
+        parts.append(f"## INSTITUTE\nName: {req.institute_name}")
+    term_block = _terminology_block(req.terminology)
+    if term_block:
+        parts.append(term_block)
+    if req.global_settings:
+        theme = {k: v for k, v in (req.global_settings or {}).items() if k in ("theme", "fonts", "motion")}
+        if theme:
+            parts.append(
+                "## SITE THEME (already chosen — match it, do not propose a new one)\n"
+                + json.dumps(theme, ensure_ascii=False)
+            )
+    if req.images:
+        parts.append(
+            "## PROVIDED IMAGES (the ONLY image URLs you may use, besides those already in the section)\n"
+            + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
+        )
+    parts.append(
+        "## THE PAGE AROUND IT (types and headings only)\n"
+        + json.dumps(_page_outline(req.page, req.component_id), ensure_ascii=False)
+    )
+    parts.append("## THE SECTION TO REPLACE\n" + json.dumps(target, ensure_ascii=False))
+
+    # htmlBlock stores the intent it was built from precisely so it can be
+    # regenerated later. Nothing consumed it until now.
+    if target.get("type") == "htmlBlock":
+        original_prompt = (target.get("props") or {}).get("prompt")
+        if isinstance(original_prompt, str) and original_prompt.strip():
+            parts.append(
+                "## WHAT THIS CUSTOM SECTION WAS FOR (its stored intent — honour it)\n"
+                + original_prompt.strip()
+            )
+
+    if req.instruction and req.instruction.strip():
+        parts.append("## WHAT THE ADMIN ASKED FOR\n" + req.instruction.strip())
+    else:
+        parts.append(
+            "## WHAT THE ADMIN ASKED FOR\nNo specific instruction — they want to see this section done "
+            "better, and differently. Keep its PURPOSE and its facts; rethink its presentation."
+        )
+
+    parts.append(
+        "## OUTPUT CONTRACT\nReturn ONLY JSON, no markdown:\n"
+        '{"variants": [{"label": "<2-3 words, e.g. Editorial split>", '
+        '"rationale": "<one sentence on what makes this one different>", '
+        '"component": {"id": "%s", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}}]}\n'
+        "Every component MUST reuse the id \"%s\" — these replace the section in place. "
+        "Return exactly %d variants."
+        % (req.component_id, req.component_id, count)
+    )
+    return "\n\n".join(parts)
+
+
+@router.post("/v1/section", response_model=SectionVariantsResponse)
+async def generate_section_variants(
+    body: SectionVariantsRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> SectionVariantsResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not isinstance(body.page, dict) or not isinstance(body.page.get("components"), list):
+        raise HTTPException(status_code=400, detail="A current page with components is required.")
+
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    target = _find_component(body.page, body.component_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="That section is not on this page.")
+
+    count = max(2, min(4, body.variant_count or 3))
+
+    estimate = preflight_tool_credits(db, tool_key=_EDIT_TOOL_KEY, tool_params={}, institute_id=institute_id)
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: this needs ~{estimate['estimated_credits']} credits but the "
+                f"balance is {estimate.get('current_balance')}."
+            ),
+        )
+
+    catalog = _load_catalog()
+    prompt = _build_variants_prompt(body, target, catalog, count)
+    run_id = uuid.uuid4().hex
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    try:
+        raw_json, model_used, usage = await generate_json(prompt, [primary, *fallbacks], label="page-section")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-section] generation failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Section generation failed: {e}")
+
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
+
+    allowed_urls = _collect_page_image_urls(body.page, set())
+    allowed_urls.update(i.url for i in body.images if i.url)
+    allowed_types = {c["type"] for c in catalog["components"]}
+    warnings: List[str] = []
+
+    clean: List[SectionVariant] = []
+    rejected = 0
+    for raw in (data.get("variants") or [])[:count]:
+        if not isinstance(raw, dict):
+            continue
+        comp_in = raw.get("component")
+        if not isinstance(comp_in, dict):
+            continue
+        # productPageOffer needs an admin-chosen product page, so a generated
+        # one is guaranteed to render as nothing (audit rule 'offer-unbound').
+        if comp_in.get("type") == "productPageOffer" and comp_in.get("type") != target.get("type"):
+            rejected += 1
+            continue
+        # Fresh seen_ids per variant: they are alternatives, not siblings, so
+        # they must all keep the original id to swap in place.
+        comp = sanitize_component(
+            comp_in, allowed_types, allow_chrome=False, seen_ids=set(),
+            allowed_urls=allowed_urls, warnings=warnings,
+        )
+        if comp is None:
+            rejected += 1
+            continue
+        comp["id"] = body.component_id
+        defects = [i for i in audit_component(comp) if i["severity"] == "fix"]
+        if defects:
+            # Offering a choice that includes a broken option is worse than
+            # offering fewer options.
+            rejected += 1
+            logger.info("[page-section] dropped a variant: %s", ", ".join(d["code"] for d in defects))
+            continue
+        clean.append(SectionVariant(
+            label=_clean_string(str(raw.get("label") or "Alternative"))[:40],
+            rationale=_clean_string(str(raw.get("rationale") or ""))[:200],
+            component=comp,
+        ))
+
+    if rejected:
+        warnings.append(f"{rejected} version(s) were discarded for rendering problems.")
+    if not clean:
+        raise HTTPException(
+            status_code=502,
+            detail="No usable versions came back — try again, or describe the change you want.",
+        )
+
+    try:
+        record_tool_billing(
+            tool_key=_EDIT_TOOL_KEY,
+            tool_params={"mode": "section_variants"},
+            request_type=RequestType.CONTENT,
+            model=model_used,
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            institute_id=institute_id,
+            user_id=actor_user_id,
+            user_role=None,
+            idempotency_key=f"{_EDIT_TOOL_KEY}:{run_id}",
+            usage_markup=_USAGE_MARKUP,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-section] billing skipped: %s", e)
+
+    return SectionVariantsResponse(variants=clean, run_id=run_id, model=model_used, warnings=warnings)
 
 
 # ─── Brand kit (theme proposals) ────────────────────────────────────────────

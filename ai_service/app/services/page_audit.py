@@ -142,6 +142,138 @@ def _contrast_ratio(fg: str, bg: str) -> Optional[float]:
     return (hi + 0.05) / (lo + 0.05)
 
 
+def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Defects decidable from ONE component, with no page context.
+
+    Split out of audit_page so the section-variants endpoint can reject a bad
+    alternative before the admin is asked to choose it — offering someone three
+    options one of which renders blank is worse than offering two."""
+    issues: List[Dict[str, Any]] = []
+    if not isinstance(comp, dict):
+        return issues
+    ctype = comp.get("type")
+    cid = comp.get("id")
+    props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
+
+    # 1. A list component with nothing in it renders as a blank band.
+    list_key = _LIST_PROPS.get(ctype or "")
+    if list_key is not None:
+        items = props.get(list_key)
+        if not isinstance(items, list) or not items:
+            issues.append(_issue(
+                "empty-section", "fix",
+                f"'{ctype}' has an empty '{list_key}' list, so it renders as a blank band.",
+                f"Fill props.{list_key} with real items drawn from the brief, or remove the component.",
+                cid,
+            ))
+
+    # 2. A product offer bound to no product page shows nothing to visitors.
+    if ctype == "productPageOffer" and not str(props.get("productPageCode") or "").strip():
+        issues.append(_issue(
+            "offer-unbound", "fix",
+            "'productPageOffer' has no productPageCode, so the section is invisible to visitors.",
+            "Remove this component — only an admin can pick the product page, so it cannot be "
+            "generated. Use courseCatalog if the page needs a live listing.",
+            cid,
+        ))
+
+    # 3. ctaBanner's renderer reads {heading, subheading, button}; without
+    #    them it paints an empty coloured band.
+    if ctype == "ctaBanner":
+        button = props.get("button") if isinstance(props.get("button"), dict) else {}
+        if not str(props.get("heading") or "").strip():
+            issues.append(_issue("cta-no-heading", "fix",
+                                 "'ctaBanner' has no heading — it renders as an empty coloured band.",
+                                 "Set props.heading (and props.subheading) to a real call to action.", cid))
+        if not str(button.get("text") or "").strip():
+            issues.append(_issue("cta-no-button", "fix",
+                                 "'ctaBanner' has no button text, so there is nothing to click.",
+                                 "Set props.button {enabled:true, text, action, target}.", cid))
+
+    # 4. A hero with no headline is the worst possible first impression.
+    if ctype == "heroSection":
+        left = props.get("left") if isinstance(props.get("left"), dict) else {}
+        if not str(left.get("title") or props.get("title") or "").strip():
+            issues.append(_issue("hero-no-headline", "fix",
+                                 "The hero has no headline.",
+                                 "Set props.left.title to a specific, benefit-led headline.", cid))
+        right = props.get("right") if isinstance(props.get("right"), dict) else {}
+        layout = str(props.get("layout") or "").lower()
+        collage = right.get("imageCollage")
+        if layout in ("split", "image-right", "image-left") and not str(right.get("image") or "").strip() \
+                and not (isinstance(collage, list) and collage):
+            issues.append(_issue(
+                "hero-split-no-image", "fix",
+                "The hero uses a split layout but has no image, so half the fold is empty.",
+                "Either provide right.image from the supplied images, or switch props.layout to "
+                "'centered' so the copy owns the full width.",
+                cid,
+            ))
+
+    # 5. Emoji where the component has a real icon library field.
+    icon_list_key = _ICON_NAME_TYPES.get(ctype or "")
+    if icon_list_key:
+        for item in (props.get(icon_list_key) or []):
+            if not isinstance(item, dict):
+                continue
+            if not str(item.get("iconName") or "").strip() and _EMOJI_RE.search(str(item.get("icon") or "")):
+                issues.append(_issue(
+                    "emoji-icon", "fix",
+                    f"'{ctype}' uses an emoji icon instead of the icon library.",
+                    "Set iconName on each item (GraduationCap, Rocket, Target, Trophy, ShieldCheck, …) "
+                    "and clear the emoji `icon` field.",
+                    cid,
+                ))
+                break
+
+    # 6. htmlBlock must re-theme and must be responsive (both are in the
+    #    doctrine the model was given, and both are silent failures).
+    if ctype == "htmlBlock":
+        css = str(props.get("css") or "")
+        if css and (_HEX_LITERAL_RE.search(css) or _RGB_LITERAL_RE.search(css)):
+            issues.append(_issue(
+                "html-hardcoded-color", "fix",
+                "The custom HTML section hardcodes colours, so it will not follow the site theme.",
+                "Replace every literal colour in props.css with theme variables: var(--primary-500), "
+                "var(--catalogue-text-primary), var(--catalogue-bg), var(--catalogue-border).",
+                cid,
+            ))
+        if css and "@media" not in css:
+            issues.append(_issue(
+                "html-not-responsive", "warn",
+                "The custom HTML section has no mobile rules.",
+                "Add an @media (max-width: 640px) block to props.css.",
+                cid,
+            ))
+
+    # 7. Author-set colours that cannot be read.
+    fg, bg = props.get("textColor"), props.get("backgroundColor")
+    if isinstance(fg, str) and isinstance(bg, str):
+        ratio = _contrast_ratio(fg, bg)
+        if ratio is not None and ratio < 3.0:
+            issues.append(_issue(
+                "low-contrast", "fix",
+                f"Text and background on '{ctype}' are too close to read (contrast {ratio:.1f}:1).",
+                "Pick a textColor that contrasts with backgroundColor, or drop both and let the theme decide.",
+                cid,
+            ))
+
+    # 8. Placeholder copy that was never replaced.
+    found: List[str] = []
+    _strings(props, found)
+    for text in found:
+        if _PLACEHOLDER_RE.search(text):
+            issues.append(_issue(
+                "placeholder-copy", "fix",
+                f"'{ctype}' still contains placeholder text: \"{text.strip()[:60]}\".",
+                "Replace it with real copy about this institute, drawn from the brief.",
+                cid,
+            ))
+            break
+
+    return issues
+
+
 def audit_page(
     page: Dict[str, Any],
     global_settings: Optional[Dict[str, Any]] = None,
@@ -161,129 +293,13 @@ def audit_page(
     headings: Dict[str, List[str]] = {}
 
     for comp in components:
-        ctype = comp.get("type")
-        cid = comp.get("id")
+        issues.extend(audit_component(comp))
         props = comp.get("props") if isinstance(comp.get("props"), dict) else {}
-
-        # 1. A list component with nothing in it renders as a blank band.
-        list_key = _LIST_PROPS.get(ctype or "")
-        if list_key is not None:
-            items = props.get(list_key)
-            if not isinstance(items, list) or not items:
-                issues.append(_issue(
-                    "empty-section", "fix",
-                    f"'{ctype}' has an empty '{list_key}' list, so it renders as a blank band.",
-                    f"Fill props.{list_key} with real items drawn from the brief, or remove the component.",
-                    cid,
-                ))
-
-        # 2. A product offer bound to no product page shows nothing to visitors.
-        if ctype == "productPageOffer" and not str(props.get("productPageCode") or "").strip():
-            issues.append(_issue(
-                "offer-unbound", "fix",
-                "'productPageOffer' has no productPageCode, so the section is invisible to visitors.",
-                "Remove this component — only an admin can pick the product page, so it cannot be "
-                "generated. Use courseCatalog if the page needs a live listing.",
-                cid,
-            ))
-
-        # 3. ctaBanner's renderer reads {heading, subheading, button}; without
-        #    them it paints an empty coloured band.
-        if ctype == "ctaBanner":
-            button = props.get("button") if isinstance(props.get("button"), dict) else {}
-            if not str(props.get("heading") or "").strip():
-                issues.append(_issue("cta-no-heading", "fix",
-                                     "'ctaBanner' has no heading — it renders as an empty coloured band.",
-                                     "Set props.heading (and props.subheading) to a real call to action.", cid))
-            if not str(button.get("text") or "").strip():
-                issues.append(_issue("cta-no-button", "fix",
-                                     "'ctaBanner' has no button text, so there is nothing to click.",
-                                     "Set props.button {enabled:true, text, action, target}.", cid))
-
-        # 4. A hero with no headline is the worst possible first impression.
-        if ctype == "heroSection":
-            left = props.get("left") if isinstance(props.get("left"), dict) else {}
-            if not str(left.get("title") or props.get("title") or "").strip():
-                issues.append(_issue("hero-no-headline", "fix",
-                                     "The hero has no headline.",
-                                     "Set props.left.title to a specific, benefit-led headline.", cid))
-            right = props.get("right") if isinstance(props.get("right"), dict) else {}
-            layout = str(props.get("layout") or "").lower()
-            collage = right.get("imageCollage")
-            if layout in ("split", "image-right", "image-left") and not str(right.get("image") or "").strip() \
-                    and not (isinstance(collage, list) and collage):
-                issues.append(_issue(
-                    "hero-split-no-image", "fix",
-                    "The hero uses a split layout but has no image, so half the fold is empty.",
-                    "Either provide right.image from the supplied images, or switch props.layout to "
-                    "'centered' so the copy owns the full width.",
-                    cid,
-                ))
-
-        # 5. Emoji where the component has a real icon library field.
-        icon_list_key = _ICON_NAME_TYPES.get(ctype or "")
-        if icon_list_key:
-            for item in (props.get(icon_list_key) or []):
-                if not isinstance(item, dict):
-                    continue
-                if not str(item.get("iconName") or "").strip() and _EMOJI_RE.search(str(item.get("icon") or "")):
-                    issues.append(_issue(
-                        "emoji-icon", "fix",
-                        f"'{ctype}' uses an emoji icon instead of the icon library.",
-                        "Set iconName on each item (GraduationCap, Rocket, Target, Trophy, ShieldCheck, …) "
-                        "and clear the emoji `icon` field.",
-                        cid,
-                    ))
-                    break
-
-        # 6. htmlBlock must re-theme and must be responsive (both are in the
-        #    doctrine the model was given, and both are silent failures).
-        if ctype == "htmlBlock":
-            css = str(props.get("css") or "")
-            if css and (_HEX_LITERAL_RE.search(css) or _RGB_LITERAL_RE.search(css)):
-                issues.append(_issue(
-                    "html-hardcoded-color", "fix",
-                    "The custom HTML section hardcodes colours, so it will not follow the site theme.",
-                    "Replace every literal colour in props.css with theme variables: var(--primary-500), "
-                    "var(--catalogue-text-primary), var(--catalogue-bg), var(--catalogue-border).",
-                    cid,
-                ))
-            if css and "@media" not in css:
-                issues.append(_issue(
-                    "html-not-responsive", "warn",
-                    "The custom HTML section has no mobile rules.",
-                    "Add an @media (max-width: 640px) block to props.css.",
-                    cid,
-                ))
-
-        # 7. Author-set colours that cannot be read.
-        fg, bg = props.get("textColor"), props.get("backgroundColor")
-        if isinstance(fg, str) and isinstance(bg, str):
-            ratio = _contrast_ratio(fg, bg)
-            if ratio is not None and ratio < 3.0:
-                issues.append(_issue(
-                    "low-contrast", "fix",
-                    f"Text and background on '{ctype}' are too close to read (contrast {ratio:.1f}:1).",
-                    "Pick a textColor that contrasts with backgroundColor, or drop both and let the theme decide.",
-                    cid,
-                ))
-
-        # 8. Placeholder copy that was never replaced.
-        found: List[str] = []
-        _strings(props, found)
-        for text in found:
-            if _PLACEHOLDER_RE.search(text):
-                issues.append(_issue(
-                    "placeholder-copy", "fix",
-                    f"'{ctype}' still contains placeholder text: \"{text.strip()[:60]}\".",
-                    "Replace it with real copy about this institute, drawn from the brief.",
-                    cid,
-                ))
-                break
-
         heading = _heading_of(props)
         if heading:
-            headings.setdefault(re.sub(r"\W+", " ", heading.lower()).strip(), []).append(cid or ctype or "?")
+            headings.setdefault(re.sub(r"\W+", " ", heading.lower()).strip(), []).append(
+                comp.get("id") or comp.get("type") or "?"
+            )
 
     # 9. The same heading twice reads as a bug, not a design.
     for text, ids in headings.items():

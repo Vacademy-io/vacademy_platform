@@ -36,6 +36,11 @@ module.exports = {
                 // named token because the design system bans arbitrary values.
                 'dialog-chat': 'min(65vh, 42rem)',
             },
+            maxHeight: {
+                // Tall dialogs that scroll their own body (section-variant
+                // previews). Named for the same reason as dialog-chat above.
+                'dialog-tall': 'min(88vh, 56rem)',
+            },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],
                 // Institute-configured font: index.tsx sets `--app-font-family` on

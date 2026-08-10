@@ -561,4 +561,48 @@ public class FileServiceImpl implements FileService {
         return metadata;
     }
 
+    private static final String OFFLINE_CHECKSUM_TYPE_S3_ETAG = "S3_ETAG";
+
+    @Override
+    public List<vacademy.io.media_service.dto.OfflineAssetDetailsDTO> getOfflineAssetDetails(List<String> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return List.of();
+        }
+        List<vacademy.io.media_service.dto.OfflineAssetDetailsDTO> result = new ArrayList<>();
+        for (String fileId : fileIds) {
+            fileMetadataRepository.findById(fileId).ifPresent(fm -> {
+                lazilyFillChecksum(fm);
+                result.add(new vacademy.io.media_service.dto.OfflineAssetDetailsDTO(
+                        fm.getId(), fm.getFileSize(), fm.getFileType(), fm.getChecksum(), fm.getChecksumType()));
+            });
+        }
+        return result;
+    }
+
+    /**
+     * checksum is an opaque integrity/change token for offline asset diffing —
+     * plaintext ETag is fine even though the client encrypts the file locally,
+     * because the checksum is only ever compared against itself (never used to
+     * verify the encrypted bytes). Populated on first request and cached on the
+     * row from then on; a missing S3 object is logged and left null rather than
+     * failing the whole offline-asset-details batch.
+     */
+    private void lazilyFillChecksum(FileMetadata fm) {
+        if (StringUtils.hasText(fm.getChecksum()) || !StringUtils.hasText(fm.getKey())) {
+            return;
+        }
+        try {
+            ObjectMetadata s3Metadata = s3Client.getObjectMetadata(bucketName, fm.getKey());
+            String etag = s3Metadata.getETag();
+            if (StringUtils.hasText(etag)) {
+                fm.setChecksum(etag);
+                fm.setChecksumType(OFFLINE_CHECKSUM_TYPE_S3_ETAG);
+                fileMetadataRepository.save(fm);
+            }
+        } catch (Exception e) {
+            log.warn("offline-asset-details: could not fetch S3 ETag for fileId={} key={}: {}",
+                    fm.getId(), fm.getKey(), e.getMessage());
+        }
+    }
+
 }

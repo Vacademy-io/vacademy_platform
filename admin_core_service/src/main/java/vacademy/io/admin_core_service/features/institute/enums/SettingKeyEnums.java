@@ -31,5 +31,11 @@ public enum SettingKeyEnums {
     // into the daily enrolment-policy expiry/renewal scan
     // (PackageSessionScheduler.processPackageSessionRenewals). Read/write via
     // GenericSettingStrategy; absence of the key means everything stays off.
-    PAYMENT_SETTING
+    PAYMENT_SETTING,
+    // Institute-wide offline content download master switch + defaults
+    // ({"enabled": false, "revalidationDays": 7, "maxDevices": 2}). enabled=false
+    // zeroes out every per-node offline permission regardless of course/rule
+    // settings (OfflineAccessResolver). Read/write via OfflineSettingService,
+    // which layers on GenericSettingStrategy like any other key.
+    OFFLINE_ACCESS_SETTING
 }

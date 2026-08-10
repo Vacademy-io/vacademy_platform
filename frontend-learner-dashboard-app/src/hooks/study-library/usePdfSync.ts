@@ -12,6 +12,7 @@ import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
+import { isNetworkError, trackOrQueue } from "@/lib/offline/events/track-or-queue";
 
 const STORAGE_KEY = "pdf_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -111,18 +112,59 @@ export const usePDFSync = () => {
                     ) {
                         inFlight.add(activity.activity_id);
                         try {
-                            await addUpdateDocumentActivity.mutateAsync({
+                            const queueContext = {
                                 slideId: activity.slide_id || "",
                                 chapterId: chapterId || "",
-                                requestPayload: apiPayload,
-                                packageSessionId: packageSessionId || "",
                                 moduleId: moduleId || "",
                                 subjectId: subjectId || "",
+                                packageSessionId: packageSessionId || "",
+                            };
+                            const queued = await trackOrQueue({
+                                userId,
+                                eventType: "DOCUMENT",
+                                context: queueContext,
+                                payload: apiPayload,
                             });
+                            if (!queued) {
+                                await addUpdateDocumentActivity.mutateAsync({
+                                    slideId: activity.slide_id || "",
+                                    chapterId: chapterId || "",
+                                    requestPayload: apiPayload,
+                                    packageSessionId: packageSessionId || "",
+                                    moduleId: moduleId || "",
+                                    subjectId: subjectId || "",
+                                });
+                            }
                             activity.sync_status = "SYNCED";
                             activity.new_activity = false; // Move this here, after successful API call
                             updatedActivities.push(activity);
                             didSync = true;
+                        } catch (err) {
+                            if (isNetworkError(err)) {
+                                try {
+                                    await trackOrQueue({
+                                        userId,
+                                        eventType: "DOCUMENT",
+                                        context: {
+                                            slideId: activity.slide_id || "",
+                                            chapterId: chapterId || "",
+                                            moduleId: moduleId || "",
+                                            subjectId: subjectId || "",
+                                            packageSessionId: packageSessionId || "",
+                                        },
+                                        payload: apiPayload,
+                                        force: true,
+                                    });
+                                    activity.sync_status = "SYNCED";
+                                    activity.new_activity = false;
+                                    updatedActivities.push(activity);
+                                    didSync = true;
+                                    continue;
+                                } catch (queueErr) {
+                                    console.error("[usePDFSync] failed to queue offline event", queueErr);
+                                }
+                            }
+                            throw err;
                         } finally {
                             inFlight.delete(activity.activity_id);
                         }

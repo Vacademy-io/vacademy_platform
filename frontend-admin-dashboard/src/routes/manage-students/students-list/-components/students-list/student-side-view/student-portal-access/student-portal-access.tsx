@@ -31,6 +31,7 @@ import { getLearnerPortalAccess, sendResetPasswordEmail } from '@/services/learn
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { BatchPicker } from '../BatchPicker';
 import { EditCredentialsDialog } from './edit-credentials-dialog';
+import { OfflineDevicesCard } from './offline-devices-card';
 
 export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -389,6 +390,9 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                     onUpdated={(newUsername) => setRenamed({ userId, username: newUsername })}
                 />
             )}
+
+            {/* Registered offline-download devices (admin view + revoke). */}
+            {!isSubmissionTab && userId && <OfflineDevicesCard userId={userId} />}
 
             {/* Info when no settings enabled */}
             {!learnerSettings?.allowViewPassword &&

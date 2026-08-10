@@ -10,6 +10,8 @@ import { getPublicUrl } from '@/services/upload_file';
 import { ModulesWithChapters } from '../../../../../../../../stores/study-library/use-modules-with-chapters-store';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OfflineAvailabilityDialog } from '@/routes/study-library/courses/course-details/-components/OfflineAvailabilityDialog';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface ModuleCardProps {
     module: ModulesWithChapters;
@@ -20,8 +22,17 @@ interface ModuleCardProps {
 // Update the ModuleCard component
 export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [isOfflineDialogOpen, setIsOfflineDialogOpen] = useState(false);
     const router = useRouter();
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+    const { getPackageSessionId } = useInstituteDetailsStore();
+    const searchParams = router.state.location.search;
+    const packageSessionId =
+        getPackageSessionId({
+            courseId: searchParams.courseId ?? '',
+            sessionId: searchParams.sessionId ?? '',
+            levelId: searchParams.levelId ?? '',
+        }) ?? '';
 
     const handleCardClick = (e: React.MouseEvent) => {
         if (
@@ -102,7 +113,13 @@ export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
                     <div className="text-wrap text-body text-neutral-500">
                         {module.module.description}
                     </div>
-                    <MenuOptions onDelete={onDelete} onEdit={() => setIsEditDialogOpen(true)} />
+                    <MenuOptions
+                        onDelete={onDelete}
+                        onEdit={() => setIsEditDialogOpen(true)}
+                        onOfflineAvailability={
+                            packageSessionId ? () => setIsOfflineDialogOpen(true) : undefined
+                        }
+                    />
                 </div>
             </div>
 
@@ -121,6 +138,17 @@ export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
                     }}
                 />
             </MyDialog>
+
+            {isOfflineDialogOpen && packageSessionId && (
+                <OfflineAvailabilityDialog
+                    open={isOfflineDialogOpen}
+                    onClose={() => setIsOfflineDialogOpen(false)}
+                    sourceType="MODULE"
+                    sourceId={module.module.id}
+                    packageSessionId={packageSessionId}
+                    nodeName={module.module.module_name}
+                />
+            )}
         </div>
     );
 };

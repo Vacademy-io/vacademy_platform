@@ -10,6 +10,7 @@ import { getTerminologyPlural } from "@/components/common/layout-container/sideb
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { useTranslation } from "react-i18next";
 import { useShowContentDescriptions } from "@/hooks/use-content-descriptions";
+import { DownloadNodeButton } from "@/components/common/offline/download-node-button";
 
 export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
 
@@ -19,6 +20,7 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
     const showDescription = useShowContentDescriptions();
     const description = showDescription ? module.module.description?.trim() : "";
+    const { sessionId } = router.state.location.search as { sessionId?: string };
 
     const handleCardClick = (e: React.MouseEvent) => {
         if (
@@ -64,6 +66,7 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
             >
                 <div className="flex items-center justify-between text-title font-semibold">
                     <div>{toTitleCase(module.module.module_name)}</div>
+                    <DownloadNodeButton nodeId={module.module.id} nodeType="MODULE" packageSessionId={sessionId} />
                 </div>
 
                 {imageUrl ? (

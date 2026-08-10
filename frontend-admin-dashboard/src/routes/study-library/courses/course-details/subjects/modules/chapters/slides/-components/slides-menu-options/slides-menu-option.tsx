@@ -9,10 +9,12 @@ import { DeleteDialog } from './delete-dialog';
 import { useContentStore } from '../../-stores/chapter-sidebar-store';
 import { useRouter } from '@tanstack/react-router';
 import { SlideDripConditionDialog } from '@/routes/study-library/courses/course-details/-components/SlideDripConditionDialog';
+import { OfflineAvailabilityDialog } from '@/routes/study-library/courses/course-details/-components/OfflineAvailabilityDialog';
 import { getCourseSettings, saveCourseSettings } from '@/services/course-settings';
 import type { DripCondition } from '@/types/course-settings';
 import { toast } from 'sonner';
 import type { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export const SlidesMenuOption = ({
     extraOptions = [],
@@ -26,7 +28,7 @@ export const SlidesMenuOption = ({
     onExtraSelect?: (value: string) => void;
 } = {}) => {
     const [openDialog, setOpenDialog] = useState<
-        'copy' | 'move' | 'delete' | 'drip-conditions' | null
+        'copy' | 'move' | 'delete' | 'drip-conditions' | 'offline-availability' | null
     >(null);
     const [dripConditions, setDripConditions] = useState<DripCondition[]>([]);
     const [loadingDripConditions, setLoadingDripConditions] = useState(false);
@@ -38,6 +40,13 @@ export const SlidesMenuOption = ({
     const courseId: string = searchParams.courseId || '';
     const slideId: string = activeItem?.id || '';
     const slideName: string = activeItem?.title || 'Slide';
+    const { getPackageSessionId } = useInstituteDetailsStore();
+    const packageSessionId =
+        getPackageSessionId({
+            courseId,
+            sessionId: searchParams.sessionId || '',
+            levelId: searchParams.levelId || '',
+        }) || '';
 
     // Get all slides in the current chapter for prerequisite selection
     const allSlides = items.map((slide) => ({
@@ -83,6 +92,9 @@ export const SlidesMenuOption = ({
             case 'drip-conditions':
                 await loadDripConditions();
                 setOpenDialog('drip-conditions');
+                break;
+            case 'offline-availability':
+                setOpenDialog('offline-availability');
                 break;
             default:
                 // Relocated header actions (activity-stats / history / export…)
@@ -154,6 +166,18 @@ export const SlidesMenuOption = ({
                     dripConditions={dripConditions}
                     onSave={handleSaveDripConditions}
                     allSlides={allSlides}
+                />
+            )}
+
+            {/* Offline Availability Dialog */}
+            {packageSessionId && (
+                <OfflineAvailabilityDialog
+                    open={openDialog === 'offline-availability'}
+                    onClose={() => setOpenDialog(null)}
+                    sourceType="SLIDE"
+                    sourceId={slideId}
+                    packageSessionId={packageSessionId}
+                    nodeName={slideName}
                 />
             )}
         </>

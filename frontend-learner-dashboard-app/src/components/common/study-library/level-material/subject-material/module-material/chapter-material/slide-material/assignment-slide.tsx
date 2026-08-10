@@ -14,6 +14,7 @@ import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@
 import { getPublicUrl } from "@/services/upload_file";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
+import { resolveSlideSource } from "@/lib/offline/resolve";
 import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +28,7 @@ import "katex/dist/katex.min.css";
 import katex from "katex";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Network } from "@/utils/network-plugin";
 import {
   FilePdf,
   FileDoc,
@@ -365,12 +367,16 @@ const AttachmentPreview = ({
   const [url, setUrl] = useState<string | null>(directUrl || null);
   const [loading, setLoading] = useState(!directUrl);
   const [error, setError] = useState(false);
+  const revokeRef = useRef<(() => void) | null>(null);
+  const { activeItem } = useContentStore();
 
   // Whether this user's role is allowed to download assignment files.
   const { canDownload } = useSlideDownloadPermission();
   const allowDownload = canDownload(SlideDownloadTypeKey.ASSIGNMENT);
 
   useEffect(() => {
+    revokeRef.current?.();
+    revokeRef.current = null;
     if (directUrl) {
       setUrl(directUrl);
       setLoading(false);
@@ -385,7 +391,28 @@ const AttachmentPreview = ({
     let cancelled = false;
     setLoading(true);
     setError(false);
-    getPublicUrl(fileId)
+    // Offline-aware resolution (plan §B4): assignment attachments (question
+    // media / uploaded reference files) resolve through the same offline
+    // decrypt path as other downloadable assets while offline; online keeps
+    // the existing getPublicUrl behavior untouched.
+    const resolve = async () => {
+      const { connected } = await Network.getStatus();
+      if (connected) return getPublicUrl(fileId);
+      const userId = await getUserId();
+      if (!userId || !activeItem?.id) return getPublicUrl(fileId);
+      const result = await resolveSlideSource({
+        userId,
+        fileId,
+        slideId: activeItem.id,
+        mimeType: mimeType || "application/octet-stream",
+        resolveRemoteUrl: () => getPublicUrl(fileId),
+      });
+      if (result.kind === "offline-blob" && result.revoke) {
+        revokeRef.current = result.revoke;
+      }
+      return result.url ?? null;
+    };
+    resolve()
       .then((resolved) => {
         if (cancelled) return;
         if (!resolved) {
@@ -403,8 +430,10 @@ const AttachmentPreview = ({
       });
     return () => {
       cancelled = true;
+      revokeRef.current?.();
+      revokeRef.current = null;
     };
-  }, [fileId, directUrl]);
+  }, [fileId, directUrl, mimeType, activeItem?.id]);
 
   const mimeExt = mimeType?.toLowerCase().includes("pdf") ? "pdf" : "";
   const ext = mimeExt || (url ? extFromName(url) || extFromName(fallbackLabel) : extFromName(fallbackLabel));
@@ -1097,8 +1126,17 @@ const AssignmentSlide = ({
     },
   });
 
-  // Handle assignment submission
+  // Handle assignment submission. Assignments involve file uploads that
+  // already require connectivity to have happened (uploadedFileIds come from
+  // a prior online upload) — offline submissions aren't queued like
+  // video/pdf/audio/quiz activity; they're simply blocked with a clear
+  // message so the learner knows to retry once back online.
   const handleSubmit = async () => {
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      toast.error("Needs internet to submit this assignment. Please reconnect and try again.");
+      return;
+    }
     setIsSubmitting(true);
     submitAssignmentMutation.mutate();
   };

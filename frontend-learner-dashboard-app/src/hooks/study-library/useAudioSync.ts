@@ -12,6 +12,7 @@ import { z } from "zod";
 import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 import { ADD_UPDATE_AUDIO_ACTIVITY } from "@/constants/urls";
+import { isNetworkError, trackOrQueue } from "@/lib/offline/events/track-or-queue";
 
 const STORAGE_KEY = "audio_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -283,19 +284,34 @@ export const useAudioSync = () => {
                 const slideId = activeItemIdRef.current || activity.id;
                 const apiPayload = toActivityPayload(activity, userId, slideId);
 
+                const queueContext = {
+                    slideId,
+                    chapterId: chapterId || "",
+                    moduleId: moduleId || "",
+                    subjectId: subjectId || "",
+                    packageSessionId: packageSessionId || "",
+                };
                 try {
-                    console.log(
-                        `📡 [useAudioSync] Syncing audio activity: ${activity.activity_id}`
-                    );
-                    await addUpdateAudioActivity.mutateAsync({
-                        slideId,
-                        chapterId: chapterId || "",
-                        moduleId: moduleId || "",
-                        subjectId: subjectId || "",
-                        packageSessionId: packageSessionId || "",
-                        requestPayload: apiPayload,
+                    const queued = await trackOrQueue({
+                        userId,
+                        eventType: "AUDIO",
+                        context: queueContext,
+                        payload: apiPayload,
                     });
-                    console.log(`✅ [useAudioSync] Audio activity synced successfully`);
+                    if (!queued) {
+                        console.log(
+                            `📡 [useAudioSync] Syncing audio activity: ${activity.activity_id}`
+                        );
+                        await addUpdateAudioActivity.mutateAsync({
+                            slideId,
+                            chapterId: chapterId || "",
+                            moduleId: moduleId || "",
+                            subjectId: subjectId || "",
+                            packageSessionId: packageSessionId || "",
+                            requestPayload: apiPayload,
+                        });
+                        console.log(`✅ [useAudioSync] Audio activity synced successfully`);
+                    }
 
                     // Mark as synced
                     updatedActivities.push({
@@ -305,6 +321,26 @@ export const useAudioSync = () => {
                     });
                     didSync = true;
                 } catch (error) {
+                    if (isNetworkError(error)) {
+                        try {
+                            await trackOrQueue({
+                                userId,
+                                eventType: "AUDIO",
+                                context: queueContext,
+                                payload: apiPayload,
+                                force: true,
+                            });
+                            updatedActivities.push({
+                                ...activity,
+                                sync_status: "SYNCED",
+                                new_activity: false,
+                            });
+                            didSync = true;
+                            continue;
+                        } catch (queueErr) {
+                            console.error("[useAudioSync] failed to queue offline event", queueErr);
+                        }
+                    }
                     console.error("[useAudioSync] API call failed:", error);
                     // Keep as STALE for retry
                     updatedActivities.push(activity);

@@ -18,6 +18,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "@tanstack/react-router";
 import { useResolvedPackageSessionId } from "@/hooks/study-library/useResolvedPackageSessionId";
 import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
+import { toast } from "sonner";
+import { trackOrQueue } from "@/lib/offline/events/track-or-queue";
 
 interface Option {
     id: string;
@@ -240,6 +242,22 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 },
             };
 
+            const offlineQueued = await trackOrQueue({
+                userId,
+                eventType: "QUESTION",
+                context: {
+                    slideId,
+                    chapterId: chapterId || "",
+                    moduleId: moduleId || "",
+                    subjectId: subjectId || "",
+                    packageSessionId: packageSessionId || "",
+                },
+                payload,
+            });
+            if (offlineQueued) {
+                return { offlineQueued: true as const };
+            }
+
             return authenticatedAxiosInstance.post(
                 SUBMIT_QUESTION_SLIDE_ANSWERS,
                 payload,
@@ -255,8 +273,12 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 }
             );
         },
-        onSuccess: () => {
-            console.log("Question answer submitted successfully");
+        onSuccess: (result) => {
+            if (result && "offlineQueued" in result && result.offlineQueued) {
+                toast.info("Saved — will sync when online");
+            } else {
+                console.log("Question answer submitted successfully");
+            }
         },
         onError: (error: Error) => {
             console.error("Error submitting question answer:", error);

@@ -170,6 +170,65 @@ public class MediaService {
     }
 
     /**
+     * Learner offline downloads (download-urls proxy): short-lived signed URLs
+     * for a batch of fileIds via media_service's existing
+     * GET /internal/get-url/id/many. Each map entry is {fileId: url}.
+     */
+    public List<Map<String, String>> getMultipleFileDownloadUrls(List<String> fileIds, int expiryDays) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return List.of();
+        }
+        String commaSeparatedFileIds = String.join(",", fileIds);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                mediaServerBaseUrl,
+                MediaServiceConstants.GET_MULTIPLE_FILE_URLS_BY_ID_ROUTE + "?fileIds=" + commaSeparatedFileIds
+                        + "&expiryDays=" + expiryDays,
+                null);
+        String body = response.getBody();
+        if (body == null || body.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(body, new TypeReference<List<Map<String, String>>>() {
+            });
+        } catch (JsonProcessingException e) {
+            throw new VacademyException("Failed to parse media_service download-url response: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Learner offline downloads (manifest builder): size/type/checksum for a
+     * batch of fileIds, via the new offline-asset-details internal endpoint.
+     */
+    public List<vacademy.io.admin_core_service.features.learner_offline.dto.OfflineAssetDetailsResponseDTO> getOfflineAssetDetails(
+            List<String> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Map<String, Object> requestBody = Map.of("fileIds", fileIds);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    mediaServerBaseUrl,
+                    MediaServiceConstants.GET_OFFLINE_ASSET_DETAILS_ROUTE,
+                    requestBody);
+            String body = response.getBody();
+            if (body == null || body.isBlank()) {
+                return List.of();
+            }
+            return objectMapper.readValue(body, new TypeReference<List<vacademy.io.admin_core_service.features.learner_offline.dto.OfflineAssetDetailsResponseDTO>>() {
+            });
+        } catch (Exception e) {
+            // Best-effort: manifest still returns the tree with fileIds and no
+            // size/checksum rather than failing the whole request.
+            return List.of();
+        }
+    }
+
+    /**
      * Get public URL without expiry (permanent public URL)
      * Uses the public endpoint that returns direct S3 URLs
      */

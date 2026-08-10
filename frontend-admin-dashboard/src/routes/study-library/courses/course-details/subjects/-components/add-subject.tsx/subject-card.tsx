@@ -16,6 +16,8 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { OfflineAvailabilityDialog } from '@/routes/study-library/courses/course-details/-components/OfflineAvailabilityDialog';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface SubjectCardProps {
     subject: SubjectType;
@@ -26,11 +28,20 @@ interface SubjectCardProps {
 
 export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: SubjectCardProps) => {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [isOfflineDialogOpen, setIsOfflineDialogOpen] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
     const { getPublicUrl } = useFileUpload();
     const router = useRouter();
     const { open } = useSidebar();
     const { data } = useSuspenseQuery(useInstituteQuery());
+    const { getPackageSessionId } = useInstituteDetailsStore();
+    const searchParams = router.state.location.search;
+    const packageSessionId =
+        getPackageSessionId({
+            courseId: searchParams.courseId ?? '',
+            sessionId: currentSession?.id ?? '',
+            levelId: searchParams.levelId ?? '',
+        }) ?? '';
 
     const handleCardClick = (e: React.MouseEvent) => {
         if (
@@ -106,7 +117,13 @@ export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: Subje
                 <div className="flex items-center justify-between gap-5">
                     <div className="text-h2 font-semibold">{subject.subject_name}</div>
                     <div onClick={handleMenuOptionClick} className="menu-options-container">
-                        <MenuOptions onDelete={onDelete} onEdit={() => setIsEditDialogOpen(true)} />
+                        <MenuOptions
+                            onDelete={onDelete}
+                            onEdit={() => setIsEditDialogOpen(true)}
+                            onOfflineAvailability={
+                                packageSessionId ? () => setIsOfflineDialogOpen(true) : undefined
+                            }
+                        />
                     </div>
                 </div>
             </div>
@@ -126,6 +143,17 @@ export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: Subje
                     }}
                 />
             </MyDialog>
+
+            {isOfflineDialogOpen && packageSessionId && (
+                <OfflineAvailabilityDialog
+                    open={isOfflineDialogOpen}
+                    onClose={() => setIsOfflineDialogOpen(false)}
+                    sourceType="SUBJECT"
+                    sourceId={subject.id}
+                    packageSessionId={packageSessionId}
+                    nodeName={subject.subject_name}
+                />
+            )}
         </div>
     );
 };

@@ -9,11 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.learner_offline.service.OfflineManifestVersionService;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.common.constants.ValidStatusListConstants;
 import vacademy.io.admin_core_service.features.slide.dto.*;
@@ -61,6 +64,8 @@ public class SlideService {
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
     private final CopiedSlideStatusResolver copiedSlideStatusResolver;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+    private final OfflineManifestVersionService offlineManifestVersionService;
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
@@ -307,6 +312,17 @@ public class SlideService {
 
         if (SlideStatus.PUBLISHED.name().equals(status)) {
             slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(), slide);
+        }
+
+        // Offline plan Part A2 bump hook: PUBLISHED/DELETED transitions change
+        // what a learner's offline manifest should contain for every package
+        // session this chapter belongs to.
+        if (SlideStatus.PUBLISHED.name().equals(status) || SlideStatus.DELETED.name().equals(status)) {
+            List<ChapterPackageSessionMapping> mappings =
+                    chapterPackageSessionMappingRepository.findByChapterIdAndStatusNotDeleted(chapterId);
+            offlineManifestVersionService.bumpAll(
+                    mappings.stream().map(m -> m.getPackageSession().getId()).collect(Collectors.toList()),
+                    "SLIDE_STATUS_" + status);
         }
         return "Slide status updated successfully";
     }

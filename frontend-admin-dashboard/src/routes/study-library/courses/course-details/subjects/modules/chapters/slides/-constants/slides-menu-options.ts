@@ -11,6 +11,7 @@ const baseList: DropdownItem[] = [
     { label: 'Copy to', value: 'copy' },
     { label: 'Move to', value: 'move' },
     { label: 'Drip Conditions', value: 'drip-conditions' },
+    { label: 'Offline Availability', value: 'offline-availability' },
     { label: 'Delete', value: 'delete' },
 ];
 

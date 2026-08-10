@@ -7,6 +7,7 @@ import { toTitleCase } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { getAuthoredChapterDescription } from "@/constants/chapter-description";
 import { useShowContentDescriptions } from "@/hooks/use-content-descriptions";
+import { DownloadNodeButton } from "@/components/common/offline/download-node-button";
 
 export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
     const { t } = useTranslation("studyContent");
@@ -15,7 +16,11 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
         ? getAuthoredChapterDescription(chapter.description)
         : "";
     const router = useRouter();
-    const {  subjectId, moduleId } = router.state.location.search;
+    const {  subjectId, moduleId, sessionId } = router.state.location.search as {
+        subjectId?: string;
+        moduleId?: string;
+        sessionId?: string;
+    };
     const navigate = useNavigate();
 
     const handleCardClick = (e: React.MouseEvent) => {
@@ -51,6 +56,7 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={chapter.percentage_completed} />
                         <p className="text-body text-neutral-500">{t("progress.percentCompletedParenthetical", { percent: chapter.percentage_completed.toFixed(2) })}</p>
+                        <DownloadNodeButton nodeId={chapter.id} nodeType="CHAPTER" packageSessionId={sessionId} />
                     </div>
                 </div>
                 {description && (

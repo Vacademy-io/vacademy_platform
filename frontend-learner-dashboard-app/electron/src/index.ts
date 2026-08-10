@@ -1,12 +1,35 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, MenuItem } from 'electron';
+import { app, MenuItem, protocol } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
 
 import { ElectronCapacitorApp, setupContentSecurityPolicy, setupReloadWatcher } from './setup';
+
+// Register the `offline-media://` scheme as privileged (standard + secure + fetch-API-capable
+// + streaming) *before* the app is ready — Electron requires `registerSchemesAsPrivileged` to
+// run at module load time, before `app.whenReady()` resolves; doing it any later throws. The
+// actual `protocol.handle('offline-media', ...)` request handler is registered lazily by
+// `OfflineMedia` (electron/src/offline-media-plugin.ts) the first time that plugin class is
+// instantiated (via `setupCapacitorElectronPlugins()` in setup.ts, after the app is ready).
+// `bypassCSP: true` because the app's dev-mode CSP in `setupContentSecurityPolicy` below is
+// scoped to the main `electron-serve` scheme's session, not this one, and video `src` loads
+// should never be blocked by it.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'offline-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 // Graceful handling of unhandled errors.
 unhandled();

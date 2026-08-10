@@ -1159,6 +1159,7 @@ export default function TeacherDisplaySettings() {
                             'ACTIVITY',
                             'PULSE',
                             'REPORTS',
+                            'DOWNLOADS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = new Set<string>([]);

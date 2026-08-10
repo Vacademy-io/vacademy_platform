@@ -48,6 +48,9 @@ import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButto
 import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
 import { ChildViewBanner } from "@/components/parent/ChildViewBanner";
 import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
+import { getUserId } from "@/constants/getUserId";
+import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
+import { RevokedDeviceDialog } from "@/components/common/offline/revoked-device-dialog";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -250,6 +253,21 @@ const RootComponent = () => {
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
+  const [offlineUserId, setOfflineUserId] = useState<string | null>(null);
+
+  // Resolve the logged-in learner's userId once so the offline subsystem
+  // (download manager resume + event flusher, see useOfflineInit) can be
+  // partitioned per-user. No-ops on plain web / when logged out.
+  useEffect(() => {
+    let cancelled = false;
+    getUserId().then((id) => {
+      if (!cancelled) setOfflineUserId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useOfflineInit(offlineUserId);
 
   // Dismiss the index.html boot splash once the app has actually mounted.
   // (It lives OUTSIDE #root — main.tsx refuses to mount into a non-empty root —
@@ -768,6 +786,7 @@ const RootComponent = () => {
       {!isPublicRoute(pathname) && <AppOverlayHost />}
       {!hideChatbot && <ChatbotPanel />}
       {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}
+      <RevokedDeviceDialog />
     </ChatbotProvider>
   );
 };

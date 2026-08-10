@@ -14,6 +14,7 @@ import {
 import { SettingsPageShell } from '@/components/settings/shell';
 import SlideDownloadCard from './RoleDisplay/SlideDownloadCard';
 import SlideContentProtectionCard from './RoleDisplay/SlideContentProtectionCard';
+import OfflineAccessSettings from './OfflineAccessSettings';
 
 /**
  * Dedicated "Content Protection" settings tab. Consolidates the per-role
@@ -107,6 +108,8 @@ export default function ContentProtectionSettings({
                     roleKey={selected.key}
                     roleLabel={selected.cardLabel}
                 />
+                {/* Institute-wide (not per-role) offline download controls. */}
+                <OfflineAccessSettings />
             </div>
         </SettingsPageShell>
     );

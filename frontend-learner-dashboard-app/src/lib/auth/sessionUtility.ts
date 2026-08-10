@@ -261,11 +261,18 @@ const clearBrowserCaches = (): void => {
       deleteDatabase: (name: string) => unknown;
     };
     if (idb && typeof idb.databases === "function") {
+      // Offline-content stores survive logout by design (plan B9): content is
+      // encrypted with a per-user device-local key and unusable until the same
+      // user logs back in. @capacitor-community/sqlite persists its web store
+      // in IndexedDB under "jeepSqliteStore"; the DB itself is "vacademy_offline".
+      const OFFLINE_DB_SKIP_LIST = ["jeepSqliteStore", "vacademy_offline"];
       void idb
         .databases()
         .then((dbs) => {
           dbs.forEach((db) => {
-            if (db?.name) idb.deleteDatabase(db.name);
+            if (db?.name && !OFFLINE_DB_SKIP_LIST.includes(db.name)) {
+              idb.deleteDatabase(db.name);
+            }
           });
         })
         .catch(() => {});
@@ -318,6 +325,23 @@ const removeTokensAndLogout = async (): Promise<void> => {
   clearAllCookies();
   clearWebStorage();
   clearBrowserCaches();
+
+  // 4b. Offline content: drop in-memory decryption keys and close the offline
+  // DB. Encrypted content + SQLite rows deliberately survive (plan B9) — they
+  // are keyed per user and unreadable without that user logging back in.
+  // Dynamic imports keep the offline modules out of this hot path's bundle.
+  try {
+    const [{ clearKeyCache }, { closeOfflineDb }, { useOfflineStore }] = await Promise.all([
+      import("@/lib/offline/crypto/keys"),
+      import("@/lib/offline/db/connection"),
+      import("@/stores/offline/use-offline-store"),
+    ]);
+    clearKeyCache();
+    useOfflineStore.getState().reset();
+    await closeOfflineDb();
+  } catch {
+    /* best-effort — offline feature may be unsupported on this platform */
+  }
 
   // 5. Module-scope read memos holding user-specific responses (enrollments,
   // learner PII, user plan). In-SPA logouts don't reload the page, so without

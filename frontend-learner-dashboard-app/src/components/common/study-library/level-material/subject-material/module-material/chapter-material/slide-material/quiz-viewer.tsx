@@ -10,6 +10,7 @@ import { QuizSlideActivityLogPayload } from "@/types/quiz-slide-activity-log";
 import { getUserId } from "@/constants/getUserId";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
+import { trackOrQueue } from "@/lib/offline/events/track-or-queue";
 import QuizReview from "./QuizReview";
 import { useGetQuizSlideActivityLogs } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -743,13 +744,24 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         }),
       };
 
-      await submitQuizMutation.mutateAsync({
-        slideId, chapterId, moduleId, subjectId,
-        packageSessionId, userId,
-        requestPayload: payload,
+      const offlineQueued = await trackOrQueue({
+        userId,
+        eventType: "QUIZ",
+        context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
+        payload,
       });
+      if (!offlineQueued) {
+        await submitQuizMutation.mutateAsync({
+          slideId, chapterId, moduleId, subjectId,
+          packageSessionId, userId,
+          requestPayload: payload,
+        });
+      }
 
-      toast.success("Quiz submitted!", { className: "text-center" });
+      toast.success(
+        offlineQueued ? "Saved — will sync when online" : "Quiz submitted!",
+        { className: "text-center" }
+      );
 
       // Refresh attempt history
       queryClient.invalidateQueries({ queryKey: ["quiz-slide-activity-logs", currentUserId, currentSlideIdForAttempts] });
@@ -879,21 +891,30 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           new_activity: payload.new_activity,
         });
         console.debug("Full payload:", payload);
-        const response = await submitQuizMutation.mutateAsync({
-          slideId,
-          chapterId,
-          moduleId,
-          subjectId,
-          packageSessionId: packageSessionId,
+        const offlineQueued = await trackOrQueue({
           userId,
-          requestPayload: payload,
+          eventType: "QUIZ",
+          context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
+          payload,
         });
-        console.log("✅ [QuizViewer] API response:", response?.data ?? response);
+        if (!offlineQueued) {
+          const response = await submitQuizMutation.mutateAsync({
+            slideId,
+            chapterId,
+            moduleId,
+            subjectId,
+            packageSessionId: packageSessionId,
+            userId,
+            requestPayload: payload,
+          });
+          console.log("✅ [QuizViewer] API response:", response?.data ?? response);
+        }
         console.groupEnd();
         console.log("Quiz submitted successfully");
-        toast.success("Quiz submitted successfully!", {
-          className: "text-center"
-        });
+        toast.success(
+          offlineQueued ? "Saved — will sync when online" : "Quiz submitted successfully!",
+          { className: "text-center" }
+        );
         queryClient.invalidateQueries({ queryKey: ["quiz-slide-activity-logs", currentUserId, currentSlideIdForAttempts] });
         
         // ✅ STEP 1: Save answers to localStorage for persistence across refreshes

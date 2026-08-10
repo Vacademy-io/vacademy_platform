@@ -35,6 +35,17 @@ public class FileMetadata {
 
     private Double height;
 
+    /**
+     * Opaque integrity/change token for offline asset diffing (learner offline
+     * downloads). Lazily populated from an S3 HeadObject ETag the first time
+     * this file is requested via /media-service/internal/offline-asset-details —
+     * NOT backfilled, since most files are never requested offline.
+     */
+    private String checksum;
+
+    /** How to interpret {@link #checksum}, e.g. "S3_ETAG". Null when checksum is null. */
+    private String checksumType;
+
     @Column(name = "updated_on", insertable = false, updatable = false)
     private Date updatedOn;
 

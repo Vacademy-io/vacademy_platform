@@ -1159,6 +1159,7 @@ export default function CustomRoleDisplaySettings({
                             'ACTIVITY',
                             'PULSE',
                             'REPORTS',
+                            'DOWNLOADS',
                             'SETTINGS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.

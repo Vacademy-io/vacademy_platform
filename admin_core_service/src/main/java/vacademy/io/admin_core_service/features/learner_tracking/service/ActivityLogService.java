@@ -93,5 +93,8 @@ public class ActivityLogService {
         if (activityLogDTO.getPercentageWatched() != null) {
             activityLog.setPercentageWatched(activityLogDTO.getPercentageWatched());
         }
+        // Offline sync replay (offline plan, Part A4): see the identical
+        // comment in LearnerTrackingService.updateActivityFields.
+        activityLog.setOfflineReplay(activityLogDTO.isOfflineReplay());
     }
 }

@@ -122,6 +122,16 @@ export const GET_SLIDES_PUBLIC = `${BASE_URL}/admin-core-service/open/v1/learner
 export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
 export const GET_SLIDES_BY_PACKAGE_SESSION = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides-by-package-session`;
 
+// Offline content download & sync (plan Part A2/A7 — learner-facing endpoints).
+export const OFFLINE_MANIFEST_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/manifest`;
+export const OFFLINE_DOWNLOAD_URLS_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/download-urls`;
+// Idempotent batched sync ingestion (plan Part A4).
+export const OFFLINE_SYNC_BATCH_URL = `${BASE_URL}/admin-core-service/learner-tracking/offline-sync/v1/batch`;
+// Device registry + lease check-in (plan Part A3 / B6). Register/list take
+// `?instituteId=`; delete/check-in are suffixed with `/{deviceId}[/check-in]`
+// by device-service.ts / checkin.ts.
+export const OFFLINE_DEVICES_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/devices`;
+
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;
 export const GET_SIGNED_URL_PUBLIC = `${BASE_URL}/media-service/public/get-signed-url`;

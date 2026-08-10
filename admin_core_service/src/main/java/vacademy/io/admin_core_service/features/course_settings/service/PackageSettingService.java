@@ -10,12 +10,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.course_settings.dto.DripConditionSettingsDTO;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
+import vacademy.io.admin_core_service.features.learner_offline.service.OfflineManifestVersionService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.PackageEntity;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Read/write helper for the per-package {@code course_setting} JSON column.
@@ -38,6 +44,8 @@ public class PackageSettingService {
     private final PackageRepository packageRepository;
     private final DripConditionService dripConditionService;
     private final ObjectMapper objectMapper;
+    private final PackageSessionRepository packageSessionRepository;
+    private final OfflineManifestVersionService offlineManifestVersionService;
 
     private PackageEntity getPackageOrThrow(String packageId) {
         if (!StringUtils.hasText(packageId)) {
@@ -97,6 +105,9 @@ public class PackageSettingService {
         PackageEntity pkg = getPackageOrThrow(packageId);
         ObjectNode root = readRoot(pkg);
 
+        boolean offlineDefaultBefore = COURSE_SETTING_KEY.equals(settingKey)
+                ? readOfflineDefaultEnabled(root) : false;
+
         ObjectNode settingMap = root.has("setting") && root.get("setting").isObject()
                 ? (ObjectNode) root.get("setting")
                 : objectMapper.createObjectNode();
@@ -119,7 +130,39 @@ public class PackageSettingService {
         // them onto package/chapter/slide. Best-effort — never fail the save.
         if (COURSE_SETTING_KEY.equals(settingKey)) {
             processDripConditions(data);
+            bumpOfflineManifestIfDefaultChanged(packageId, offlineDefaultBefore, readOfflineDefaultEnabled(root));
         }
+    }
+
+    /** {@code setting.COURSE_SETTING.data.offlineDefaultEnabled} out of the envelope root, default false. */
+    @SuppressWarnings("unchecked")
+    private boolean readOfflineDefaultEnabled(JsonNode root) {
+        JsonNode dataNode = root.path("setting").path(COURSE_SETTING_KEY).path("data");
+        if (dataNode.isMissingNode() || dataNode.isNull()) {
+            return false;
+        }
+        try {
+            Map<String, Object> map = objectMapper.convertValue(dataNode, Map.class);
+            Object flag = map.get("offlineDefaultEnabled");
+            return Objects.equals(Boolean.TRUE, flag) || "true".equals(String.valueOf(flag));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Offline plan Part A2 bump hook: offlineDefaultEnabled feeds the resolver's
+     * step 3 (course default) for every session of this package, so a flip must
+     * bump every one of their manifest versions.
+     */
+    private void bumpOfflineManifestIfDefaultChanged(String packageId, boolean before, boolean after) {
+        if (before == after) {
+            return;
+        }
+        List<String> packageSessionIds = packageSessionRepository.findByPackageEntityId(packageId).stream()
+                .map(PackageSession::getId)
+                .collect(Collectors.toList());
+        offlineManifestVersionService.bumpAll(packageSessionIds, "OFFLINE_DEFAULT_CHANGED");
     }
 
     /** Remove a single setting key from the envelope (no-op if absent), preserving the others. */
@@ -162,6 +205,8 @@ public class PackageSettingService {
             throw new VacademyException(
                     "JSON must be an object wrapped in a \"setting\" envelope, e.g. {\"setting\":{...}}");
         }
+        boolean offlineDefaultBefore = readOfflineDefaultEnabled(readRoot(pkg));
+
         pkg.setCourseSetting(serialize(parsed));
         packageRepository.save(pkg);
 
@@ -169,6 +214,7 @@ public class PackageSettingService {
         if (!courseSettingData.isMissingNode() && !courseSettingData.isNull()) {
             processDripConditions(objectMapper.convertValue(courseSettingData, Object.class));
         }
+        bumpOfflineManifestIfDefaultChanged(packageId, offlineDefaultBefore, readOfflineDefaultEnabled(parsed));
     }
 
     private ObjectNode readRoot(PackageEntity pkg) {

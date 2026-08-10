@@ -208,10 +208,34 @@ export const useSlides = (chapterId: string) => {
   const getSlidesQuery = useQuery({
     queryKey: ["slides", chapterId],
     queryFn: async () => {
-      const response = await authenticatedAxiosInstance.get(
-        `${GET_SLIDES}?chapterId=${chapterId}`
-      );
-      
+      try {
+        return await fetchSlidesOnline(chapterId);
+      } catch (error) {
+        // Offline (or genuinely unreachable) fallback (plan §B4): hydrate
+        // from the last persisted manifest snapshot rather than surfacing an
+        // error screen. Returns null (not []) when nothing is persisted, so
+        // callers can still distinguish "no offline copy" from "empty chapter".
+        const offlineSlides = await tryHydrateOffline(chapterId);
+        if (offlineSlides) return offlineSlides;
+        throw error;
+      }
+    },
+    staleTime: 60_000,
+  });
+
+  return {
+    slides: getSlidesQuery.data,
+    isLoading: getSlidesQuery.isLoading,
+    error: getSlidesQuery.error,
+    refetch: getSlidesQuery.refetch,
+  };
+};
+
+async function fetchSlidesOnline(chapterId: string) {
+  const response = await authenticatedAxiosInstance.get(
+    `${GET_SLIDES}?chapterId=${chapterId}`
+  );
+
       // Debug: Log HTML_VIDEO slides to see their structure
       if (response.data && Array.isArray(response.data)) {
         const htmlVideoSlides = response.data.filter((slide: any) => 
@@ -237,16 +261,21 @@ export const useSlides = (chapterId: string) => {
           });
         }
       }
-      
-      return response.data;
-    },
-    staleTime: 60_000,
-  });
 
-  return {
-    slides: getSlidesQuery.data,
-    isLoading: getSlidesQuery.isLoading,
-    error: getSlidesQuery.error,
-    refetch: getSlidesQuery.refetch,
-  };
-};
+      return response.data;
+}
+
+async function tryHydrateOffline(chapterId: string): Promise<Slide[] | null> {
+  try {
+    const [{ getUserId }, { getPackageSessionId }, { hydrateOfflineSlides }] = await Promise.all([
+      import("@/constants/getUserId"),
+      import("@/utils/study-library/get-list-from-stores/getPackageSessionId"),
+      import("@/lib/offline/hydrate-slides"),
+    ]);
+    const [userId, packageSessionId] = await Promise.all([getUserId(), getPackageSessionId()]);
+    if (!userId || !packageSessionId) return null;
+    return await hydrateOfflineSlides(userId, packageSessionId, chapterId);
+  } catch {
+    return null;
+  }
+}

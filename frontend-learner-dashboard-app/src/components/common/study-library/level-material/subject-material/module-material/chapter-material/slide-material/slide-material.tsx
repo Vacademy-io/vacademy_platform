@@ -37,6 +37,12 @@ import AudioPlayer from "./audio-player";
 import ScormSlideComponent from "./scorm-slide";
 import { SplitScreenHtmlVideoSlide } from "./split-screen-html-video-slide";
 import AssessmentSlideViewer from "./assessment-slide-viewer";
+import { RequiresInternetSlide } from "./offline/requires-internet-slide";
+import { LeaseLockOverlay } from "./offline/lease-lock-overlay";
+import { isOnlineOnlySlide } from "@/lib/offline/online-only";
+import { Network } from "@/utils/network-plugin";
+import { resolveSlideSource, getOfflineLockReason } from "@/lib/offline/resolve";
+import { getUserId } from "@/constants/getUserId";
 
 export const SlideMaterial = ({
   onNavigateToSlide,
@@ -60,6 +66,43 @@ export const SlideMaterial = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
+
+  // Cleanup seam for offline video streaming (plan §B4/§C): holds the
+  // resolver's `release()` (native `OfflineMedia.closeAsset`) for whichever
+  // offline video stream is currently open, so it's always closed before the
+  // next slide's content replaces it and on unmount.
+  const offlineStreamReleaseRef = useRef<(() => void) | null>(null);
+  const releaseOfflineStream = () => {
+    offlineStreamReleaseRef.current?.();
+    offlineStreamReleaseRef.current = null;
+  };
+  useEffect(() => releaseOfflineStream, []);
+
+  // Offline-aware URL resolution (plan §B4): online → identical to
+  // getPublicUrl(fileId); offline with a downloaded copy → decrypted blob
+  // URL. Falls back to the plain remote URL if the learner isn't
+  // logged in yet or offline resolution fails for any reason, so this can
+  // never regress the existing online behaviour.
+  const resolvePlaybackUrl = async (
+    fileId: string,
+    slideId: string,
+    mimeType: string
+  ): Promise<string> => {
+    try {
+      const userId = await getUserId();
+      if (!userId) return getPublicUrl(fileId);
+      const result = await resolveSlideSource({
+        userId,
+        fileId,
+        slideId,
+        mimeType,
+        resolveRemoteUrl: () => getPublicUrl(fileId),
+      });
+      return result.url ?? "";
+    } catch {
+      return getPublicUrl(fileId);
+    }
+  };
 
   // Settings state
   const [concentrationSettings, setConcentrationSettings] = useState<ConcentrationSettings | undefined>(undefined);
@@ -192,6 +235,36 @@ export const SlideMaterial = ({
 
     if (generationId !== loadGenerationRef.current) return;
     setContent(<DashboardLoader />);
+    // Leaving whatever slide was previously shown — close any open offline
+    // video decrypt session before the new slide's content (possibly a new
+    // one) is resolved.
+    releaseOfflineStream();
+
+    // Offline gate (plan §B4/§7): third-party-hosted / execution-environment
+    // slide types are never downloadable — when offline, show the
+    // "Requires internet" message instead of attempting (and failing) to load.
+    const { connected } = await Network.getStatus();
+    if (!connected && isOnlineOnlySlide(activeItem)) {
+      if (generationId !== loadGenerationRef.current) return;
+      setContent(<RequiresInternetSlide slideTypeLabel={activeItem.source_type} />);
+      setIsLoading(false);
+      return;
+    }
+
+    // Offline lease/revocation gate (plan §B6/§B7): a downloadable slide's
+    // bytes are only readable while this device's offline lease is valid —
+    // check once up front (mirrors the online-only gate above) instead of
+    // letting every VIDEO/DOCUMENT/AUDIO/ASSIGNMENT branch fail separately.
+    if (!connected) {
+      const userId = await getUserId();
+      const lockReason = userId ? await getOfflineLockReason(userId) : null;
+      if (lockReason) {
+        if (generationId !== loadGenerationRef.current) return;
+        setContent(<LeaseLockOverlay reason={lockReason} />);
+        setIsLoading(false);
+        return;
+      }
+    }
 
     try {
       // Add artificial delay for smooth loading experience
@@ -563,7 +636,37 @@ export const SlideMaterial = ({
             }
             case "FILE_ID": {
               if (!fileId) throw new Error("Video file ID not available");
-              const videoUrl = await getPublicUrl(fileId);
+              // Offline playback (plan §B4/§C): only attempt the resolver
+              // while offline — online always stays on the existing
+              // getPublicUrl path (untouched behavior, no offline lookup
+              // cost while connected).
+              const { connected: videoOnline } = await Network.getStatus();
+              let videoUrl: string;
+              let isOfflineVideoSource = false;
+              if (!videoOnline) {
+                const userId = await getUserId();
+                const resolved = userId
+                  ? await resolveSlideSource({
+                      userId,
+                      fileId,
+                      slideId: activeItem.id,
+                      mimeType: "video/mp4",
+                      isVideo: true,
+                      resolveRemoteUrl: () => getPublicUrl(fileId),
+                    })
+                  : null;
+                if (resolved?.kind === "offline-stream" && resolved.url) {
+                  videoUrl = resolved.url;
+                  isOfflineVideoSource = true;
+                  offlineStreamReleaseRef.current = resolved.release ?? null;
+                } else if (resolved?.kind === "remote" && resolved.url) {
+                  videoUrl = resolved.url;
+                } else {
+                  throw new Error("Video not available offline");
+                }
+              } else {
+                videoUrl = await getPublicUrl(fileId);
+              }
               if (!videoUrl) throw new Error("Failed to retrieve video URL");
               setContent(
                 <div
@@ -573,6 +676,7 @@ export const SlideMaterial = ({
                   <div className="h-full w-full bg-black rounded-lg overflow-hidden border border-neutral-200">
                     <CustomVideoPlayer
                       videoUrl={videoUrl}
+                      isOfflineSource={isOfflineVideoSource}
                       onTimeUpdate={handleVideoTimeUpdate}
                       ref={playerRef}
                       questions={videoSlide?.questions || []}
@@ -781,9 +885,8 @@ export const SlideMaterial = ({
 
         case "DOCUMENT":
           if (activeItem.document_slide?.type === "PDF") {
-            const url = await getPublicUrl(
-              activeItem.document_slide.published_data || ""
-            );
+            const pdfFileId = activeItem.document_slide.published_data || "";
+            const url = await resolvePlaybackUrl(pdfFileId, activeItem.id, "application/pdf");
             if (!url) throw new Error("Failed to retrieve PDF URL");
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -826,8 +929,10 @@ export const SlideMaterial = ({
                 </div>
               );
             } else {
-              const url = await getPublicUrl(
-                activeItem.document_slide.published_data || ""
+              const url = await resolvePlaybackUrl(
+                activeItem.document_slide.published_data || "",
+                activeItem.id,
+                "application/octet-stream"
               );
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -842,8 +947,10 @@ export const SlideMaterial = ({
               );
             }
           } else if (activeItem.document_slide?.type === "PRESENTATION") {
-            const url = await getPublicUrl(
-              activeItem.document_slide.published_data || ""
+            const url = await resolvePlaybackUrl(
+              activeItem.document_slide.published_data || "",
+              activeItem.id,
+              "application/octet-stream"
             );
             if (!url) throw new Error("Failed to retrieve presentation URL");
             setContent(

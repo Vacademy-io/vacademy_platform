@@ -95,6 +95,16 @@ public class ActivityLog {
         @OneToOne(mappedBy = "activityLog", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
         private ConcentrationScore concentrationScore;
 
+        // Offline sync replay (offline plan, Part A4): not a column, never
+        // persisted -- set per-call from ActivityLogDTO.offlineReplay so
+        // sanitizeTimesAndDeriveEngaged() below can skip the last_seen_at
+        // presence stamp for replayed offline activity. See
+        // LearnerTrackingService/ActivityLogService's updateActivityFields,
+        // which propagate this onto an already-loaded entity for the update
+        // path (the constructor below only covers the insert path).
+        @Transient
+        private boolean offlineReplay;
+
         public ActivityLog(ActivityLogDTO activityLogDTO, String userId, String slideId) {
                 this.id = activityLogDTO.getId();
                 this.sourceId = activityLogDTO.getSourceId();
@@ -108,6 +118,7 @@ public class ActivityLog {
                         this.endTime = new Timestamp(activityLogDTO.getEndTimeInMillis());
                 }
                 this.percentageWatched = activityLogDTO.getPercentageWatched();
+                this.offlineReplay = activityLogDTO.isOfflineReplay();
         }
 
         /** Anything before this is a client-side unset (start_time_in_millis = 0 -> 1970-01-01). */
@@ -141,8 +152,13 @@ public class ActivityLog {
                         engagedMs = Math.min(MAX_ENGAGED_MS, Math.max(0L, endMs - startTime.getTime()));
                 }
                 // Presence heartbeat: stamp the server clock on every insert/update. This is the
-                // only value the live view trusts for "is this learner active right now".
-                lastSeenAt = Instant.now();
+                // only value the live view trusts for "is this learner active right now" -- except
+                // for offline sync replay, where the write is happening long after the learner was
+                // actually on the slide and would otherwise fabricate a false "online now" signal
+                // (Course Pulse integrity, offline plan Part A4 step 4).
+                if (!offlineReplay) {
+                        lastSeenAt = Instant.now();
+                }
         }
 
         public ActivityLogDTO toActivityLogDTO() {

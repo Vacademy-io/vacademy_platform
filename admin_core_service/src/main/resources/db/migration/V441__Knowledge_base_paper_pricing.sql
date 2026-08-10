@@ -1,5 +1,5 @@
 -- ================================================================================
--- V436: Pricing for question papers generated from a knowledge base
+-- V441: Pricing for question papers generated from a knowledge base
 --
 -- Phase 2 of the Knowledge Base feature (V435): a teacher picks chapters from a
 -- KB's real outline, edits a blueprint, and generates a full question paper whose

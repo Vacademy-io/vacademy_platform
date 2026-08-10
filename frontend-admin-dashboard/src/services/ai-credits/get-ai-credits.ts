@@ -104,7 +104,7 @@ export type ToolKey =
     | 'kb_ingest_page'
     | 'kb_ingest_url'
     | 'kb_ask'
-    // Question papers from a knowledge base (V436)
+    // Question papers from a knowledge base (V441)
     | 'kb_paper_blueprint'
     | 'kb_paper_questions'
     | 'kb_paper_regenerate';

@@ -281,10 +281,10 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
-    # ---- Question papers from a knowledge base (V436) -----------------------
+    # ---- Question papers from a knowledge base (V441) -----------------------
     # request_type 'assessment' is already in the ai_token_usage CHECK — reusing
     # it avoids another DROP+ADD of that constraint (the V325/V435 trap).
-    # MUST agree with the V436 seeds and FE computeToolCredits.
+    # MUST agree with the V441 seeds and FE computeToolCredits.
     "kb_paper_blueprint": {
         "request_type": "assessment",
         "flat_base_credits": Decimal("2"),

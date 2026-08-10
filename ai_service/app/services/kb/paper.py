@@ -466,6 +466,8 @@ RULES THAT MATTER:
 - "source_passage" and "source_page" must point at the passage you actually used.
   A teacher checks these; a wrong citation destroys trust in the whole paper.
 - Preserve the source's notation exactly, including LaTeX like $E_k=\\frac{{1}}{{2}}mv^2$.
+- JSON REQUIRES every backslash to be doubled. Write \\\\sqrt, \\\\int, \\\\pi, \\\\frac —
+  NOT \\sqrt. A single backslash makes the whole response invalid and it is thrown away.
 - Do NOT copy a passage's own exercise questions verbatim. Write new ones that
   test the same understanding.
 - No two questions may test the same fact in the same way.

@@ -285,7 +285,10 @@ export function QuestionPaperTemplate({
                 ...(data.subject !== 'N/A' && {
                     subject_id: getIdBySubjectName(instituteDetails?.subjects || [], subject),
                 }),
-                questions: transformQuestionsData,
+                // Deep-clone: this snapshot must stay independent of the live form value below,
+                // since react-hook-form's setValue mutates nested question objects in place —
+                // sharing references here made edits invisible to the added/updated/deleted diff.
+                questions: structuredClone(transformQuestionsData),
             });
             setValue('questions', transformQuestionsData);
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });

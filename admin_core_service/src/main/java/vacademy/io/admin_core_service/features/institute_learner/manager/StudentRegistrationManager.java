@@ -88,6 +88,9 @@ public class StudentRegistrationManager {
     @Autowired
     private vacademy.io.admin_core_service.features.institute_learner.service.EnrollmentCredentialPolicyService enrollmentCredentialPolicyService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
+
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
     }
@@ -138,6 +141,18 @@ public class StudentRegistrationManager {
                 triggerEnrollmentWorkflow(details.getInstituteId(),
                         instituteStudentDTO.getUserDetails(),
                         details.getPackageSessionId(), null);
+            }
+        } else {
+            // No package session means no student_session_institute_group_mapping row,
+            // which makes this signup invisible in the admin's learner list (it requires
+            // an enrollment row to show up at all). Surface it as a lead instead.
+            // Best-effort: a failure here must never break signup.
+            try {
+                audienceService.captureSelfSignupLead(instituteId, student.getUserId(),
+                        student.getFullName(), student.getEmail(), student.getMobileNumber());
+            } catch (Exception e) {
+                log.warn("Self-signup lead capture failed (non-blocking) for userId={}: {}",
+                        student.getUserId(), e.getMessage());
             }
         }
         return ResponseEntity.ok(new StudentDTO(student));

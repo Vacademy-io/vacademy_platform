@@ -45,6 +45,7 @@ import {
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { QuestionType } from '@/constants/dummy-data';
+import { cn } from '@/lib/utils';
 import { QuestionTypeSelection } from './QuestionTypeSelection';
 import { DialogClose } from '@radix-ui/react-dialog';
 
@@ -58,6 +59,7 @@ export function QuestionPaperTemplate({
     currentQuestionIndex,
     setCurrentQuestionIndex,
     examType,
+    triggerVariant = 'plain',
 }: QuestionPaperTemplateProps) {
     const [isQuestionPaperTemplateDialog, setIsQuestionPaperTemplateDialog] = useState(false);
     const { instituteLogo } = useInstituteLogoStore();
@@ -334,18 +336,32 @@ export function QuestionPaperTemplate({
             open={isQuestionPaperTemplateDialog}
             onOpenChange={setIsQuestionPaperTemplateDialog}
         >
-            <DialogTrigger>
+            <DialogTrigger asChild={isViewMode && triggerVariant === 'secondary'}>
                 {isViewMode ? (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className={`m-0 border-none pl-2 font-normal shadow-none ${
-                            isAssessment ? 'text-primary-500' : ''
-                        }`}
-                        onClick={handleViewQuestionPaper}
-                    >
-                        {buttonText}
-                    </Button>
+                    triggerVariant === 'secondary' ? (
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            layoutVariant="default"
+                            className="h-8 gap-1.5"
+                            onClick={handleViewQuestionPaper}
+                        >
+                            {buttonText}
+                        </MyButton>
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                                'm-0 border-none pl-2 font-normal shadow-none',
+                                isAssessment ? 'text-primary-500' : ''
+                            )}
+                            onClick={handleViewQuestionPaper}
+                        >
+                            {buttonText}
+                        </Button>
+                    )
                 ) : (
                     <Button type="button" variant="outline" className="w-52 border">
                         {isManualCreated ? (

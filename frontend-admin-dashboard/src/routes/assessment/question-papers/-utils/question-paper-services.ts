@@ -121,11 +121,16 @@ export const handleGetQuestionPaperById = (questionPaperId: string | undefined) 
     };
 };
 
+// Newest papers first. The key must match the SELECT alias of the native query
+// backing /get-with-filters (`qp.created_on AS createdOn`).
+export const QUESTION_PAPER_DEFAULT_SORT: Record<string, string> = { createdOn: 'DESC' };
+
 export const getQuestionPaperDataWithFilters = async (
     pageNo: number,
     pageSize: number,
     instituteId: string | undefined,
-    data: Record<string, FilterOption[]>
+    data: Record<string, FilterOption[]>,
+    sortColumns: Record<string, string> = QUESTION_PAPER_DEFAULT_SORT
 ) => {
     try {
         const response = await authenticatedAxiosInstance({
@@ -136,7 +141,7 @@ export const getQuestionPaperDataWithFilters = async (
                 instituteId,
                 pageSize,
             },
-            data: transformFilterData(data),
+            data: { ...transformFilterData(data), sort_columns: sortColumns },
         });
         return response?.data;
     } catch (error: unknown) {

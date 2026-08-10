@@ -1,5 +1,5 @@
 import { uploadQuestionPaperFormSchema } from '@/routes/assessment/question-papers/-utils/upload-question-paper-form-schema';
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, ReactNode, SetStateAction } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -10,11 +10,14 @@ export interface QuestionPaperTemplateProps {
     isViewMode: boolean;
     refetchData?: () => void;
     isManualCreated?: boolean;
-    buttonText: string;
+    buttonText: ReactNode;
     isAssessment?: boolean;
     currentQuestionIndex: number;
     setCurrentQuestionIndex: Dispatch<SetStateAction<number>>;
     examType?: string;
+    // View-mode trigger style: 'plain' is the borderless label used inside menus,
+    // 'secondary' is a bordered action button for card rows.
+    triggerVariant?: 'plain' | 'secondary';
 }
 
 export interface QuestionData {

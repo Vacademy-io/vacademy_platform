@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight, CheckSquare, DotsThree, Shuffle, Star } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, DotsThree, Eye, Shuffle, Star } from '@phosphor-icons/react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -582,7 +582,7 @@ export const QuestionPapersList = ({
                     <div className="flex items-center justify-between">
                         <h1 className="font-medium">{questionsData.title}</h1>
                         {!isAssessment && (
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                                 <Star
                                     size={20}
                                     weight={questionsData.status === 'FAVOURITE' ? 'fill' : 'light'}
@@ -595,6 +595,27 @@ export const QuestionPapersList = ({
                                             : 'text-gray-300'
                                     }`}
                                 />
+                                <ViewQuestionPaper
+                                    questionPaperId={questionsData.id}
+                                    title={questionsData.title}
+                                    subject={questionsData.subject_id}
+                                    level={questionsData.level_id}
+                                    refetchData={refetchData}
+                                    currentQuestionIndex={currentQuestionIndex}
+                                    setCurrentQuestionIndex={setCurrentQuestionIndex}
+                                    examType={examType}
+                                    buttonText={
+                                        <span className="flex items-center gap-1.5">
+                                            <Eye size={16} />
+                                            View
+                                        </span>
+                                    }
+                                    triggerVariant="secondary"
+                                />
+                                <ExportQuestionPaper
+                                    questionPaperId={questionsData.id}
+                                    triggerVariant="button"
+                                />
                                 <DropdownMenu>
                                     <DropdownMenuTrigger>
                                         <Button
@@ -605,16 +626,6 @@ export const QuestionPapersList = ({
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent>
-                                        <ViewQuestionPaper
-                                            questionPaperId={questionsData.id}
-                                            title={questionsData.title}
-                                            subject={questionsData.subject_id}
-                                            level={questionsData.level_id}
-                                            refetchData={refetchData}
-                                            currentQuestionIndex={currentQuestionIndex}
-                                            setCurrentQuestionIndex={setCurrentQuestionIndex}
-                                            examType={examType}
-                                        />
                                         <DropdownMenuItem
                                             onClick={() =>
                                                 handleDeleteQuestionPaper(questionsData.id)
@@ -625,7 +636,6 @@ export const QuestionPapersList = ({
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
-                                <ExportQuestionPaper questionPaperId={questionsData.id} />
                             </div>
                         )}
                     </div>

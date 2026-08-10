@@ -104,6 +104,7 @@ function normalEditableSections(configText: string): {
             (row) =>
                 row.compute === undefined &&
                 (typeof row.value === 'string' ||
+                    isFlatStringMap(row.value) ||
                     isNestedStringMap(row.value) ||
                     isFlatObjectList(row.value))
         );
@@ -322,6 +323,86 @@ function isNestedStringMap(value: unknown): boolean {
     );
 }
 
+/** True for a one-level map of strings: { "1": "https://…", "2": "https://…" } */
+function isFlatStringMap(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const entries = Object.values(value as Record<string, unknown>);
+    if (entries.length === 0) return false;
+    return entries.every((v) => typeof v === 'string');
+}
+
+/**
+ * Editor for a one-level string map — a value per key, e.g. one class link per
+ * trial day. Blank values are kept as keys so the row still reads as "this day
+ * has no link of its own", which the workflow resolves to the fallback.
+ */
+function FlatMapEditor({
+    label,
+    map,
+    onChange,
+}: {
+    label: string;
+    map: Record<string, string>;
+    onChange: (next: Record<string, string>) => void;
+}) {
+    const entries = Object.entries(map).sort(([a], [b]) =>
+        a.localeCompare(b, undefined, { numeric: true })
+    );
+    const writeValue = (key: string, value: string) => onChange({ ...map, [key]: value });
+    const removeKey = (key: string) => {
+        const next = { ...map };
+        delete next[key];
+        onChange(next);
+    };
+    const addKey = () => {
+        // Continue the numbering when keys are numeric (day 1, 2, 3…), otherwise
+        // add a blank key for the admin to name.
+        const numeric = entries.map(([k]) => Number(k)).filter((n) => Number.isFinite(n));
+        const nextKey =
+            numeric.length === entries.length && numeric.length > 0
+                ? String(Math.max(...numeric) + 1)
+                : '';
+        if (nextKey in map) return;
+        onChange({ ...map, [nextKey]: '' });
+    };
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2">
+            <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-600">{label}</p>
+                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={addKey}>
+                    <Plus size={12} />
+                    Add
+                </Button>
+            </div>
+            <div className="space-y-1.5">
+                {entries.map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 truncate text-right text-xs text-neutral-500">
+                            {key}
+                        </span>
+                        <Input
+                            value={value}
+                            onChange={(e) => writeValue(key, e.target.value)}
+                            spellCheck={false}
+                            className="h-8 flex-1 text-xs"
+                        />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 shrink-0 p-0 text-neutral-400 hover:text-danger-500"
+                            onClick={() => removeKey(key)}
+                            title={`Remove ${key}`}
+                        >
+                            <Trash size={14} />
+                        </Button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 /**
  * Grid editor for a two-level string map (e.g. the session-link schedule:
  * day 1–14 sections, each with slot → link inputs). Empty cells mean
@@ -457,6 +538,20 @@ function OutputDataPointsEditor({
                             : humanizeFieldName(point.fieldName ?? 'items')
                     }
                     items={point.value as Array<Record<string, string | number | boolean>>}
+                    onChange={(next) => updateRow(index, { value: next })}
+                />
+            );
+        }
+        if (!isCompute && isFlatStringMap(point.value)) {
+            return (
+                <FlatMapEditor
+                    key={index}
+                    label={
+                        devMode
+                            ? (point.fieldName ?? 'values')
+                            : humanizeFieldName(point.fieldName ?? 'values')
+                    }
+                    map={point.value as Record<string, string>}
                     onChange={(next) => updateRow(index, { value: next })}
                 />
             );

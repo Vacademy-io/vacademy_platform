@@ -79,6 +79,26 @@ describe('MentorshipSettings screen', () => {
         expect(hours.value).toBe('48');
     });
 
+    it('hides system-default message text until the admin customizes', async () => {
+        render(<MentorshipSettings />);
+        await screen.findByText('Mentor Assigned');
+
+        // Default texts stay collapsed — no subject/message editors visible,
+        // just the "system default" note per enabled channel.
+        expect(screen.queryByLabelText('Subject')).not.toBeInTheDocument();
+        expect(screen.getAllByText('Uses the system default message.').length).toBeGreaterThan(0);
+
+        // Customize reveals the editors prefilled with the default…
+        fireEvent.click(screen.getAllByRole('button', { name: 'Customize' })[0]!);
+        const subject = screen.getByLabelText('Subject') as HTMLInputElement;
+        expect(subject.value).toBe(DEFAULT_MENTORSHIP_SETTINGS.assignment.email.subject);
+
+        // …and "Reset to system default" collapses them again.
+        fireEvent.change(subject, { target: { value: 'My custom subject' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Reset to system default' }));
+        expect(screen.queryByLabelText('Subject')).not.toBeInTheDocument();
+    });
+
     it('saves edited settings with the clamped values', async () => {
         render(<MentorshipSettings />);
         await screen.findByText('Session Reminder');

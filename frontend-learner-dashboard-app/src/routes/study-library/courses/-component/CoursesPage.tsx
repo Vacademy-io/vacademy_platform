@@ -19,6 +19,8 @@ interface CoursesPageProps {
     onSortChange: (value: string) => void;
     selectedLevels: string[];
     setSelectedLevels: (levels: string[]) => void;
+    selectedSessions: string[];
+    setSelectedSessions: (sessions: string[]) => void;
     selectedTags: string[];
     setSelectedTags: (tags: string[]) => void;
     selectedInstructors: string[];
@@ -40,6 +42,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     onSortChange,
     selectedLevels,
     setSelectedLevels,
+    selectedSessions,
+    setSelectedSessions,
     selectedTags,
     setSelectedTags,
     selectedInstructors,
@@ -78,7 +82,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             .catch(() => setHideInstructorName(false));
     }, []);
 
-    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
+    const activeFiltersCount =
+        selectedLevels.length + selectedSessions.length + selectedTags.length + selectedInstructors.length;
 
     // Smooth scroll on page change and dev log
     useEffect(() => {
@@ -207,6 +212,14 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                         setSelectedLevels
                                     )
                                 }
+                                selectedSessions={selectedSessions}
+                                onSessionChange={(id) =>
+                                    toggleItem(
+                                        id,
+                                        selectedSessions,
+                                        setSelectedSessions
+                                    )
+                                }
                                 selectedTags={selectedTags}
                                 onTagChange={(id) =>
                                     toggleItem(id, selectedTags, setSelectedTags)
@@ -266,7 +279,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 </div>
                             </div>
                         </div>
-                    ) : courseData.content.length === 0 ? (
+                    ) : (courseData.content ?? []).length === 0 ? (
                         <div className={cn(
                             "relative overflow-hidden bg-card border rounded-lg shadow-sm px-6 py-12 sm:py-16 text-center",
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",

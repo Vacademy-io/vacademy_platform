@@ -9,6 +9,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.learner.service.SubOrgAutoLinkService;
+import vacademy.io.admin_core_service.features.learner.service.SubOrgMemberEnrollmentContext;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
@@ -1178,12 +1179,10 @@ public class BulkAssignmentService {
                 adminDTO = CollectionUtils.isEmpty(admins) ? null : admins.get(0);
             }
 
-            Map<String, Object> contextData = new HashMap<>();
-            contextData.put("member", userDTO);
-            contextData.put("packageSessionIds", packageSession.getId());
-            contextData.put("subOrgAdmin", adminDTO);
-            contextData.put("packageId", packageSession.getPackageEntity() != null
-                    ? packageSession.getPackageEntity().getId() : null);
+            // Built centrally so this and /sub-org/v1/add-member publish an identical context —
+            // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
+            Map<String, Object> contextData =
+                    SubOrgMemberEnrollmentContext.build(userDTO, adminDTO, packageSession);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),

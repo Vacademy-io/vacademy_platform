@@ -79,6 +79,8 @@ const FilterList: React.FC<FilterListProps> = ({
 interface FilterPanelProps {
     selectedLevels: string[];
     onLevelChange: (levelId: string) => void;
+    selectedSessions: string[];
+    onSessionChange: (sessionId: string) => void;
     selectedTags: string[];
     onTagChange: (tagId: string) => void;
     selectedInstructors: string[];
@@ -86,6 +88,7 @@ interface FilterPanelProps {
     clearAllFilters: () => void;
     onApplyFilters: () => void;
     levelsDisabled?: boolean;
+    sessionsDisabled?: boolean;
     tagsDisabled?: boolean;
     instructorsDisabled?: boolean;
     isDesktopOpen?: boolean;
@@ -95,6 +98,8 @@ interface FilterPanelProps {
 const FilterPanel: React.FC<FilterPanelProps> = ({
     selectedLevels,
     onLevelChange,
+    selectedSessions,
+    onSessionChange,
     selectedTags,
     onTagChange,
     selectedInstructors,
@@ -102,6 +107,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     clearAllFilters,
     onApplyFilters,
     levelsDisabled = false,
+    sessionsDisabled = false,
     tagsDisabled = false,
     instructorsDisabled = false,
     isDesktopOpen = true,
@@ -116,10 +122,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     const hasActiveFilters =
         selectedLevels.length > 0 ||
+        selectedSessions.length > 0 ||
         selectedTags.length > 0 ||
         selectedInstructors.length > 0;
 
-    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
+    const activeFiltersCount =
+        selectedLevels.length + selectedSessions.length + selectedTags.length + selectedInstructors.length;
 
     type LevelItem = { id: string; level_name?: string };
     const levels = (instituteData?.levels || [])
@@ -133,6 +141,19 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             ),
         }))
         // Natural sort so levels read as Class 6, 7, 8 … then non-numeric names.
+        .sort(compareByNameNatural);
+
+    type SessionItem = { id: string; session_name?: string };
+    const sessions = (instituteData?.sessions || [])
+        .map((session: SessionItem) => ({
+            id: session.id,
+            name: toTitleCase(
+                session.session_name ||
+                    t("filters.unnamedSession", {
+                        session: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                    })
+            ),
+        }))
         .sort(compareByNameNatural);
 
     const tags = React.useMemo(() => {
@@ -258,6 +279,27 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                     selectedItems={selectedLevels}
                                     handleChange={onLevelChange}
                                     disabled={levelsDisabled || levels.length === 0}
+                                />
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <Separator className="my-2" />
+
+                        <AccordionItem value="sessions" className="border-b-0">
+                            <AccordionTrigger className="hover:no-underline py-3">
+                                <span className="text-sm font-semibold">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</span>
+                                {selectedSessions.length > 0 && (
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
+                                        {selectedSessions.length}
+                                    </Badge>
+                                )}
+                            </AccordionTrigger>
+                            <AccordionContent>
+                                <FilterList
+                                    items={sessions}
+                                    selectedItems={selectedSessions}
+                                    handleChange={onSessionChange}
+                                    disabled={sessionsDisabled || sessions.length === 0}
                                 />
                             </AccordionContent>
                         </AccordionItem>
@@ -398,6 +440,23 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                         selectedItems={selectedLevels}
                                         handleChange={onLevelChange}
                                         disabled={levelsDisabled || levels.length === 0}
+                                    />
+                                </AccordionItem>
+
+                                <Separator className="my-4" />
+
+                                <AccordionItem value="sessions" className="border-b-0 mb-4">
+                                    <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
+                                        {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                                        {selectedSessions.length > 0 && (
+                                            <Badge variant="secondary" className="text-caption">{selectedSessions.length}</Badge>
+                                        )}
+                                    </h4>
+                                    <FilterList
+                                        items={sessions}
+                                        selectedItems={selectedSessions}
+                                        handleChange={onSessionChange}
+                                        disabled={sessionsDisabled || sessions.length === 0}
                                     />
                                 </AccordionItem>
 

@@ -176,6 +176,15 @@ export const useDomainRouting = () => {
             customValue: overrides.coursePlural,
           });
         }
+        if (overrides?.level) {
+          seed.push({ key: "Level", customValue: overrides.level });
+        }
+        if (overrides?.session) {
+          seed.push({ key: "Session", customValue: overrides.session });
+        }
+        if (overrides?.popularTag) {
+          seed.push({ key: "PopularTag", customValue: overrides.popularTag });
+        }
         if (seed.length > 0) {
           localStorage.setItem(NAMING_SETTINGS_KEY, JSON.stringify(seed));
         }

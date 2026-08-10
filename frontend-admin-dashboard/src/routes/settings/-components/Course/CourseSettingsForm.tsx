@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Select,
     SelectContent,
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import {
+    CatalogueFilterWizardSettings,
     CopiedSlideStatus,
     CourseSettingsData,
     DripConditionsSettings,
@@ -23,6 +25,20 @@ import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { DripConditionsCard } from './DripConditionsCard';
 import { OfferPricingCard } from './OfferPricingCard';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+
+const DEFAULT_FILTER_WIZARD: CatalogueFilterWizardSettings = {
+    enabled: false,
+    steps: ['level'],
+    mandatory: false,
+};
+
+const FILTER_WIZARD_STEP_TERMS = {
+    level: [ContentTerms.Level, SystemTerms.Level],
+    session: [ContentTerms.Session, SystemTerms.Session],
+    tag: [ContentTerms.PopularTag, SystemTerms.PopularTag],
+} as const;
 
 interface CourseSettingsFormProps {
     settings: CourseSettingsData;
@@ -97,6 +113,31 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                 [key]: value,
             },
         }));
+    };
+
+    const updateFilterWizard = <K extends keyof CatalogueFilterWizardSettings>(
+        key: K,
+        value: CatalogueFilterWizardSettings[K]
+    ) => {
+        setFormData((prev) => ({
+            ...prev,
+            catalogueSettings: {
+                ...prev.catalogueSettings,
+                filterWizard: {
+                    ...DEFAULT_FILTER_WIZARD,
+                    ...prev.catalogueSettings.filterWizard,
+                    [key]: value,
+                },
+            },
+        }));
+    };
+
+    const toggleFilterWizardStep = (step: 'level' | 'session' | 'tag') => {
+        const current = formData.catalogueSettings.filterWizard?.steps ?? DEFAULT_FILTER_WIZARD.steps;
+        const next = current.includes(step)
+            ? current.filter((s) => s !== step)
+            : [...current, step];
+        updateFilterWizard('steps', next);
     };
 
     const updateCourseViewSettings = <K extends keyof CourseSettingsData['courseViewSettings']>(
@@ -471,6 +512,91 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     }
                                 />
                             </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="filter-wizard-enabled">
+                                        Course Filter Wizard (Learner Catalogue)
+                                    </Label>
+                                    <p className="text-caption text-neutral-500">
+                                        The first time a learner opens the course catalogue, ask
+                                        them to pick filters step by step, then show only the
+                                        matching courses.
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="filter-wizard-enabled"
+                                    checked={formData.catalogueSettings.filterWizard?.enabled ?? false}
+                                    onCheckedChange={(value) => updateFilterWizard('enabled', value)}
+                                />
+                            </div>
+
+                            {formData.catalogueSettings.filterWizard?.enabled && (
+                                <div className="space-y-4 rounded-lg border border-neutral-200 p-3">
+                                    <div className="space-y-2">
+                                        <Label>Steps to ask</Label>
+                                        <div className="flex flex-wrap gap-4">
+                                            {(['level', 'session', 'tag'] as const).map((step) => {
+                                                const [contentTerm, systemTerm] =
+                                                    FILTER_WIZARD_STEP_TERMS[step];
+                                                const label = getTerminology(contentTerm, systemTerm);
+                                                return (
+                                                    <div key={step} className="flex items-center gap-2">
+                                                        <Checkbox
+                                                            id={`filter-wizard-step-${step}`}
+                                                            checked={(
+                                                                formData.catalogueSettings.filterWizard
+                                                                    ?.steps ?? DEFAULT_FILTER_WIZARD.steps
+                                                            ).includes(step)}
+                                                            onCheckedChange={() =>
+                                                                toggleFilterWizardStep(step)
+                                                            }
+                                                        />
+                                                        <Label
+                                                            htmlFor={`filter-wizard-step-${step}`}
+                                                            className="text-sm font-normal"
+                                                        >
+                                                            {label}
+                                                        </Label>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Learners are asked in this fixed order —{' '}
+                                            {getTerminology(ContentTerms.Level, SystemTerms.Level)},
+                                            then{' '}
+                                            {getTerminology(ContentTerms.Session, SystemTerms.Session)},
+                                            then{' '}
+                                            {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)}{' '}
+                                            — skipping any step left unchecked.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <Label
+                                            htmlFor="filter-wizard-mandatory"
+                                            className="flex items-center gap-2"
+                                        >
+                                            <span>Require completion (no skip)</span>
+                                        </Label>
+                                        <Switch
+                                            id="filter-wizard-mandatory"
+                                            checked={
+                                                formData.catalogueSettings.filterWizard?.mandatory ??
+                                                false
+                                            }
+                                            onCheckedChange={(value) =>
+                                                updateFilterWizard('mandatory', value)
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

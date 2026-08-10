@@ -64,7 +64,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -84,7 +84,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -104,7 +104,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -124,7 +124,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -144,7 +144,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -206,7 +206,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                 text: {
                     id: null, // Assuming no direct mapping for text ID
                     type: 'HTML', // Assuming the content is HTML
-                    content: question.questionName.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                    content: question.questionName,
                 },
                 media_id: null, // Assuming no direct mapping for media_id
                 created_at: null,
@@ -254,7 +254,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -274,7 +274,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -294,7 +294,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -314,7 +314,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -334,7 +334,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -396,7 +396,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                 text: {
                     id: null, // Assuming no direct mapping for text ID
                     type: 'HTML', // Assuming the content is HTML
-                    content: question.questionName.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                    content: question.questionName,
                 },
                 media_id: null, // Assuming no direct mapping for media_id
                 created_at: null,
@@ -457,7 +457,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
                       text: {
                           id: null, // Assuming no mapping for text ID
                           type: 'HTML',
-                          content: opt?.name?.replace(/<\/?p>/g, ''),
+                          content: opt?.name,
                       },
                       media_id: null,
                       option_order: null,
@@ -476,7 +476,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
                       text: {
                           id: null,
                           type: 'HTML',
-                          content: opt?.name?.replace(/<\/?p>/g, ''),
+                          content: opt?.name,
                       },
                       media_id: null,
                       option_order: null,
@@ -510,7 +510,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             text: {
                 id: null,
                 type: 'HTML',
-                content: question.questionName.replace(/<\/?p>/g, ''),
+                content: question.questionName,
             },
             media_id: null,
             created_at: null,
@@ -973,7 +973,7 @@ export function getEvaluationJSON(
             return JSON.stringify({
                 type: 'ONE_WORD',
                 data: {
-                    answer: subjectiveAnswerText?.replace(/<\/?p>/g, ''),
+                    answer: subjectiveAnswerText,
                 },
             });
         case 'LONG_ANSWER':
@@ -983,7 +983,7 @@ export function getEvaluationJSON(
                     answer: {
                         id: null,
                         type: 'HTML',
-                        content: subjectiveAnswerText?.replace(/<\/?p>/g, ''),
+                        content: subjectiveAnswerText,
                     },
                 },
             });

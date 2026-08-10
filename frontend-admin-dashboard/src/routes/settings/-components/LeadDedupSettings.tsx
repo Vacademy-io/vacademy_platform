@@ -1,12 +1,16 @@
 /**
  * LeadDedupSettings — the "Deduplication" config card on Settings → Lead
- * settings → Configuration. Controls whether a new lead submission is
- * rejected when a matching lead already exists:
+ * settings → Configuration. Controls what happens when a new lead submission
+ * matches one that already exists:
  *
- *   1. Enabled     → turn duplicate rejection on/off (off preserves prior behaviour)
+ *   1. Enabled     → turn duplicate detection on/off (off preserves prior behaviour)
  *   2. Field       → match by email or phone number
  *   3. Scope       → this lead list, a hand-picked set of lead lists, or every
  *                    lead list in the institute
+ *   4. Action      → reject the submission, or allow it through and reassign
+ *   5. Repeat lead handling (only when action = allow & reassign):
+ *      - Counsellor: none / same as previous / a specific counsellor / round-robin
+ *      - Status: keep their current status, or reset to New
  *
  * Persisted at LEAD_SETTING.data.dedup (snake_case-free, matches backend enum
  * casing directly). The save path READ-MODIFY-WRITES the whole LEAD_SETTING
@@ -17,10 +21,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Fingerprint } from '@phosphor-icons/react';
+import { Fingerprint, X } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -34,13 +39,19 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
+import { useUserAutosuggestDebounced, USER_ROLES } from '@/services/user-autosuggest';
 import {
     LEAD_DEDUP_SETTINGS_QUERY_KEY,
     fetchLeadDedupSettings,
+    type LeadDedupAction,
     type LeadDedupField,
     type LeadDedupScope,
     type LeadDedupSettings as LeadDedupSettingsValues,
     type LeadDedupSettingsSubtree,
+    type RepeatLeadCounsellorMode,
+    type RepeatLeadSettings,
+    type RepeatLeadStatusMode,
+    REPEAT_LEAD_SETTINGS_DEFAULTS,
 } from '@/hooks/use-lead-dedup-settings';
 import { fetchLeadSettingRawData } from '@/hooks/use-lead-report-settings';
 
@@ -58,12 +69,78 @@ async function saveDedupSettings(next: LeadDedupSettingsValues): Promise<void> {
         field: next.field,
         scope: next.scope,
         audienceIds: next.scope === 'SELECTED' ? next.audienceIds : [],
+        action: next.action,
+        repeatLead: next.action === 'ALLOW_REASSIGN' ? next.repeatLead : REPEAT_LEAD_SETTINGS_DEFAULTS,
     };
     const merged = { ...current, dedup };
     await authenticatedAxiosInstance.post(
         SAVE_URL,
         { setting_name: 'Lead Settings', setting_data: merged },
         { params: { instituteId, settingKey: SETTING_KEY } }
+    );
+}
+
+/** Single-counsellor search picker — mirrors the autosuggest pattern in
+ * routes/settings/-components/School/Counsellor.tsx, simplified to one pick. */
+function CounsellorPicker({
+    counsellorId,
+    counsellorName,
+    onChange,
+}: {
+    counsellorId: string | null;
+    counsellorName: string | null;
+    onChange: (id: string | null, name: string | null) => void;
+}) {
+    const [query, setQuery] = useState('');
+    const { data: suggestions, isLoading } = useUserAutosuggestDebounced(
+        query,
+        [USER_ROLES.ADMIN, USER_ROLES.COUNSELLOR],
+        300
+    );
+
+    if (counsellorId) {
+        return (
+            <div className="flex max-w-sm items-center justify-between gap-2 rounded-md border px-3 py-2">
+                <span className="text-sm">{counsellorName || counsellorId}</span>
+                <button
+                    type="button"
+                    onClick={() => onChange(null, null)}
+                    className="text-neutral-400 hover:text-neutral-600"
+                    aria-label="Clear selected counsellor"
+                >
+                    <X size={14} />
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-sm">
+            <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Type to search counsellors…"
+            />
+            {isLoading && <p className="mt-1 text-xs text-muted-foreground">Searching…</p>}
+            {suggestions && suggestions.length > 0 && query && (
+                <div className="mt-1 max-h-48 overflow-y-auto rounded-md border">
+                    {suggestions.map((user) => (
+                        <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => {
+                                onChange(user.id, user.full_name);
+                                setQuery('');
+                            }}
+                            className="w-full border-b p-2 text-left text-sm transition-colors last:border-0 hover:bg-neutral-50"
+                        >
+                            <div className="font-medium">{user.full_name}</div>
+                            <div className="text-xs text-muted-foreground">{user.email}</div>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -96,6 +173,8 @@ export default function LeadDedupSettings() {
     const [field, setField] = useState<LeadDedupField>('EMAIL');
     const [scope, setScope] = useState<LeadDedupScope>('CAMPAIGN');
     const [audienceIds, setAudienceIds] = useState<string[]>([]);
+    const [action, setAction] = useState<LeadDedupAction>('REJECT');
+    const [repeatLead, setRepeatLead] = useState<RepeatLeadSettings>(REPEAT_LEAD_SETTINGS_DEFAULTS);
     const [hasChanges, setHasChanges] = useState(false);
 
     useEffect(() => {
@@ -104,6 +183,8 @@ export default function LeadDedupSettings() {
             setField(saved.field);
             setScope(saved.scope);
             setAudienceIds(saved.audienceIds);
+            setAction(saved.action);
+            setRepeatLead(saved.repeatLead);
             setHasChanges(false);
         }
     }, [saved]);
@@ -127,7 +208,11 @@ export default function LeadDedupSettings() {
             toast.error('Pick at least one lead list, or choose a different scope');
             return;
         }
-        save({ enabled, field, scope, audienceIds });
+        if (action === 'ALLOW_REASSIGN' && repeatLead.counsellorMode === 'SPECIFIC' && !repeatLead.specificCounsellorId) {
+            toast.error('Pick a counsellor, or choose a different repeat-lead counsellor option');
+            return;
+        }
+        save({ enabled, field, scope, audienceIds, action, repeatLead });
     };
 
     // Picking every currently-available lead list is equivalent to "the whole
@@ -143,6 +228,11 @@ export default function LeadDedupSettings() {
         setHasChanges(true);
     };
 
+    const updateRepeatLead = (patch: Partial<RepeatLeadSettings>) => {
+        setRepeatLead((prev) => ({ ...prev, ...patch }));
+        setHasChanges(true);
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -151,8 +241,9 @@ export default function LeadDedupSettings() {
                     Deduplication
                 </CardTitle>
                 <CardDescription>
-                    Reject a new lead submission when a matching lead already exists. Off by
-                    default — turning this on does not affect leads already captured.
+                    Control what happens when a new lead submission matches one that already
+                    exists. Off by default — turning this on does not affect leads already
+                    captured.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -246,6 +337,113 @@ export default function LeadDedupSettings() {
                                             disabled={campaignsLoading}
                                             className="max-w-sm"
                                         />
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="dedup-action">When a duplicate is found</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Block the submission, or let it through and apply the
+                                        repeat-lead rules below.
+                                    </p>
+                                    <Select
+                                        value={action}
+                                        onValueChange={(v) => {
+                                            setAction(v as LeadDedupAction);
+                                            setHasChanges(true);
+                                        }}
+                                    >
+                                        <SelectTrigger id="dedup-action" className="w-full max-w-sm">
+                                            <SelectValue placeholder="Select action" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="REJECT">Reject the submission</SelectItem>
+                                            <SelectItem value="ALLOW_REASSIGN">
+                                                Allow it through and reassign
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {action === 'ALLOW_REASSIGN' && (
+                                    <div className="flex flex-col gap-4 rounded-md border p-4">
+                                        <p className="text-sm font-medium">Repeat lead handling</p>
+
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="repeat-counsellor-mode">
+                                                Assign a counsellor?
+                                            </Label>
+                                            <Select
+                                                value={repeatLead.counsellorMode}
+                                                onValueChange={(v) =>
+                                                    updateRepeatLead({
+                                                        counsellorMode: v as RepeatLeadCounsellorMode,
+                                                    })
+                                                }
+                                            >
+                                                <SelectTrigger
+                                                    id="repeat-counsellor-mode"
+                                                    className="w-full max-w-sm"
+                                                >
+                                                    <SelectValue placeholder="Select" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="NONE">Don&apos;t assign one</SelectItem>
+                                                    <SelectItem value="SAME_AS_PREVIOUS">
+                                                        Keep their previous counsellor
+                                                    </SelectItem>
+                                                    <SelectItem value="SPECIFIC">
+                                                        Always assign a specific counsellor
+                                                    </SelectItem>
+                                                    <SelectItem value="ROUND_ROBIN">
+                                                        Use round-robin, same as new leads
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {repeatLead.counsellorMode === 'SPECIFIC' && (
+                                            <div className="flex flex-col gap-1.5">
+                                                <Label>Counsellor</Label>
+                                                <CounsellorPicker
+                                                    counsellorId={repeatLead.specificCounsellorId}
+                                                    counsellorName={repeatLead.specificCounsellorName}
+                                                    onChange={(id, name) =>
+                                                        updateRepeatLead({
+                                                            specificCounsellorId: id,
+                                                            specificCounsellorName: name,
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="repeat-status-mode">Lead status</Label>
+                                            <Select
+                                                value={repeatLead.statusMode}
+                                                onValueChange={(v) =>
+                                                    updateRepeatLead({
+                                                        statusMode: v as RepeatLeadStatusMode,
+                                                    })
+                                                }
+                                            >
+                                                <SelectTrigger
+                                                    id="repeat-status-mode"
+                                                    className="w-full max-w-sm"
+                                                >
+                                                    <SelectValue placeholder="Select" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="KEEP_EXISTING">
+                                                        Keep their current status
+                                                    </SelectItem>
+                                                    <SelectItem value="RESET_TO_NEW">
+                                                        Reset to New
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                 )}
                             </>

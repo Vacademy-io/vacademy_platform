@@ -64,6 +64,16 @@ MAX_PAGES_PER_SOURCE = 1200
 
 MAX_FIGURES_PER_SOURCE = 400
 
+# An embedded image that repeats across many pages is PAGE FURNITURE — a
+# coaching-institute watermark, a publisher logo, a header rule — not a figure.
+# Size alone cannot tell them apart (a watermark is often larger than a small
+# diagram), but repetition can: a real diagram appears on ONE page, furniture
+# appears on all of them. Without this, a 33-page book with a logo on every page
+# yielded ~33 "diagrams", uploaded the same logo to S3 33 times, and attached it
+# to every citation.
+REPEATED_IMAGE_MIN_PAGES = 3
+REPEATED_IMAGE_PAGE_RATIO = 0.25
+
 _CAPTION_RE = re.compile(r"\b(fig(?:ure)?|table|exhibit|chart|diagram|plate)\b[\s.:]*\d", re.I)
 
 _EXT_BY_CONTENT_TYPE = {
@@ -252,7 +262,10 @@ class _ExtractResult:
     pages: List[ParsedPage] = field(default_factory=list)
     truncated_at: Optional[int] = None
     ocr_payloads: List[Tuple[int, bytes]] = field(default_factory=list)   # (page_no, single-page pdf)
-    raw_images: List[Tuple[int, bytes, str, Optional[str]]] = field(default_factory=list)
+    # (page_no, bytes, ext, caption, content_hash). The hash lets the caller
+    # upload one physical image once even when it legitimately appears on more
+    # than one page.
+    raw_images: List[Tuple[int, bytes, str, Optional[str], str]] = field(default_factory=list)
 
 
 def _extract_sync(pdf_bytes: bytes, extract_figures: bool) -> _ExtractResult:
@@ -330,9 +343,16 @@ def _extract_sync(pdf_bytes: bytes, extract_figures: bool) -> _ExtractResult:
         # page IS one image, so extracting it would store a picture of text.
         if extract_figures:
             skip = {i + 1 for i in scanned}
+
+            # Pass 1 — collect candidates, keyed by content hash so the same
+            # image is held in memory once no matter how many pages repeat it.
+            blobs: Dict[str, Tuple[bytes, str]] = {}
+            pages_by_hash: Dict[str, set] = {}
+            occurrences: List[Tuple[int, str]] = []   # (page_no, hash), document order
+
             for idx in range(limit):
                 page_no = idx + 1
-                if page_no in skip or len(out.raw_images) >= MAX_FIGURES_PER_SOURCE:
+                if page_no in skip:
                     continue
                 try:
                     page = pdf.load_page(idx)
@@ -340,21 +360,56 @@ def _extract_sync(pdf_bytes: bytes, extract_figures: bool) -> _ExtractResult:
                 except Exception:  # noqa: BLE001
                     continue
                 for img_meta in images:
-                    if len(out.raw_images) >= MAX_FIGURES_PER_SOURCE:
-                        break
                     try:
                         info = pdf.extract_image(img_meta[0])
                     except Exception:  # noqa: BLE001
                         continue
                     data, ext = info.get("image"), (info.get("ext") or "png")
                     width, height = info.get("width") or 0, info.get("height") or 0
-                    # Ignore rules, bullets, logos and other page furniture. Real
-                    # diagrams in a textbook are not 40px tall.
+                    # Rules, bullets and icons: a real textbook diagram is not
+                    # 40px tall. (Size alone will NOT catch a watermark — see
+                    # the repetition filter below.)
                     if not data or width < 120 or height < 120:
                         continue
-                    out.raw_images.append(
-                        (page_no, data, ext, _caption_from_page_text(page_texts.get(page_no, "")))
-                    )
+                    digest = hashlib.sha1(data).hexdigest()
+                    if digest not in blobs:
+                        blobs[digest] = (data, ext)
+                    pages_by_hash.setdefault(digest, set()).add(page_no)
+                    occurrences.append((page_no, digest))
+
+            # Pass 2 — drop page furniture, then emit one entry per (page, image).
+            content_pages = max(1, limit - len(skip))
+            furniture_at = max(
+                REPEATED_IMAGE_MIN_PAGES,
+                int(content_pages * REPEATED_IMAGE_PAGE_RATIO),
+            )
+            emitted: set = set()
+            dropped_pages = 0
+            dropped_kinds = 0
+            for page_no, digest in occurrences:
+                if len(out.raw_images) >= MAX_FIGURES_PER_SOURCE:
+                    break
+                if len(pages_by_hash[digest]) >= furniture_at:
+                    dropped_pages += 1
+                    continue
+                if (page_no, digest) in emitted:
+                    continue
+                emitted.add((page_no, digest))
+                data, ext = blobs[digest]
+                out.raw_images.append(
+                    (page_no, data, ext,
+                     _caption_from_page_text(page_texts.get(page_no, "")), digest)
+                )
+            dropped_kinds = sum(
+                1 for d, pgs in pages_by_hash.items() if len(pgs) >= furniture_at
+            )
+            if dropped_pages:
+                logger.info(
+                    "Dropped %s repeated image placement(s) (%s distinct watermark/logo "
+                    "image(s) appearing on >=%s of %s content pages); kept %s figure(s)",
+                    dropped_pages, dropped_kinds, furniture_at, content_pages,
+                    len(out.raw_images),
+                )
     finally:
         try:
             pdf.close()
@@ -387,12 +442,18 @@ async def parse_pdf(pdf_bytes: bytes, *, extract_figures: bool = True) -> Parsed
         doc.parser = "mixed" if digital else "mathpix"
 
     # --- Upload embedded figures from digital pages ---
-    for page_no, data, ext, caption in extracted.raw_images:
+    # Keyed by content hash: an image that genuinely appears on two pages is
+    # stored in S3 once and cited from both.
+    uploaded: Dict[str, str] = {}
+    for page_no, data, ext, caption, digest in extracted.raw_images:
         if len(doc.figures) >= MAX_FIGURES_PER_SOURCE:
             break
-        hosted = await _upload_bytes(data, ext, f"image/{'jpeg' if ext == 'jpg' else ext}")
-        if not hosted:
-            continue
+        hosted = uploaded.get(digest)
+        if hosted is None:
+            hosted = await _upload_bytes(data, ext, f"image/{'jpeg' if ext == 'jpg' else ext}")
+            if not hosted:
+                continue
+            uploaded[digest] = hosted
         doc.figures.append(
             ParsedFigure(page_number=page_no, image_url=hosted, kind="figure", caption=caption)
         )

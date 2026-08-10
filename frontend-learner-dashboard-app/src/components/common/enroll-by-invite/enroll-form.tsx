@@ -2714,20 +2714,24 @@ const EnrollByInvite = ({
               <span>
                 {autopayConfig?.TRIAL_DAYS ? (
                   <>
-                    I agree: a{" "}
-                    <span className="font-semibold">₹{authAmount}</span>{" "}
-                    authorization today
-                    {autopayConfig?.AUTH_REFUNDABLE ? " (refunded)" : ""} starts my{" "}
+                    I agree:{" "}
+                    <span className="font-semibold">₹{authAmount}</span> is
+                    authorized today
+                    {autopayConfig?.AUTH_REFUNDABLE ? " (refunded)" : ""} to start my{" "}
                     <span className="font-semibold">
                       {autopayConfig.TRIAL_DAYS}-day free trial
                     </span>
-                    , then{" "}
+                    . From day{" "}
+                    <span className="font-semibold">
+                      {Number(autopayConfig.TRIAL_DAYS) + 1}
+                    </span>
+                    ,{" "}
                     <span className="font-semibold">
                       {enrollmentData.selectedPayment?.currency || "INR"}{" "}
                       {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
                     </span>{" "}
-                    will be charged to my saved payment method each billing
-                    period. I can cancel anytime from my profile.
+                    will be charged each billing cycle to my saved payment
+                    method, unless I cancel before that.
                   </>
                 ) : (
                   <>
@@ -3019,8 +3023,12 @@ const EnrollByInvite = ({
                     (instituteData?.theme as string) ||
                     null,
                   homeIconClickRoute: domainRouting.homeIconClickRoute ?? null,
+                  // Honour the institute's own setting, as the login page does.
+                  // An institute whose logo already contains its name doesn't
+                  // want it spelled out beside the mark.
+                  hideInstituteName: domainRouting.hideInstituteName,
                 }}
-                size="small"
+                size="large"
                 showName={true}
                 className="!flex-row !items-center !gap-2"
               />

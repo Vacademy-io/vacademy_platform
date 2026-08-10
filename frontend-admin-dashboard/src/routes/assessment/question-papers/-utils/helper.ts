@@ -425,27 +425,6 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
     };
 }
 
-function stripHtmlTags(str: string) {
-    return str.replace(/<[^>]*>/g, '').trim();
-}
-
-function cleanQuestionData(question: MyQuestion) {
-    return {
-        ...question,
-        questionName: stripHtmlTags(question.questionName || ''),
-        singleChoiceOptions:
-            question.singleChoiceOptions?.map((option) => ({
-                ...option,
-                name: stripHtmlTags(option.name || ''),
-            })) || [],
-        multipleChoiceOptions:
-            question.multipleChoiceOptions?.map((option) => ({
-                ...option,
-                name: stripHtmlTags(option.name || ''),
-            })) || [],
-    };
-}
-
 export function convertQuestionsDataToResponse(questions: MyQuestion[], key: string) {
     const convertedQuestions = questions?.map((question) => {
         const options =
@@ -539,12 +518,8 @@ export function compareQuestions(
     oldData: MyQuestionPaperFormInterface,
     newData: MyQuestionPaperFormInterface
 ) {
-    const oldQuestionsMap = new Map(
-        oldData.questions?.map((q) => [q.questionId, cleanQuestionData(q)])
-    );
-    const newQuestionsMap = new Map(
-        newData.questions?.map((q) => [q.questionId, cleanQuestionData(q)])
-    );
+    const oldQuestionsMap = new Map(oldData.questions?.map((q) => [q.questionId, q]));
+    const newQuestionsMap = new Map(newData.questions?.map((q) => [q.questionId, q]));
 
     let added_questions = [];
     let deleted_questions = [];

@@ -180,9 +180,12 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     });
 
     // Async-load institute defaults directly from the live backend endpoint.
+    // Only for brand-new drafts — for an existing assessment, custom_fields is
+    // already loaded from its saved registration_form_fields (see the
+    // assessmentId !== 'defaultId' effect below), and this must not clobber it.
     useEffect(() => {
         const loadFields = async () => {
-            if (!instituteId) return;
+            if (!instituteId || assessmentId !== 'defaultId') return;
             const defaults = await fetchInstituteDefaultFields(instituteId);
             if (!defaults || defaults.length === 0) return;
             const SEEDED_KEYS = ['full_name', 'email', 'phone_number'];
@@ -218,7 +221,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             });
         };
         loadFields();
-    }, []);
+    }, [assessmentId, instituteId]);
 
     const handleSubmitStep3Form = useMutation({
         mutationFn: ({

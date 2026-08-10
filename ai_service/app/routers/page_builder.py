@@ -39,6 +39,7 @@ from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.llm_json import generate_json
 from ..services.model_selection import resolve_models
+from ..services.page_audit import audit_page
 from ..utils.json_extract import extract_and_sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -690,6 +691,9 @@ class GeneratePageRequest(BaseModel):
     allow_chrome: bool = False
     # Auto-generate a hero image + a few section visuals during composition.
     auto_images: bool = True
+    # Audit the composed page for visible defects and spend one extra model call
+    # repairing them. Off only for callers that want the raw composition.
+    self_check: bool = True
 
 
 class GeneratePageResponse(BaseModel):
@@ -1560,6 +1564,137 @@ def _coerce_global_settings(raw: Any, base: Optional[Dict[str, Any]] = None) -> 
     }
 
 
+def _apply_ops_to_page(page: Dict[str, Any], ops: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Apply already-sanitized edit ops to a page, server-side.
+
+    Mirrors applyOps in the admin's ai-page-service.ts. Only used by the repair
+    pass, which must hand back a finished page rather than a list of operations
+    the wizard would have to apply. Ops referencing unknown ids are skipped —
+    _sanitize_ops has already scrubbed the payload, so a miss here means the
+    model invented an id, not that the input is hostile."""
+    components: List[Dict[str, Any]] = list(page.get("components") or [])
+
+    def _index_of(cid: Any) -> int:
+        return next((i for i, c in enumerate(components) if c.get("id") == cid), -1)
+
+    for op in ops:
+        kind = op.get("op")
+        if kind == "insert":
+            comp = op.get("component")
+            if not isinstance(comp, dict):
+                continue
+            after = op.get("afterId")
+            if after is None:
+                components.insert(0, comp)
+            else:
+                idx = _index_of(after)
+                components.append(comp) if idx < 0 else components.insert(idx + 1, comp)
+        elif kind == "update":
+            idx = _index_of(op.get("id"))
+            if idx < 0:
+                continue
+            target = components[idx]
+            props_patch = op.get("propsPatch")
+            style_patch = op.get("stylePatch")
+            if isinstance(props_patch, dict):
+                target = {**target, "props": {**(target.get("props") or {}), **props_patch}}
+            if isinstance(style_patch, dict):
+                target = {**target, "style": {**(target.get("style") or {}), **style_patch}}
+            components[idx] = target
+        elif kind == "remove":
+            idx = _index_of(op.get("id"))
+            if idx >= 0:
+                components.pop(idx)
+        elif kind == "move":
+            idx = _index_of(op.get("id"))
+            if idx < 0:
+                continue
+            comp = components.pop(idx)
+            after = op.get("afterId")
+            if after is None:
+                components.insert(0, comp)
+            else:
+                dest = _index_of(after)
+                components.append(comp) if dest < 0 else components.insert(dest + 1, comp)
+
+    return {**page, "components": components}
+
+
+def _build_repair_prompt(page: Dict[str, Any], issues: List[Dict[str, Any]], catalog: Dict[str, Any]) -> str:
+    """Ask for the SMALLEST set of ops that clears a specific defect list.
+
+    Deliberately narrow: the model is not invited to redesign, re-theme or
+    improve anything, because a repair pass with latitude will happily rewrite a
+    page that was already fine. Every line it is given is a defect a visitor
+    would see, decided by code, not by taste."""
+    lines = [
+        "You are the quality gate for Vacademy's catalogue website builder. A page has just been "
+        "composed and an automated check found concrete defects in it. Return the SMALLEST set of "
+        "operations that fixes exactly these defects.",
+        "RULES:\n"
+        "- Fix ONLY what is listed. Do not restyle, re-theme, reorder or reword anything else.\n"
+        "- Prefer filling a section with real content over deleting it; delete only when the defect "
+        "says the component cannot work at all.\n"
+        "- New copy must be specific to THIS institute and consistent with the page's existing "
+        "content and tone — never generic filler, never lorem ipsum.\n"
+        "- Do not add images: you may only reference image URLs already present in the page.\n"
+        "- If a defect genuinely cannot be fixed with the component vocabulary, leave it and say so "
+        "in `reply`.",
+        "## COMPONENT VOCABULARY (types with example props)\n"
+        + json.dumps([c for c in catalog["components"] if c.get("type") not in ("header", "footer")],
+                     ensure_ascii=False),
+        "## DEFECTS TO FIX\n" + "\n".join(
+            f"- [{i.get('code')}] {'component ' + i['component_id'] + ': ' if i.get('component_id') else ''}"
+            f"{i.get('message')} FIX: {i.get('hint')}"
+            for i in issues
+        ),
+        "## CURRENT PAGE\n" + json.dumps(page, ensure_ascii=False),
+        "## OUTPUT CONTRACT\nReturn ONLY JSON, no markdown:\n"
+        '{"reply": "<one sentence>", "ops": [\n'
+        '  {"op": "update", "id": "<existing-id>", "propsPatch": {…}?, "stylePatch": {…}?, "note": "<why>"},\n'
+        '  {"op": "remove", "id": "<existing-id>", "note": "<why>"},\n'
+        '  {"op": "insert", "component": {"id":"<kebab>","type":"<type>","enabled":true,"props":{…}}, '
+        '"afterId": "<existing-id or null>", "note": "<why>"}\n'
+        "]}\n"
+        "propsPatch is SHALLOW-merged into the component's existing props, so a nested object you send "
+        "REPLACES the whole existing one — include every key of any nested object you touch.",
+    ]
+    return "\n\n".join(lines)
+
+
+async def _repair_page(
+    page: Dict[str, Any], issues: List[Dict[str, Any]], req: GeneratePageRequest,
+    catalog: Dict[str, Any], db,
+) -> tuple[Dict[str, Any], List[str], Dict[str, int]]:
+    """One repair round. Returns (page, warnings, usage). Never raises — a page
+    with known defects still beats no page, so a failed repair degrades to
+    returning the defects as warnings."""
+    prompt = _build_repair_prompt(page, issues, catalog)
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=req.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    try:
+        raw_json, _model, usage = await generate_json(prompt, [primary, *fallbacks], label="page-repair")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] repair pass failed: %s", e)
+        return page, [], {}
+
+    warnings: List[str] = []
+    try:
+        edit_req = EditPageRequest(
+            page=page, instruction="repair", images=req.images, auto_images=False,
+        )
+        ops, _reply, op_warnings = _sanitize_ops(raw_json, edit_req, catalog)
+        warnings.extend(op_warnings)
+    except HTTPException as e:
+        logger.warning("[page-builder] repair produced unusable ops: %s", e.detail)
+        return page, [], usage or {}
+
+    if not ops:
+        return page, warnings, usage or {}
+    return _apply_ops_to_page(page, ops), warnings, usage or {}
+
+
 def _sanitize_page(
     raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None
 ) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
@@ -1690,14 +1825,54 @@ async def _compose_one_page(
     if fixed_global is not None:
         global_settings = fixed_global  # pin the shared theme across the site
 
+    # ── Self-check ────────────────────────────────────────────────────────────
+    # Until now nothing looked at the composed page: the sanitizer proves it is
+    # SAFE, never that it is any good, so every blank band and empty CTA shipped
+    # until a human opened the published page. audit_page decides visible
+    # defects from the JSON alone (no model, no taste), and one repair round
+    # clears them. Advisory findings ride out as warnings for the admin.
+    repair_usage: Dict[str, int] = {}
+    if body.self_check:
+        try:
+            issues = audit_page(
+                page, global_settings,
+                page_type=body.page_type or "homepage",
+                info_only=_is_info_only(body.brief),
+                inspiration=inspiration or None,
+            )
+            fixable = [i for i in issues if i["severity"] == "fix"]
+            if fixable:
+                logger.info("[page-builder] self-check found %d defect(s): %s",
+                            len(fixable), ", ".join(i["code"] for i in fixable))
+                page, repair_warnings, repair_usage = await _repair_page(
+                    page, fixable, body, catalog, db
+                )
+                warnings.extend(repair_warnings)
+                # Re-audit: what the repair could not clear is the admin's to
+                # judge, and saying so is more useful than silently shipping it.
+                issues = audit_page(
+                    page, global_settings,
+                    page_type=body.page_type or "homepage",
+                    info_only=_is_info_only(body.brief),
+                    inspiration=inspiration or None,
+                )
+            warnings.extend(f"{i['message']} {i['hint']}" for i in issues)
+        except Exception as e:  # noqa: BLE001 — a page with defects beats no page
+            logger.warning("[page-builder] self-check skipped: %s", e)
+
     try:
         record_tool_billing(
             tool_key=_TOOL_KEY,
             tool_params={"page_type": body.page_type or "homepage"},
             request_type=RequestType.CONTENT,
             model=model_used,
-            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
-            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            # The repair call's tokens are billed with the generation's — it is
+            # one page, one flat charge, and the usage-markup floor must see the
+            # real total rather than only the first call.
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0)
+            + int(repair_usage.get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0)
+            + int(repair_usage.get("completion_tokens") or 0),
             institute_id=institute_id,
             user_id=actor_user_id,
             user_role=None,

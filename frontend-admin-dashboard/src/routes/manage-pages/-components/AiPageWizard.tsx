@@ -636,9 +636,26 @@ export const AiPageWizard = ({
                             </div>
                         </div>
                         {result.warnings.length > 0 && (
-                            <p className="text-caption text-warning-600">
-                                {result.warnings.length} item(s) were auto-cleaned during validation.
-                            </p>
+                            /* Warnings now carry the self-check's findings ("this
+                               section is empty", "nothing to click"), not just
+                               sanitiser cleanups — a bare count told the admin
+                               nothing they could act on. */
+                            <details className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+                                <summary className="cursor-pointer text-caption font-medium text-warning-700">
+                                    {result.warnings.length} thing{result.warnings.length === 1 ? '' : 's'} to
+                                    check before you publish
+                                </summary>
+                                <ul className="mt-2 list-disc space-y-1 pl-4 text-caption text-warning-700">
+                                    {result.warnings.slice(0, 8).map((w, i) => (
+                                        <li key={i}>{w}</li>
+                                    ))}
+                                </ul>
+                                {result.warnings.length > 8 && (
+                                    <p className="mt-1 pl-4 text-caption text-warning-600">
+                                        +{result.warnings.length - 8} more
+                                    </p>
+                                )}
+                            </details>
                         )}
                         {result.global_settings && (
                             <div className="flex items-center justify-between rounded-lg border border-primary-100 bg-primary-50 p-3">

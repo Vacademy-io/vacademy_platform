@@ -473,6 +473,10 @@ export function DashboardComponent() {
     return cfg?.order ?? Number.MAX_SAFE_INTEGER;
   };
 
+  // Hoisted to a stable boolean because the gamification EFFECT below depends
+  // on it (isWidgetVisible is re-created every render and can't go in deps).
+  const showGamification = isWidgetVisible("gamification");
+
   const customWidget = widgetConfigs?.find(
     (w) => w.id === "custom" && w.visible !== false
   );
@@ -514,8 +518,11 @@ export function DashboardComponent() {
   // Refresh gamification data (badges / XP / streak) once dashboard data is ready.
   // Runs for EVERY theme: the Play theme renders the play widgets while all other
   // themes render DashboardGamificationPanel — both read from the same store.
+  // Skipped entirely when the institute has hidden the block: the work below is
+  // half a dozen requests (badge config, awarded badges, assessment score, live
+  // attendance stats) feeding a store nothing would render.
   useEffect(() => {
-    if (!data || !instituteId) return;
+    if (!data || !instituteId || !showGamification) return;
 
     const refreshGamification = async () => {
       try {
@@ -590,6 +597,7 @@ export function DashboardComponent() {
     instituteId,
     studyLibraryData,
     setGamificationData,
+    showGamification,
   ]);
 
   const handleJoinSession = async (session: SessionDetails) => {
@@ -1053,16 +1061,18 @@ export function DashboardComponent() {
 
             {/* Gamification (badges / XP / streak) — bottom of the main flow.
                 Play theme keeps its vibrant play-token widgets; every other theme
-                gets the standard design-token panel. */}
-            {isPlayTheme ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
-                <StreakCounterWidget />
-                <XpDisplayWidget />
-                <AchievementBadgesWidget />
-              </div>
-            ) : (
-              <DashboardGamificationPanel />
-            )}
+                gets the standard design-token panel. Both sides sit behind the
+                one "gamification" flag so hiding it is skin-independent. */}
+            {showGamification &&
+              (isPlayTheme ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
+                  <StreakCounterWidget />
+                  <XpDisplayWidget />
+                  <AchievementBadgesWidget />
+                </div>
+              ) : (
+                <DashboardGamificationPanel />
+              ))}
 
             {/* General query intake — only when the institute enabled the dashboard card */}
             <RaiseQueryCard />

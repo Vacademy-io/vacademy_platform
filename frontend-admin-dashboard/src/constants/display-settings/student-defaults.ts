@@ -75,6 +75,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
         { id: 'upcomingLiveClasses', visible: true },
         { id: 'myMentors', visible: true },
         { id: 'thisWeekAttendance', visible: true },
+        { id: 'gamification', visible: true },
         { id: 'exploreMemberships', visible: true },
         { id: 'exploreBooks', visible: true },
     ];

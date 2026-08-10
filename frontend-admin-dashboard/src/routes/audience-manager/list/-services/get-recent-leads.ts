@@ -63,6 +63,14 @@ export interface RecentLeadsRequest {
     // across every audience for the institute. Both default to submitted_at DESC
     // and honor sort_by/sort_direction below.
     audience_id?: string;
+    /**
+     * Multi-select audience filter (Recent Leads "All audiences" dropdown). The
+     * backend narrows the institute-wide listing to these campaigns. Send this
+     * INSTEAD of `audience_id` when more than one audience is picked — a lone id
+     * is better sent as `audience_id`, which routes to the per-campaign query.
+     * Omitted/empty = every audience the caller can see.
+     */
+    audience_ids?: string[];
     submitted_from_local?: string; // ISO-8601 timestamp
     submitted_to_local?: string;
     // Substring match against parent_name / parent_email / parent_mobile.

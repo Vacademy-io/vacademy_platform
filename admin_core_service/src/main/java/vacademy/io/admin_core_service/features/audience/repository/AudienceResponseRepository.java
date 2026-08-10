@@ -765,6 +765,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              -- Caller-requested audience multi-select (Recent Leads "All audiences"
+                              -- dropdown). Independent of the RBAC :allowedAudienceIdsCsv above, which
+                              -- stays ANDed so a user can never widen past what they were granted.
+                              AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -1026,6 +1030,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              -- Caller-requested audience multi-select (Recent Leads "All audiences"
+                              -- dropdown). Independent of the RBAC :allowedAudienceIdsCsv above, which
+                              -- stays ANDed so a user can never widen past what they were granted.
+                              AND (COALESCE(:audienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:audienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -1213,6 +1221,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("includeUnassigned") Boolean includeUnassigned,
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
+                        @Param("audienceIdsCsv") String audienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,

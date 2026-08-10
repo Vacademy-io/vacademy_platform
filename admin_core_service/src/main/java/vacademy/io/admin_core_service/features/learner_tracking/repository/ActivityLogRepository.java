@@ -530,6 +530,11 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                       AND ssigm.package_session_id = :packageSessionId
                       AND ssigm.status IN (:statusList)
                   ))
+              AND (CAST(:search AS text) IS NULL
+                   OR s.full_name ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.email ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.username ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.mobile_number ILIKE '%' || CAST(:search AS text) || '%')
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
              """,
@@ -544,10 +549,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                       AND ssigm.package_session_id = :packageSessionId
                       AND ssigm.status IN (:statusList)
                   ))
+              AND (CAST(:search AS text) IS NULL
+                   OR s.full_name ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.email ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.username ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.mobile_number ILIKE '%' || CAST(:search AS text) || '%')
             """,
             nativeQuery = true)
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId,
             @Param("packageSessionId") String packageSessionId,
+            @Param("search") String search,
             @Param("statusList") List<String> statusList,
             Pageable pageable);
 

@@ -203,6 +203,29 @@ public class LearnerAuthManager {
                         // Response might be null, handle gracefully
                         String responseInstituteId = (response != null) ? response.getBody() : null;
                         log.debug("add-learner response body instituteId={}", responseInstituteId);
+
+                        // No package-session enrollment means this signup would otherwise be
+                        // invisible to the institute admin (the learner list requires an
+                        // enrollment row). Surface it as a lead instead. Best-effort: a
+                        // failure here must never break signup.
+                        if (StringUtils.hasText(instituteId) && user != null) {
+                                try {
+                                        Map<String, String> leadBody = Map.of(
+                                                        "userId", user.getId(),
+                                                        "instituteId", instituteId,
+                                                        "name", user.getFullName() != null ? user.getFullName() : "",
+                                                        "email", user.getEmail() != null ? user.getEmail() : "",
+                                                        "mobile", user.getMobileNumber() != null
+                                                                        ? user.getMobileNumber()
+                                                                        : "");
+                                        internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(),
+                                                        adminCoreServiceBaseUrl, AuthConstants.SELF_SIGNUP_LEAD_PATH,
+                                                        leadBody);
+                                } catch (Exception e) {
+                                        log.warn("Self-signup lead capture failed (non-blocking) for userId={}: {}",
+                                                        user.getId(), e.getMessage());
+                                }
+                        }
                 }
 
                 // Verify email if data is available

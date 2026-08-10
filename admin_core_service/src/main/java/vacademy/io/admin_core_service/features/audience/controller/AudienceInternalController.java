@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceOptOutRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.BatchPhoneNumberRequest;
+import vacademy.io.admin_core_service.features.audience.dto.SelfSignupLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.UserWithCustomFieldsDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceOptOutService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
@@ -66,6 +67,18 @@ public class AudienceInternalController {
     public ResponseEntity<Void> handleUserOptOut(@RequestBody AudienceOptOutRequestDTO request) {
         audienceOptOutService.moveUserToOptOutAudience(
                 request.getUserId(), request.getInstituteId(), request.getChannel());
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Called by auth_service after a learner self-registers without enrolling in a
+     * course/package-session. Captures the signup as a lead so the institute admin can
+     * see it in the Leads list — the normal learner list only shows enrolled students.
+     */
+    @PostMapping("/audience/self-signup-lead")
+    public ResponseEntity<Void> handleSelfSignupLead(@RequestBody SelfSignupLeadRequestDTO request) {
+        audienceService.captureSelfSignupLead(request.getInstituteId(), request.getUserId(),
+                request.getName(), request.getEmail(), request.getMobile());
         return ResponseEntity.ok().build();
     }
 

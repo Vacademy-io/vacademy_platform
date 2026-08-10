@@ -200,6 +200,19 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
         setValue('custom_fields', updatedFields);
     };
 
+    // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const updatedFields = customFieldsArray?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        setValue('custom_fields', updatedFields);
+    };
+
+    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
+
+    const handleUpdateFieldOptions = (index: number, values: string[]) =>
+        patchFieldAt(index, { options: values.map((value, i) => ({ id: String(i), value })) });
+
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
             id: String(customFields.length),
@@ -737,6 +750,8 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
                 updateFieldOrders={updateFieldOrders}
                 handleDeleteOpenField={handleDeleteOpenField}
                 toggleIsRequired={toggleIsRequired}
+                handleUpdateFieldName={handleUpdateFieldName}
+                handleUpdateFieldOptions={handleUpdateFieldOptions}
             />
 
             {/* Counsellor Settings Toggle */}

@@ -8,6 +8,7 @@ import { useCreateAudienceCampaign } from '../../-hooks/useCreateAudienceCampaig
 import { useUpdateAudienceCampaign } from '../../-hooks/useUpdateAudienceCampaign';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import CampaignCustomFieldsCard from './CampaignCustomFieldsCard';
+import type { DropdownOption } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -610,6 +611,19 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('custom_fields', updatedFields);
     };
 
+    // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const updatedFields = customFieldsArray?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        setValue('custom_fields', updatedFields as typeof customFields);
+    };
+
+    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
+
+    const handleUpdateFieldOptions = (index: number, values: string[]) =>
+        patchFieldAt(index, { options: values.map((value, i) => ({ id: String(i), value })) });
+
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
             id: String(customFields.length),
@@ -706,7 +720,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         type: string,
         name: string,
         oldKey: boolean,
-        options?: { id: number; value: string; disabled: boolean }[],
+        options?: DropdownOption[],
         config?: Record<string, unknown>
     ) => {
         const rawOptions =
@@ -1393,6 +1407,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 handleEditClick={handleEditClick}
                 handleDeleteOptionField={handleDeleteOptionField}
                 handleAddDropdownOptions={handleAddDropdownOptions}
+                handleUpdateFieldName={handleUpdateFieldName}
+                handleUpdateFieldOptions={handleUpdateFieldOptions}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
             />

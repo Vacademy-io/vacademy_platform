@@ -50,8 +50,14 @@ export const CreateInviteDialog = ({
     isEditing,
     handleDisableCreateInviteButton,
 }: CreateInviteDialogProps) => {
-    const { form, toggleIsRequired, handleAddOpenFieldValues, handleDeleteOpenField } =
-        useInviteForm(initialValues);
+    const {
+        form,
+        toggleIsRequired,
+        handleAddOpenFieldValues,
+        handleDeleteOpenField,
+        handleUpdateFieldName,
+        handleUpdateFieldOptions,
+    } = useInviteForm(initialValues);
     const addCourseMutation = useAddCourse();
 
     const {
@@ -262,6 +268,8 @@ export const CreateInviteDialog = ({
                                 toggleIsRequired={toggleIsRequired}
                                 handleAddOpenFieldValues={handleAddOpenFieldValues}
                                 handleDeleteOpenField={handleDeleteOpenField}
+                                handleUpdateFieldName={handleUpdateFieldName}
+                                handleUpdateFieldOptions={handleUpdateFieldOptions}
                             />
                         </div>
 

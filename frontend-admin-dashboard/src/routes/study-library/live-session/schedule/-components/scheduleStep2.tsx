@@ -19,8 +19,7 @@ import {
     DownloadSimple,
     Plus,
     TrashSimple,
-    XCircle,
-} from '@phosphor-icons/react';
+    XCircle, PencilSimple } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,6 +28,11 @@ import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId as getInstId } from '@/constants/helper';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Switch } from '@/components/ui/switch';
+import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
@@ -111,6 +115,13 @@ const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
     return `${datePart}T${timePart}+05:30`;
 };
 
+
+// Live-session field types that carry an admin-authored option list.
+const hasOptionsType = (type?: string) => {
+    const t = (type ?? '').toLowerCase();
+    return t === 'dropdown' || t === 'radio' || t === 'multi_select' || t === 'checkbox';
+};
+
 export default function ScheduleStep2() {
     const { clearSessionId, clearStep1Data, clearBulkSessionIds, clearDeepLink } =
         useLiveSessionStore();
@@ -120,6 +131,7 @@ export default function ScheduleStep2() {
     const isBulkFlow = bulkSessionIds.length > 0;
     const { studyLibraryData } = useStudyLibraryStore();
     const [addCustomFieldDialog, setAddCustomFieldDialog] = useState<boolean>(false);
+    const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
     const queryClient = useQueryClient();
     const [previewDialog, setPreviewDialog] = useState<boolean>(false);
     const [previewOpen, setPreviewOpen] = useState<boolean>(false);
@@ -1679,6 +1691,7 @@ export default function ScheduleStep2() {
                                         </div>
                                     )}
                                 </div>
+                                <FormFieldRowHeader />
                                 <Sortable
                                     value={fields}
                                     onMove={({ activeIndex, overIndex }) =>
@@ -1687,75 +1700,67 @@ export default function ScheduleStep2() {
                                 >
                                     {fields.map((field, index) => (
                                         <SortableItem key={field.id} value={field.id} asChild>
-                                            <SortableItem key={field.id} value={field.id} asChild>
-                                                <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
-                                                    <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
-                                                        {field.isDefault ? (
-                                                            <div className="flex w-full items-center gap-1 text-neutral-600">
-                                                                <span>{field.label}</span>
-                                                                {watch(
-                                                                    `fields.${index}.required`
-                                                                ) && (
-                                                                    <span className="text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex w-full items-center gap-1">
-                                                                <Controller
-                                                                    control={control}
-                                                                    name={`fields.${index}.label`}
-                                                                    render={({ field }) => (
-                                                                        <input
-                                                                            {...field}
-                                                                            className="flex-1 border-none bg-transparent outline-none"
-                                                                            placeholder="Enter label"
-                                                                        />
-                                                                    )}
-                                                                />
-                                                                {watch(
-                                                                    `fields.${index}.required`
-                                                                ) && (
-                                                                    <span className="text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {!field.isDefault && (
-                                                            <div
-                                                                className="mr-2 cursor-pointer rounded border-2 p-1 text-red-300"
-                                                                onClick={() => remove(index)}
-                                                            >
-                                                                <TrashSimple />
-                                                            </div>
-                                                        )}
+                                            <div>
+                                                <FormFieldRow
+                                                    position={index + 1}
+                                                    name={watch(`fields.${index}.label`) ?? ''}
+                                                    type={watch(`fields.${index}.type`) ?? ''}
+                                                    isRequired={
+                                                        watch(`fields.${index}.required`) ?? false
+                                                    }
+                                                    locked={field.isDefault}
+                                                    isEditing={editingFieldIndex === index}
+                                                    onToggleRequired={() =>
+                                                        setValue(
+                                                            `fields.${index}.required`,
+                                                            !watch(`fields.${index}.required`),
+                                                            { shouldDirty: true }
+                                                        )
+                                                    }
+                                                    onEdit={() =>
+                                                        setEditingFieldIndex(
+                                                            editingFieldIndex === index
+                                                                ? null
+                                                                : index
+                                                        )
+                                                    }
+                                                    onDelete={() => remove(index)}
+                                                    dragHandle={
                                                         <SortableDragHandle className="cursor-grab border-none shadow-none">
-                                                            <DotsSixVertical />
+                                                            <DotsSixVertical size={18} />
                                                         </SortableDragHandle>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <Controller
-                                                            control={control}
-                                                            name={`fields.${index}.required`}
-                                                            render={({ field }) => (
-                                                                <label className="flex items-center gap-2">
-                                                                    <span className="text-sm">
-                                                                        Required
-                                                                    </span>
-                                                                    <Switch
-                                                                        checked={field.value}
-                                                                        onCheckedChange={
-                                                                            field.onChange
-                                                                        }
-                                                                    />
-                                                                </label>
-                                                            )}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </SortableItem>
+                                                    }
+                                                >
+                                                    <InlineFieldEditor
+                                                        name={watch(`fields.${index}.label`) ?? ''}
+                                                        onNameChange={(next) =>
+                                                            setValue(`fields.${index}.label`, next, { shouldDirty: true })
+                                                        }
+                                                        {...(hasOptionsType(
+                                                            watch(`fields.${index}.type`)
+                                                        )
+                                                            ? {
+                                                                  options: (
+                                                                      watch(
+                                                                          `fields.${index}.options`
+                                                                      ) ?? []
+                                                                  ).map((o) => o.label),
+                                                                  onOptionsChange: (
+                                                                      next: string[]
+                                                                  ) =>
+                                                                      setValue(
+                                                                          `fields.${index}.options`,
+                                                                          next.map((v) => ({
+                                                                              label: v,
+                                                                              name: v,
+                                                                          })),
+                                                                          { shouldDirty: true }
+                                                                      ),
+                                                              }
+                                                            : {})}
+                                                    />
+                                                </FormFieldRow>
+                                            </div>
                                         </SortableItem>
                                     ))}
                                 </Sortable>

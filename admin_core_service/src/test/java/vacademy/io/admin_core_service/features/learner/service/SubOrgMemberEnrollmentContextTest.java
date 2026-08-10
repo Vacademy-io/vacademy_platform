@@ -58,6 +58,50 @@ class SubOrgMemberEnrollmentContextTest {
     }
 
     @Test
+    @DisplayName("subOrgAdmin is the sub-org's leader, kept distinct from whoever enrolled")
+    void subOrgAdminIsTheLeaderNotTheActor() {
+        UserDTO leader = user("leader-1", "leader@practice.com.au");
+        UserDTO actor = user("platform-1", "platformadmin@vidyayatan.com");
+
+        Map<String, Object> ctx = SubOrgMemberEnrollmentContext.build(
+                user("u-1", "staff@example.com"), leader, actor, packageSession("ps-1", "pkg-1"));
+
+        // Nodes resolve the practice's LearnDash group from subOrgAdmin's email. If the acting
+        // platform admin leaks into this key the lookup 404s — or silently returns THEIR group
+        // and files the member under the wrong practice.
+        assertSame(leader, ctx.get("subOrgAdmin"));
+        assertSame(actor, ctx.get("enrolledBy"));
+    }
+
+    @Test
+    @DisplayName("a sub-org with no resolvable leader publishes null, never the actor")
+    void neverSubstitutesTheActorForAMissingLeader() {
+        UserDTO actor = user("platform-1", "platformadmin@vidyayatan.com");
+
+        Map<String, Object> ctx = SubOrgMemberEnrollmentContext.build(
+                user("u-1", "staff@example.com"), null, actor, packageSession("ps-1", "pkg-1"));
+
+        // No group is a better outcome than the wrong group: the practice-group node skips on a
+        // null lookup, whereas the actor's email would resolve to a real but unrelated practice.
+        assertNull(ctx.get("subOrgAdmin"));
+        assertSame(actor, ctx.get("enrolledBy"));
+    }
+
+    @Test
+    @DisplayName("the 3-arg overload treats the actor as the leader (add-member route)")
+    void threeArgOverloadKeepsAddMemberSemantics() {
+        UserDTO practiceAdmin = user("admin-1", "admin@practice.com.au");
+
+        Map<String, Object> ctx = SubOrgMemberEnrollmentContext.build(
+                user("u-1", "staff@example.com"), practiceAdmin, packageSession("ps-1", "pkg-1"));
+
+        // On /sub-org/v1/add-member the caller IS the practice admin, so both keys are the same
+        // person and the existing lookup keeps working unchanged.
+        assertSame(practiceAdmin, ctx.get("subOrgAdmin"));
+        assertSame(practiceAdmin, ctx.get("enrolledBy"));
+    }
+
+    @Test
     @DisplayName("carries the batch/package identifiers workflow nodes route on")
     void carriesRoutingIdentifiers() {
         Map<String, Object> ctx = SubOrgMemberEnrollmentContext.build(

@@ -39,17 +39,34 @@ public final class SubOrgMemberEnrollmentContext {
     }
 
     /**
-     * @param member      the person being enrolled into the sub-org
-     * @param subOrgAdmin the admin performing the enrollment; may be null
-     * @param packageSession the batch being enrolled into
+     * Convenience overload for callers where the person acting IS the sub-org's leader — the
+     * /sub-org/v1/add-member route, where a practice admin adds their own staff.
      */
     public static Map<String, Object> build(UserDTO member, UserDTO subOrgAdmin,
+                                            PackageSession packageSession) {
+        return build(member, subOrgAdmin, subOrgAdmin, packageSession);
+    }
+
+    /**
+     * @param member      the person being enrolled into the sub-org
+     * @param subOrgAdmin the sub-org's OWN leader — NOT whoever clicked enroll. Workflow nodes
+     *                    resolve the practice's LearnDash group from this person's email
+     *                    ({@code get-leader-group?email=#ctx['subOrgAdmin']['email']}), so passing
+     *                    the acting platform admin here either 404s or, worse, silently returns
+     *                    THEIR group and files the member under the wrong practice. May be null
+     *                    when the sub-org has no resolvable leader — deliberately left null rather
+     *                    than falling back to the actor, because no group beats the wrong group.
+     * @param enrolledBy  who performed the enrollment; for audit and notification nodes
+     * @param packageSession the batch being enrolled into
+     */
+    public static Map<String, Object> build(UserDTO member, UserDTO subOrgAdmin, UserDTO enrolledBy,
                                             PackageSession packageSession) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("member", member);
         // Alias — see class javadoc. Same object, so nodes written against either key resolve.
         contextData.put("user", member);
         contextData.put("subOrgAdmin", subOrgAdmin);
+        contextData.put("enrolledBy", enrolledBy);
         contextData.put("packageSessionIds", packageSession != null ? packageSession.getId() : null);
         contextData.put("packageId",
                 packageSession != null && packageSession.getPackageEntity() != null

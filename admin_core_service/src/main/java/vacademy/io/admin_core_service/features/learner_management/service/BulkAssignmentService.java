@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.institute_learner.manager.Student
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
@@ -102,6 +103,8 @@ public class BulkAssignmentService {
     private final AftInstallmentRepository aftInstallmentRepository;
     private final SubOrgService subOrgService;
     private final InstituteSubOrgRepository instituteSubOrgRepository;
+    // Used only to resolve a sub-org's own leader for the workflow context — see resolveSubOrgLeader.
+    private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -1143,7 +1146,7 @@ public class BulkAssignmentService {
 
         if (subOrg != null && hasLearnerRole(subOrgRoles)) {
             triggerSubOrgMemberEnrollmentWorkflow(
-                    instituteId, userDTO, packageSession, subOrgRoles, adminUserId);
+                    instituteId, userDTO, packageSession, subOrg, subOrgRoles, adminUserId);
             return;
         }
 
@@ -1168,21 +1171,22 @@ public class BulkAssignmentService {
      */
     private void triggerSubOrgMemberEnrollmentWorkflow(
             String instituteId, UserDTO userDTO, PackageSession packageSession,
-            String subOrgRoles, String adminUserId) {
+            Institute subOrg, String subOrgRoles, String adminUserId) {
         if (userDTO == null || packageSession == null || !hasLearnerRole(subOrgRoles)) {
             return;
         }
         try {
-            UserDTO adminDTO = null;
-            if (StringUtils.hasText(adminUserId)) {
-                List<UserDTO> admins = authService.getUsersFromAuthServiceByUserIds(List.of(adminUserId));
-                adminDTO = CollectionUtils.isEmpty(admins) ? null : admins.get(0);
-            }
+            UserDTO enrolledBy = resolveUser(adminUserId);
+            // The sub-org's OWN leader, not whoever clicked enroll — see the javadoc on
+            // SubOrgMemberEnrollmentContext.build. Unlike /sub-org/v1/add-member (where the
+            // caller IS the practice admin), this wizard is driven by a platform admin whose
+            // email resolves to the wrong practice group, or to none at all.
+            UserDTO subOrgLeader = resolveSubOrgLeader(subOrg, packageSession.getId());
 
             // Built centrally so this and /sub-org/v1/add-member publish an identical context —
             // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
-            Map<String, Object> contextData =
-                    SubOrgMemberEnrollmentContext.build(userDTO, adminDTO, packageSession);
+            Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
+                    userDTO, subOrgLeader, enrolledBy, packageSession);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
@@ -1190,6 +1194,54 @@ public class BulkAssignmentService {
         } catch (Exception e) {
             log.warn("Failed to trigger SUB_ORG_MEMBER_ENROLLMENT for userId={} packageSession={}: {}",
                     userDTO.getId(), packageSession.getId(), e.getMessage());
+        }
+    }
+
+    /** Single user fetch from auth-service, null-safe on both a blank id and an empty response. */
+    private UserDTO resolveUser(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return null;
+        }
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+        return CollectionUtils.isEmpty(users) ? null : users.get(0);
+    }
+
+    /**
+     * The sub-org's own leader: its ROOT_ADMIN for this batch, falling back to any ACTIVE member
+     * carrying ADMIN. Workflow nodes look the practice's LearnDash group up by this person's
+     * email, so it must be someone who actually leads the practice.
+     *
+     * <p>Returns null when the sub-org has no resolvable admin. That is deliberate: the caller
+     * publishes the null rather than substituting the acting admin, because a lookup keyed on the
+     * wrong person silently files the member into the wrong practice's group — a far worse
+     * outcome than the node skipping.
+     */
+    private UserDTO resolveSubOrgLeader(Institute subOrg, String packageSessionId) {
+        if (subOrg == null || !StringUtils.hasText(subOrg.getId())) {
+            return null;
+        }
+        try {
+            String leaderUserId = studentSessionInstituteGroupMappingRepository
+                    .findRootAdminMappingBySubOrgAndPackageSession(subOrg.getId(), packageSessionId)
+                    .map(StudentSessionInstituteGroupMapping::getUserId)
+                    .orElse(null);
+
+            if (!StringUtils.hasText(leaderUserId)) {
+                List<String> adminIds = studentSessionInstituteGroupMappingRepository
+                        .findActiveAdminUserIdsBySubOrg(subOrg.getId());
+                leaderUserId = CollectionUtils.isEmpty(adminIds) ? null : adminIds.get(0);
+            }
+
+            if (!StringUtils.hasText(leaderUserId)) {
+                log.warn("No leader found for sub-org {} — SUB_ORG_MEMBER_ENROLLMENT will carry a "
+                        + "null subOrgAdmin, so practice-group nodes will skip rather than enroll "
+                        + "into the wrong group", subOrg.getId());
+                return null;
+            }
+            return resolveUser(leaderUserId);
+        } catch (Exception e) {
+            log.warn("Failed to resolve leader for sub-org {}: {}", subOrg.getId(), e.getMessage());
+            return null;
         }
     }
 

@@ -184,4 +184,18 @@ export const flavorConfig: FlavorConfigs = {
     domain: "hcca.in",
     subdomain: "learn",
   },
+
+  // The Learning Bridge iOS app
+  "io.learningbridge.app": {
+    appName: "The Learning Bridge",
+    domain: "thelearningbridge.uk",
+    subdomain: "student",
+  },
+
+  // The Learning Bridge Android app
+  "com.learningbridge.app": {
+    appName: "The Learning Bridge",
+    domain: "thelearningbridge.uk",
+    subdomain: "student",
+  },
 };

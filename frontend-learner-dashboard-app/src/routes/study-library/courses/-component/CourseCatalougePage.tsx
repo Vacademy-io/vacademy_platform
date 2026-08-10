@@ -1,7 +1,14 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { cn } from "@/lib/utils";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import CoursesPage from "./CoursesPage.tsx";
+import CatalogueFilterWizard, {
+  type CatalogueFilterWizardOption,
+  type CatalogueFilterWizardSelection,
+  type CatalogueFilterWizardStep,
+} from "./CatalogueFilterWizard.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
+import { handleFetchInstituteDetails } from "../-services/institute-details.ts";
 import axios from "axios";
 import {
   STUDENT_DETAIL,
@@ -135,8 +142,50 @@ const CourseCatalougePage: React.FC = () => {
   const [sortOption, setSortOption] = useState("Newest");
 
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
+
+  // Admin-configured step-by-step filter wizard (Course Settings → Catalogue
+  // & Publishing → Course Filter Wizard). null when disabled or unconfigured.
+  const [filterWizardConfig, setFilterWizardConfig] = useState<{
+    steps: CatalogueFilterWizardStep[];
+    mandatory: boolean;
+  } | null>(null);
+  const [showFilterWizard, setShowFilterWizard] = useState(false);
+
+  // Same query FilterPanel uses for its Level/Session/Tag options — shares
+  // react-query's cache (queryKey ["FETCH_INSTITUTE_DETAILS"]) so this does
+  // not trigger a second network request.
+  const { data: publicInstituteDetails } = useQuery(handleFetchInstituteDetails());
+
+  type WizardLevelItem = { id: string; level_name?: string };
+  type WizardSessionItem = { id: string; session_name?: string };
+
+  const wizardLevels = useMemo<CatalogueFilterWizardOption[]>(
+    () =>
+      ((publicInstituteDetails?.levels || []) as WizardLevelItem[])
+        .map((level) => ({ id: level.id, name: toTitleCase(level.level_name || "Level") }))
+        .sort(compareByNameNatural),
+    [publicInstituteDetails?.levels]
+  );
+
+  const wizardSessions = useMemo<CatalogueFilterWizardOption[]>(
+    () =>
+      ((publicInstituteDetails?.sessions || []) as WizardSessionItem[])
+        .map((session) => ({ id: session.id, name: toTitleCase(session.session_name || "Session") }))
+        .sort(compareByNameNatural),
+    [publicInstituteDetails?.sessions]
+  );
+
+  const wizardTags = useMemo<CatalogueFilterWizardOption[]>(() => {
+    const uniqueMap = new Map<string, string>();
+    ((publicInstituteDetails?.tags || []) as string[]).forEach((tag) => {
+      const normalized = tag.toLowerCase();
+      if (!uniqueMap.has(normalized)) uniqueMap.set(normalized, toTitleCase(tag));
+    });
+    return Array.from(uniqueMap.entries()).map(([id, name]) => ({ id, name }));
+  }, [publicInstituteDetails?.tags]);
 
   // Debounced search term to avoid multiple API calls during typing
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -206,6 +255,7 @@ const CourseCatalougePage: React.FC = () => {
           sort: sortOption,
           search: debouncedSearch,
           levels: selectedLevels,
+          sessions: selectedSessions,
           instructors: selectedInstructors,
           tags: selectedTags,
         });
@@ -216,6 +266,7 @@ const CourseCatalougePage: React.FC = () => {
         const body = {
           status: [] as string[],
           level_ids: selectedLevels ?? [],
+          session_ids: selectedSessions ?? [],
           faculty_ids: selectedInstructors ?? [],
           search_by_name: debouncedSearch ?? "",
           tag: (() => {
@@ -313,6 +364,7 @@ const CourseCatalougePage: React.FC = () => {
             const body = {
               status: [] as string[],
               level_ids: selectedLevels ?? [],
+              session_ids: selectedSessions ?? [],
               faculty_ids: selectedInstructors ?? [],
               created_by_user_id: null as string | null,
               search_by_name: debouncedSearch ?? "",
@@ -385,6 +437,7 @@ const CourseCatalougePage: React.FC = () => {
     },
     [
       selectedLevels,
+      selectedSessions,
       selectedInstructors,
       debouncedSearch,
       selectedTags,
@@ -404,6 +457,7 @@ const CourseCatalougePage: React.FC = () => {
 
   const clearAllFilters = async () => {
     setSelectedLevels([]);
+    setSelectedSessions([]);
     setSelectedTags([]);
     setSelectedInstructors([]);
     setSearchTerm("");
@@ -411,6 +465,49 @@ const CourseCatalougePage: React.FC = () => {
     setPageByTab({ ALL: 0, PROGRESS: 0, COMPLETED: 0 });
     setFiltersVersion((v) => v + 1);
   };
+
+  const getFilterWizardCompletionKey = async () => {
+    const instituteId = await getInstituteId();
+    const userId = await getUserId();
+    return `catalogue_filter_wizard_completed_${instituteId}_${userId}`;
+  };
+
+  const markFilterWizardDone = async () => {
+    const key = await getFilterWizardCompletionKey();
+    await Preferences.set({ key, value: "true" });
+  };
+
+  const handleFilterWizardComplete = async (selection: CatalogueFilterWizardSelection) => {
+    setSelectedLevels(selection.levels);
+    setSelectedSessions(selection.sessions);
+    setSelectedTags(selection.tags);
+    setShowFilterWizard(false);
+    await markFilterWizardDone();
+    await handleApplyFilters();
+  };
+
+  const handleFilterWizardSkip = async () => {
+    setShowFilterWizard(false);
+    await markFilterWizardDone();
+  };
+
+  // Show the wizard once — the first time it's ready and hasn't been
+  // completed/skipped before by this learner at this institute.
+  useEffect(() => {
+    if (!filterWizardConfig || !publicInstituteDetails) return;
+    let cancelled = false;
+    (async () => {
+      const key = await getFilterWizardCompletionKey();
+      const { value } = await Preferences.get({ key });
+      if (!cancelled && value !== "true") {
+        setShowFilterWizard(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterWizardConfig, publicInstituteDetails]);
 
   // Single consolidated fetch: run when selected tab changes, or
   // when debounced search, sort, applied filters, or pagination for the active tab changes
@@ -576,6 +673,23 @@ const CourseCatalougePage: React.FC = () => {
             settingsJsonData?.setting?.COURSE_SETTING?.data?.permissions
               ?.allowLearnersToCreateCourses
           );
+
+          const filterWizard =
+            settingsJsonData?.setting?.COURSE_SETTING?.data?.catalogueSettings
+              ?.filterWizard;
+          const wizardSteps: CatalogueFilterWizardStep[] = Array.isArray(
+            filterWizard?.steps
+          )
+            ? filterWizard.steps.filter(
+                (step: string): step is CatalogueFilterWizardStep =>
+                  step === "level" || step === "session" || step === "tag"
+              )
+            : [];
+          setFilterWizardConfig(
+            filterWizard?.enabled && wizardSteps.length > 0
+              ? { steps: wizardSteps, mandatory: Boolean(filterWizard.mandatory) }
+              : null
+          );
         } catch (err) {
           console.warn(
             "[Catalog] institute_settings_json JSON parse failed",
@@ -597,6 +711,17 @@ const CourseCatalougePage: React.FC = () => {
 
   return (
     <div className="min-h-screen">
+      <CatalogueFilterWizard
+        open={showFilterWizard}
+        steps={filterWizardConfig?.steps ?? []}
+        mandatory={filterWizardConfig?.mandatory ?? false}
+        levels={wizardLevels}
+        sessions={wizardSessions}
+        tags={wizardTags}
+        onComplete={handleFilterWizardComplete}
+        onSkip={handleFilterWizardSkip}
+      />
+
       {/* Hero Section */}
       <HeroSection allowLeanersToCreateCourses={allowLeanersToCreateCourses} />
 
@@ -688,6 +813,8 @@ const CourseCatalougePage: React.FC = () => {
                 onSortChange={setSortOption}
                 selectedLevels={selectedLevels}
                 setSelectedLevels={setSelectedLevels}
+                selectedSessions={selectedSessions}
+                setSelectedSessions={setSelectedSessions}
                 selectedTags={selectedTags}
                 setSelectedTags={setSelectedTags}
                 selectedInstructors={selectedInstructors}
@@ -711,6 +838,8 @@ const CourseCatalougePage: React.FC = () => {
                 onSortChange={setSortOption}
                 selectedLevels={selectedLevels}
                 setSelectedLevels={setSelectedLevels}
+                selectedSessions={selectedSessions}
+                setSelectedSessions={setSelectedSessions}
                 selectedTags={selectedTags}
                 setSelectedTags={setSelectedTags}
                 selectedInstructors={selectedInstructors}
@@ -734,6 +863,8 @@ const CourseCatalougePage: React.FC = () => {
                 onSortChange={setSortOption}
                 selectedLevels={selectedLevels}
                 setSelectedLevels={setSelectedLevels}
+                selectedSessions={selectedSessions}
+                setSelectedSessions={setSelectedSessions}
                 selectedTags={selectedTags}
                 setSelectedTags={setSelectedTags}
                 selectedInstructors={selectedInstructors}

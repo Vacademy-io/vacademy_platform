@@ -109,6 +109,17 @@ export interface GlobalSettings {
      * follow a later rename there.
      */
     stepLabels?: Partial<Record<"level" | "session" | "tag", string>>;
+    /**
+     * Institute-specific grouping for the Level step, e.g. this institute's
+     * real level values are "Mathematics Class 5", "Science Class 5", etc.
+     * (subject baked into the level name) — this maps a clean group label
+     * ("Class 5") to every raw level value it should stand in for. The
+     * wizard shows the group labels; picking one expands to every raw value
+     * in its list before filtering, so CourseCatalogComponent's exact-match
+     * level filter needs no changes. Falls back to the raw (ungrouped) level
+     * list when absent.
+     */
+    levelGroups?: Record<string, string[]>;
   };
   communityJoinLink?: string;
   layout?: {

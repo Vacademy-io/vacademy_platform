@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { X, CaretLeft, CaretRight, Compass, MagicWand } from "@phosphor-icons/react";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { compareByNameNatural } from "@/lib/utils";
 
 export type CourseFinderStep = "level" | "session" | "tag";
 
@@ -28,6 +29,8 @@ interface CourseFinderWizardProps {
   options: CourseFinderOptions;
   /** Per-catalogue text override for a step's title — see courseFinder.stepLabels. */
   stepLabels?: Partial<Record<CourseFinderStep, string>>;
+  /** Institute-specific Level grouping — see courseFinder.levelGroups. */
+  levelGroups?: Record<string, string[]>;
   onComplete: (selection: CourseFinderSelection) => void;
   onSkip: () => void;
 }
@@ -45,14 +48,31 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
   mandatory,
   options,
   stepLabels,
+  levelGroups,
   onComplete,
   onSkip,
 }) => {
   const [stepIndex, setStepIndex] = useState(0);
   const [selection, setSelection] = useState<CourseFinderSelection>(EMPTY_SELECTION);
 
+  const hasLevelGroups = !!levelGroups && Object.keys(levelGroups).length > 0;
+
+  // When grouped, the step shows clean group labels ("Class 5") instead of
+  // every raw level value ("Cyber Ai Class 5", "Mathematics Class 5", …) —
+  // picks are expanded back to the raw values on complete, below.
+  const levelOptions = useMemo<CourseFinderOption[]>(
+    () =>
+      hasLevelGroups
+        ? Object.keys(levelGroups!)
+            .map((label) => ({ id: label, name: label }))
+            .sort(compareByNameNatural)
+        : options.levels,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasLevelGroups, levelGroups, options.levels]
+  );
+
   const optionsByStep: Record<CourseFinderStep, CourseFinderOption[]> = {
-    level: options.levels,
+    level: levelOptions,
     session: options.sessions,
     tag: options.tags,
   };
@@ -61,7 +81,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
   const activeSteps = useMemo(
     () => steps.filter((step) => optionsByStep[step].length > 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [steps, options.levels, options.sessions, options.tags]
+    [steps, levelOptions, options.sessions, options.tags]
   );
 
   useEffect(() => {
@@ -95,8 +115,14 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
   };
 
   const handleNext = () => {
-    if (isLastStep) onComplete(selection);
-    else setStepIndex((i) => i + 1);
+    if (isLastStep) {
+      const expandedLevels = hasLevelGroups
+        ? selection.levels.flatMap((groupLabel) => levelGroups![groupLabel] ?? [groupLabel])
+        : selection.levels;
+      onComplete({ ...selection, levels: expandedLevels });
+    } else {
+      setStepIndex((i) => i + 1);
+    }
   };
   const handleBack = () => setStepIndex((i) => Math.max(0, i - 1));
 

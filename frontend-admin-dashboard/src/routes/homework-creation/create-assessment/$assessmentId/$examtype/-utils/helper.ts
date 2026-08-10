@@ -692,6 +692,7 @@ export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCu
         comma_separated_options: field.options
             ? field.options.map((opt) => opt.value).join(',')
             : '', // Join options for dropdowns
+        order_field: field.order ?? 0,
     };
 };
 

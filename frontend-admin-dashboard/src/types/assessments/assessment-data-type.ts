@@ -145,6 +145,8 @@ export interface ConvertedCustomField {
     is_mandatory: boolean;
     key: string;
     comma_separated_options: string;
+    /** Maps to RegistrationFieldDto.orderField — drives field_order on the server. */
+    order_field: number;
 }
 
 export interface CustomFieldStep3 {
@@ -158,6 +160,8 @@ export interface CustomFieldStep3 {
     description?: string;
     key: string;
     is_mandatory?: boolean;
+    /** Position in the registration form; kept in sync by updateFieldOrders on drag. */
+    order?: number;
 }
 
 // Assuming customFields is an object where keys are strings and values are the custom field details

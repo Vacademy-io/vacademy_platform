@@ -713,6 +713,9 @@ export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCu
         comma_separated_options: field.options
             ? field.options.map((opt) => opt.value).join(',')
             : '', // Join options for dropdowns
+        // Without this the server falls back to 0 for new fields and leaves
+        // existing ones untouched, so drag-reordering never persisted.
+        order_field: field.order ?? 0,
     };
 };
 

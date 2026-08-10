@@ -13,6 +13,7 @@ import {
     DotsSixVertical,
     DownloadSimple,
     Plus,
+    PencilSimple,
     TrashSimple,
 } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
@@ -27,6 +28,11 @@ import {
     transformBatchData,
 } from '../../-utils/helper';
 import { Switch } from '@/components/ui/switch';
+import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 import { Checkbox } from '@/components/ui/checkbox';
 import SelectField from '@/components/design-system/select-field';
 import { timeLimit } from '@/constants/dummy-data';
@@ -83,6 +89,8 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const sectionsInfo = getAllSessions(batches_for_sessions || []);
 
     const [selectedSection, setSelectedSection] = useState(sectionsInfo ? sectionsInfo[0]?.id : '');
+
+    const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
 
     // Extract batch IDs from preBatchData
     const batchIds = new Set(
@@ -247,6 +255,24 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         );
         setValue('open_test.custom_fields', updatedFields);
     };
+
+    const patchField = (id: string, patch: Record<string, unknown>) => {
+        const updatedFields = customFields?.map((field) =>
+            field.id === id ? { ...field, ...patch } : field
+        );
+        setValue('open_test.custom_fields', updatedFields);
+    };
+
+    const handleUpdateFieldName = (id: string, name: string) => patchField(id, { name });
+
+    const handleUpdateFieldOptions = (id: string, values: string[]) =>
+        patchField(id, { options: values.map((value, idx) => ({ id: String(idx), value })) });
+
+    const isDuplicateFieldName = (id: string, name: string) =>
+        name.trim().length > 0 &&
+        (customFields ?? []).some(
+            (f) => f.id !== id && f.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
 
     const handleAddOpenFieldValues = (type: string, name: string, oldKey: boolean) => {
         // Add the new field to the array
@@ -628,60 +654,67 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                 key: 'registration_form_fields',
                             }) === 'REQUIRED' && (
                                 <div className="flex w-full flex-col gap-4">
-                                    <h1>Registration Input Field</h1>
+                                    <div className="flex flex-col">
+                                        <h1>Registration Form Fields</h1>
+                                        <p className="text-caption text-neutral-500">
+                                            Drag to reorder fields and customize them
+                                        </p>
+                                    </div>
+                                    <FormFieldRowHeader />
                                     <div className="flex flex-col gap-4">
                                         {customFields?.map((fields, index) => {
+                                            const isEditingField = editingFieldId === fields.id;
+                                            const hasOptions =
+                                                fields.type === 'dropdown' ||
+                                                fields.type === 'radio' ||
+                                                fields.type === 'multi_select';
                                             return (
-                                                <div
+                                                <FormFieldRow
                                                     key={index}
-                                                    className="flex items-center gap-4"
+                                                    position={index + 1}
+                                                    name={fields.name}
+                                                    type={fields.type}
+                                                    isRequired={fields.isRequired}
+                                                    locked={fields.oldKey}
+                                                    isEditing={isEditingField}
+                                                    onToggleRequired={() =>
+                                                        toggleIsRequired(fields.id)
+                                                    }
+                                                    onEdit={() =>
+                                                        setEditingFieldId(
+                                                            isEditingField ? null : fields.id
+                                                        )
+                                                    }
+                                                    onDelete={() =>
+                                                        handleDeleteOpenField(fields.id)
+                                                    }
+                                                    dragHandle={<DotsSixVertical size={18} />}
                                                 >
-                                                    <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                                        <h1 className="text-sm">
-                                                            {fields.name}
-                                                            {fields.oldKey && (
-                                                                <span className="text-subtitle text-danger-600">
-                                                                    *
-                                                                </span>
-                                                            )}
-                                                            {!fields.oldKey &&
-                                                                fields.isRequired && (
-                                                                    <span className="text-subtitle text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                        </h1>
-                                                        <div className="flex items-center gap-6">
-                                                            {!fields.oldKey && (
-                                                                <MyButton
-                                                                    type="button"
-                                                                    scale="small"
-                                                                    buttonType="secondary"
-                                                                    className="min-w-6 !rounded-sm !p-0"
-                                                                    onClick={() =>
-                                                                        handleDeleteOpenField(
-                                                                            fields.id
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <TrashSimple className="!size-4 text-danger-500" />
-                                                                </MyButton>
-                                                            )}
-                                                            <DotsSixVertical size={20} />
-                                                        </div>
-                                                    </div>
-                                                    {!fields.oldKey && (
-                                                        <>
-                                                            <h1 className="text-sm">Required</h1>
-                                                            <Switch
-                                                                checked={fields.isRequired}
-                                                                onCheckedChange={() =>
-                                                                    toggleIsRequired(fields.id)
-                                                                }
-                                                            />
-                                                        </>
-                                                    )}
-                                                </div>
+                                                    <InlineFieldEditor
+                                                        name={fields.name}
+                                                        onNameChange={(next) =>
+                                                            handleUpdateFieldName(fields.id, next)
+                                                        }
+                                                        duplicateName={isDuplicateFieldName(
+                                                            fields.id,
+                                                            fields.name
+                                                        )}
+                                                        {...(hasOptions
+                                                            ? {
+                                                                  options: (
+                                                                      fields.options ?? []
+                                                                  ).map((o) => o.value),
+                                                                  onOptionsChange: (
+                                                                      next: string[]
+                                                                  ) =>
+                                                                      handleUpdateFieldOptions(
+                                                                          fields.id,
+                                                                          next
+                                                                      ),
+                                                              }
+                                                            : {})}
+                                                    />
+                                                </FormFieldRow>
                                             );
                                         })}
                                     </div>

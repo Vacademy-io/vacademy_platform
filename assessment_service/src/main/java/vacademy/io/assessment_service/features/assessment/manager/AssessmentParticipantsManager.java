@@ -362,6 +362,12 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
         assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        // Reordering an existing field arrives through this path, so skipping the
+        // order here made drag-and-drop silently no-op. Leave it alone when the
+        // client omits it rather than collapsing every field to 0.
+        if (registrationFieldDto.getOrderField() != null) {
+            assessmentCustomField.setFieldOrder(registrationFieldDto.getOrderField());
+        }
         return assessmentCustomField;
     }
 

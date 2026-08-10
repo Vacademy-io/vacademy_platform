@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
+from ...db import db_session
 from ..llm_json import generate_json
 from ..model_selection import resolve_models
 from ..question_gen_service import QUESTIONS_USE_CASE
@@ -615,7 +616,6 @@ async def generate_questions(
     if not kb:
         raise ValueError("Knowledge base not found")
 
-    retrieval = KbRetrievalService(db)
     primary, fallbacks = resolve_models(db, QUESTION_USE_CASE)
     models = [primary, *fallbacks]
     result.model = primary
@@ -638,10 +638,20 @@ async def generate_questions(
         # paper's subject.
         query = f"{row.topic} {' '.join(row.instruction.split()[:12]) if row.instruction else ''}".strip()
         try:
-            hits = await retrieval.search(
-                kb_id=kb_id, institute_id=institute_id, query=query,
-                top_k=PASSAGES_PER_ROW, similarity_threshold=0.2,
-            )
+            # EACH ROW OWNS ITS DB SESSION. Rows run concurrently under
+            # asyncio.gather, and retrieval awaits an embedding call before
+            # issuing its vector query — so with a shared session two rows
+            # interleave a synchronous execute on the SAME psycopg connection.
+            # That is not merely unsupported, it corrupts the connection:
+            # observed on prod as `psycopg.errors.ProtocolViolation: server conn
+            # crashed?`, which killed whole papers minutes after the LLM calls
+            # had already succeeded, and did it intermittently — one run in three
+            # completed, which is exactly what made it look like a hang.
+            with db_session() as row_db:
+                hits = await KbRetrievalService(row_db).search(
+                    kb_id=kb_id, institute_id=institute_id, query=query,
+                    top_k=PASSAGES_PER_ROW, similarity_threshold=0.2,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Retrieval failed for row %s: %s", row.id, exc)
             hits = []

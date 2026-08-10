@@ -37,6 +37,11 @@ export type StudentDashboardWidgetId =
     // band. Only the default/vibrant hero has one — the play / cleaner-play
     // heroes show a greeting band instead, which this flag does not affect.
     | 'gettingStarted'
+    // The XP / streak / badges block at the bottom of the dashboard. Covers
+    // both the standard panel and the play theme's own trio of widgets. Note
+    // the badges card has a second, narrower switch of its own (the badge
+    // config's master toggle); this flag hides the whole block.
+    | 'gamification'
     | 'coursesStat'
     | 'evaluationStat'
     | 'continueLearning'
@@ -82,6 +87,7 @@ export const WIDGET_LABELS: Record<string, string> = {
     upcomingLiveClasses: 'Upcoming Live Classes',
     myMentors: 'My Mentors',
     thisWeekAttendance: 'Attendance (this week)',
+    gamification: 'Gamification (XP, streak, badges)',
     exploreMemberships: 'Explore Memberships (button)',
     exploreBooks: 'Explore Books (button)',
     custom: 'Custom',

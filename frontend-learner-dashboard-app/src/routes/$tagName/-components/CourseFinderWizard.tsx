@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { X, CaretLeft, CaretRight, Compass, MagicWand } from "@phosphor-icons/react";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { compareByNameNatural } from "@/lib/utils";
 
 export type CourseFinderStep = "level" | "session" | "tag";
 
@@ -59,13 +58,14 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
 
   // When grouped, the step shows clean group labels ("Class 5") instead of
   // every raw level value ("Cyber Ai Class 5", "Mathematics Class 5", …) —
-  // picks are expanded back to the raw values on complete, below.
+  // picks are expanded back to the raw values on complete, below. Displayed
+  // in the exact order the keys appear in levelGroups (JSON string-key
+  // order == insertion order == display order here) — no sorting, so the
+  // catalogue JSON alone controls the order, e.g. LKG, UKG, Class 1, Class 2…
   const levelOptions = useMemo<CourseFinderOption[]>(
     () =>
       hasLevelGroups
-        ? Object.keys(levelGroups!)
-            .map((label) => ({ id: label, name: label }))
-            .sort(compareByNameNatural)
+        ? Object.keys(levelGroups!).map((label) => ({ id: label, name: label }))
         : options.levels,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [hasLevelGroups, levelGroups, options.levels]

@@ -4,8 +4,11 @@ import { componentTemplates } from '../-utils/component-templates';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     Plus,
     Trash as Trash2,
@@ -935,6 +938,67 @@ const GlobalSettingsEditor = ({
                                     updateField('leadCollection.inviteLink', e.target.value)
                                 }
                                 placeholder="Optional invite link"
+                            />
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Course Finder */}
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+                <h4 className="font-medium text-gray-700">Course Finder Wizard</h4>
+                <p className="text-caption text-gray-500">
+                    Asks visitors to pick filters step by step the first time they open this
+                    page, then shows only the matching courses. Options are pulled live from
+                    this page&apos;s own course grid — nothing extra to configure.
+                </p>
+                <div className="flex items-center justify-between">
+                    <Label>Enable Course Finder</Label>
+                    <Switch
+                        checked={gs.courseFinder?.enabled || false}
+                        onCheckedChange={(c) => updateField('courseFinder.enabled', c)}
+                    />
+                </div>
+                {gs.courseFinder?.enabled && (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Steps to ask</Label>
+                            <div className="flex flex-col gap-2">
+                                {(
+                                    [
+                                        { key: 'level', term: [ContentTerms.Level, SystemTerms.Level] },
+                                        { key: 'session', term: [ContentTerms.Session, SystemTerms.Session] },
+                                        { key: 'tag', term: [ContentTerms.PopularTag, SystemTerms.PopularTag] },
+                                    ] as const
+                                ).map(({ key, term }) => {
+                                    const steps: string[] = gs.courseFinder?.steps || [];
+                                    const checked = steps.includes(key);
+                                    return (
+                                        <label key={key} className="flex items-center gap-2 text-sm text-gray-700">
+                                            <Checkbox
+                                                checked={checked}
+                                                onCheckedChange={() => {
+                                                    const next = checked
+                                                        ? steps.filter((s) => s !== key)
+                                                        : [...steps, key];
+                                                    updateField('courseFinder.steps', next);
+                                                }}
+                                            />
+                                            {getTerminology(term[0], term[1])}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-2xs text-gray-400">
+                                Asked in this fixed order — skipping any step left unchecked, or
+                                any step this page&apos;s courses have no options for.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs">Require completion (no skip)</Label>
+                            <Switch
+                                checked={gs.courseFinder?.mandatory || false}
+                                onCheckedChange={(c) => updateField('courseFinder.mandatory', c)}
                             />
                         </div>
                     </>

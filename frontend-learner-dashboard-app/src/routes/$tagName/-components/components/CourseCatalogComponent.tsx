@@ -498,6 +498,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
 
@@ -520,6 +521,17 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         .sort(compareByNameNatural),
     [courses],
   );
+  const sessions = useMemo(() => {
+    const byId = new Map<string, string>();
+    courses.forEach((c) => {
+      if (c.sessionId && !byId.has(c.sessionId)) {
+        byId.set(c.sessionId, c.sessionName || c.sessionId);
+      }
+    });
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name: toTitleCase(name) }))
+      .sort(compareByNameNatural);
+  }, [courses]);
   const tags = useMemo(
     () =>
       [
@@ -543,6 +555,35 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       ),
     [courses],
   );
+
+  // Broadcast this block's own filter options up to the page-level Course
+  // Finder wizard (CourseCataloguePage), and apply whatever the wizard picks
+  // back into local filter state. Cross-tree communication uses the same
+  // window-event pattern as openLeadCollection/openAudienceForm elsewhere in
+  // this route — the wizard lives outside the JsonRenderer tree, so props
+  // can't reach it directly. Sourcing options from THIS component's own
+  // levels/sessions/tags (rather than a separate institute-wide fetch) keeps
+  // the wizard's picks guaranteed compatible with this component's own id/name
+  // conventions (levels match by name, tags are raw case-sensitive strings).
+  useEffect(() => {
+    if (courses.length === 0) return;
+    window.dispatchEvent(
+      new CustomEvent("courseFinderOptionsReady", {
+        detail: { levels, sessions, tags },
+      }),
+    );
+  }, [courses.length, levels, sessions, tags]);
+
+  useEffect(() => {
+    const handleApplied = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      setSelectedLevels(Array.isArray(detail.levels) ? detail.levels : []);
+      setSelectedSessions(Array.isArray(detail.sessions) ? detail.sessions : []);
+      setSelectedTags(Array.isArray(detail.tags) ? detail.tags : []);
+    };
+    window.addEventListener("courseFinderApplied", handleApplied);
+    return () => window.removeEventListener("courseFinderApplied", handleApplied);
+  }, []);
 
   // Enrollment dialog state
   // Removed enrollment dialog state - all enrollment happens on details page
@@ -613,6 +654,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
     levels.length > 1;
+  const shouldShowSessionFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("session")) &&
+    sessions.length > 1;
   // Tags are intentionally NOT gated on filtersConfig: the page-builder default
   // template ships filtersConfig=[{level}] and there is no admin UI to add a
   // "tags" entry yet, so gating would hide tags on every catalogue. Show the Tags
@@ -636,6 +681,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const shouldShowPriceFilter = filtersEnabled && Boolean(priceFilterConfig);
   const hasFiltersToShow =
     shouldShowLevelFilter ||
+    shouldShowSessionFilter ||
     shouldShowTagsFilter ||
     shouldShowInstructorFilter ||
     shouldShowPriceFilter;
@@ -907,6 +953,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       });
     }
 
+    // Apply session filter
+    if (selectedSessions.length > 0) {
+      filtered = filtered.filter(
+        (course) => course.sessionId && selectedSessions.includes(course.sessionId),
+      );
+    }
+
     // Apply tag filter
     if (selectedTags.length > 0) {
       filtered = filtered.filter((course) => {
@@ -983,6 +1036,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     courses,
     searchTerm,
     selectedLevels,
+    selectedSessions,
     selectedTags,
     selectedInstructors,
     sortOption,
@@ -1022,6 +1076,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   const clearAllFilters = () => {
     setSelectedLevels([]);
+    setSelectedSessions([]);
     setSelectedTags([]);
     setSelectedInstructors([]);
     setSearchTerm("");
@@ -1065,6 +1120,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   const filterBadgeCount =
     selectedLevels.length +
+    selectedSessions.length +
     selectedTags.length +
     selectedInstructors.length +
     (shouldShowPriceFilter && isPriceFilterActive ? 1 : 0);
@@ -1205,6 +1261,22 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           toggleItem(id, selectedLevels, setSelectedLevels)
                         }
                         disabled={levels.length === 0}
+                      />
+                    )}
+
+                    {shouldShowSessionFilter && (
+                      <FilterSection
+                        title={
+                          filtersConfig?.find((filter) => filter.id === "session")
+                            ?.label ??
+                          getTerminology(ContentTerms.Session, SystemTerms.Session)
+                        }
+                        items={sessions}
+                        selectedItems={selectedSessions}
+                        handleChange={(id) =>
+                          toggleItem(id, selectedSessions, setSelectedSessions)
+                        }
+                        disabled={sessions.length === 0}
                       />
                     )}
 

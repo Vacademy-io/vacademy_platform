@@ -88,6 +88,28 @@ export interface GlobalSettings {
     fields: string[];
     additionalCharges?: AdditionalCharge[];
   };
+  /**
+   * Step-by-step Level → Session → Tag picker shown once, the first time a
+   * visitor opens this catalogue page, before any course grid is filtered.
+   * Options are sourced live from whichever `courseCatalog` block(s) are on
+   * the page (via a `courseFinderOptionsReady` event) — never a separate
+   * fetch — so a pick can never reference a level/session/tag that has zero
+   * matching courses. `steps` controls which of the three are asked at all,
+   * in that fixed order.
+   */
+  courseFinder?: {
+    enabled: boolean;
+    steps: Array<"level" | "session" | "tag">;
+    mandatory: boolean;
+    /**
+     * Per-catalogue text override for a step's title, bypassing Naming
+     * Settings. Stopgap for institutes whose Naming Settings rename hasn't
+     * reached this pre-login page yet (see use-domain-routing.ts) — prefer
+     * Naming Settings once that gap is closed, since a value set here won't
+     * follow a later rename there.
+     */
+    stepLabels?: Partial<Record<"level" | "session" | "tag", string>>;
+  };
   communityJoinLink?: string;
   layout?: {
     header?: {

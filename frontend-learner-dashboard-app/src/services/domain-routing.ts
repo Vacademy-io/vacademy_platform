@@ -54,6 +54,9 @@ export interface DomainRoutingResponse {
   namingOverrides?: {
     course?: string | null;
     coursePlural?: string | null;
+    level?: string | null;
+    session?: string | null;
+    popularTag?: string | null;
   } | null;
 }
 

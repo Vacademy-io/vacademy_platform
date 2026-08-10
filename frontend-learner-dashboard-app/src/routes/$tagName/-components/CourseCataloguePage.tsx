@@ -10,6 +10,11 @@ import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracki
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
+import {
+  CourseFinderWizard,
+  type CourseFinderOptions,
+  type CourseFinderSelection,
+} from "./CourseFinderWizard";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
@@ -52,6 +57,17 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [leadArmed, setLeadArmed] = useState(false);
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
+
+  // Course Finder wizard: options arrive live from whichever courseCatalog
+  // block(s) are on the page (see CourseCatalogComponent's
+  // courseFinderOptionsReady broadcast) — never a separate fetch.
+  const [courseFinderOptions, setCourseFinderOptions] = useState<CourseFinderOptions>({
+    levels: [],
+    sessions: [],
+    tags: [],
+  });
+  const [hasCourseFinderOptions, setHasCourseFinderOptions] = useState(false);
+  const [showCourseFinder, setShowCourseFinder] = useState(false);
 
   // Preview mode: bidirectional communication with admin editor iframe
   const isPreviewMode = typeof window !== 'undefined' &&
@@ -367,6 +383,60 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     console.log(`[CourseCataloguePage] Marked intro page as seen (closed): ${introPageSeenKey}`);
   };
 
+  // Course Finder: collect live filter options from the page's course-grid
+  // block(s) as soon as they're ready.
+  useEffect(() => {
+    const handleOptionsReady = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      setCourseFinderOptions({
+        levels: Array.isArray(detail.levels) ? detail.levels : [],
+        sessions: Array.isArray(detail.sessions) ? detail.sessions : [],
+        tags: Array.isArray(detail.tags) ? detail.tags : [],
+      });
+      setHasCourseFinderOptions(true);
+    };
+    window.addEventListener('courseFinderOptionsReady', handleOptionsReady);
+    return () => window.removeEventListener('courseFinderOptionsReady', handleOptionsReady);
+  }, []);
+
+  // Show it once — after intro/lead gating clears, options have arrived, and
+  // this visitor hasn't completed or skipped it before at this tag page.
+  useEffect(() => {
+    if (isPreviewMode) return;
+    if (!catalogueData?.globalSettings?.courseFinder?.enabled) return;
+    if (!hasCourseFinderOptions) return;
+    if (showIntroPage && !introCompleted) return;
+    const seenKey = `courseFinderSeen_${instituteId}_${tagName}`;
+    if (localStorage.getItem(seenKey) === 'true') return;
+    setShowCourseFinder(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isPreviewMode,
+    catalogueData?.globalSettings?.courseFinder?.enabled,
+    hasCourseFinderOptions,
+    showIntroPage,
+    introCompleted,
+  ]);
+
+  const markCourseFinderSeen = () => {
+    try {
+      localStorage.setItem(`courseFinderSeen_${instituteId}_${tagName}`, 'true');
+    } catch {
+      // ignore storage errors (private mode etc.)
+    }
+  };
+
+  const handleCourseFinderComplete = (selection: CourseFinderSelection) => {
+    setShowCourseFinder(false);
+    markCourseFinderSeen();
+    window.dispatchEvent(new CustomEvent('courseFinderApplied', { detail: selection }));
+  };
+
+  const handleCourseFinderSkip = () => {
+    setShowCourseFinder(false);
+    markCourseFinderSeen();
+  };
+
   if (isLoading) {
     return <DashboardLoader />;
   }
@@ -538,6 +608,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         />
       )}
 
+      {showCourseFinder && !isPreviewMode && catalogueData?.globalSettings?.courseFinder && (
+        <CourseFinderWizard
+          steps={catalogueData.globalSettings.courseFinder.steps}
+          mandatory={catalogueData.globalSettings.courseFinder.mandatory}
+          stepLabels={catalogueData.globalSettings.courseFinder.stepLabels}
+          options={courseFinderOptions}
+          onComplete={handleCourseFinderComplete}
+          onSkip={handleCourseFinderSkip}
+        />
+      )}
 
       {/* Mobile action bar — mirrors the header's Auth/CTA buttons (see
           MobileActionBar): admins control it from Global Header, including

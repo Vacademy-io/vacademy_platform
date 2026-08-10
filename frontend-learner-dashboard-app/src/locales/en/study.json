@@ -46,7 +46,17 @@
         "noOptions": "No options available",
         "unavailable": "Unavailable",
         "unnamedLevel": "Unnamed {{level}}",
+        "unnamedSession": "Unnamed {{session}}",
         "unnamedInstructor": "Unnamed {{instructor}}"
+    },
+    "catalogFilterWizard": {
+        "title": "Choose your {{term}}",
+        "description": "Pick one or more options below — we'll show courses that match.",
+        "stepOf": "Step {{current}} of {{total}}",
+        "next": "Next",
+        "back": "Back",
+        "showCourses": "Show courses",
+        "skip": "Skip, show all courses"
     },
     "pagination": {
         "ariaLabel": "Pagination",

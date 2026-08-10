@@ -1,0 +1,196 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { X, CaretLeft, CaretRight, Compass, MagicWand } from "@phosphor-icons/react";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+
+export type CourseFinderStep = "level" | "session" | "tag";
+
+export interface CourseFinderOption {
+  id: string;
+  name: string;
+}
+
+export interface CourseFinderOptions {
+  levels: CourseFinderOption[];
+  sessions: CourseFinderOption[];
+  tags: CourseFinderOption[];
+}
+
+export interface CourseFinderSelection {
+  levels: string[];
+  sessions: string[];
+  tags: string[];
+}
+
+interface CourseFinderWizardProps {
+  steps: CourseFinderStep[];
+  mandatory: boolean;
+  options: CourseFinderOptions;
+  /** Per-catalogue text override for a step's title — see courseFinder.stepLabels. */
+  stepLabels?: Partial<Record<CourseFinderStep, string>>;
+  onComplete: (selection: CourseFinderSelection) => void;
+  onSkip: () => void;
+}
+
+const EMPTY_SELECTION: CourseFinderSelection = { levels: [], sessions: [], tags: [] };
+
+/**
+ * Step-by-step Level → Session → Tag picker, shown once over the public
+ * catalogue page. Mirrors IntroPageComponent/LeadCollectionModal's plain
+ * fixed-overlay convention (no Radix Dialog) and uses the catalogue-* design
+ * tokens so it inherits the tenant's own theme instead of the app chrome's.
+ */
+export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
+  steps,
+  mandatory,
+  options,
+  stepLabels,
+  onComplete,
+  onSkip,
+}) => {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [selection, setSelection] = useState<CourseFinderSelection>(EMPTY_SELECTION);
+
+  const optionsByStep: Record<CourseFinderStep, CourseFinderOption[]> = {
+    level: options.levels,
+    session: options.sessions,
+    tag: options.tags,
+  };
+
+  // Drop any step the loaded courses have no options for — nothing to ask there.
+  const activeSteps = useMemo(
+    () => steps.filter((step) => optionsByStep[step].length > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [steps, options.levels, options.sessions, options.tags]
+  );
+
+  useEffect(() => {
+    if (activeSteps.length === 0) onSkip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSteps.length]);
+
+  if (activeSteps.length === 0) return null;
+
+  const currentStep = activeSteps[stepIndex]!;
+  const isLastStep = stepIndex === activeSteps.length - 1;
+  const currentOptions = optionsByStep[currentStep];
+  const selectionKey: keyof CourseFinderSelection =
+    currentStep === "level" ? "levels" : currentStep === "session" ? "sessions" : "tags";
+  const currentSelected = selection[selectionKey];
+
+  const stepTitle =
+    stepLabels?.[currentStep] ||
+    (currentStep === "tag"
+      ? getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)
+      : currentStep === "level"
+        ? getTerminology(ContentTerms.Level, SystemTerms.Level)
+        : getTerminology(ContentTerms.Session, SystemTerms.Session));
+
+  const toggleOption = (id: string) => {
+    setSelection((prev) => {
+      const list = prev[selectionKey];
+      const next = list.includes(id) ? list.filter((i) => i !== id) : [...list, id];
+      return { ...prev, [selectionKey]: next };
+    });
+  };
+
+  const handleNext = () => {
+    if (isLastStep) onComplete(selection);
+    else setStepIndex((i) => i + 1);
+  };
+  const handleBack = () => setStepIndex((i) => Math.max(0, i - 1));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="catalogue-card flex w-full max-w-md flex-col overflow-hidden p-0">
+        {/* Header */}
+        <div className="relative p-6 pb-4">
+          {!mandatory && (
+            <button
+              onClick={onSkip}
+              className="absolute end-4 top-4 rounded-full p-1.5 text-catalogue-text-muted transition-colors hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
+              aria-label="Close"
+              title="Close"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50">
+            <MagicWand className="h-5 w-5 text-primary-500" weight="fill" aria-hidden="true" />
+          </div>
+          <h2 className="text-lg font-semibold text-catalogue-text-primary">
+            Choose your {stepTitle}
+          </h2>
+          <p className="mt-1 text-sm text-catalogue-text-secondary">
+            Pick one or more options below — we&apos;ll show courses that match.
+          </p>
+        </div>
+
+        {/* Progress */}
+        <div className="flex items-center gap-1.5 px-6">
+          {activeSteps.map((step, i) => (
+            <span
+              key={step}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                i <= stepIndex ? "bg-primary-500" : "bg-catalogue-border"
+              }`}
+            />
+          ))}
+        </div>
+        <p className="px-6 pb-3 pt-2 text-xs text-catalogue-text-muted">
+          Step {stepIndex + 1} of {activeSteps.length}
+        </p>
+
+        {/* Options */}
+        <div className="max-h-72 overflow-y-auto px-6">
+          <div className="space-y-1 pb-2">
+            {currentOptions.map((option) => (
+              <label
+                key={option.id}
+                className="flex cursor-pointer items-center rounded-md px-2 py-2 text-catalogue-text-secondary transition-colors hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
+              >
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 rounded border-catalogue-border text-primary-500 focus:ring-primary-400 me-2.5"
+                  checked={currentSelected.includes(option.id)}
+                  onChange={() => toggleOption(option.id)}
+                />
+                <span className="text-sm">{option.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 border-t border-catalogue-border p-4">
+          {!mandatory ? (
+            <button onClick={onSkip} className="catalogue-btn catalogue-btn-ghost">
+              <Compass className="h-3.5 w-3.5" aria-hidden="true" />
+              Skip, show all courses
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            {stepIndex > 0 && (
+              <button onClick={handleBack} className="catalogue-btn catalogue-btn-secondary">
+                <CaretLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Back
+              </button>
+            )}
+            <button
+              onClick={handleNext}
+              disabled={currentSelected.length === 0}
+              className="catalogue-btn catalogue-btn-primary"
+            >
+              {isLastStep ? "Show courses" : "Next"}
+              {!isLastStep && <CaretRight className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CourseFinderWizard;

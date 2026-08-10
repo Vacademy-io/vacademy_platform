@@ -17,9 +17,26 @@ export interface CourseStructure {
     enableLevels: boolean;
 }
 
+/**
+ * Step-by-step filter picker shown to learners the first time they open the
+ * course catalogue (Level → Session → Tag, in that fixed order). `steps`
+ * controls which of those are asked at all; a single-entry array means the
+ * learner sees just that one step. Labels are never stored here — the
+ * learner app renders each step's title via Naming Settings
+ * (ContentTerms.Level / Session / PopularTag) so a renamed term (e.g.
+ * "Level" → "Class") stays in sync everywhere automatically.
+ */
+export interface CatalogueFilterWizardSettings {
+    enabled: boolean;
+    steps: Array<'level' | 'session' | 'tag'>;
+    /** When false, the learner can skip the wizard and browse unfiltered. */
+    mandatory: boolean;
+}
+
 export interface CatalogueSettings {
     catalogueMode: 'ask' | 'auto' | 'manual';
     autoPublishToCatalogue: boolean;
+    filterWizard?: CatalogueFilterWizardSettings;
 }
 
 export interface CourseViewSettings {
@@ -202,6 +219,11 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
     catalogueSettings: {
         catalogueMode: 'ask',
         autoPublishToCatalogue: false,
+        filterWizard: {
+            enabled: false,
+            steps: ['level'],
+            mandatory: false,
+        },
     },
     courseViewSettings: {
         defaultViewMode: 'outline',

@@ -12,4 +12,7 @@ import lombok.NoArgsConstructor;
 public class NamingOverridesDto {
     private String course;
     private String coursePlural;
+    private String level;
+    private String session;
+    private String popularTag;
 }

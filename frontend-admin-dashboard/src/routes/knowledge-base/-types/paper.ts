@@ -142,3 +142,42 @@ export interface PaperJob {
     status_message: string | null;
     result: PaperResult | null;
 }
+
+/** One artifact created from a knowledge base — a paper today, a course later. */
+export type ArtifactType =
+    | 'QUESTION_PAPER'
+    | 'COURSE'
+    | 'PRESENTATION'
+    | 'QUIZ'
+    | 'ASSESSMENT'
+    | 'NOTES'
+    | 'SUMMARY'
+    | 'LESSON_PLAN'
+    | 'WORKSHEET';
+
+export type GenerationStatus = 'DRAFT' | 'GENERATING' | 'READY' | 'SAVED' | 'FAILED';
+
+export interface KbGeneration {
+    id: string;
+    knowledge_base_id: string;
+    artifact_type: ArtifactType;
+    title: string;
+    status: GenerationStatus;
+    progress: number;
+    external_id: string | null;
+    external_type: string | null;
+    ai_task_id: string | null;
+    items_planned: number;
+    items_delivered: number;
+    credits_charged: number;
+    error_message: string | null;
+    created_by: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+/** The single-record read: adds the payloads Resume needs. */
+export interface KbGenerationDetail extends KbGeneration {
+    input: { blueprint?: Blueprint; grade?: string; [k: string]: unknown };
+    result: PaperResult | null;
+}

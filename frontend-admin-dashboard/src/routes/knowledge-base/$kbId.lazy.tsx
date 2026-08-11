@@ -23,6 +23,7 @@ import { getOutline } from './-services/knowledge-base-service';
 import { AddSourceDialog } from './-components/AddSourceDialog';
 import { AskPanel } from './-components/AskPanel';
 import { SourcesTable } from './-components/SourcesTable';
+import { GenerationHistory } from './-components/GenerationHistory';
 import type { OutlineNode } from './-types';
 
 export const Route = createLazyFileRoute('/knowledge-base/$kbId')({
@@ -397,6 +398,13 @@ function KnowledgeBaseDetailPage() {
                                     hasContent={readySources.length > 0}
                                 />
                             </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <p className="text-subtitle font-semibold text-neutral-700">
+                                Made from this knowledge base
+                            </p>
+                            <GenerationHistory kbId={kbId} />
                         </div>
                     </>
                 )}

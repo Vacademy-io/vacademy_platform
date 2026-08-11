@@ -32,6 +32,7 @@ from ..repositories.ai_task_repository import AiTaskRepository
 from ..services import ai_task_service
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.ai_task_service import AiTaskService
+from ..services.kb import generations as kb_generations
 from ..services.kb import paper as kb_paper
 from ..services.kb.repository import KbRepository
 from .knowledge_base import Caller, get_caller
@@ -233,7 +234,39 @@ async def generate_paper(
     user_id = caller.user_id
     grade = body.grade
 
+    # Record the run BEFORE it starts, so a generation that fails or that the
+    # user navigates away from is still visible and resumable. input_json keeps
+    # the blueprint — resuming restores the PLAN, not just the output.
+    generation_id = kb_generations.create(
+        db,
+        kb_id=kb_id,
+        institute_id=resolved,
+        artifact_type="QUESTION_PAPER",
+        title=blueprint.title,
+        status="GENERATING",
+        input_payload={"blueprint": blueprint.to_dict(), "grade": grade},
+        ai_task_id=task_id,
+        items_planned=blueprint.total_questions,
+        created_by=user_id,
+    )
+
     async def work() -> str:
+        try:
+            return await _run_generation()
+        except Exception as exc:
+            # ai_task records FAILED too, but that row is not surfaced anywhere.
+            # THIS is what the teacher sees, so it must never be left stuck on
+            # GENERATING — a spinner that never resolves is the exact failure
+            # mode this history exists to remove.
+            if generation_id:
+                with db_session() as hist_db:
+                    kb_generations.update(
+                        hist_db, generation_id, status="FAILED",
+                        error_message=str(exc)[:2000],
+                    )
+            raise
+
+    async def _run_generation() -> str:
         with db_session() as job_db:
             generated = await kb_paper.generate_questions(
                 job_db, kb_id=kb_id, institute_id=resolved,
@@ -263,7 +296,7 @@ async def generate_paper(
         raw_kept, formatted, format_warnings = kb_paper.pair_with_formatted(
             generated.questions
         )
-        return json.dumps({
+        payload = {
             "blueprint": blueprint.to_dict(),
             # Assessment-builder shape, identical to every other AI source.
             "questions": formatted,
@@ -279,7 +312,19 @@ async def generate_paper(
             "warnings": generated.warnings + format_warnings,
             "delivered": len(formatted),
             "planned": blueprint.total_questions,
-        })
+        }
+        if generation_id:
+            with db_session() as hist_db:
+                kb_generations.update(
+                    hist_db, generation_id,
+                    status="READY" if formatted else "FAILED",
+                    progress=100,
+                    result_payload=payload,
+                    items_delivered=len(formatted),
+                    error_message=None if formatted else
+                    "No questions could be written from the selected material.",
+                )
+        return json.dumps(payload)
 
     ai_task_service.schedule(task_id, work)
     return {"task_id": task_id, "status": "PROGRESS", "planned": blueprint.total_questions}
@@ -367,6 +412,100 @@ async def regenerate_question(
           institute_id=resolved, user_id=caller.user_id)
 
     return {"question": formatted[0], "raw_question": raw_kept[0]}
+
+
+# ---------------------------------------------------------------------------
+# History — what this knowledge base has produced
+#
+# Artifact-agnostic on purpose: these endpoints know nothing about question
+# papers. A future course generator writes rows with artifact_type='COURSE' and
+# gets listing, resume and deletion for free.
+# ---------------------------------------------------------------------------
+
+class GenerationUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=500)
+    status: Optional[str] = None
+    external_id: Optional[str] = None
+    external_type: Optional[str] = None
+    institute_id: Optional[str] = None
+
+
+@router.get("/bases/{kb_id}/generations")
+async def list_generations(
+    kb_id: str,
+    artifact_type: Optional[str] = Query(None, description="e.g. QUESTION_PAPER"),
+    limit: int = Query(50, ge=1, le=200),
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Everything created from this knowledge base, newest first.
+
+    Result payloads are omitted — a list of 50 papers would otherwise be
+    megabytes. Fetch one record to get its blueprint and questions.
+    """
+    resolved = caller.require_institute(institute_id)
+    _assert_kb(db, kb_id, resolved)
+    return {
+        "generations": kb_generations.list_for_kb(
+            db, kb_id, artifact_type=artifact_type, limit=limit
+        )
+    }
+
+
+@router.get("/generations/{generation_id}")
+async def get_generation(
+    generation_id: str,
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """One record WITH its input and result — this is what Resume reads."""
+    resolved = caller.require_institute(institute_id)
+    record = kb_generations.get(db, generation_id, resolved)
+    if not record:
+        raise HTTPException(404, "Not found")
+    return record
+
+
+@router.patch("/generations/{generation_id}")
+async def update_generation(
+    generation_id: str,
+    body: GenerationUpdate,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Rename, or record where the artifact ended up once saved.
+
+    The FE calls this after a successful save to the question bank so the history
+    can link straight to the saved paper instead of offering to save it again.
+    """
+    resolved = caller.require_institute(body.institute_id)
+    if not kb_generations.get(db, generation_id, resolved):
+        raise HTTPException(404, "Not found")
+    if body.status is not None and body.status not in kb_generations.STATUSES:
+        raise HTTPException(400, f"status must be one of {kb_generations.STATUSES}")
+    kb_generations.update(
+        db, generation_id,
+        title=body.title, status=body.status,
+        external_id=body.external_id, external_type=body.external_type,
+    )
+    return kb_generations.get(db, generation_id, resolved)
+
+
+@router.delete("/generations/{generation_id}")
+async def delete_generation(
+    generation_id: str,
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Remove a history entry. Does NOT delete anything already saved elsewhere —
+    a paper in the question bank stays there."""
+    resolved = caller.require_institute(institute_id)
+    if not kb_generations.delete(db, generation_id, resolved):
+        raise HTTPException(404, "Not found")
+    return {"deleted": True}
 
 
 # ---------------------------------------------------------------------------

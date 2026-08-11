@@ -11,6 +11,8 @@ import type {
     PaperQuestion,
     PaperSpec,
     RawPaperQuestion,
+    KbGeneration,
+    KbGenerationDetail,
 } from '../-types/paper';
 
 const BASE = `${AI_SERVICE_BASE_URL}/knowledge-base/v1`;
@@ -168,4 +170,42 @@ export const savePaperToQuestionBank = async (payload: {
         questions: withJavaEvaluationKeys(payload.questions),
     });
     return data;
+};
+
+// ---- History: what this knowledge base has produced -------------------------
+
+/** Newest first. Payloads omitted — fetch one record for the blueprint/result. */
+export const listGenerations = async (
+    kbId: string,
+    artifactType?: string
+): Promise<KbGeneration[]> => {
+    const { data } = await authenticatedAxiosInstance.get<{ generations: KbGeneration[] }>(
+        `${BASE}/bases/${kbId}/generations`,
+        { params: artifactType ? { artifact_type: artifactType } : undefined }
+    );
+    return data.generations ?? [];
+};
+
+/** The full record, including the plan Resume restores. */
+export const getGeneration = async (generationId: string): Promise<KbGenerationDetail> => {
+    const { data } = await authenticatedAxiosInstance.get<KbGenerationDetail>(
+        `${BASE}/generations/${generationId}`
+    );
+    return data;
+};
+
+/** Record where an artifact ended up once saved, so history can link to it. */
+export const markGenerationSaved = async (
+    generationId: string,
+    externalId?: string
+): Promise<void> => {
+    await authenticatedAxiosInstance.patch(`${BASE}/generations/${generationId}`, {
+        status: 'SAVED',
+        external_id: externalId ?? null,
+        external_type: 'QUESTION_PAPER',
+    });
+};
+
+export const deleteGeneration = async (generationId: string): Promise<void> => {
+    await authenticatedAxiosInstance.delete(`${BASE}/generations/${generationId}`);
 };

@@ -30,6 +30,8 @@ import { useKnowledgeBase } from '../-hooks';
 import { getTopics, rebuildTopics } from '../-services/paper-service';
 import {
     buildBlueprint,
+    getGeneration,
+    markGenerationSaved,
     getPaperJob,
     regenerateQuestion,
     savePaperToQuestionBank,
@@ -112,6 +114,7 @@ function StepHeader({ step }: { step: Step }) {
 
 function PaperBuilderPage() {
     const { kbId } = Route.useParams();
+    const { resume } = Route.useSearch();
     const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
     const { data: kb } = useKnowledgeBase(kbId);
@@ -138,10 +141,40 @@ function PaperBuilderPage() {
     const [issues, setIssues] = useState<PaperIssue[]>([]);
     const [regenNumber, setRegenNumber] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
+    const [generationId, setGenerationId] = useState<string | null>(null);
+    const [resuming, setResuming] = useState(Boolean(resume));
 
     useEffect(() => {
         setNavHeading('Create question paper');
     }, [setNavHeading]);
+
+    // Reopen a previous run: its plan always, its questions when it produced
+    // any. A FAILED run lands back on the blueprint so it can simply be re-run.
+    useEffect(() => {
+        if (!resume) return;
+        let cancelled = false;
+        getGeneration(resume)
+            .then((record) => {
+                if (cancelled) return;
+                setGenerationId(record.id);
+                if (record.input?.blueprint) setBlueprint(record.input.blueprint);
+                if (record.input?.grade) {
+                    setSpec((prev) => ({ ...prev, grade: String(record.input.grade) }));
+                }
+                if (record.result?.questions?.length) {
+                    setResult(record.result);
+                    setIssues(record.result.issues ?? []);
+                    setStep('review');
+                } else if (record.input?.blueprint) {
+                    setStep('blueprint');
+                }
+            })
+            .catch(() => toast.error('Could not reopen that paper'))
+            .finally(() => !cancelled && setResuming(false));
+        return () => {
+            cancelled = true;
+        };
+    }, [resume]);
 
     useEffect(() => {
         getTopics(kbId)
@@ -201,6 +234,8 @@ function PaperBuilderPage() {
                 grade: spec.grade || undefined,
             });
             setTaskId(task_id);
+            // A fresh run supersedes whatever we resumed from.
+            setGenerationId(null);
             setStep('generating');
         } catch (error) {
             toast.error(errorMessage(error, 'Could not start generating'));
@@ -292,10 +327,15 @@ function PaperBuilderPage() {
         if (!result || !blueprint) return;
         setSaving(true);
         try {
-            await savePaperToQuestionBank({
+            const saved = await savePaperToQuestionBank({
                 title: blueprint.title,
                 questions: result.questions,
             });
+            // Best-effort: the paper IS saved either way, and failing to update
+            // history must not make it look like the save failed.
+            if (generationId) {
+                await markGenerationSaved(generationId, saved?.id).catch(() => undefined);
+            }
             toast.success('Saved to your question bank');
             navigate({ to: '/assessment/question-papers' });
         } catch (error) {
@@ -337,8 +377,17 @@ function PaperBuilderPage() {
                     <StepHeader step={step} />
                 </div>
 
+                {/* Reopening a saved run: hold the step UI until its plan lands,
+                    otherwise the scope form flashes before being replaced. */}
+                {resuming && (
+                    <Card className="flex flex-col items-center gap-3 p-12 text-center">
+                        <Spinner className="size-6 animate-spin text-primary-500" />
+                        <p className="text-body text-neutral-600">Reopening your paper…</p>
+                    </Card>
+                )}
+
                 {/* ---------------- Step 1: scope + intake ---------------- */}
-                {step === 'scope' && (
+                {!resuming && step === 'scope' && (
                     <div className="grid gap-4 lg:grid-cols-2">
                         <Card className="flex flex-col gap-3 p-4">
                             <div className="flex items-start justify-between gap-2">
@@ -491,7 +540,7 @@ function PaperBuilderPage() {
                 )}
 
                 {/* ---------------- Step 2: blueprint ---------------- */}
-                {step === 'blueprint' && blueprint && (
+                {!resuming && step === 'blueprint' && blueprint && (
                     <div className="flex flex-col gap-4">
                         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                             <div className="min-w-0">
@@ -592,7 +641,7 @@ function PaperBuilderPage() {
                 )}
 
                 {/* ---------------- Step 3: generating ---------------- */}
-                {step === 'generating' && (
+                {!resuming && step === 'generating' && (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Spinner className="size-7 animate-spin text-primary-500" />
                         <p className="text-subtitle font-semibold text-neutral-700">
@@ -606,7 +655,7 @@ function PaperBuilderPage() {
                 )}
 
                 {/* ---------------- Step 4: review ---------------- */}
-                {step === 'review' && result && blueprint && (
+                {!resuming && step === 'review' && result && blueprint && (
                     <div className="flex flex-col gap-4">
                         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                             <div className="min-w-0">

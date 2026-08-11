@@ -23,6 +23,8 @@ export type RichTextEditorProps = {
     hideToolbar?: boolean;
     /** Show a slim, Slack-style toolbar (text formatting + lists + code only). */
     minimalToolbar?: boolean;
+    /** Drop the editor chrome so the surrounding card reads as the input. */
+    borderless?: boolean;
 };
 
 /**
@@ -42,6 +44,7 @@ export function RichTextEditor({
     modalMinHeight = 360,
     hideToolbar = false,
     minimalToolbar = false,
+    borderless = false,
 }: RichTextEditorProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [draft, setDraft] = useState<string>('');
@@ -58,6 +61,7 @@ export function RichTextEditor({
                     minHeight={minHeight ?? 70}
                     hideToolbar={hideToolbar}
                     minimalToolbar={minimalToolbar}
+                    borderless={borderless}
                 />
             </Suspense>
             {enableModalCompose && (

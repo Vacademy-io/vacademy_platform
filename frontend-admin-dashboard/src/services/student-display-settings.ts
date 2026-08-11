@@ -261,12 +261,6 @@ function mergeWithDefaults(
             allowAppOverlays:
                 incoming?.notifications?.allowAppOverlays ?? d.notifications.allowAppOverlays,
         },
-        certificates: {
-            enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
-            generationThresholdPercent:
-                incoming?.certificates?.generationThresholdPercent ??
-                d.certificates.generationThresholdPercent,
-        },
         liveClasses: {
             showPastSessions:
                 incoming?.liveClasses?.showPastSessions ?? d.liveClasses.showPastSessions,

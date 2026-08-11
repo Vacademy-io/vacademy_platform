@@ -123,7 +123,8 @@ export function detectDeserializeLoss(
         const edTable = tc['Table'] || 0;
         const edImg = tc['Image'] || 0;
         const edVideo = (tc['Video'] || 0) + (tc['Embed'] || 0);
-        const edHeading = (tc['HeadingOne'] || 0) + (tc['HeadingTwo'] || 0) + (tc['HeadingThree'] || 0);
+        const edHeading =
+            (tc['HeadingOne'] || 0) + (tc['HeadingTwo'] || 0) + (tc['HeadingThree'] || 0);
 
         Object.keys(srcCustom).forEach((t) => {
             const drop = (srcCustom[t] || 0) - (tc[t] || 0);
@@ -138,6 +139,115 @@ export function detectDeserializeLoss(
         return { lossy: false, lost: [], imagesInsideTables: 0 };
     }
     return { lossy: lost.length > 0, lost, imagesInsideTables };
+}
+
+/**
+ * Editor block type -> how that block is recognised in serialized HTML.
+ *
+ * Only types listed here are checked, deliberately: `Code` and `mermaid` are the
+ * two blocks whose serializers emit no `data-yoopta-type` marker, and every
+ * built-in text block (Paragraph/Heading/Blockquote/…) has no structural marker
+ * at all — treating "unknown type" as checkable would report a loss on every
+ * save. A NEW custom block must be added here to be covered.
+ */
+const CHECKED_BLOCK_TYPES: Record<
+    string,
+    'table' | 'image' | 'video/embed' | 'mermaid' | 'custom'
+> = {
+    Table: 'table',
+    Image: 'image',
+    Video: 'video/embed',
+    Embed: 'video/embed',
+    mermaid: 'mermaid',
+    flashcard: 'custom',
+    quizBlock: 'custom',
+    tabbedContent: 'custom',
+    timeline: 'custom',
+    columnsLayout: 'custom',
+    accordion: 'custom',
+    codeBlock: 'custom',
+    mathBlock: 'custom',
+    audioPlayer: 'custom',
+    pdfViewer: 'custom',
+    fillBlanks: 'custom',
+    jupyterNotebook: 'custom',
+    scratchProject: 'custom',
+    tableOfContents: 'custom',
+};
+
+/** Structural markers present in serialized HTML, keyed like CHECKED_BLOCK_TYPES. */
+function structuralHtmlCounts(serializedHtml: string): Record<string, number> {
+    const counts: Record<string, number> = {};
+    const bump = (k: string, n = 1) => (counts[k] = (counts[k] ?? 0) + n);
+    const html = serializedHtml || '';
+    const marker = /data-yoopta-type="([a-zA-Z]+)"/g;
+    let m: RegExpExecArray | null;
+    while ((m = marker.exec(html)) !== null) bump(m[1] as string);
+    const occurrences = (needle: string) => html.split(needle).length - 1;
+    bump('table', occurrences('<table'));
+    bump('video/embed', occurrences('<video') + occurrences('<iframe'));
+    bump('mermaid', occurrences('class="mermaid"'));
+    // Images: only ones that can render, matching the backend's guard — a
+    // src-less <img> is stripped by formatHTMLString on every save, so counting
+    // it would report a permanent phantom loss.
+    const imgs = html.match(/<img\b[^>]*>/gi) || [];
+    bump(
+        'image',
+        imgs.filter((tag) => {
+            const src = (/\bsrc\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? '').trim();
+            return src !== '' && src !== 'null' && src !== 'undefined';
+        }).length
+    );
+    return counts;
+}
+
+/**
+ * Save-side counterpart to detectDeserializeLoss: the editor VALUE still holds a
+ * block, but the HTML we are about to persist doesn't contain it.
+ *
+ * This is the gap that produced the reported "This will remove 1 table from the
+ * slide" confirms mid-session. The existing save-side checks only fire on a
+ * CATASTROPHIC collapse (fewer than half the blocks survived) or on a serializer
+ * that THREW; a serialize that quietly drops one table out of twenty passes both,
+ * so the backend's structural guard was the first thing to notice — and it can
+ * only tell the author "you are removing a table", which to them is false.
+ *
+ * It cannot fire on a real deletion: deleting a block removes it from the editor
+ * value too, so both sides drop together. No debounce or timing is involved —
+ * this compares one snapshot against itself, not against an older baseline.
+ */
+export function detectSerializeLoss(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    editorValue: Record<string, any>,
+    serializedHtml: string
+): string[] {
+    try {
+        const expected: Record<string, number> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Object.values(editorValue || {}).forEach((block: any) => {
+            const type = block?.type;
+            const kind = type ? CHECKED_BLOCK_TYPES[type] : undefined;
+            if (!kind) return;
+            if (kind === 'image' || kind === 'video/embed') {
+                // Placeholder media (no src) serializes to nothing by design.
+                const src = String(block?.value?.[0]?.props?.src ?? '').trim();
+                if (!src || src === 'null' || src === 'undefined') return;
+            }
+            const key = kind === 'custom' ? (type as string) : kind;
+            expected[key] = (expected[key] ?? 0) + 1;
+        });
+
+        const actual = structuralHtmlCounts(serializedHtml);
+        const lost: string[] = [];
+        Object.keys(expected).forEach((key) => {
+            const drop = (expected[key] ?? 0) - (actual[key] ?? 0);
+            if (drop > 0) lost.push(`${drop} ${key}${drop > 1 ? 's' : ''}`);
+        });
+        return lost;
+    } catch {
+        // The check must never break a save.
+        return [];
+    }
 }
 
 /**

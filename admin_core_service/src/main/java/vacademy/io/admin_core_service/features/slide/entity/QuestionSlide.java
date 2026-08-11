@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.slide.dto.QuestionSlideDTO;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "question_slide")
@@ -69,7 +70,8 @@ public class QuestionSlide {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Column(name = "updated_at")
     private Timestamp updatedAt;
 
     @OneToMany(mappedBy = "questionSlide", cascade = CascadeType.ALL, orphanRemoval = true)

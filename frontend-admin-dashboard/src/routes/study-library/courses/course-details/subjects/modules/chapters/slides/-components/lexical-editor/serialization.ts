@@ -86,6 +86,12 @@ export function importDocHtml(editor: LexicalEditor, storedHtml: string): void {
  *  the post-import round-trip to catch silently-dropped blocks before a save
  *  can persist the loss. Also counts the structural tags the backend's
  *  409-guard watches. */
+/** An <img> counts as content only when its src can actually resolve. */
+export function hasRenderableSrc(src: string | null | undefined): boolean {
+    const v = (src || '').trim();
+    return v !== '' && v !== 'null' && v !== 'undefined';
+}
+
 function structuralCounts(htmlString: string): Map<string, number> {
     const counts = new Map<string, number>();
     const bump = (key: string) => counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -96,7 +102,13 @@ function structuralCounts(htmlString: string): Map<string, number> {
         );
         doc.querySelectorAll('div.mermaid').forEach(() => bump('mermaid'));
         doc.querySelectorAll('table').forEach(() => bump('table'));
-        doc.querySelectorAll('img').forEach(() => bump('image'));
+        // Only images that can actually render. A src-less <img> is an abandoned
+        // upload placeholder: the importer drops it and formatHTMLString strips it,
+        // so counting it made "1 image" look lost on every save. Keep this rule in
+        // step with SlideService.structuralMarkerCounts on the backend.
+        doc.querySelectorAll('img').forEach((el) => {
+            if (hasRenderableSrc(el.getAttribute('src'))) bump('image');
+        });
         doc.querySelectorAll('video, iframe').forEach(() => bump('video/embed'));
     } catch {
         /* count nothing on parse failure — never block on the guard itself */

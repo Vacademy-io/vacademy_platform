@@ -28,7 +28,9 @@ import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
     Slide,
     useSlidesMutations,
+    useSlidesQuery,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
+import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
 import { Check, PencilSimpleLine, Trash, FloppyDisk, LinkSimple, Warning } from '@phosphor-icons/react';
 import { AlertCircle } from 'lucide-react';
@@ -54,6 +56,7 @@ import {
     flattenSemanticWrappers,
     detectDeserializeLoss,
     countSerializedBlocks,
+    detectSerializeLoss,
     normalizeHtmlForDirtyCompare,
 } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
@@ -249,6 +252,18 @@ import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
 import { SlideHistoryDialog } from './slide-history-dialog';
 import { SlideContentErrorBoundary } from './slide-content-error-boundary';
+
+/**
+ * Shown while the slide's content is on its way — never the "no study material"
+ * illustration, which tells the author their work is missing. Mirrors the loader
+ * the slides sidebar already shows for the very same wait.
+ */
+const SlideContentLoading = () => (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg py-20">
+        <DashboardLoader />
+        <p className="text-neutral-500">Loading slide…</p>
+    </div>
+);
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -532,6 +547,10 @@ export const SlideMaterial = ({
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
         searchParams;
+    // Same query key as the sidebar, so React Query serves it from cache — no extra
+    // request. Without this the content pane cannot tell "still loading" from
+    // "this slide is empty", and defaults to claiming the slide is empty.
+    const { isLoading: isSlidesLoading } = useSlidesQuery(chapterId || '');
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
     // Bumped after a version-history restore to force loadContent to re-run (and
@@ -661,6 +680,26 @@ export const SlideMaterial = ({
     const stashDocDraftLocally = useCallback(
         (slideId: string, htmlString: string, guardShrink = true) => {
             if (!slideId) return;
+            // NEVER stash a draft built on a load we already know was lossy (the
+            // deserializer dropped a block on the way in). Saving is refused for this
+            // slide anyway, so the stash can't lead anywhere — but it DOES outrank the
+            // server copy on the next open, and then the load check compares the
+            // thinned draft against itself, finds nothing wrong, and lets the save
+            // through. The loss reaches the backend, whose guard is the first thing to
+            // notice: an "This will remove 1 table" confirm on a slide the author never
+            // edited down. Refusing to stash keeps the honest "could not be read"
+            // message in front of the author instead.
+            if (
+                docLoadIntegrityRef.current.lossy &&
+                docLoadIntegrityRef.current.slideId === slideId
+            ) {
+                console.warn(
+                    `⚠️ Not stashing a local draft for slide ${slideId} — its load was lossy ` +
+                        `(dropped: ${docLoadIntegrityRef.current.lost.join(', ') || 'unknown'}). ` +
+                        'Reload the slide to get the stored content back.'
+                );
+                return;
+            }
             // Anti-clobber (switch-time only): a truncated/degraded switch-time
             // serialization must not overwrite a larger draft already saved by the
             // continuous onChange stash. The continuous stash passes guardShrink=false
@@ -1808,20 +1847,51 @@ export const SlideMaterial = ({
                 prevGoodBlocks >= 3 && outBlockCount < prevGoodBlocks * 0.5;
             if (collapsedVsBaseline) {
                 lastSerializeDegradedRef.current = true;
+                // Report BOTH sides. `outBlockCount` alone cannot distinguish the two
+                // very different causes, and they need opposite fixes:
+                //   valueBlocks ~ 0  -> the editor's own state emptied (mount/reload race)
+                //   valueBlocks high -> the state is fine and html.serialize lost it
+                // Block types are listed because "which block types survived" is what
+                // identifies the offending serializer.
+                const valueTypes = Object.values((data || {}) as Record<string, { type?: string }>)
+                    .map((b) => b?.type ?? '?')
+                    .join(', ');
                 console.error(
                     `[Save] editor collapsed: about to write ${outBlockCount} block(s) where this ` +
-                        `slide last held ${prevGoodBlocks}. Refusing — the editor is mid-reload, ` +
-                        'not edited down. (rename / slide-switch race)'
+                        `slide last held ${prevGoodBlocks}. Editor value holds ${inBlockCount} ` +
+                        `block(s) [${valueTypes || 'none'}]. Recovering from the last good ` +
+                        'snapshot instead of writing this.'
+                );
+            }
+
+            // (3) A SINGLE structural block vanished between the editor value and the
+            // HTML — the case checks (1) and (2) are both blind to, because one dropped
+            // table out of twenty is nowhere near their 50% collapse threshold. This is
+            // the mid-session "This will remove 1 table from the slide" confirm: the
+            // serialize quietly lost a block the author never touched, and the backend
+            // guard was the first thing to see it — where all it can say is "you are
+            // removing a table", which to the author is simply false. Comparing the
+            // value against its OWN serialization means a real deletion (gone from
+            // both sides) can never trigger it, and no debounce/timing is involved.
+            const structurallyLost = detectSerializeLoss(
+                (data || {}) as Record<string, unknown>,
+                formatted
+            );
+            if (structurallyLost.length > 0) {
+                lastSerializeDegradedRef.current = true;
+                console.error(
+                    `[Save] serialize dropped ${structurallyLost.join(', ')} that the editor still ` +
+                        'holds — refusing to overwrite stored content with a lossy payload.'
                 );
             }
 
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
             // at path" Slate bug) have something to fall back to. Only cache a
-            // NON-empty, NON-collapsed result: a transient empty/degenerate
+            // NON-empty, NON-collapsed, NON-lossy result: a transient degenerate
             // serialize (e.g. mid slide-switch) must not poison the fallback, or
             // the catch block below would itself recover reduced content.
-            if (!checkIsHtmlEmpty(formatted) && !collapsedVsBaseline) {
+            if (!checkIsHtmlEmpty(formatted) && !collapsedVsBaseline && !structurallyLost.length) {
                 currentDocHtmlRef.current = {
                     slideId: baselineSlideId,
                     html: formatted,
@@ -2231,13 +2301,35 @@ export const SlideMaterial = ({
         const isPlaceholderItem = activeItem != null && !activeItem.source_type;
         lastLoadContentSlideIdRef.current = isPlaceholderItem ? null : (activeItem?.id ?? null);
 
+        const emptyState = (
+            <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
+                <EmptySlideMaterial />
+                <p className="mt-4 text-neutral-500">No study material has been added yet</p>
+            </div>
+        );
+
+        // The placeholder carries no source_type, so it matches no branch below and
+        // used to fall through to "No study material has been added yet" — the app
+        // telling the author their slide is EMPTY while it is still fetching it.
+        // Authors read that as "my slide is gone". Show the same loader the sidebar
+        // shows for the same wait instead.
+        //
+        // "Still arriving" must be provable, or a URL naming a deleted slide would
+        // spin forever: either the list is genuinely still loading, or it has already
+        // arrived AND contains this id (so the real item is about to replace this
+        // stub). A stub whose id is absent from a loaded list is a slide that no
+        // longer exists — that IS the empty state.
+        if (isPlaceholderItem) {
+            const stillArriving =
+                isSlidesLoading ||
+                (Array.isArray(items) && items.some((s) => s?.id === activeItem?.id));
+            setContent(stillArriving ? <SlideContentLoading /> : emptyState);
+            return;
+        }
+
         if (activeItem == null) {
-            setContent(
-                <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
-                    <EmptySlideMaterial />
-                    <p className="mt-4 text-neutral-500">No study material has been added yet</p>
-                </div>
-            );
+            // No item yet while the list is in flight is a wait, not an empty slide.
+            setContent(isSlidesLoading ? <SlideContentLoading /> : emptyState);
             return;
         }
 
@@ -3750,20 +3842,39 @@ export const SlideMaterial = ({
                 return;
             }
 
-            const currentHtml = getCurrentEditorHTMLContent();
+            let currentHtml = getCurrentEditorHTMLContent();
 
             // A degraded serialize is NOT user intent — the editor still holds the
             // blocks; only the HTML we just produced is missing them. Persisting it
             // writes that loss into `data`, which is what an UNSYNC slide reopens
-            // from, so the blocks are gone on the next load. Refuse, like the
-            // auto-save and publish paths do. (This used to warn and save anyway.)
+            // from, so the blocks would be gone on the next load.
+            //
+            // But refusing the save is a dead end: the author is told to reload and
+            // redo their work, and if the glitch repeats they can never save at all.
+            // We hold a last-known-good serialization of THIS slide, refreshed on
+            // every edit (500ms debounce) and itself collapse-guarded, so it is at
+            // most a moment behind the screen. Saving that keeps every block AND the
+            // author's work, and turns a dead end into a save that just works.
+            let savedFromSnapshot = false;
             if (lastSerializeDegradedRef.current) {
-                toast.error(
-                    'This slide could not be read correctly, so it was NOT saved. ' +
-                        'Your saved content is safe — reload the page to get it back, then redo ' +
-                        'any recent edits.'
-                );
-                return;
+                const lastGoodHtml =
+                    currentDocHtmlRef.current.slideId === slide?.id
+                        ? currentDocHtmlRef.current.html
+                        : null;
+                if (lastGoodHtml && !checkIsHtmlEmpty(lastGoodHtml)) {
+                    console.warn(
+                        '[SaveDraft] serialize was degraded — saving this slide’s last good ' +
+                            'snapshot instead of the lossy one.'
+                    );
+                    currentHtml = lastGoodHtml;
+                    savedFromSnapshot = true;
+                } else {
+                    // Nothing safe to fall back on (e.g. the glitch happened before the
+                    // first edit landed). Keep it calm and actionable — no alarming
+                    // talk of unreadable slides or content being at risk.
+                    toast.error('Could not save just now. Please refresh the page and try again.');
+                    return;
+                }
             }
 
             // Process images in HTML content before saving
@@ -3838,7 +3949,15 @@ export const SlideMaterial = ({
                 await saveDocDraft(false);
                 lastSaveDraftOutcomeRef.current = 'success';
                 if (!containsBase64Images(currentHtml) || uploadedImagesCount === 0) {
-                    toast.success(`slide saved in draft successfully!`);
+                    // When we saved the recovered snapshot, the live editor session is
+                    // the broken one — further typing would go into a document the
+                    // editor no longer holds, and be lost on the next save. Say so in
+                    // one calm line instead of leaving the author to find out.
+                    toast.success(
+                        savedFromSnapshot
+                            ? 'Slide saved. Please refresh the page before editing it further.'
+                            : 'slide saved in draft successfully!'
+                    );
                 }
             } catch (error) {
                 const response = (
@@ -3854,7 +3973,10 @@ export const SlideMaterial = ({
                     if (!confirmed) return;
                     try {
                         await saveDocDraft(true);
-                        toast.success('Slide saved (forced override).');
+                        // Plain wording on purpose: the author already answered the
+                        // confirm, so "forced override" only reads as something having
+                        // gone wrong. The save succeeded — say exactly that.
+                        toast.success('Slide saved.');
                         lastSaveDraftOutcomeRef.current = 'success';
                     } catch {
                         toast.error('Error in saving the slide');
@@ -4145,6 +4267,11 @@ export const SlideMaterial = ({
         activeItem?.video_slide?.published_url,
         // Reload the editor with the restored content after a history restore.
         historyRestoreNonce,
+        // Loading -> loaded must re-render, or a chapter with no slides (activeItem
+        // stays null, so no other dep changes) would sit on the loader forever.
+        // Safe next to the `items` note above: isLoading only flips on a first load
+        // per query key, not on the refetches an auto-save triggers.
+        isSlidesLoading,
     ]);
 
     // ⋯ menu entries for the relocated header actions, per slide type.
@@ -4684,12 +4811,31 @@ export const SlideMaterial = ({
                                                     // confirm, which reads as a false alarm after
                                                     // they've merely ADDED content — they click OK
                                                     // and the lesson is gone.
+                                                    // Same recovery as Save draft: prefer this
+                                                    // slide's last-known-good serialization over
+                                                    // refusing outright, so a transient glitch
+                                                    // can't block publishing.
                                                     if (lastSerializeDegradedRef.current) {
-                                                        toast.error(
-                                                            'Some blocks on this slide could not be read, so publishing was stopped to protect your content. Please reload the page and try again.'
-                                                        );
-                                                        setIsPublishDialogOpen(false);
-                                                        return;
+                                                        const lastGoodHtml =
+                                                            currentDocHtmlRef.current.slideId ===
+                                                            activeItem?.id
+                                                                ? currentDocHtmlRef.current.html
+                                                                : null;
+                                                        if (
+                                                            lastGoodHtml &&
+                                                            !checkIsHtmlEmpty(lastGoodHtml)
+                                                        ) {
+                                                            console.warn(
+                                                                '[Publish] serialize was degraded — publishing this slide’s last good snapshot instead.'
+                                                            );
+                                                            currentHtml = lastGoodHtml;
+                                                        } else {
+                                                            toast.error(
+                                                                'Could not publish just now. Please refresh the page and try again.'
+                                                            );
+                                                            setIsPublishDialogOpen(false);
+                                                            return;
+                                                        }
                                                     }
                                                     if (containsBase64Images(currentHtml)) {
                                                         const { processedHtml } =

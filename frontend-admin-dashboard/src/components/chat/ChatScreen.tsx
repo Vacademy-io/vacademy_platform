@@ -111,6 +111,12 @@ export function ChatScreen({
     const [showReports, setShowReports] = useState(false);
     const [search, setSearch] = useState('');
     const [activeId, setActiveId] = useState<string | undefined>(undefined);
+    // The server list is capped (top 30, most-recently-messaged first, never-messaged last), so a
+    // batch/DM opened from search is often NOT in it. Hold the opened conversation here so the
+    // background list refetch can't blank the thread out from under the user.
+    const [openedConversation, setOpenedConversation] = useState<ChatConversationResponse | null>(
+        null
+    );
     const [newChatOpen, setNewChatOpen] = useState(false);
     const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
 
@@ -138,6 +144,9 @@ export function ChatScreen({
     const pendingSeqCounterRef = useRef<number>(0);
     const activeIdRef = useRef<string | undefined>(undefined);
     activeIdRef.current = activeId;
+    // Read by the SSE handler (which is ref-held, so it must not close over the state).
+    const openedConversationIdRef = useRef<string | undefined>(undefined);
+    openedConversationIdRef.current = openedConversation?.id;
 
     // ── Conversations ────────────────────────────────────────────────────
     const {
@@ -149,9 +158,23 @@ export function ChatScreen({
         refetchOnWindowFocus: false,
     });
 
-    const activeConversation = useMemo(
-        () => conversations.find((c) => c.id === activeId),
-        [conversations, activeId]
+    const activeConversation = useMemo(() => {
+        const fromList = conversations.find((c) => c.id === activeId);
+        if (fromList) return fromList;
+        // Fall back to the locally-held copy for a conversation outside the capped server list.
+        return openedConversation && openedConversation.id === activeId
+            ? openedConversation
+            : undefined;
+    }, [conversations, activeId, openedConversation]);
+
+    // The sidebar keeps showing the conversation the user just opened, even when the server list
+    // (capped + ordered by last message) doesn't carry it.
+    const listedConversations = useMemo(
+        () =>
+            openedConversation && !conversations.some((c) => c.id === openedConversation.id)
+                ? [openedConversation, ...conversations]
+                : conversations,
+        [conversations, openedConversation]
     );
 
     const refetchConversations = useCallback(() => {
@@ -177,6 +200,11 @@ export function ChatScreen({
     // Patch a single conversation in the cached list (preview/unread/order) without a refetch.
     const patchConversation = useCallback(
         (conversationId: string, patch: (c: ChatConversationResponse) => ChatConversationResponse) => {
+            // Keep the locally-held copy in step too — it's the only carrier for a conversation
+            // that isn't in the capped server list.
+            setOpenedConversation((prev) =>
+                prev && prev.id === conversationId ? patch(prev) : prev
+            );
             queryClient.setQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY, (prev) => {
                 const list = prev ?? [];
                 const idx = list.findIndex((c) => c.id === conversationId);
@@ -238,6 +266,7 @@ export function ChatScreen({
         async (conversation: ChatConversationResponse) => {
             setShowReports(false);
             setActiveId(conversation.id);
+            setOpenedConversation(conversation);
             let conv = conversation;
             // Opening a channel the caller hasn't joined (e.g. an admin viewing every batch, or a
             // teacher opening a mapped batch) must ensure membership so the read cursor + posting work.
@@ -251,6 +280,7 @@ export function ChatScreen({
                     }
                     if (conv.id !== conversation.id) setActiveId(conv.id);
                     upsertConversation(conv);
+                    setOpenedConversation(conv);
                 } catch {
                     conv = conversation; // read still works even if joining failed
                 }
@@ -294,6 +324,10 @@ export function ChatScreen({
         (conv: ChatConversationResponse) => {
             setSearch('');
             upsertConversation(conv); // seed so the thread renders immediately (before the refetch)
+            // Held separately from the query cache: the refetch below replaces the cache wholesale
+            // with the server's capped list, which a just-opened (often never-messaged) batch/DM
+            // won't be part of — without this the thread would blank out a moment after opening.
+            setOpenedConversation(conv);
             refetchConversations(); // reconcile the list (ordering/preview) in the background
             setShowReports(false);
             setActiveId(conv.id);
@@ -541,9 +575,13 @@ export function ChatScreen({
 
             // Update the single conversation's preview/unread in-place; only refetch the
             // whole list when the message belongs to a conversation we don't know yet.
-            const known = (
-                queryClient.getQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY) ?? []
-            ).some((c) => c.id === payload.conversationId);
+            // The conversation held locally (opened from search, outside the capped list) counts as
+            // known — otherwise every message in it would trigger a pointless full-list refetch.
+            const known =
+                payload.conversationId === openedConversationIdRef.current ||
+                (
+                    queryClient.getQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY) ?? []
+                ).some((c) => c.id === payload.conversationId);
             if (!known) {
                 refetchConversations();
                 return;
@@ -689,7 +727,7 @@ export function ChatScreen({
                     </button>
                     <div className="min-h-0 flex-1">
                         <ConversationList
-                            conversations={conversations}
+                            conversations={listedConversations}
                             activeId={showReports ? undefined : activeId}
                             isLoading={conversationsLoading}
                             search={search}

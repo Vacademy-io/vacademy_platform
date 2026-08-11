@@ -11,7 +11,10 @@ import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    type DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -29,8 +32,13 @@ interface CustomInviteFormCardProps {
     handleDeleteOptionField: (id: number) => void;
     handleAddDropdownOptions: () => void;
     handleCloseDialog: (type: string, name: string, oldKey: boolean) => void;
-    handleUpdateFieldName: (index: number, name: string) => void;
-    handleUpdateFieldOptions: (index: number, values: string[]) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) => void;
 }
 
 const CustomInviteFormCard = ({
@@ -45,8 +53,7 @@ const CustomInviteFormCard = ({
     handleDeleteOptionField,
     handleAddDropdownOptions,
     handleCloseDialog,
-    handleUpdateFieldName,
-    handleUpdateFieldOptions,
+    handleEditFieldAt,
 }: CustomInviteFormCardProps) => {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues } = form;
@@ -84,10 +91,6 @@ const CustomInviteFormCard = ({
                             <div className="flex flex-col gap-4">
                                 {customFieldsArray.map((field, index) => {
                                     const isEditing = editingIndex === index;
-                                    const hasOptions =
-                                        field.type === 'dropdown' ||
-                                        field.type === 'radio' ||
-                                        field.type === 'multi_select';
                                     return (
                                         <SortableItem key={field.id} value={field.id} asChild>
                                             <div>
@@ -101,9 +104,7 @@ const CustomInviteFormCard = ({
                                                     onToggleRequired={() =>
                                                         toggleIsRequired(index)
                                                     }
-                                                    onEdit={() =>
-                                                        setEditingIndex(isEditing ? null : index)
-                                                    }
+                                                    onEdit={() => setEditingIndex(index)}
                                                     onDelete={() => {
                                                             setEditingIndex(null);
                                                             handleDeleteOpenField(index);
@@ -117,34 +118,48 @@ const CustomInviteFormCard = ({
                                                             <DotsSixVertical size={18} />
                                                         </SortableDragHandle>
                                                     }
-                                                >
-                                                    <InlineFieldEditor
-                                                        name={field.name}
-                                                        onNameChange={(next) =>
-                                                            handleUpdateFieldName(index, next)
-                                                        }
-                                                        {...(hasOptions
-                                                            ? {
-                                                                  options: (
-                                                                      field.options ?? []
-                                                                  ).map((o) => o.value),
-                                                                  onOptionsChange: (
-                                                                      next: string[]
-                                                                  ) =>
-                                                                      handleUpdateFieldOptions(
-                                                                          index,
-                                                                          next
-                                                                      ),
-                                                              }
-                                                            : {})}
-                                                    />
-                                                </FormFieldRow>
+                                                />
                                             </div>
                                         </SortableItem>
                                     );
                                 })}
                             </div>
                         </Sortable>
+                        {/* Editing reuses the add dialog, prefilled. Keyed per row so opening a
+                            different field re-runs the prefill. */}
+                        {editingIndex !== null && customFieldsArray[editingIndex] && (
+                            <SharedAddCustomFieldDialog
+                                key={customFieldsArray[editingIndex]._rhfKey}
+                                mode="edit"
+                                open
+                                onOpenChange={(isOpen) => {
+                                    if (!isOpen) setEditingIndex(null);
+                                }}
+                                initialField={{
+                                    type: customFieldsArray[editingIndex].type,
+                                    name: customFieldsArray[editingIndex].name,
+                                    options: (customFieldsArray[editingIndex].options ?? []).map(
+                                        (o) => o.value
+                                    ),
+                                    isRequired: customFieldsArray[editingIndex].isRequired,
+                                }}
+                                onAddField={(type, name, _oldKey, options, config) => {
+                                    handleEditFieldAt(
+                                        editingIndex,
+                                        type,
+                                        name,
+                                        options,
+                                        config as Record<string, unknown>
+                                    );
+                                    setEditingIndex(null);
+                                }}
+                                // Its own name must stay available, or saving an unchanged
+                                // label would be blocked as a duplicate.
+                                existingFieldNames={customFieldsArray
+                                    .filter((_, i) => i !== editingIndex)
+                                    .map((f) => f.name)}
+                            />
+                        )}
                     </div>
                     <div className="mt-2 flex items-center gap-6">
                         {!customFields?.some((field) => field.name === 'Gender') && (

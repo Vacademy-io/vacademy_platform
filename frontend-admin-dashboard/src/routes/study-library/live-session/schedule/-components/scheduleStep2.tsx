@@ -28,7 +28,6 @@ import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId as getInstId } from '@/constants/helper';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Switch } from '@/components/ui/switch';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -120,6 +119,33 @@ const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
 const hasOptionsType = (type?: string) => {
     const t = (type ?? '').toLowerCase();
     return t === 'dropdown' || t === 'radio' || t === 'multi_select' || t === 'checkbox';
+};
+
+/**
+ * Options are stored in the custom field's `config` JSON, written by three different
+ * generations of this feature: a bare array, `{ options: [...] }`, and the older
+ * `{ coommaSepartedOptions: "a,b" }` (sic). Anything unparseable means "no options".
+ */
+const parseFieldOptions = (config?: string | null): { label: string; name: string }[] => {
+    if (!config) return [];
+    try {
+        const parsed = JSON.parse(config);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toOption = (o: any) => ({
+            label: o.value || o.label || o.name || '',
+            name: o.value || o.name || o.label || '',
+        });
+        if (Array.isArray(parsed)) return parsed.map(toOption);
+        if (Array.isArray(parsed?.options)) return parsed.options.map(toOption);
+        if (typeof parsed?.coommaSepartedOptions === 'string') {
+            return parsed.coommaSepartedOptions
+                .split(',')
+                .map((v: string) => ({ label: v.trim(), name: v.trim() }));
+        }
+    } catch {
+        /* not JSON — treat as no options */
+    }
+    return [];
 };
 
 export default function ScheduleStep2() {
@@ -659,13 +685,28 @@ export default function ScheduleStep2() {
                 const SEEDED_LABELS = ['full name', 'email', 'phone number', 'mobile number'];
                 const fields =
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    sessionDetails?.notifications?.addedFields.map((field: any) => ({
-                        id: field.id,
-                        label: field.label,
-                        required: field.required,
-                        isDefault: SEEDED_LABELS.includes((field.label || '').toLowerCase()),
-                        type: field.type,
-                    })) ?? [];
+                    [...(sessionDetails?.notifications?.addedFields ?? [])]
+                        // The saved position, not whatever order the API happened to return:
+                        // every save rewrites form_order from this array's index, so listing
+                        // them unsorted would write a scrambled order back to the learner form.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        .sort((a: any, b: any) => (a.formOrder ?? 0) - (b.formOrder ?? 0))
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        .map((field: any) => {
+                            // Options live in the field's config JSON. Dropping them here left
+                            // the editor showing a choice field with no choices.
+                            const options = parseFieldOptions(field.config);
+                            return {
+                                id: field.id,
+                                label: field.label,
+                                required: field.required,
+                                isDefault: SEEDED_LABELS.includes(
+                                    (field.label || '').toLowerCase()
+                                ),
+                                type: field.type,
+                                ...(options.length > 0 ? { options } : {}),
+                            };
+                        });
 
                 form.setValue('fields', fields);
                 form.setValue(
@@ -702,49 +743,14 @@ export default function ScheduleStep2() {
                         const resolvedType = (
                             rawType === 'textfield' ? 'text' : rawType
                         ) as InputType;
-                        const hasOptions =
-                            resolvedType === InputType.DROPDOWN || resolvedType === InputType.RADIO;
+                        const hasOptions = hasOptionsType(resolvedType);
                         return {
                             label: cf.fieldName,
                             required: cf.isMandatory || SEEDED.includes(nameLC),
                             isDefault: SEEDED.includes(nameLC),
                             type: resolvedType,
-                            ...(hasOptions && cf.config
-                                ? (() => {
-                                      try {
-                                          const parsed = JSON.parse(cf.config);
-                                          if (Array.isArray(parsed)) {
-                                              return {
-                                                  options: parsed.map((o: any) => ({
-                                                      label: o.value || o.label,
-                                                      name: o.value || o.name,
-                                                  })),
-                                              };
-                                          }
-                                          // New object-format config: { options: [...], defaultValue, ... }
-                                          if (Array.isArray(parsed?.options)) {
-                                              return {
-                                                  options: parsed.options.map((o: any) => ({
-                                                      label: o.value || o.label,
-                                                      name: o.value || o.name,
-                                                  })),
-                                              };
-                                          }
-                                          if (parsed.coommaSepartedOptions) {
-                                              return {
-                                                  options: parsed.coommaSepartedOptions
-                                                      .split(',')
-                                                      .map((v: string) => ({
-                                                          label: v.trim(),
-                                                          name: v.trim(),
-                                                      })),
-                                              };
-                                          }
-                                      } catch {
-                                          /* ignore */
-                                      }
-                                      return {};
-                                  })()
+                            ...(hasOptions && parseFieldOptions(cf.config).length > 0
+                                ? { options: parseFieldOptions(cf.config) }
                                 : {}),
                         };
                     });
@@ -1717,49 +1723,14 @@ export default function ScheduleStep2() {
                                                             { shouldDirty: true }
                                                         )
                                                     }
-                                                    onEdit={() =>
-                                                        setEditingFieldIndex(
-                                                            editingFieldIndex === index
-                                                                ? null
-                                                                : index
-                                                        )
-                                                    }
+                                                    onEdit={() => setEditingFieldIndex(index)}
                                                     onDelete={() => remove(index)}
                                                     dragHandle={
                                                         <SortableDragHandle className="cursor-grab border-none shadow-none">
                                                             <DotsSixVertical size={18} />
                                                         </SortableDragHandle>
                                                     }
-                                                >
-                                                    <InlineFieldEditor
-                                                        name={watch(`fields.${index}.label`) ?? ''}
-                                                        onNameChange={(next) =>
-                                                            setValue(`fields.${index}.label`, next, { shouldDirty: true })
-                                                        }
-                                                        {...(hasOptionsType(
-                                                            watch(`fields.${index}.type`)
-                                                        )
-                                                            ? {
-                                                                  options: (
-                                                                      watch(
-                                                                          `fields.${index}.options`
-                                                                      ) ?? []
-                                                                  ).map((o) => o.label),
-                                                                  onOptionsChange: (
-                                                                      next: string[]
-                                                                  ) =>
-                                                                      setValue(
-                                                                          `fields.${index}.options`,
-                                                                          next.map((v) => ({
-                                                                              label: v,
-                                                                              name: v,
-                                                                          })),
-                                                                          { shouldDirty: true }
-                                                                      ),
-                                                              }
-                                                            : {})}
-                                                    />
-                                                </FormFieldRow>
+                                                />
                                             </div>
                                         </SortableItem>
                                     ))}
@@ -1809,6 +1780,70 @@ export default function ScheduleStep2() {
                                             .filter((f) => (f as any).status !== 'DELETED')
                                             .map((f) => f.label)}
                                     />
+                                    {/* Editing reuses the add dialog, prefilled. Keyed per row so
+                                        opening a different field re-runs the prefill. */}
+                                    {editingFieldIndex !== null && fields[editingFieldIndex] && (
+                                        <SharedAddCustomFieldDialog
+                                            key={fields[editingFieldIndex].id}
+                                            mode="edit"
+                                            open
+                                            onOpenChange={(isOpen) => {
+                                                if (!isOpen) setEditingFieldIndex(null);
+                                            }}
+                                            initialField={{
+                                                type: getValues(`fields.${editingFieldIndex}.type`),
+                                                name:
+                                                    getValues(
+                                                        `fields.${editingFieldIndex}.label`
+                                                    ) ?? '',
+                                                options: (
+                                                    getValues(
+                                                        `fields.${editingFieldIndex}.options`
+                                                    ) ?? []
+                                                ).map((o) => o.label),
+                                                isRequired: getValues(
+                                                    `fields.${editingFieldIndex}.required`
+                                                ),
+                                            }}
+                                            onAddField={(type, name, _oldKey, options, config) => {
+                                                const idx = editingFieldIndex;
+                                                // Same normalization as the add path, so an edited
+                                                // field stores the identical type string.
+                                                const normalized = (type || 'text').toLowerCase();
+                                                const resolvedType =
+                                                    normalized === 'textfield'
+                                                        ? InputType.TEXT
+                                                        : (normalized as InputType);
+                                                setValue(`fields.${idx}.label`, name, {
+                                                    shouldDirty: true,
+                                                });
+                                                setValue(`fields.${idx}.type`, resolvedType, {
+                                                    shouldDirty: true,
+                                                });
+                                                setValue(
+                                                    `fields.${idx}.required`,
+                                                    config?.isRequired ?? true,
+                                                    { shouldDirty: true }
+                                                );
+                                                // The dialog only returns options for choice
+                                                // types, so switching away from one clears them.
+                                                setValue(
+                                                    `fields.${idx}.options`,
+                                                    options?.map((opt) => ({
+                                                        name: opt.value,
+                                                        label: opt.value,
+                                                    })) ?? [],
+                                                    { shouldDirty: true }
+                                                );
+                                                setEditingFieldIndex(null);
+                                            }}
+                                            // Its own name must stay available, or saving an
+                                            // unchanged label would be blocked as a duplicate.
+                                            existingFieldNames={fields
+                                                .filter((_, i) => i !== editingFieldIndex)
+                                                .map((f) => f.label)}
+                                        />
+                                    )}
                                     <MyButton
                                         buttonType="secondary"
                                         type="button"

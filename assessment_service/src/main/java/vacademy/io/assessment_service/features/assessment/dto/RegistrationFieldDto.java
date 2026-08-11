@@ -14,6 +14,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class RegistrationFieldDto {
+    /**
+     * Row id of an already-saved field. Renaming rewrites field_key server-side, so the key the
+     * client still holds goes stale — matching on the id keeps a second rename from silently
+     * finding nothing. Null/unknown for fields the client created locally.
+     */
+    private String id;
     private String name;
     private String type;
     private String defaultValue;

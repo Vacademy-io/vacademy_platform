@@ -27,7 +27,6 @@ import {
     DotsSixVertical,
     TrashSimple, PencilSimple } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -242,12 +241,6 @@ const isRowReady = (
 // array identity on every render while the study-library query is in flight.
 const EMPTY_COURSES: RowBatchPickerProps['courses'] = [];
 
-
-// Live-session field types that carry an admin-authored option list.
-const hasRegOptionsType = (type?: string) => {
-    const t = (type ?? '').toLowerCase();
-    return t === 'dropdown' || t === 'radio' || t === 'multi_select' || t === 'checkbox';
-};
 
 export function BulkScheduleGrid() {
     const navigate = useNavigate();
@@ -2172,45 +2165,14 @@ export function BulkScheduleGrid() {
                                                     { shouldDirty: true }
                                                 )
                                             }
-                                            onEdit={() =>
-                                                setEditingRegFieldIndex(
-                                                    editingRegFieldIndex === index ? null : index
-                                                )
-                                            }
+                                            onEdit={() => setEditingRegFieldIndex(index)}
                                             onDelete={() => removeRegField(index)}
                                             dragHandle={
                                                 <SortableDragHandle className="cursor-grab border-none shadow-none">
                                                     <DotsSixVertical size={18} />
                                                 </SortableDragHandle>
                                             }
-                                        >
-                                            <InlineFieldEditor
-                                                name={form.watch(`fields.${index}.label`) ?? ''}
-                                                onNameChange={(next) =>
-                                                    form.setValue(`fields.${index}.label`, next, { shouldDirty: true })
-                                                }
-                                                {...(hasRegOptionsType(
-                                                    form.watch(`fields.${index}.type`)
-                                                )
-                                                    ? {
-                                                          options: (
-                                                              form.watch(
-                                                                  `fields.${index}.options`
-                                                              ) ?? []
-                                                          ).map((o) => o.label),
-                                                          onOptionsChange: (next: string[]) =>
-                                                              form.setValue(
-                                                                  `fields.${index}.options`,
-                                                                  next.map((v) => ({
-                                                                      label: v,
-                                                                      name: v,
-                                                                  })),
-                                                                  { shouldDirty: true }
-                                                              ),
-                                                      }
-                                                    : {})}
-                                            />
-                                        </FormFieldRow>
+                                        />
                                     </div>
                                 </SortableItem>
                             ))}
@@ -2252,6 +2214,69 @@ export function BulkScheduleGrid() {
                                 }}
                                 existingFieldNames={regFields.map((f) => f.label)}
                             />
+                            {/* Editing reuses the add dialog, prefilled. Keyed per row so opening
+                                a different field re-runs the prefill. */}
+                            {editingRegFieldIndex !== null && regFields[editingRegFieldIndex] && (
+                                <SharedAddCustomFieldDialog
+                                    key={regFields[editingRegFieldIndex].id}
+                                    mode="edit"
+                                    open
+                                    onOpenChange={(isOpen) => {
+                                        if (!isOpen) setEditingRegFieldIndex(null);
+                                    }}
+                                    initialField={{
+                                        type: form.getValues(`fields.${editingRegFieldIndex}.type`),
+                                        name:
+                                            form.getValues(
+                                                `fields.${editingRegFieldIndex}.label`
+                                            ) ?? '',
+                                        options: (
+                                            form.getValues(
+                                                `fields.${editingRegFieldIndex}.options`
+                                            ) ?? []
+                                        ).map((o) => o.label),
+                                        isRequired: form.getValues(
+                                            `fields.${editingRegFieldIndex}.required`
+                                        ),
+                                    }}
+                                    onAddField={(type, name, _oldKey, options, config) => {
+                                        const idx = editingRegFieldIndex;
+                                        // Same normalization as the add path above.
+                                        const normalized = (type || 'text').toLowerCase();
+                                        const resolvedType =
+                                            normalized === 'textfield'
+                                                ? InputType.TEXT
+                                                : (normalized as InputType);
+                                        form.setValue(`fields.${idx}.label`, name, {
+                                            shouldDirty: true,
+                                        });
+                                        form.setValue(`fields.${idx}.type`, resolvedType, {
+                                            shouldDirty: true,
+                                        });
+                                        form.setValue(
+                                            `fields.${idx}.required`,
+                                            config?.isRequired ?? true,
+                                            { shouldDirty: true }
+                                        );
+                                        // The dialog only returns options for choice types, so
+                                        // switching away from one clears them.
+                                        form.setValue(
+                                            `fields.${idx}.options`,
+                                            options?.map((opt) => ({
+                                                name: opt.value,
+                                                label: opt.value,
+                                            })) ?? [],
+                                            { shouldDirty: true }
+                                        );
+                                        setEditingRegFieldIndex(null);
+                                    }}
+                                    // Its own name must stay available, or saving an unchanged
+                                    // label would be blocked as a duplicate.
+                                    existingFieldNames={regFields
+                                        .filter((_, i) => i !== editingRegFieldIndex)
+                                        .map((f) => f.label)}
+                                />
+                            )}
                             <MyButton
                                 buttonType="secondary"
                                 type="button"

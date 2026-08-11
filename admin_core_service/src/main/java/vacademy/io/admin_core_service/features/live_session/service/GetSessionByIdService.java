@@ -262,6 +262,8 @@ public class GetSessionByIdService {
             field.setLabel(item.getFieldName());
             field.setRequired(item.getIsMandatory());
             field.setType(item.getFieldType());
+            field.setFormOrder(item.getFormOrder());
+            field.setConfig(item.getConfig());
             fields.add(field);
         }
 

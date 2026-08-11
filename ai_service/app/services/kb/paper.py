@@ -212,6 +212,44 @@ def _outline_digest(nodes: Sequence[Dict[str, Any]], selected: Optional[List[str
     return "\n".join(lines)
 
 
+def _topic_digest(topics: Sequence[Dict[str, Any]], selected: Optional[List[str]]) -> str:
+    """Render the TOPIC tree for the planner.
+
+    Preferred over the page-ordered summary tree whenever topics exist, because
+    the teacher chose topics and a paper's sections should mirror the subject
+    structure they picked — not the order pages happened to appear in the files.
+
+    A selected topic implies all of its subtopics, so ticking "Integral Calculus"
+    keeps every subtopic under it without the caller having to enumerate them.
+    """
+    keep = set(selected or [])
+    lines: List[str] = []
+    for topic in topics:
+        subs = topic.get("subtopics") or []
+        topic_selected = not keep or topic["id"] in keep
+        kept_subs = [
+            s for s in subs
+            if topic_selected or s["id"] in keep
+        ] if keep else subs
+        if keep and not topic_selected and not kept_subs:
+            continue
+
+        pages = ""
+        if topic.get("page_start"):
+            pages = f" [p.{topic['page_start']}"
+            pages += f"-{topic['page_end']}]" if topic.get("page_end") else "]"
+        line = f"({topic['id']}) {topic.get('title') or 'Untitled'}{pages}"
+        if topic.get("summary"):
+            line += f"\n    {topic['summary'][:240]}"
+        lines.append(line)
+        for sub in kept_subs:
+            sub_line = f"    ({sub['id']}) {sub.get('title') or 'Untitled'}"
+            if sub.get("keywords"):
+                sub_line += f"\n        concepts: {', '.join(sub['keywords'][:10])}"
+            lines.append(sub_line)
+    return "\n".join(lines)
+
+
 def _blueprint_prompt(
     *,
     kb_name: str,
@@ -221,6 +259,11 @@ def _blueprint_prompt(
     instruction: Optional[str],
 ) -> str:
     wanted = []
+    if spec.get("total_questions"):
+        # The teacher asks for a NUMBER OF QUESTIONS; marks are a consequence of
+        # the blueprint (type x count x marks-each), which they then edit. Asking
+        # for total marks instead forced them to do that arithmetic backwards.
+        wanted.append(f"total number of questions: {spec['total_questions']}")
     if spec.get("total_marks"):
         wanted.append(f"total marks: {spec['total_marks']}")
     if spec.get("duration_minutes"):
@@ -286,8 +329,9 @@ RULES THAT MATTER:
   passages later. A row with no valid node_ids cannot be generated.
 - COVER the selected material. Do not put 40 marks on one section and ignore the
   rest — check the outline and spread rows across it.
-- Marks must add up to the requested total. If they cannot, get as close as
-  possible and say so in "notes".
+- If a NUMBER OF QUESTIONS was requested, the counts across all rows must add up
+  to exactly that. If total marks were requested instead, make the marks add up.
+  If neither is achievable, get as close as possible and say so in "notes".
 - Only plan what the material supports. If there are no numerical worked examples
   in the source, do not plan a numerical section — say so in "notes" instead.
 - Order sections the way a real paper does: objective/short first, long last.
@@ -315,16 +359,30 @@ async def build_blueprint(
     if not kb:
         raise ValueError("Knowledge base not found")
 
-    nodes = repo.get_structure_outline(kb_id)
-    if not nodes:
-        raise ValueError(
-            "This knowledge base has no chapter summary yet. Add a document and "
-            "wait for it to finish processing before planning a paper."
-        )
-
-    outline = _outline_digest(nodes, selected_node_ids)
-    if not outline.strip():
-        raise ValueError("None of the selected chapters were found in this knowledge base")
+    # Prefer the TOPIC tree (V443). It is what the teacher actually picked from,
+    # it merges the same subject across sources, and it never offers page
+    # artifacts like "Answer Keys, p.13" as if they were topics. Fall back to the
+    # per-source summary tree for knowledge bases ingested before topics existed.
+    topics = repo.get_topic_tree(kb_id)
+    valid_ids: set = set()
+    if topics:
+        outline = _topic_digest(topics, selected_node_ids)
+        for topic in topics:
+            valid_ids.add(topic["id"])
+            valid_ids.update(s["id"] for s in topic.get("subtopics") or [])
+        if not outline.strip():
+            raise ValueError("None of the selected topics were found in this knowledge base")
+    else:
+        nodes = repo.get_structure_outline(kb_id)
+        if not nodes:
+            raise ValueError(
+                "This knowledge base has no topic map yet. Add a document and "
+                "wait for it to finish processing before planning a paper."
+            )
+        outline = _outline_digest(nodes, selected_node_ids)
+        valid_ids = {n["id"] for n in nodes}
+        if not outline.strip():
+            raise ValueError("None of the selected chapters were found in this knowledge base")
 
     primary, fallbacks = resolve_models(db, BLUEPRINT_USE_CASE)
     raw, model, usage = await generate_json(
@@ -340,7 +398,6 @@ async def build_blueprint(
     # Drop rows the planner invented node_ids for: they would silently generate
     # from whatever retrieval happened to return, which is exactly the
     # ungrounded behaviour this design exists to prevent.
-    valid_ids = {n["id"] for n in nodes}
     for row in blueprint.rows:
         row.node_ids = [nid for nid in row.node_ids if nid in valid_ids]
     dropped = [r for r in blueprint.rows if not r.node_ids and r.count > 0]

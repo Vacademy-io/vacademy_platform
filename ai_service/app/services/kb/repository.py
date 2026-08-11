@@ -614,6 +614,108 @@ class KbRepository:
         self.db.commit()
         return str(row[0])
 
+    # ------------------------------------------------------------------
+    # Topic tree (V443) — cross-source, level IN ('topic','subtopic'),
+    # source_id IS NULL because a topic spans sources.
+    # ------------------------------------------------------------------
+    def replace_topic_tree(self, kb_id: str, institute_id: str, topics: Sequence[Any]) -> int:
+        """Swap in a freshly derived topic tree.
+
+        Delete-then-insert in ONE transaction: the tree is a derived view, and a
+        partial rebuild would leave the picker showing a mix of old and new
+        topics. Only touches topic rows — the per-source summary tree
+        (book/chapter/section) is left alone.
+        """
+        self.db.execute(
+            text(
+                "DELETE FROM knowledge_base_node "
+                "WHERE knowledge_base_id = :kb_id AND level IN ('topic', 'subtopic')"
+            ),
+            {"kb_id": kb_id},
+        )
+        written = 0
+        for t_ordinal, topic in enumerate(topics, start=1):
+            row = self.db.execute(
+                text(
+                    """
+                    INSERT INTO knowledge_base_node
+                        (knowledge_base_id, source_id, institute_id, parent_id, level,
+                         title, summary, keywords, page_start, page_end, ordinal)
+                    VALUES
+                        (:kb_id, NULL, :institute_id, NULL, 'topic',
+                         :title, :summary, :keywords, :page_start, :page_end, :ordinal)
+                    RETURNING id
+                    """
+                ),
+                {
+                    "kb_id": kb_id, "institute_id": institute_id, "title": topic.title,
+                    "summary": topic.summary, "keywords": topic.keywords,
+                    "page_start": topic.page_start, "page_end": topic.page_end,
+                    "ordinal": t_ordinal,
+                },
+            ).fetchone()
+            topic_id = str(row[0])
+            written += 1
+            for s_ordinal, sub in enumerate(topic.subtopics, start=1):
+                self.db.execute(
+                    text(
+                        """
+                        INSERT INTO knowledge_base_node
+                            (knowledge_base_id, source_id, institute_id, parent_id, level,
+                             title, summary, keywords, page_start, page_end, ordinal)
+                        VALUES
+                            (:kb_id, NULL, :institute_id, :parent_id, 'subtopic',
+                             :title, :summary, :keywords, :page_start, :page_end, :ordinal)
+                        """
+                    ),
+                    {
+                        "kb_id": kb_id, "institute_id": institute_id, "parent_id": topic_id,
+                        "title": sub.title, "summary": sub.summary, "keywords": sub.keywords,
+                        "page_start": sub.page_start, "page_end": sub.page_end,
+                        "ordinal": s_ordinal,
+                    },
+                )
+                written += 1
+        self.db.commit()
+        return written
+
+    def get_topic_tree(self, kb_id: str) -> List[Dict[str, Any]]:
+        """The topic tree as topics each carrying their subtopics."""
+        rows = self.db.execute(
+            text(
+                """
+                SELECT id, parent_id, level, title, summary, keywords,
+                       page_start, page_end, ordinal
+                FROM knowledge_base_node
+                WHERE knowledge_base_id = :kb_id AND level IN ('topic', 'subtopic')
+                ORDER BY ordinal
+                """
+            ),
+            {"kb_id": kb_id},
+        ).fetchall()
+
+        topics: Dict[str, Dict[str, Any]] = {}
+        children: List[Dict[str, Any]] = []
+        for r in rows:
+            node = {
+                "id": r[0], "parent_id": r[1], "level": r[2], "title": r[3],
+                "summary": r[4], "keywords": list(r[5] or []),
+                "page_start": r[6], "page_end": r[7], "ordinal": r[8],
+            }
+            if r[2] == "topic":
+                node["subtopics"] = []
+                topics[r[0]] = node
+            else:
+                children.append(node)
+        for child in children:
+            parent = topics.get(child["parent_id"])
+            if parent:
+                parent["subtopics"].append(child)
+        ordered = sorted(topics.values(), key=lambda t: t["ordinal"])
+        for topic in ordered:
+            topic["subtopics"].sort(key=lambda s: s["ordinal"])
+        return ordered
+
     def link_chunks_to_nodes(self, source_id: str) -> int:
         """Attach each chunk to the section node covering its pages.
 

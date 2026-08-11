@@ -355,6 +355,56 @@ async def get_outline(
     return {"nodes": repo.get_structure_outline(kb_id)}
 
 
+@router.get("/bases/{kb_id}/topics")
+async def get_topics(
+    kb_id: str,
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """The topic tree — what this knowledge base is about, across all sources.
+
+    This is what the paper builder shows a teacher. Distinct from /outline, which
+    is the per-source page-ordered summary tree used for provenance.
+    """
+    resolved = caller.require_institute(institute_id)
+    repo = KbRepository(db)
+    _load_kb_or_404(repo, kb_id, resolved)
+    return {"topics": repo.get_topic_tree(kb_id)}
+
+
+@router.post("/bases/{kb_id}/topics/rebuild")
+async def rebuild_topics(
+    kb_id: str,
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Re-derive the topic tree.
+
+    Normally unnecessary — it rebuilds after every ingest — but useful for a
+    knowledge base ingested before topics existed, or after deleting a source.
+    """
+    resolved = caller.require_institute(institute_id)
+    repo = KbRepository(db)
+    kb = _load_kb_or_404(repo, kb_id, resolved)
+    _require_writable(repo, kb, resolved)
+
+    from ..services.kb.topics import build_topic_tree
+
+    try:
+        tree = await build_topic_tree(db, kb_id=kb_id, institute_id=resolved)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not tree.topics:
+        raise HTTPException(
+            422,
+            "No topics could be derived yet. Add a document and wait for it to "
+            "finish processing.",
+        )
+    return {"topics": repo.get_topic_tree(kb_id)}
+
+
 @router.get("/bases/{kb_id}/review-pages")
 async def list_review_pages(
     kb_id: str,

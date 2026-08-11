@@ -18,7 +18,6 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Select,
@@ -28,7 +27,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useKnowledgeBase } from '../-hooks';
-import { getOutline } from '../-services/knowledge-base-service';
+import { getTopics, rebuildTopics } from '../-services/paper-service';
 import {
     buildBlueprint,
     getPaperJob,
@@ -38,10 +37,11 @@ import {
     validatePaper,
 } from '../-services/paper-service';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
+import { TopicPicker, toSelectedNodeIds } from '../-components/paper/TopicPicker';
 import { ReviewBoard } from '../-components/paper/ReviewBoard';
-import type { OutlineNode } from '../-types';
 import type {
     Blueprint,
+    KbTopic,
     CreditEstimate,
     PaperIssue,
     PaperResult,
@@ -117,11 +117,12 @@ function PaperBuilderPage() {
     const { data: kb } = useKnowledgeBase(kbId);
 
     const [step, setStep] = useState<Step>('scope');
-    const [outline, setOutline] = useState<OutlineNode[] | null>(null);
-    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [topics, setTopics] = useState<KbTopic[] | null>(null);
+    const [selectedLeafIds, setSelectedLeafIds] = useState<Set<string>>(new Set());
+    const [rebuilding, setRebuilding] = useState(false);
 
     const [spec, setSpec] = useState<PaperSpec>({
-        total_marks: 40,
+        total_questions: 20,
         duration_minutes: 90,
         difficulty: 'MIXED',
         grade: '',
@@ -143,45 +144,28 @@ function PaperBuilderPage() {
     }, [setNavHeading]);
 
     useEffect(() => {
-        getOutline(kbId)
-            .then(setOutline)
-            .catch(() => setOutline([]));
+        getTopics(kbId)
+            .then(setTopics)
+            .catch(() => setTopics([]));
     }, [kbId]);
 
-    // Chapters, with their sections rolled up — a teacher picks chapters, not
-    // individual summary nodes.
-    const chapters = useMemo(() => {
-        if (!outline) return [];
-        const chapterNodes = outline.filter((n) => n.level === 'chapter');
-        if (chapterNodes.length > 0) {
-            return chapterNodes.map((c) => ({
-                node: c,
-                children: outline.filter((n) => n.parent_id === c.id),
-            }));
+    // A selected topic implies all of its subtopics, so this collapses to the
+    // parent id where the whole topic is chosen — see toSelectedNodeIds.
+    const selectedNodeIds = useMemo(
+        () => toSelectedNodeIds(topics ?? [], selectedLeafIds),
+        [topics, selectedLeafIds]
+    );
+
+    const handleRebuildTopics = async () => {
+        setRebuilding(true);
+        try {
+            setTopics(await rebuildTopics(kbId));
+            toast.success('Topic map rebuilt');
+        } catch (error) {
+            toast.error(errorMessage(error, 'Could not rebuild the topic map'));
+        } finally {
+            setRebuilding(false);
         }
-        // Books with no detected chapters: offer the sections directly rather
-        // than showing an empty picker.
-        return outline
-            .filter((n) => n.level === 'section')
-            .map((s) => ({ node: s, children: [] as OutlineNode[] }));
-    }, [outline]);
-
-    const selectedNodeIds = useMemo(() => {
-        const ids: string[] = [];
-        chapters.forEach(({ node, children }) => {
-            if (!selected.has(node.id)) return;
-            ids.push(node.id, ...children.map((c) => c.id));
-        });
-        return ids;
-    }, [chapters, selected]);
-
-    const toggleChapter = (id: string) => {
-        setSelected((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
     };
 
     // ---- Plan -------------------------------------------------------------
@@ -357,55 +341,54 @@ function PaperBuilderPage() {
                 {step === 'scope' && (
                     <div className="grid gap-4 lg:grid-cols-2">
                         <Card className="flex flex-col gap-3 p-4">
-                            <div>
-                                <p className="text-subtitle font-semibold text-neutral-700">
-                                    What should the paper cover?
-                                </p>
-                                <p className="text-caption text-neutral-500">
-                                    These are the chapters found in your material. Leave everything
-                                    unticked to draw from the whole knowledge base.
-                                </p>
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="text-subtitle font-semibold text-neutral-700">
+                                        What should the paper cover?
+                                    </p>
+                                    <p className="text-caption text-neutral-500">
+                                        The topics found across everything in this knowledge base.
+                                        Pick a topic to include all of it, or open it to choose
+                                        subtopics. Leave everything unticked to draw from the whole
+                                        knowledge base.
+                                    </p>
+                                </div>
+                                {topics !== null && topics.length > 0 && (
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="medium"
+                                        onClick={handleRebuildTopics}
+                                        disable={rebuilding}
+                                    >
+                                        {rebuilding ? 'Rebuilding…' : 'Rebuild'}
+                                    </MyButton>
+                                )}
                             </div>
 
-                            {outline === null && <Skeleton className="h-40 w-full rounded-md" />}
-                            {outline !== null && chapters.length === 0 && (
-                                <p className="text-body text-neutral-500">
-                                    No chapter summary yet. Add a document and wait for it to finish
-                                    processing.
-                                </p>
-                            )}
-                            <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-                                {chapters.map(({ node, children }) => (
-                                    <label
-                                        key={node.id}
-                                        className="flex cursor-pointer items-start gap-2 rounded-md p-2 hover:bg-neutral-50"
+                            {topics === null && <Skeleton className="h-40 w-full rounded-md" />}
+                            {topics !== null && topics.length === 0 && (
+                                <div className="flex flex-col items-start gap-2">
+                                    <p className="text-body text-neutral-500">
+                                        No topic map yet. It is built automatically once a document
+                                        finishes processing.
+                                    </p>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        onClick={handleRebuildTopics}
+                                        disable={rebuilding}
                                     >
-                                        <Checkbox
-                                            checked={selected.has(node.id)}
-                                            onCheckedChange={() => toggleChapter(node.id)}
-                                            className="mt-0.5"
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="block text-body text-neutral-700">
-                                                {node.title || 'Untitled'}
-                                            </span>
-                                            <span className="block text-caption text-neutral-400">
-                                                {node.page_start
-                                                    ? `p. ${node.page_start}${
-                                                          node.page_end &&
-                                                          node.page_end !== node.page_start
-                                                              ? `-${node.page_end}`
-                                                              : ''
-                                                      }`
-                                                    : ''}
-                                                {children.length > 0
-                                                    ? ` · ${children.length} topics`
-                                                    : ''}
-                                            </span>
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
+                                        {rebuilding ? 'Building…' : 'Build the topic map'}
+                                    </MyButton>
+                                </div>
+                            )}
+                            {topics !== null && topics.length > 0 && (
+                                <TopicPicker
+                                    topics={topics}
+                                    selectedLeafIds={selectedLeafIds}
+                                    onChange={setSelectedLeafIds}
+                                />
+                            )}
                         </Card>
 
                         <Card className="flex flex-col gap-4 p-4">
@@ -414,13 +397,16 @@ function PaperBuilderPage() {
                             </p>
                             <div className="grid grid-cols-2 gap-3">
                                 <MyInput
-                                    label="Total marks"
+                                    label="Number of questions"
                                     inputType="number"
-                                    input={String(spec.total_marks ?? '')}
+                                    input={String(spec.total_questions ?? '')}
                                     onChangeFunction={(e) =>
-                                        setSpec({ ...spec, total_marks: Number(e.target.value) })
+                                        setSpec({
+                                            ...spec,
+                                            total_questions: Number(e.target.value),
+                                        })
                                     }
-                                    inputPlaceholder="40"
+                                    inputPlaceholder="20"
                                     className="w-full"
                                 />
                                 <MyInput
@@ -482,7 +468,7 @@ function PaperBuilderPage() {
                                 buttonType="primary"
                                 scale="large"
                                 onClick={() => void plan()}
-                                disable={planning || chapters.length === 0}
+                                disable={planning}
                             >
                                 {planning ? (
                                     <>

@@ -31,7 +31,23 @@ export interface Blueprint {
     total_marks: number;
 }
 
+/** A topic in the KB's topic tree (the "outline" / mind map). */
+export interface KbTopic {
+    id: string;
+    parent_id: string | null;
+    level: 'topic' | 'subtopic';
+    title: string;
+    summary: string | null;
+    keywords: string[];
+    page_start: number | null;
+    page_end: number | null;
+    ordinal: number;
+    subtopics?: KbTopic[];
+}
+
 export interface PaperSpec {
+    /** What a teacher actually asks for; marks follow from the blueprint. */
+    total_questions?: number;
     total_marks?: number;
     duration_minutes?: number;
     difficulty?: string;

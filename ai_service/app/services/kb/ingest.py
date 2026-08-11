@@ -287,6 +287,28 @@ async def ingest_source(
                 )
             outcome["nodes"] = 1
 
+        # ---------------- topic tree ----------------
+        # Rebuilt across the WHOLE knowledge base after every ingest, not just
+        # for this source: topics span sources, so adding a fourth past paper has
+        # to fold into the existing "Electrochemistry" rather than create a
+        # fourth copy of it. Best-effort — a corpus that is searchable but has a
+        # stale topic map is far better than a failed ingest.
+        if build_index:
+            try:
+                with db_session() as db:
+                    KbRepository(db).update_source_progress(
+                        source_id, progress=94, stage="summarizing"
+                    )
+                with db_session() as db:
+                    from .topics import build_topic_tree
+
+                    tree = await build_topic_tree(
+                        db, kb_id=kb_id, institute_id=institute_id
+                    )
+                outcome["topics"] = len(tree.topics)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Topic tree rebuild failed for kb=%s: %s", kb_id, exc)
+
         # ---------------- bill ----------------
         # Charged once, at the end, on delivered pages — never on requested
         # pages. A failed ingest is not billed at all.

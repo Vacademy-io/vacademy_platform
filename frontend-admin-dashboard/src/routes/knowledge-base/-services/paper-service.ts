@@ -3,6 +3,7 @@ import { AI_SERVICE_BASE_URL, ADD_QUESTION_PAPER } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import type {
     Blueprint,
+    KbTopic,
     BlueprintResponse,
     BlueprintRow,
     PaperIssue,
@@ -13,6 +14,29 @@ import type {
 } from '../-types/paper';
 
 const BASE = `${AI_SERVICE_BASE_URL}/knowledge-base/v1`;
+
+/**
+ * The knowledge base's topic tree — what it is ABOUT, merged across sources.
+ *
+ * Distinct from getOutline(), which returns the per-source page-ordered summary
+ * tree. That one is right for provenance and wrong for a picker: on a set of
+ * past papers it offers page windows like "Answer Keys, p. 13" as if they were
+ * subjects.
+ */
+export const getTopics = async (kbId: string): Promise<KbTopic[]> => {
+    const { data } = await authenticatedAxiosInstance.get<{ topics: KbTopic[] }>(
+        `${BASE}/bases/${kbId}/topics`
+    );
+    return data.topics ?? [];
+};
+
+/** Re-derive the topic tree (for KBs ingested before topics existed). */
+export const rebuildTopics = async (kbId: string): Promise<KbTopic[]> => {
+    const { data } = await authenticatedAxiosInstance.post<{ topics: KbTopic[] }>(
+        `${BASE}/bases/${kbId}/topics/rebuild`
+    );
+    return data.topics ?? [];
+};
 
 /**
  * Plan a paper, or revise the current plan.

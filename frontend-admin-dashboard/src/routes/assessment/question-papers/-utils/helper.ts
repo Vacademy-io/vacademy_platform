@@ -10,6 +10,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { QuestionType, QUESTION_TYPES } from '@/constants/dummy-data';
 import { getInstituteId } from '@/constants/helper';
+import { renderLatexDelimiters } from '@/lib/latex-delimiters';
 // function defined locally below to avoid circular dependency
 // import { formatTimeStudyLibraryInSeconds } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-helper/helper';
 
@@ -610,7 +611,9 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             if (item.question_type === 'ONE_WORD') {
                 subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer;
             } else if (item.question_type === 'LONG_ANSWER') {
-                subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
+                subjectiveAnswerText = renderLatexDelimiters(
+                    JSON.parse(item.auto_evaluation_json)?.data?.answer?.content
+                );
             }
         }
         let codingConfig;
@@ -624,9 +627,12 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         const baseQuestion: MyQuestion = {
             id: item.id || '',
             questionId: item.id || item.preview_id || undefined,
-            questionName: item.text?.content || item.text_data?.content || '',
+            questionName:
+                renderLatexDelimiters(item.text?.content || item.text_data?.content) || '',
             explanation:
-                item.explanation_text?.content || item.explanation_text_data?.content || '',
+                renderLatexDelimiters(
+                    item.explanation_text?.content || item.explanation_text_data?.content
+                ) || '',
             questionType: item.question_type,
             questionMark: '',
             questionPenalty: '',
@@ -666,7 +672,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             validAnswers: [],
             decimals,
             numericType,
-            parentRichTextContent: item.parent_rich_text?.content || null,
+            parentRichTextContent: renderLatexDelimiters(item.parent_rich_text?.content) || null,
             subjectiveAnswerText,
             status: item.status,
             canSkip: item.can_skip,
@@ -677,31 +683,31 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         if (item.question_type === 'MCQS') {
             baseQuestion.singleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'MCQM') {
             baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQS') {
             baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQM') {
             baseQuestion.cmultipleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'TRUE_FALSE') {
             baseQuestion.trueFalseOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'NUMERIC') {
@@ -729,7 +735,9 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
         if (item.question_type === 'ONE_WORD') {
             subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer;
         } else if (item.question_type === 'LONG_ANSWER') {
-            subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
+            subjectiveAnswerText = renderLatexDelimiters(
+                JSON.parse(item.auto_evaluation_json)?.data?.answer?.content
+            );
         }
     }
     let codingConfig;
@@ -743,8 +751,11 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     const baseQuestion: MyQuestion = {
         id: item.id || '',
         questionId: item.id || item.preview_id || undefined,
-        questionName: item.text?.content || item.text_data?.content || '',
-        explanation: item.explanation_text?.content || item.explanation_text_data?.content || '',
+        questionName: renderLatexDelimiters(item.text?.content || item.text_data?.content) || '',
+        explanation:
+            renderLatexDelimiters(
+                item.explanation_text?.content || item.explanation_text_data?.content
+            ) || '',
         questionType: item.question_type,
         questionMark: '',
         questionPenalty: '',
@@ -784,7 +795,7 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
         validAnswers: [],
         decimals,
         numericType,
-        parentRichTextContent: item.parent_rich_text?.content || null,
+        parentRichTextContent: renderLatexDelimiters(item.parent_rich_text?.content) || null,
         subjectiveAnswerText,
         codingConfig,
     };
@@ -792,31 +803,31 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     if (item.question_type === 'MCQS') {
         baseQuestion.singleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'MCQM') {
         baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'CMCQS') {
         baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'CMCQM') {
         baseQuestion.cmultipleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'TRUE_FALSE') {
         baseQuestion.trueFalseOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'NUMERIC') {

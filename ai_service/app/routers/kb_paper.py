@@ -47,6 +47,10 @@ router = APIRouter(prefix="/knowledge-base/v1", tags=["knowledge-base-paper"])
 
 class PaperSpec(BaseModel):
     """What the teacher asked for, from the short intake form."""
+    # A teacher thinks in QUESTIONS ("I want a 20-question test"); marks fall out
+    # of the blueprint they then edit. total_marks stays accepted for callers
+    # that prefer it, but total_questions is what the UI asks for.
+    total_questions: Optional[int] = Field(None, ge=1, le=200)
     total_marks: Optional[int] = Field(None, ge=1, le=500)
     duration_minutes: Optional[int] = Field(None, ge=5, le=600)
     difficulty: Optional[str] = None          # EASY | MEDIUM | HARD | MIXED

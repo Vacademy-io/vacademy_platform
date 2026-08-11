@@ -21,6 +21,10 @@ import {
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import {
+  isYouTubeUrl,
+  convertToYouTubeEmbedUrl,
+} from "@/routes/$tagName/-utils/video-url";
 
 export const Route = createFileRoute("/study-library/live-class/waiting-room/")(
   {
@@ -51,6 +55,27 @@ function WaitingRoomComponent() {
   // re-opened the meeting link forever because nothing unmounts this route.
   const hasMarkedRef = useRef(false);
   const hasJoinedRef = useRef(false);
+
+  // A YouTube link on the session plays while learners wait. Muted so it can
+  // never drown out the class starting, looped because people arrive across the
+  // whole waiting window, and controls left on so they can unmute if they want.
+  const waitingRoomVideoUrl = (() => {
+    const raw = sessionDetails?.waitingRoomLink;
+    if (!raw || !isYouTubeUrl(raw)) return null;
+    const embed = convertToYouTubeEmbedUrl(raw);
+    if (!embed) return null;
+    const videoId = embed.split("/embed/")[1]?.split(/[?&]/)[0];
+    const params = new URLSearchParams({
+      autoplay: "1",
+      mute: "1",
+      loop: "1",
+      rel: "0",
+      playsinline: "1",
+      // loop only takes effect on a single video when it is also the playlist
+      ...(videoId ? { playlist: videoId } : {}),
+    });
+    return `${embed.split("?")[0]}?${params.toString()}`;
+  })();
 
   const fetchThumbnail = useCallback(async () => {
     if (sessionDetails?.thumbnailFileId) {
@@ -212,12 +237,34 @@ function WaitingRoomComponent() {
             />
           )}
         </div>
-        {thumbnail && (
-          <img
-            src={thumbnail}
-            alt={t("liveClass.sessionThumbnailAlt")}
-            className="w-full max-h-72 rounded-lg object-contain bg-gray-50"
-          />
+        {/* Something to watch while the class fills up. The session's
+            waitingRoomLink carries it — a breathing exercise, last week's
+            recording, a welcome message — and falls back to the thumbnail when
+            no video is set. Muted autoplay so it can't talk over the class
+            starting, and looped because learners arrive at different times. */}
+        {waitingRoomVideoUrl ? (
+          <div className="w-full max-w-3xl overflow-hidden rounded-lg shadow-lg">
+            <div className="relative aspect-video bg-black">
+              <iframe
+                src={waitingRoomVideoUrl}
+                title={t("liveClass.waitingRoomVideoTitle", {
+                  defaultValue: "While you wait",
+                })}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="size-full"
+              />
+            </div>
+          </div>
+        ) : (
+          thumbnail && (
+            <img
+              src={thumbnail}
+              alt={t("liveClass.sessionThumbnailAlt")}
+              className="w-full max-h-72 rounded-lg object-contain bg-gray-50"
+            />
+          )
         )}
         {sessionDetails && (
           <BackgroundMusic

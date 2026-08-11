@@ -138,6 +138,34 @@ def _assert_kb(db: Session, kb_id: str, institute_id: str) -> Dict[str, Any]:
     return kb
 
 
+def _topic_label(repo: KbRepository, kb_id: str, node_ids: Optional[List[str]]) -> str:
+    """Human name for the chosen topics, used as the retrieval subject.
+
+    Retrieval is far sharper when it queries "Rotational Motion" than the name
+    of a 400-page book, so the picked topics — not the knowledge base — decide
+    what gets searched. Subtopics collapse to their parents to keep the label
+    short when someone selects a whole branch.
+    """
+    if not node_ids:
+        return ""
+    wanted = set(node_ids)
+    tree = repo.get_topic_tree(kb_id)
+    picked_parents = [n["title"] for n in tree if n["id"] in wanted and n["title"]]
+    if not picked_parents:
+        # Only subtopics were selected — name them directly.
+        picked_parents = [
+            c["title"]
+            for n in tree
+            for c in (n.get("children") or [])
+            if c["id"] in wanted and c.get("title")
+        ]
+    if not picked_parents:
+        return ""
+    if len(picked_parents) <= 3:
+        return ", ".join(picked_parents)
+    return f"{', '.join(picked_parents[:3])} and {len(picked_parents) - 3} more"
+
+
 # ---------------------------------------------------------------------------
 # 1. Blueprint
 # ---------------------------------------------------------------------------
@@ -328,6 +356,167 @@ async def generate_paper(
 
     ai_task_service.schedule(task_id, work)
     return {"task_id": task_id, "status": "PROGRESS", "planned": blueprint.total_questions}
+
+
+class SectionRequest(BaseModel):
+    """Fill ONE assessment section from a knowledge base.
+
+    Deliberately not a blueprint: the assessment already has sections with their
+    own marks and duration, so re-planning sections inside one of them would
+    fight the existing UI. The teacher states what this section needs and it is
+    generated directly — which also skips the planning LLM call entirely.
+    """
+    selected_node_ids: Optional[List[str]] = None   # topics/subtopics; empty = whole KB
+    count: int = Field(10, ge=1, le=60)
+    question_type: str = "MCQS"
+    difficulty: str = "MEDIUM"
+    marks_each: float = Field(1, ge=0)
+    section_title: Optional[str] = Field(None, max_length=200)
+    grade: Optional[str] = None
+    language: Optional[str] = None
+    institute_id: Optional[str] = None
+
+
+@router.post("/bases/{kb_id}/paper/section", status_code=202)
+async def generate_for_section(
+    kb_id: str,
+    body: SectionRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Generate questions for one assessment section. Poll GET /paper-jobs/{id}.
+
+    Returns the same result shape as whole-paper generation, so the review board
+    is shared between the standalone builder and the assessment flow.
+    """
+    resolved = caller.require_institute(body.institute_id)
+    kb = _assert_kb(db, kb_id, resolved)
+    repo = KbRepository(db)
+
+    qtype = (body.question_type or "MCQS").upper()
+    if qtype not in kb_paper.QUESTION_TYPES:
+        raise HTTPException(400, f"question_type must be one of {kb_paper.QUESTION_TYPES}")
+
+    # Name the row after the topics actually chosen, so retrieval queries the
+    # subject the teacher picked rather than the knowledge base as a whole.
+    topic_label = _topic_label(repo, kb_id, body.selected_node_ids) or kb["name"]
+
+    blueprint = kb_paper.Blueprint(
+        title=body.section_title or f"{topic_label} — {body.count} questions",
+        language=body.language,
+        rows=[
+            kb_paper.BlueprintRow(
+                id="section-1",
+                section=body.section_title or "Section",
+                topic=topic_label,
+                node_ids=list(body.selected_node_ids or []),
+                question_type=qtype,
+                count=body.count,
+                marks_each=body.marks_each,
+                difficulty=(body.difficulty or "MEDIUM").upper(),
+            )
+        ],
+    )
+    _preflight_or_402(
+        db, tool_key="kb_paper_questions",
+        params={"num_questions": body.count}, institute_id=resolved,
+    )
+
+    task = AiTaskService(AiTaskRepository(db)).create(
+        task_type=AiTaskType.KB_PAPER_GENERATE,
+        input_id=kb_id,
+        input_type=AiTaskInputType.PROMPT_ID,
+        task_name=f"Assessment section — {topic_label}",
+        institute_id=resolved,
+        dynamic_values={"kb_id": kb_id, "user_id": caller.user_id, "mode": "section"},
+    )
+    task_id = str(task.id)
+    user_id = caller.user_id
+    grade = body.grade
+
+    generation_id = kb_generations.create(
+        db,
+        kb_id=kb_id, institute_id=resolved,
+        artifact_type="ASSESSMENT",
+        title=blueprint.title,
+        status="GENERATING",
+        input_payload={
+            "blueprint": blueprint.to_dict(),
+            "grade": grade,
+            "mode": "section",
+            "selected_node_ids": body.selected_node_ids or [],
+        },
+        ai_task_id=task_id,
+        items_planned=body.count,
+        created_by=user_id,
+    )
+
+    async def work() -> str:
+        try:
+            with db_session() as job_db:
+                generated = await kb_paper.generate_questions(
+                    job_db, kb_id=kb_id, institute_id=resolved,
+                    blueprint=blueprint, grade=grade,
+                )
+                issues = kb_paper.validate_paper(blueprint, generated.questions)
+
+            if generated.questions:
+                _bill(
+                    "kb_paper_questions", {"num_questions": len(generated.questions)},
+                    model=generated.model,
+                    usage={
+                        "prompt_tokens": generated.prompt_tokens,
+                        "completion_tokens": generated.completion_tokens,
+                    },
+                    institute_id=resolved, user_id=user_id,
+                    idempotency_key=f"kb_paper:{task_id}",
+                )
+
+            raw_kept, formatted, format_warnings = kb_paper.pair_with_formatted(
+                generated.questions
+            )
+            payload = {
+                "blueprint": blueprint.to_dict(),
+                "questions": formatted,
+                "raw_questions": raw_kept,
+                "issues": [
+                    {
+                        "question_number": i.question_number, "severity": i.severity,
+                        "kind": i.kind, "message": i.message,
+                    }
+                    for i in issues
+                ],
+                "warnings": generated.warnings + format_warnings,
+                "delivered": len(formatted),
+                "planned": body.count,
+            }
+            if generation_id:
+                with db_session() as hist_db:
+                    kb_generations.update(
+                        hist_db, generation_id,
+                        status="READY" if formatted else "FAILED",
+                        progress=100, result_payload=payload,
+                        items_delivered=len(formatted),
+                        error_message=None if formatted else
+                        "No questions could be written from the selected topics.",
+                    )
+            return json.dumps(payload)
+        except Exception as exc:
+            if generation_id:
+                with db_session() as hist_db:
+                    kb_generations.update(
+                        hist_db, generation_id, status="FAILED",
+                        error_message=str(exc)[:2000],
+                    )
+            raise
+
+    ai_task_service.schedule(task_id, work)
+    return {
+        "task_id": task_id,
+        "status": "PROGRESS",
+        "generation_id": generation_id,
+        "planned": body.count,
+    }
 
 
 @router.get("/paper-jobs/{task_id}")

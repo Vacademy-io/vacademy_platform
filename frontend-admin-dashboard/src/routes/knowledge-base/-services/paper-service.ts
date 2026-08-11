@@ -7,8 +7,10 @@ import type {
     BlueprintResponse,
     BlueprintRow,
     PaperIssue,
+    PaperDifficulty,
     PaperJob,
     PaperQuestion,
+    PaperQuestionType,
     PaperSpec,
     RawPaperQuestion,
     KbGeneration,
@@ -71,6 +73,34 @@ export const startGeneration = async (
         `${BASE}/bases/${kbId}/paper/generate`,
         payload
     );
+    return data;
+};
+
+/**
+ * Fill ONE assessment section from a knowledge base.
+ *
+ * Separate from `startGeneration` because an assessment section already has its
+ * own marks and duration — planning sections inside one would fight the
+ * assessment builder. The teacher states the count and type directly, which
+ * also skips the planning step entirely. Poll with `getPaperJob`.
+ */
+export const generateSectionFromKb = async (
+    kbId: string,
+    payload: {
+        selected_node_ids: string[];
+        count: number;
+        question_type: PaperQuestionType;
+        difficulty: PaperDifficulty;
+        marks_each?: number;
+        section_title?: string;
+        grade?: string;
+    }
+): Promise<{ task_id: string; planned: number; generation_id: string | null }> => {
+    const { data } = await authenticatedAxiosInstance.post<{
+        task_id: string;
+        planned: number;
+        generation_id: string | null;
+    }>(`${BASE}/bases/${kbId}/paper/section`, payload);
     return data;
 };
 
@@ -160,7 +190,9 @@ export const savePaperToQuestionBank = async (payload: {
     questions: PaperQuestion[];
     levelId?: string;
     subjectId?: string;
-}): Promise<{ id?: string } | undefined> => {
+    // The endpoint answers with `saved_question_paper_id` — NOT `id`. Naming it
+    // here keeps callers from reading a field that is always undefined.
+}): Promise<{ saved_question_paper_id?: string } | undefined> => {
     const instituteId = getInstituteId();
     const { data } = await authenticatedAxiosInstance.post(ADD_QUESTION_PAPER, {
         title: payload.title,

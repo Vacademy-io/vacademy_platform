@@ -334,7 +334,9 @@ function PaperBuilderPage() {
             // Best-effort: the paper IS saved either way, and failing to update
             // history must not make it look like the save failed.
             if (generationId) {
-                await markGenerationSaved(generationId, saved?.id).catch(() => undefined);
+                await markGenerationSaved(generationId, saved?.saved_question_paper_id).catch(
+                    () => undefined
+                );
             }
             toast.success('Saved to your question bank');
             navigate({ to: '/assessment/question-papers' });

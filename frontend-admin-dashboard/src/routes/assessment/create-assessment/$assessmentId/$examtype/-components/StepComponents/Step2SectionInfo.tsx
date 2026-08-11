@@ -58,6 +58,7 @@ import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/h
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { calculateAveragePenalty } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import Step2GenerateQuestionsFromAI from './-components/Step2GenerateQuestionsFromAI';
+import Step2CreateFromKnowledgeBase from './-components/Step2CreateFromKnowledgeBase';
 import { CriteriaStatusBadge } from './-components/CriteriaStatusBadge';
 import { CriteriaPreviewDialog } from './-components/CriteriaPreviewDialog';
 import { AddEditCriteriaDialog } from './-components/AddEditCriteriaDialog';
@@ -814,6 +815,7 @@ export const Step2SectionInfo = ({
                         paperId=""
                         onConfirm={handleSelectorConfirm}
                     />
+                    <Step2CreateFromKnowledgeBase form={form} index={index} />
                     <div className="relative overflow-hidden rounded-xl">
                         <Step2GenerateQuestionsFromAI form={form} index={index} />
                         <BorderBeam

@@ -28,4 +28,9 @@ public class RegistrationFieldDto {
     private Boolean isMandatory = true;
     private String key;
     private String commaSeparatedOptions;
+    /**
+     * Per-field settings as JSON (help text, default value, checkbox heading/body, file
+     * constraints). Null leaves whatever is stored untouched; "" clears it.
+     */
+    private String config;
 }

@@ -649,6 +649,9 @@ export function convertToCustomFieldsData(data: RegistrationFormField[] | undefi
                     : false,
             isRequired: field.is_mandatory,
             key: field.field_key,
+            // Carries help text and the other per-field settings back into the builder, so the
+            // edit dialog opens showing what was saved.
+            ...(field.config ? { config: field.config } : {}),
             ...(field.field_type === 'dropdown' && {
                 options: field.comma_separated_options.split(',').map((value, index) => ({
                     id: String(index),
@@ -707,12 +710,17 @@ export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
 }
 
 export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCustomField => {
+    // Help text and the other per-field settings live in `config`, already a JSON string.
+    // `default_value` / `description` stay empty: duplicating the same values into those
+    // legacy top-level fields would only drift.
     return {
         id: field.id,
         name: field.name,
         type: field.type,
         default_value: '', // Provide a default value, if necessary
         description: '', // Provide a description, if necessary
+        // Always sent (as '' when there are no settings) so clearing help text actually clears it.
+        config: field.config ?? '',
         is_mandatory: field.isRequired,
         key: field.key, // Use the ID as the key
         comma_separated_options: field.options

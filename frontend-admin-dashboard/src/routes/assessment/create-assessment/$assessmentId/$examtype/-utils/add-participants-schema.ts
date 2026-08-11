@@ -17,6 +17,12 @@ const testInputFieldSchema = z.object({
             })
         )
         .optional(),
+    /**
+     * Per-field settings as a JSON string (help text, default value, checkbox heading/body,
+     * file constraints). Must be declared here or zod strips it before the save payload is
+     * built, which is why help text never reached the server.
+     */
+    config: z.string().optional(),
 });
 
 // Define the schema for each student

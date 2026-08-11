@@ -65,6 +65,10 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import {
+    parseFieldConfig,
+    serializeFieldConfig,
+} from '@/components/common/custom-fields/field-config';
+import {
     AddCustomFieldDialog as SharedAddCustomFieldDialog,
     DropdownOption,
     CustomFieldConfig,
@@ -422,6 +426,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             oldKey,
             ...(options && { options: options.map((opt) => ({ id: String(opt.id), value: opt.value, disabled: true })) }),
             isRequired: config?.isRequired ?? true,
+            // Help text and the rest of the per-field settings — previously dropped here,
+            // which is why help text never reached the learner form.
+            config: serializeFieldConfig(config),
             key: '',
             order: customFields.length,
         };
@@ -443,6 +450,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             type,
             name,
             isRequired: config?.isRequired ?? true,
+            // Help text and the rest of the per-field settings. '' when there are none, so
+            // clearing help text clears it server-side instead of leaving the old value.
+            config: serializeFieldConfig(config),
             // Dropping the options on a switch to a non-choice type stops stale
             // values from reappearing if the admin switches back.
             options: options?.map((opt, index) => ({
@@ -1054,6 +1064,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                     (o) => o.value
                                                 ),
                                                 isRequired: editingField.isRequired,
+                                                config: parseFieldConfig(editingField.config),
                                             }}
                                             onAddField={(type, name, _oldKey, options, config) =>
                                                 handleEditCustomField(
@@ -1092,6 +1103,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                             </h1>
                                             <div className="flex max-h-[80vh] flex-col gap-4 overflow-y-auto px-4 py-2">
                                                 {customFields?.map((testInputFields, idx) => {
+                                                    const fieldConfig = parseFieldConfig(
+                                                        testInputFields.config
+                                                    );
                                                     return (
                                                         <div
                                                             className="flex w-full flex-col items-start gap-[0.4rem]"
@@ -1116,7 +1130,15 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                                 required={
                                                                     testInputFields.isRequired
                                                                 }
+                                                                config={fieldConfig}
                                                             />
+                                                            {/* Same hint the learner sees under
+                                                                the field, so the preview matches. */}
+                                                            {fieldConfig?.helpText && (
+                                                                <p className="text-caption text-neutral-500">
+                                                                    {fieldConfig.helpText}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}

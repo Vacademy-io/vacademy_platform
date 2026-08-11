@@ -368,6 +368,7 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
         assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        assessmentCustomField.setConfig(registrationFieldDto.getConfig());
         return assessmentCustomField;
     }
 
@@ -380,6 +381,11 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
         assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        // Null means the client said nothing about settings, so keep the stored ones; an empty
+        // string is an explicit "clear it".
+        if (registrationFieldDto.getConfig() != null) {
+            assessmentCustomField.setConfig(registrationFieldDto.getConfig());
+        }
         // Reordering an existing field arrives through this path, so skipping the
         // order here made drag-and-drop silently no-op. Leave it alone when the
         // client omits it rather than collapsing every field to 0.

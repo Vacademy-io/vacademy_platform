@@ -18,7 +18,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { LANGUAGE_LABEL, PURPOSE_OPTIONS } from './-constants';
 import { useKnowledgeBases } from './-hooks';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreateKbDialog } from './-components/CreateKbDialog';
+import { LibraryBrowser } from './-components/library/LibraryBrowser';
 import type { KnowledgeBase } from './-types';
 
 export const Route = createLazyFileRoute('/knowledge-base/')({
@@ -172,6 +174,9 @@ function KnowledgeBaseListPage() {
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
     const [createOpen, setCreateOpen] = useState(false);
+    // Their own bases stay the landing view: the library is an offer, not an
+    // interruption to what they came here to do.
+    const [tab, setTab] = useState<'mine' | 'library'>('mine');
     const { data: bases, isLoading, isError, refetch } = useKnowledgeBases();
 
     useEffect(() => {
@@ -188,7 +193,33 @@ function KnowledgeBaseListPage() {
                 />
             </Helmet>
 
-            <div className="flex flex-col gap-5">
+            <Tabs value={tab} onValueChange={(v) => setTab(v as 'mine' | 'library')}>
+                <TabsList className="mb-5 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
+                    <TabsTrigger
+                        value="mine"
+                        className={`rounded-none px-6 py-2 !shadow-none ${
+                            tab === 'mine' ? 'border-b-2 border-primary-500 text-primary-500' : ''
+                        }`}
+                    >
+                        My knowledge bases
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="library"
+                        className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
+                            tab === 'library'
+                                ? 'border-b-2 border-primary-500 text-primary-500'
+                                : ''
+                        }`}
+                    >
+                        <Books className="size-4" />
+                        Library
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
+
+            {tab === 'library' && <LibraryBrowser />}
+
+            <div className={tab === 'mine' ? 'flex flex-col gap-5' : 'hidden'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p className="text-title font-semibold text-neutral-700">Knowledge bases</p>

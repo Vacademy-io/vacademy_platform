@@ -56,6 +56,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as KnowledgeBasePublishRouteImport } from "./routes/knowledge-base/publish"
 import { Route as KnowledgeBaseKbIdRouteImport } from "./routes/knowledge-base/$kbId"
 import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
 import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
@@ -153,6 +154,7 @@ import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pa
 import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as KnowledgeBasePaperKbIdRouteImport } from "./routes/knowledge-base/paper/$kbId"
+import { Route as KnowledgeBaseLibraryKbIdRouteImport } from "./routes/knowledge-base/library/$kbId"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as AudienceManagerOnboardingFlowIdRouteImport } from "./routes/audience-manager/onboarding/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
@@ -530,6 +532,13 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const KnowledgeBasePublishRoute = KnowledgeBasePublishRouteImport.update({
+  id: "/knowledge-base/publish",
+  path: "/knowledge-base/publish",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/publish.lazy").then((d) => d.Route),
+)
 const KnowledgeBaseKbIdRoute = KnowledgeBaseKbIdRouteImport.update({
   id: "/knowledge-base/$kbId",
   path: "/knowledge-base/$kbId",
@@ -1316,6 +1325,14 @@ const KnowledgeBasePaperKbIdRoute = KnowledgeBasePaperKbIdRouteImport.update({
 } as any).lazy(() =>
   import("./routes/knowledge-base/paper/$kbId.lazy").then((d) => d.Route),
 )
+const KnowledgeBaseLibraryKbIdRoute =
+  KnowledgeBaseLibraryKbIdRouteImport.update({
+    id: "/knowledge-base/library/$kbId",
+    path: "/knowledge-base/library/$kbId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/knowledge-base/library/$kbId.lazy").then((d) => d.Route),
+  )
 const AutomationChatbotFlowsFlowIdRoute =
   AutomationChatbotFlowsFlowIdRouteImport.update({
     id: "/automation/chatbot-flows/$flowId",
@@ -1800,6 +1817,7 @@ export interface FileRoutesByFullPath {
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1843,6 +1861,7 @@ export interface FileRoutesByFullPath {
   "/vim/": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
   "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2003,6 +2022,7 @@ export interface FileRoutesByTo {
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2046,6 +2066,7 @@ export interface FileRoutesByTo {
   "/vim": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
   "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2208,6 +2229,7 @@ export interface FileRoutesById {
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2251,6 +2273,7 @@ export interface FileRoutesById {
   "/vim/": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
   "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2414,6 +2437,7 @@ export interface FileRouteTypes {
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2457,6 +2481,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
     | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2617,6 +2642,7 @@ export interface FileRouteTypes {
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2660,6 +2686,7 @@ export interface FileRouteTypes {
     | "/vim"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
     | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2821,6 +2848,7 @@ export interface FileRouteTypes {
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2864,6 +2892,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
     | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -3026,6 +3055,7 @@ export interface RootRouteChildren {
   CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
   EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
   KnowledgeBaseKbIdRoute: typeof KnowledgeBaseKbIdRoute
+  KnowledgeBasePublishRoute: typeof KnowledgeBasePublishRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -3068,6 +3098,7 @@ export interface RootRouteChildren {
   VimIndexRoute: typeof VimIndexRoute
   AudienceManagerOnboardingFlowIdRoute: typeof AudienceManagerOnboardingFlowIdRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
+  KnowledgeBaseLibraryKbIdRoute: typeof KnowledgeBaseLibraryKbIdRoute
   KnowledgeBasePaperKbIdRoute: typeof KnowledgeBasePaperKbIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -3561,6 +3592,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/knowledge-base/publish": {
+      id: "/knowledge-base/publish"
+      path: "/knowledge-base/publish"
+      fullPath: "/knowledge-base/publish"
+      preLoaderRoute: typeof KnowledgeBasePublishRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/knowledge-base/$kbId": {
@@ -4242,6 +4280,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof KnowledgeBasePaperKbIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/knowledge-base/library/$kbId": {
+      id: "/knowledge-base/library/$kbId"
+      path: "/knowledge-base/library/$kbId"
+      fullPath: "/knowledge-base/library/$kbId"
+      preLoaderRoute: typeof KnowledgeBaseLibraryKbIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/automation/chatbot-flows/$flowId": {
       id: "/automation/chatbot-flows/$flowId"
       path: "/automation/chatbot-flows/$flowId"
@@ -4660,6 +4705,7 @@ const rootRouteChildren: RootRouteChildren = {
   CounsellorsUserIdRoute: CounsellorsUserIdRoute,
   EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
   KnowledgeBaseKbIdRoute: KnowledgeBaseKbIdRoute,
+  KnowledgeBasePublishRoute: KnowledgeBasePublishRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4702,6 +4748,7 @@ const rootRouteChildren: RootRouteChildren = {
   VimIndexRoute: VimIndexRoute,
   AudienceManagerOnboardingFlowIdRoute: AudienceManagerOnboardingFlowIdRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
+  KnowledgeBaseLibraryKbIdRoute: KnowledgeBaseLibraryKbIdRoute,
   KnowledgeBasePaperKbIdRoute: KnowledgeBasePaperKbIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManageCustomTeamsSubOrgsSubOrgSlugRoute:

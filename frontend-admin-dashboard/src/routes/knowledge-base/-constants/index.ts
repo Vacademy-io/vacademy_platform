@@ -90,3 +90,13 @@ export const MAX_PAGES_PER_SOURCE = 1200;
 
 /** Poll interval while any source is still being processed. */
 export const POLL_INTERVAL_MS = 4000;
+
+/**
+ * The institute that publishes the shared library.
+ *
+ * A UI hint only — it decides whether the publishing entry point is worth
+ * showing. The API is the authority and refuses anyone else with a 403, so a
+ * stale value here can never grant publishing rights.
+ * Mirrors KB_PUBLISHER_INSTITUTE_ID in ai_service.
+ */
+export const PUBLISHER_INSTITUTE_ID = '6b600940-2134-40ec-93ed-b61e403c5a87';

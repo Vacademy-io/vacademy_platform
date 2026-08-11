@@ -15,6 +15,8 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserService;
+import vacademy.io.common.institute.InstituteChoice;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.List;
@@ -27,6 +29,7 @@ public class InviteUserService {
     private final UserService userService;
     private final RoleService roleService;
     private final NotificationService notificationService;
+    private final OriginInstituteResolver originInstituteResolver;
 
     @Autowired
     private InstituteInternalService instituteInternalService;
@@ -99,10 +102,9 @@ public class InviteUserService {
     }
 
     private void sendReminderEmail(User user) {
-        String instituteId = null;
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            instituteId = user.getRoles().iterator().next().getInstituteId();
-        }
+        // Carries the invitee's password — an arbitrary role would send it from another
+        // institute's address.
+        String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
         
         GenericEmailRequest emailRequest = createEmailRequest(
                 user.getEmail(), "Invitation Reminder Mail",

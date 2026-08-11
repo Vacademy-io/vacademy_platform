@@ -42,7 +42,9 @@ import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 
@@ -71,6 +73,8 @@ public class AuthManager {
 
     @Autowired
     RestTemplate restTemplate;
+    @Autowired
+    OriginInstituteResolver originInstituteResolver;
     @Autowired
     AuthService authService;
     @Autowired
@@ -260,7 +264,12 @@ public class AuthManager {
     public String requestOtp(AuthRequestDto authRequestDTO) {
         Optional<User> user = null;
 
-        // Determine the user identifier strategy for the institute
+        // Determine the user identifier strategy for the institute.
+        // Deliberately the CALLER-SUPPLIED institute, never the host-resolved fallback used for
+        // the mail below: this selects the lookup query, and an institute configured as PHONE
+        // resolves to findUserByEmailWithPhoneNotNull. Letting the fallback reach here would move
+        // portals that currently answer as EMAIL (because the caller sent no institute) onto the
+        // PHONE path and lock out every user with no mobile number on file.
         String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
 
         if (authRequestDTO.getClientName() != null
@@ -288,14 +297,42 @@ public class AuthManager {
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
-            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()), authRequestDTO.getInstituteId());
+            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()),
+                    resolveInstituteIdForMail(authRequestDTO));
             return "OTP sent to " + authRequestDTO.getEmail();
         }
     }
 
+    /**
+     * The institute whose sender address and branding the OTP mail should carry: the one the
+     * caller supplied, or — when they supplied none — whichever institute owns the host the
+     * request came from. See {@link OriginInstituteResolver} for why the fallback exists and why
+     * it can only ever return null on failure.
+     *
+     * <p>Scoped to the mail on purpose. The fallback is a good enough guess to brand an email
+     * correctly and NOT good enough to change who can log in, so it is resolved here at the point
+     * of sending rather than at the top of the method where the authentication path would see it.
+     */
+    private String resolveInstituteIdForMail(AuthRequestDto authRequestDTO) {
+        if (StringUtils.hasText(authRequestDTO.getInstituteId())) {
+            return authRequestDTO.getInstituteId();
+        }
+        return originInstituteResolver.resolveInstituteId();
+    }
+
+    /**
+     * Subject and display name stay institute-neutral — they were "Vacademy | Otp verification."
+     * and "Vacademy User", which put the platform's name on white-labelled mail whose body and
+     * sender are correctly the institute's. Matches what the learner portal already sends.
+     *
+     * <p>Deliberately NOT left blank: notification_service reads a blank subject as "build me a
+     * branded one" and that template appends the OTP itself to the subject line. Institute-branded
+     * subjects are worth having, but not at the price of putting the code in every notification
+     * preview as a side effect of this fix.
+     */
     private EmailOTPRequest makeOtp(String email) {
-        return EmailOTPRequest.builder().to(email).service("auth-service").subject("Vacademy | Otp verification. ")
-                .name("Vacademy User").build();
+        return EmailOTPRequest.builder().to(email).service("auth-service").subject("OTP Verification")
+                .name("User").build();
     }
 
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {

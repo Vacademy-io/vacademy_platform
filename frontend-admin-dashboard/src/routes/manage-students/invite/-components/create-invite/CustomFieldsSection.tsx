@@ -2,13 +2,16 @@ import { MyButton } from '@/components/design-system/button';
 import { Switch } from '@/components/ui/switch';
 import { DotsSixVertical, PencilSimple, Plus, TrashSimple } from '@phosphor-icons/react';
 import { AddCustomFieldDialog, DropdownOption } from './AddCustomFieldDialog';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    type CustomFieldConfig,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 import { InviteForm } from '../../-schema/InviteFormSchema';
 import { MandatoryKeys } from '../../-utils/inviteLinkKeyChecks';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -24,16 +27,20 @@ interface CustomFieldsSectionProps {
         options?: DropdownOption[]
     ) => void;
     handleDeleteOpenField: (id: number) => void;
-    handleUpdateFieldName: (index: number, name: string) => void;
-    handleUpdateFieldOptions: (index: number, values: string[]) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) => void;
 }
 
 export const CustomFieldsSection = ({
     toggleIsRequired,
     handleAddOpenFieldValues,
     handleDeleteOpenField,
-    handleUpdateFieldName,
-    handleUpdateFieldOptions,
+    handleEditFieldAt,
 }: CustomFieldsSectionProps) => {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { watch, control } = useFormContext<InviteForm>();
@@ -75,10 +82,6 @@ export const CustomFieldsSection = ({
                     {fields.map((field, index) => {
                         const locked = field.oldKey || MandatoryKeys(field.name);
                         const isEditing = editingIndex === index;
-                        const hasOptions =
-                            field.type === 'dropdown' ||
-                            field.type === 'radio' ||
-                            field.type === 'multi_select';
                         return (
                             <SortableItem key={field.id} value={field.id} asChild>
                                 <div className={field.status === 'DELETED' ? 'hidden' : ''}>
@@ -90,7 +93,7 @@ export const CustomFieldsSection = ({
                                         locked={locked}
                                         isEditing={isEditing}
                                         onToggleRequired={() => toggleIsRequired(field.id)}
-                                        onEdit={() => setEditingIndex(isEditing ? null : index)}
+                                        onEdit={() => setEditingIndex(index)}
                                         onDelete={() => {
                                                             setEditingIndex(null);
                                                             handleDeleteOpenField(field.id);
@@ -105,23 +108,7 @@ export const CustomFieldsSection = ({
                                                 <DotsSixVertical size={18} />
                                             </SortableDragHandle>
                                         }
-                                    >
-                                        <InlineFieldEditor
-                                            name={field.name}
-                                            onNameChange={(next) =>
-                                                handleUpdateFieldName(index, next)
-                                            }
-                                            {...(hasOptions
-                                                ? {
-                                                      options: (field.options ?? []).map(
-                                                          (o) => o.value
-                                                      ),
-                                                      onOptionsChange: (next: string[]) =>
-                                                          handleUpdateFieldOptions(index, next),
-                                                  }
-                                                : {})}
-                                        />
-                                    </FormFieldRow>
+                                    />
                                 </div>
                             </SortableItem>
                         );
@@ -269,6 +256,33 @@ export const CustomFieldsSection = ({
                     onAddField={handleAddCustomField}
                     customFields={customFields || []}
                 />
+                {/* Editing reuses the add dialog, prefilled. Keyed per row so opening a
+                    different field re-runs the prefill. */}
+                {editingIndex !== null && fields[editingIndex] && (
+                    <SharedAddCustomFieldDialog
+                        key={fields[editingIndex]._rhfKey}
+                        mode="edit"
+                        open
+                        onOpenChange={(isOpen) => {
+                            if (!isOpen) setEditingIndex(null);
+                        }}
+                        initialField={{
+                            type: fields[editingIndex].type,
+                            name: fields[editingIndex].name,
+                            options: (fields[editingIndex].options ?? []).map((o) => o.value),
+                            isRequired: fields[editingIndex].isRequired,
+                        }}
+                        onAddField={(type, name, _oldKey, options, config) => {
+                            handleEditFieldAt(editingIndex, type, name, options, config);
+                            setEditingIndex(null);
+                        }}
+                        // Its own name must stay available, or saving an unchanged label
+                        // would be blocked as a duplicate.
+                        existingFieldNames={(customFields ?? [])
+                            .filter((f, i) => i !== editingIndex && f.status !== 'DELETED')
+                            .map((f) => f.name)}
+                    />
+                )}
             </div>
         </div>
     );

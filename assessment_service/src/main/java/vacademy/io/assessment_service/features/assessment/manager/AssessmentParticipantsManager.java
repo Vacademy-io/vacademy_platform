@@ -329,13 +329,31 @@ public class AssessmentParticipantsManager {
         List<AssessmentCustomField> customFields = new ArrayList<>();
         for (RegistrationFieldDto registrationFieldDto : openTestDetails.getRegistrationFormDetails()
                 .getUpdatedCustomAddedFields()) {
-            Optional<AssessmentCustomField> assessmentCustomField = assessmentCustomFieldRepository
-                    .findByFieldKeyAndAssessment(registrationFieldDto.getKey(), assessment);
+            Optional<AssessmentCustomField> assessmentCustomField = resolveFieldToUpdate(registrationFieldDto,
+                    assessment);
             if (assessmentCustomField.isEmpty())
                 continue;
             customFields.add(updateRegistrationField(assessmentCustomField.get(), registrationFieldDto, assessment));
         }
         assessmentCustomFieldRepository.saveAll(customFields);
+    }
+
+    /**
+     * Id first, field key second. A rename rewrites field_key from the new name, so the key the
+     * client is still holding no longer matches anything — matching on the row id keeps editing a
+     * field twice from silently doing nothing. The key lookup remains for clients that send no id
+     * and for rows the client only knows by key.
+     */
+    private Optional<AssessmentCustomField> resolveFieldToUpdate(RegistrationFieldDto dto, Assessment assessment) {
+        if (StringUtils.hasText(dto.getId())) {
+            Optional<AssessmentCustomField> byId = assessmentCustomFieldRepository.findById(dto.getId())
+                    // An id from another assessment must never be editable through this request.
+                    .filter(field -> field.getAssessment() != null
+                            && assessment.getId().equals(field.getAssessment().getId()));
+            if (byId.isPresent())
+                return byId;
+        }
+        return assessmentCustomFieldRepository.findByFieldKeyAndAssessment(dto.getKey(), assessment);
     }
 
     private AssessmentCustomField createRegistrationField(RegistrationFieldDto registrationFieldDto,
@@ -350,6 +368,7 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
         assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        assessmentCustomField.setConfig(registrationFieldDto.getConfig());
         return assessmentCustomField;
     }
 
@@ -362,6 +381,11 @@ public class AssessmentParticipantsManager {
         assessmentCustomField.setIsMandatory(registrationFieldDto.getIsMandatory());
         assessmentCustomField.setStatus(ACTIVE.name());
         assessmentCustomField.setCommaSeparatedOptions(registrationFieldDto.getCommaSeparatedOptions());
+        // Null means the client said nothing about settings, so keep the stored ones; an empty
+        // string is an explicit "clear it".
+        if (registrationFieldDto.getConfig() != null) {
+            assessmentCustomField.setConfig(registrationFieldDto.getConfig());
+        }
         // Reordering an existing field arrives through this path, so skipping the
         // order here made drag-and-drop silently no-op. Leave it alone when the
         // client omits it rather than collapsing every field to 0.

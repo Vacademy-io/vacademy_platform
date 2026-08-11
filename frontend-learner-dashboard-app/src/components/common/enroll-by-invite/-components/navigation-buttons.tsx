@@ -59,7 +59,13 @@ const NavigationButtons = ({
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col-reverse sm:flex-row items-center justify-between w-full gap-3 mt-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+    // Pinned to the bottom of the viewport on phones. The plan step can run
+    // several screens long once features are listed, so a learner who picks a
+    // plan sees nothing happen and no way forward — the page reads as frozen
+    // because the only Next button is far below the fold. Sticky keeps it in
+    // reach the whole way down; from sm: up the page is short enough that the
+    // bar sits inline as before.
+    <div className="sticky bottom-0 z-30 sm:static p-4 sm:p-6 flex flex-col-reverse sm:flex-row items-center justify-between w-full gap-3 mt-4 bg-white border border-gray-200 rounded-lg shadow-lg sm:shadow-sm">
       <MyButton
         type="button"
         buttonType="secondary"

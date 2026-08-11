@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.notification_service.features.email_otp.entity.EmailOtp;
 import vacademy.io.notification_service.features.email_otp.repository.OtpRepository;
 import vacademy.io.notification_service.service.EmailService;
@@ -23,6 +25,9 @@ public class OTPService {
     @Autowired
     EmailService emailService;
 
+    @Autowired
+    OriginInstituteResolver originInstituteResolver;
+
     public static String generateOTP(int length) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         StringBuilder otp = new StringBuilder();
@@ -33,6 +38,14 @@ public class OTPService {
     }
 
     public Boolean sendEmailOtp(String to, String subject, String service, String name, String instituteId) {
+        // Signup and resend flows call /v1/send-email-otp straight from the browser and several
+        // omitted the instituteId query param, which silently downgraded a white-labelled portal's
+        // OTP to the platform sender and Vacademy branding. Recover it from the request host when
+        // the caller gave us nothing. No-ops for the internal (server-to-server) controller, which
+        // has no Origin and whose caller already resolved the institute.
+        if (!StringUtils.hasText(instituteId)) {
+            instituteId = originInstituteResolver.resolveInstituteId();
+        }
         EmailOtp otp = createNewOTP(to, service);
         try {
             emailService.sendEmailOtp(to, subject, service, name, otp.getOtp(), instituteId);

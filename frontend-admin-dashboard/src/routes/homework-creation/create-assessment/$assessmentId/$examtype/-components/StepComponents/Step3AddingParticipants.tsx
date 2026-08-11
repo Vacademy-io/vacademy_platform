@@ -28,7 +28,6 @@ import {
     transformBatchData,
 } from '../../-utils/helper';
 import { Switch } from '@/components/ui/switch';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -59,7 +58,10 @@ import { Step3ParticipantsListIndiviudalStudentInterface } from '@/types/assessm
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
-import type { DropdownOption } from '@/components/common/custom-fields/AddCustomFieldDialog';
+import type {
+    CustomFieldConfig,
+    DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
 
@@ -189,6 +191,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const customFields = getValues('open_test.custom_fields');
     watch('open_test.custom_fields');
 
+    /** The row whose pencil was clicked — drives the prefilled edit dialog. */
+    const editingField = customFields?.find((field) => field.id === editingFieldId);
+
     const handleSubmitStep3Form = useMutation({
         mutationFn: ({
             oldFormData,
@@ -263,16 +268,28 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         setValue('open_test.custom_fields', updatedFields);
     };
 
-    const handleUpdateFieldName = (id: string, name: string) => patchField(id, { name });
-
-    const handleUpdateFieldOptions = (id: string, values: string[]) =>
-        patchField(id, { options: values.map((value, idx) => ({ id: String(idx), value })) });
-
-    const isDuplicateFieldName = (id: string, name: string) =>
-        name.trim().length > 0 &&
-        (customFields ?? []).some(
-            (f) => f.id !== id && f.name.trim().toLowerCase() === name.trim().toLowerCase()
-        );
+    // Editing reuses the "Add Custom Field" dialog, prefilled. The id is kept so the
+    // save-time diff still reads this as an update rather than an add + remove.
+    const handleEditCustomField = (
+        id: string,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) => {
+        patchField(id, {
+            type,
+            name,
+            isRequired: config?.isRequired ?? true,
+            // Dropping the options on a switch to a non-choice type stops stale
+            // values from reappearing if the admin switches back.
+            options: options?.map((opt, index) => ({
+                id: String(index),
+                value: opt.value,
+            })),
+        });
+        setEditingFieldId(null);
+    };
 
     const handleAddOpenFieldValues = (type: string, name: string, oldKey: boolean) => {
         // Add the new field to the array
@@ -665,10 +682,6 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                     <div className="flex flex-col gap-4">
                                         {customFields?.map((fields, index) => {
                                             const isEditingField = editingFieldId === fields.id;
-                                            const hasOptions =
-                                                fields.type === 'dropdown' ||
-                                                fields.type === 'radio' ||
-                                                fields.type === 'multi_select';
                                             return (
                                                 <FormFieldRow
                                                     key={index}
@@ -681,41 +694,12 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                     onToggleRequired={() =>
                                                         toggleIsRequired(fields.id)
                                                     }
-                                                    onEdit={() =>
-                                                        setEditingFieldId(
-                                                            isEditingField ? null : fields.id
-                                                        )
-                                                    }
+                                                    onEdit={() => setEditingFieldId(fields.id)}
                                                     onDelete={() =>
                                                         handleDeleteOpenField(fields.id)
                                                     }
                                                     dragHandle={null}
-                                                >
-                                                    <InlineFieldEditor
-                                                        name={fields.name}
-                                                        onNameChange={(next) =>
-                                                            handleUpdateFieldName(fields.id, next)
-                                                        }
-                                                        duplicateName={isDuplicateFieldName(
-                                                            fields.id,
-                                                            fields.name
-                                                        )}
-                                                        {...(hasOptions
-                                                            ? {
-                                                                  options: (
-                                                                      fields.options ?? []
-                                                                  ).map((o) => o.value),
-                                                                  onOptionsChange: (
-                                                                      next: string[]
-                                                                  ) =>
-                                                                      handleUpdateFieldOptions(
-                                                                          fields.id,
-                                                                          next
-                                                                      ),
-                                                              }
-                                                            : {})}
-                                                    />
-                                                </FormFieldRow>
+                                                />
                                             );
                                         })}
                                     </div>
@@ -806,6 +790,46 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                             }
                                         />
                                     </div>
+                                    {/* Editing reuses the add dialog, prefilled. Keyed by field id
+                                        so opening a different row re-runs the prefill. */}
+                                    {editingField && (
+                                        <SharedAddCustomFieldDialog
+                                            key={editingField.id}
+                                            mode="edit"
+                                            open
+                                            onOpenChange={(isOpen) => {
+                                                if (!isOpen) setEditingFieldId(null);
+                                            }}
+                                            initialField={{
+                                                type: editingField.type,
+                                                name: editingField.name,
+                                                options: (editingField.options ?? []).map(
+                                                    (o) => o.value
+                                                ),
+                                                isRequired: editingField.isRequired,
+                                            }}
+                                            onAddField={(type, name, _oldKey, options, config) =>
+                                                handleEditCustomField(
+                                                    editingField.id,
+                                                    type,
+                                                    name,
+                                                    options,
+                                                    config
+                                                )
+                                            }
+                                            // Its own name must stay available, or saving an
+                                            // unchanged label would be blocked as a duplicate.
+                                            existingFieldNames={
+                                                customFields
+                                                    ?.filter(
+                                                        (f) =>
+                                                            f.id !== editingField.id &&
+                                                            (f as any).status !== 'DELETED'
+                                                    )
+                                                    .map((f) => f.name) ?? []
+                                            }
+                                        />
+                                    )}
                                     <Dialog>
                                         <DialogTrigger className="flex justify-start">
                                             <MyButton

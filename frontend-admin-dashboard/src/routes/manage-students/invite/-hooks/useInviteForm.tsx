@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { inviteFormSchema, InviteForm, defaultFormValues } from '../-schema/InviteFormSchema';
 import { DropdownOption } from '../-components/create-invite/AddCustomFieldDialog';
+import type { CustomFieldConfig } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { getCachedInstituteBranding } from '@/services/domain-routing';
 
 export const useInviteForm = (initialValues?: InviteForm) => {
@@ -91,11 +92,28 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         setValue('custom_fields', updatedFields);
     };
 
-    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
-
-    const handleUpdateFieldOptions = (index: number, values: string[]) =>
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options
+     * and required all come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) =>
         patchFieldAt(index, {
-            options: values.map((value, idx) => ({ id: idx, value, disabled: false })),
+            type,
+            name,
+            isRequired: config?.isRequired ?? true,
+            // The dialog only returns options for choice types, so switching away from
+            // one clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, idx) => ({
+                id: idx,
+                value: opt.value,
+                disabled: false,
+            })),
         });
 
     const handleDeleteOpenField = (id: number) => {
@@ -126,8 +144,7 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         toggleIsRequired,
         handleAddOpenFieldValues,
         handleDeleteOpenField,
-        handleUpdateFieldName,
-        handleUpdateFieldOptions,
+        handleEditFieldAt,
         handleCopyClick,
         copySuccess,
     };

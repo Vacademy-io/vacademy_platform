@@ -163,7 +163,15 @@ const CheckEmailStatusAlertDialog = ({
   };
 
   const sendOtpMutation = useMutation({
-    mutationFn: (email: string) => axios.post(REQUEST_OTP, { email }),
+    // institute_id decides the OTP mail's sender address and branding; without it the send falls
+    // back to support@vacademy.io. The assessment's own institute is the right one here.
+    mutationFn: (email: string) =>
+      axios.post(REQUEST_OTP, {
+        email,
+        ...(registrationData.institute_id && {
+          institute_id: registrationData.institute_id,
+        }),
+      }),
     onSuccess: () => {
       setIsOTPSent(true);
       startTimer();

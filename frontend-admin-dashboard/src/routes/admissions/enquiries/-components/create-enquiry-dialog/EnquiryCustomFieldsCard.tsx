@@ -6,7 +6,10 @@ import { DotsSixVertical, PencilSimple, TrashSimple } from '@phosphor-icons/reac
 import { Switch } from '@/components/ui/switch';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { useEffect, useState } from 'react';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    type DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -34,8 +37,13 @@ interface EnquiryCustomFieldsCardProps {
     updateFieldOrders: () => void;
     handleDeleteOpenField: (id: number) => void;
     toggleIsRequired: (id: number) => void;
-    handleUpdateFieldName: (index: number, name: string) => void;
-    handleUpdateFieldOptions: (index: number, values: string[]) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) => void;
 }
 
 /**
@@ -49,8 +57,7 @@ const EnquiryCustomFieldsCard = ({
     updateFieldOrders,
     handleDeleteOpenField,
     toggleIsRequired,
-    handleUpdateFieldName,
-    handleUpdateFieldOptions,
+    handleEditFieldAt,
 }: EnquiryCustomFieldsCardProps) => {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues, setValue } = form;
@@ -150,10 +157,6 @@ const EnquiryCustomFieldsCard = ({
                                         const typedField = field as unknown as CustomField;
                                         if (typedField?.status === 'DELETED') return null;
                                         const isEditing = editingIndex === index;
-                                        const hasOptions =
-                                            typedField.type === 'dropdown' ||
-                                            typedField.type === 'radio' ||
-                                            typedField.type === 'multi_select';
                                         return (
                                             <SortableItem
                                                 key={typedField.id}
@@ -171,11 +174,7 @@ const EnquiryCustomFieldsCard = ({
                                                         onToggleRequired={() =>
                                                             toggleIsRequired(index)
                                                         }
-                                                        onEdit={() =>
-                                                            setEditingIndex(
-                                                                isEditing ? null : index
-                                                            )
-                                                        }
+                                                        onEdit={() => setEditingIndex(index)}
                                                         onDelete={() => {
                                                             setEditingIndex(null);
                                                             handleDeleteOpenField(index);
@@ -189,34 +188,62 @@ const EnquiryCustomFieldsCard = ({
                                                                 <DotsSixVertical size={18} />
                                                             </SortableDragHandle>
                                                         }
-                                                    >
-                                                        <InlineFieldEditor
-                                                            name={typedField.name}
-                                                            onNameChange={(next) =>
-                                                                handleUpdateFieldName(index, next)
-                                                            }
-                                                            {...(hasOptions
-                                                                ? {
-                                                                      options: (
-                                                                          typedField.options ?? []
-                                                                      ).map((o) => o.value),
-                                                                      onOptionsChange: (
-                                                                          next: string[]
-                                                                      ) =>
-                                                                          handleUpdateFieldOptions(
-                                                                              index,
-                                                                              next
-                                                                          ),
-                                                                  }
-                                                                : {})}
-                                                        />
-                                                    </FormFieldRow>
+                                                    />
                                                 </div>
                                             </SortableItem>
                                         );
                                     })}
                                 </div>
                             </Sortable>
+                            {/* Editing reuses the shared custom-field dialog, prefilled. Keyed
+                                per row so opening a different field re-runs the prefill. */}
+                            {editingIndex !== null && customFieldsArray[editingIndex] && (
+                                <SharedAddCustomFieldDialog
+                                    key={
+                                        (customFieldsArray[editingIndex] as unknown as CustomField)
+                                            .id
+                                    }
+                                    mode="edit"
+                                    open
+                                    onOpenChange={(isOpen) => {
+                                        if (!isOpen) setEditingIndex(null);
+                                    }}
+                                    initialField={{
+                                        type: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).type,
+                                        name: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).name,
+                                        options: (
+                                            (
+                                                customFieldsArray[
+                                                    editingIndex
+                                                ] as unknown as CustomField
+                                            ).options ?? []
+                                        ).map((o) => o.value),
+                                        isRequired: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).isRequired,
+                                    }}
+                                    onAddField={(type, name, _oldKey, options, config) => {
+                                        handleEditFieldAt(
+                                            editingIndex,
+                                            type,
+                                            name,
+                                            options,
+                                            config as Record<string, unknown>
+                                        );
+                                        setEditingIndex(null);
+                                    }}
+                                    // Its own name must stay available, or saving an unchanged
+                                    // label would be blocked as a duplicate.
+                                    existingFieldNames={customFieldsArray
+                                        .map((f) => f as unknown as CustomField)
+                                        .filter((f, i) => i !== editingIndex && f.status !== 'DELETED')
+                                        .map((f) => f.name)}
+                                />
+                            )}
                         </div>
                     )}
                 </div>

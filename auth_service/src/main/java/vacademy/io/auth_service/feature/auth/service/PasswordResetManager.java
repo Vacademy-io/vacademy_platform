@@ -10,6 +10,8 @@ import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.InstituteChoice;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.List;
@@ -21,6 +23,7 @@ public class PasswordResetManager {
 
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final OriginInstituteResolver originInstituteResolver;
 
     public String sendPasswordToUser(String email,String clientName) {
         User user = null;
@@ -45,11 +48,10 @@ public class PasswordResetManager {
         genericEmailRequest.setSubject("Your Account Credentials for Accessing the App"); // More intuitive subject
         genericEmailRequest.setBody(emailBody);
 
-        String instituteId = null;
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            instituteId = user.getRoles().iterator().next().getInstituteId();
-        }
-        
+        // This mail carries the user's password, so the sender address matters: picking an
+        // arbitrary role would mail one institute's learner from another institute's address.
+        String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
+
         if (!notificationService.sendGenericHtmlMailViaUnifiedAsBoolean(genericEmailRequest, instituteId)) {
             throw new VacademyException("Email not sent");
         }

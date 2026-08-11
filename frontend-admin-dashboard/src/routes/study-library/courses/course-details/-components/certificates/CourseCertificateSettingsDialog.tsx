@@ -1,0 +1,190 @@
+import { useEffect, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { MyDialog } from '@/components/design-system/dialog';
+import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import {
+    saveCourseCertificateSettings,
+    type CourseCertificateSettings,
+} from '../../-services/course-certificates';
+import { CourseCertificateTemplateUpload } from './CourseCertificateTemplateUpload';
+
+interface CourseCertificateSettingsDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    instituteId: string;
+    packageId: string;
+    settings: CourseCertificateSettings | undefined;
+}
+
+/** Tri-state: inherit the institute default, or force on/off for this course. */
+type EnabledChoice = 'INHERIT' | 'ON' | 'OFF';
+
+export const CourseCertificateSettingsDialog = ({
+    open,
+    onOpenChange,
+    instituteId,
+    packageId,
+    settings,
+}: CourseCertificateSettingsDialogProps) => {
+    const queryClient = useQueryClient();
+
+    const [enabledChoice, setEnabledChoice] = useState<EnabledChoice>('INHERIT');
+    const [overrideThreshold, setOverrideThreshold] = useState(false);
+    const [threshold, setThreshold] = useState(80);
+    // null means inherit the institute template.
+    const [templateHtml, setTemplateHtml] = useState<string | null>(null);
+
+    // Re-seed whenever the dialog opens so a cancelled edit doesn't persist.
+    useEffect(() => {
+        if (!open || !settings) return;
+        const override = settings.course_override;
+        setEnabledChoice(
+            override?.enabled === true ? 'ON' : override?.enabled === false ? 'OFF' : 'INHERIT'
+        );
+        setOverrideThreshold(
+            override?.thresholdPercent !== null && override?.thresholdPercent !== undefined
+        );
+        setThreshold(override?.thresholdPercent ?? settings.institute_threshold_percent);
+        setTemplateHtml(override?.templateHtml ?? null);
+    }, [open, settings]);
+
+    const saveMutation = useMutation({
+        mutationFn: () =>
+            saveCourseCertificateSettings(instituteId, packageId, {
+                // null clears the override and falls back to the institute default.
+                enabled: enabledChoice === 'INHERIT' ? null : enabledChoice === 'ON',
+                thresholdPercent: overrideThreshold ? threshold : null,
+                templateHtml,
+            }),
+        onSuccess: () => {
+            toast.success('Course certificate settings saved');
+            queryClient.invalidateQueries({ queryKey: ['course-certificate-settings'] });
+            queryClient.invalidateQueries({ queryKey: ['course-certificate-dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['course-certificate-learners'] });
+            onOpenChange(false);
+        },
+        onError: () => toast.error('Could not save course certificate settings'),
+    });
+
+    const instituteState = settings?.institute_enabled ? 'enabled' : 'disabled';
+    const effectiveEnabled =
+        enabledChoice === 'INHERIT' ? !!settings?.institute_enabled : enabledChoice === 'ON';
+
+    return (
+        <MyDialog
+            heading="Certificate Settings for this Course"
+            open={open}
+            onOpenChange={onOpenChange}
+            dialogWidth="max-w-xl"
+            footer={
+                <div className="flex w-full items-center justify-end gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        type="button"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        type="button"
+                        disable={saveMutation.isPending}
+                        onClick={() => saveMutation.mutate()}
+                    >
+                        {saveMutation.isPending ? 'Saving…' : 'Save'}
+                    </MyButton>
+                </div>
+            }
+        >
+            <div className="flex flex-col gap-6 p-2">
+                <div className="rounded-md bg-neutral-50 p-3">
+                    <p className="text-caption text-neutral-500">
+                        Institute default: certificates are{' '}
+                        <span className="font-semibold text-neutral-700">{instituteState}</span> at{' '}
+                        <span className="font-semibold text-neutral-700">
+                            {settings?.institute_threshold_percent ?? 80}%
+                        </span>{' '}
+                        completion. Anything you set here applies to this course only.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <Label className="text-subtitle font-medium">Certificates for this course</Label>
+                    <div className="flex flex-wrap gap-2">
+                        {(
+                            [
+                                ['INHERIT', 'Use institute default'],
+                                ['ON', 'Enabled'],
+                                ['OFF', 'Disabled'],
+                            ] as const
+                        ).map(([value, label]) => (
+                            <MyButton
+                                key={value}
+                                type="button"
+                                scale="small"
+                                buttonType={enabledChoice === value ? 'primary' : 'secondary'}
+                                onClick={() => setEnabledChoice(value)}
+                            >
+                                {label}
+                            </MyButton>
+                        ))}
+                    </div>
+                    <p className="text-caption text-neutral-500">
+                        {effectiveEnabled
+                            ? 'Learners on this course will receive certificates once they pass the threshold.'
+                            : 'No certificates will be generated for this course.'}
+                        {enabledChoice === 'ON' &&
+                            !settings?.institute_enabled &&
+                            ' The institute default is off — this course is an exception.'}
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            id="override-threshold"
+                            checked={overrideThreshold}
+                            onCheckedChange={setOverrideThreshold}
+                        />
+                        <Label htmlFor="override-threshold" className="text-subtitle font-medium">
+                            Use a different completion threshold for this course
+                        </Label>
+                    </div>
+                    {overrideThreshold && (
+                        <div className="flex items-center gap-3">
+                            <MyInput
+                                inputType="number"
+                                input={String(threshold)}
+                                onChangeFunction={(e) =>
+                                    setThreshold(
+                                        Math.max(
+                                            0,
+                                            Math.min(100, Number(e.target.value) || 0)
+                                        )
+                                    )
+                                }
+                                inputPlaceholder="80"
+                                className="w-28"
+                            />
+                            <span className="text-body text-neutral-500">% completion</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                    <Label className="text-subtitle font-medium">Certificate design</Label>
+                    <CourseCertificateTemplateUpload
+                        templateHtml={templateHtml}
+                        onChange={setTemplateHtml}
+                    />
+                </div>
+            </div>
+        </MyDialog>
+    );
+};

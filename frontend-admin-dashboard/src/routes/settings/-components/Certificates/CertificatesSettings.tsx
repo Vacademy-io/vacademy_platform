@@ -21,6 +21,10 @@ import {
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { certificateHtml as defaultCertificateHtml } from '../../-utils/certificate-html';
 import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
+import {
+    CERTIFICATE_BARCODE_PLACEHOLDER,
+    CERTIFICATE_QR_PLACEHOLDER,
+} from '../../-utils/certificate-code-placeholders';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import {
@@ -55,6 +59,58 @@ import { MyButton } from '@/components/design-system/button';
 // {{TOKENS}} via FIELD_NAME_TO_TOKEN in serialize-image-template-to-html.ts.
 // Any field added here that's not in the token map will be emitted as
 // {{FIELD_NAME}} (uppercase) and the backend will leave it unsubstituted.
+/**
+ * Kept in sync with CertificateNumberService.DEFAULT_PATTERN on the backend.
+ * Shown as the placeholder so an admin can see what blank means.
+ */
+const DEFAULT_NUMBERING_PATTERN = '{PREFIX}{YYYY}{SEQ:3}';
+const DEFAULT_SEQUENCE_PADDING = 3;
+const DEFAULT_PREFIX_LENGTH = 3;
+
+/** Mirrors CertificateNumberService.resolvePrefix. */
+const derivePrefixFromInstituteName = (name: string | undefined | null): string => {
+    const letters = (name ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (!letters) return 'XXX';
+    if (letters.length >= DEFAULT_PREFIX_LENGTH) return letters.slice(0, DEFAULT_PREFIX_LENGTH);
+    return letters.padEnd(DEFAULT_PREFIX_LENGTH, 'X');
+};
+
+/**
+ * Mirrors CertificateNumberService.format so the preview matches the number that
+ * will actually be issued. Kept deliberately small — if the two ever diverge,
+ * the backend is authoritative.
+ */
+const formatCertificateNumberPreview = (opts: {
+    pattern: string;
+    prefix: string;
+    suffix: string;
+    padding: number;
+    sequence: number;
+    year: number;
+}): string => {
+    const pattern = opts.pattern.trim() || DEFAULT_NUMBERING_PATTERN;
+    const padding = opts.padding > 0 ? opts.padding : DEFAULT_SEQUENCE_PADDING;
+
+    const withSeq = pattern.replace(/\{SEQ(?::(\d+))?\}/g, (_m, digits) => {
+        const width = digits ? Number(digits) : padding;
+        return String(opts.sequence).padStart(width, '0');
+    });
+
+    const substituted = withSeq
+        .replace(/\{PREFIX\}/g, opts.prefix)
+        .replace(/\{SUFFIX\}/g, opts.suffix)
+        .replace(/\{YYYY\}/g, String(opts.year))
+        .replace(/\{YY\}/g, String(opts.year % 100).padStart(2, '0'))
+        .replace(/\{COURSE_CODE\}/g, '');
+
+    // Collapse separators orphaned by an empty token, then trim the edges.
+    return substituted
+        .replace(/([-/_])\1+/g, '$1')
+        .replace(/^[-/_]+/, '')
+        .replace(/[-/_]+$/, '')
+        .trim();
+};
+
 const AVAILABLE_FIELDS: AvailableField[] = [
     { name: 'student_name', displayName: 'Student Name', type: 'text', isRequired: true, sampleValue: 'Alex Sample', source: 'system' },
     { name: 'institute_name', displayName: 'Institute Name', type: 'text', isRequired: true, sampleValue: 'Vacademy Institute', source: 'system' },
@@ -67,6 +123,8 @@ const AVAILABLE_FIELDS: AvailableField[] = [
     { name: 'completion_percentage', displayName: 'Completion %', type: 'number', isRequired: false, sampleValue: '92', source: 'system' },
     { name: 'date_of_completion', displayName: 'Date of Completion', type: 'date', isRequired: false, sampleValue: '08-05-2026', source: 'system' },
     { name: 'certificate_id', displayName: 'Certificate ID', type: 'text', isRequired: false, sampleValue: 'VA-0123-2026', source: 'system' },
+    { name: 'certificate_qr', displayName: 'QR Code', type: 'text', isRequired: false, sampleValue: '(QR image)', source: 'system' },
+    { name: 'certificate_barcode', displayName: 'Barcode', type: 'text', isRequired: false, sampleValue: '(barcode image)', source: 'system' },
     { name: 'enrollment_number', displayName: 'Enrollment Number', type: 'text', isRequired: false, sampleValue: 'ENR2024001', source: 'system' },
     { name: 'email', displayName: 'Email', type: 'text', isRequired: false, sampleValue: 'student@example.com', source: 'system' },
     { name: 'mobile_number', displayName: 'Mobile Number', type: 'text', isRequired: false, sampleValue: '+1 555 0100', source: 'system' },
@@ -100,6 +158,13 @@ const DraggableFieldChip = ({ field }: { field: AvailableField }) => {
 
 type CertificateConfig = {
     isDefaultCertificateSettingOn?: boolean;
+    certificateNumbering?: {
+        pattern?: string;
+        prefix?: string;
+        suffix?: string;
+        sequencePadding?: number;
+    };
+    qrVerificationUrlTemplate?: string;
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
     autoIssuePercentage?: number;
@@ -200,6 +265,35 @@ const CertificatesSettings = () => {
     const [customWidthMm, setCustomWidthMm] = useState<number>(297);
     const [customHeightMm, setCustomHeightMm] = useState<number>(210);
 
+    // Certificate numbering. Blank fields mean "use the shipped default":
+    // {PREFIX}{YYYY}{SEQ:3} with PREFIX = first three letters of the institute
+    // name, i.e. EDU2026001.
+    const [numberingPattern, setNumberingPattern] = useState<string>('');
+    const [numberingPrefix, setNumberingPrefix] = useState<string>('');
+    const [numberingSuffix, setNumberingSuffix] = useState<string>('');
+    const [sequencePadding, setSequencePadding] = useState<number>(3);
+    const [qrVerificationUrlTemplate, setQrVerificationUrlTemplate] = useState<string>('');
+
+    const derivedPrefix = useMemo(
+        () => derivePrefixFromInstituteName(instituteDetails?.institute_name),
+        [instituteDetails?.institute_name]
+    );
+
+    // Sequence 1 is the honest illustration: the counter resets each year, so
+    // the first certificate of the year really is 001.
+    const numberingPreview = useMemo(
+        () =>
+            formatCertificateNumberPreview({
+                pattern: numberingPattern,
+                prefix: numberingPrefix.trim() || derivedPrefix,
+                suffix: numberingSuffix,
+                padding: sequencePadding,
+                sequence: 1,
+                year: new Date().getFullYear(),
+            }),
+        [numberingPattern, numberingPrefix, numberingSuffix, sequencePadding, derivedPrefix]
+    );
+
     // Visual editor state.
     const [imageTemplate, setImageTemplate] = useState<ImageTemplate | null>(null);
     const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
@@ -253,6 +347,11 @@ const CertificatesSettings = () => {
         setAspectRatio(ex.aspectRatio || 'A4_LANDSCAPE');
         setCustomWidthMm(ex.customWidthMm ?? 297);
         setCustomHeightMm(ex.customHeightMm ?? 210);
+        setNumberingPattern(ex.certificateNumbering?.pattern ?? '');
+        setNumberingPrefix(ex.certificateNumbering?.prefix ?? '');
+        setNumberingSuffix(ex.certificateNumbering?.suffix ?? '');
+        setSequencePadding(ex.certificateNumbering?.sequencePadding ?? 3);
+        setQrVerificationUrlTemplate(ex.qrVerificationUrlTemplate ?? '');
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
         setImageTemplate(parsed.imageTemplate);
         setFieldMappings(parsed.fieldMappings);
@@ -677,6 +776,15 @@ const CertificatesSettings = () => {
                 imageTemplateJson: editorJson,
                 htmlEditorTemplate: htmlAuthored,
                 preferredEditorMode: editorMode,
+                // Send undefined for blanks so the backend's preserve-on-null
+                // merge keeps whatever is stored rather than clearing it.
+                certificateNumbering: {
+                    pattern: numberingPattern.trim() || undefined,
+                    prefix: numberingPrefix.trim() || undefined,
+                    suffix: numberingSuffix.trim() || undefined,
+                    sequencePadding,
+                },
+                qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
             });
 
             // Patch the institute store with the just-saved values so a
@@ -924,6 +1032,123 @@ const CertificatesSettings = () => {
                             </div>
                         </div>
                     )}
+                </div>
+            </div>
+
+            <div className="space-y-6 rounded-lg border bg-card p-6">
+                <div>
+                    <h3 className="text-base font-semibold">Certificate numbering</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Numbers are allocated from a per-year counter for this institute, so they
+                        are sequential and never repeat.
+                    </p>
+                </div>
+
+                <div className="rounded-md bg-muted/40 p-3">
+                    <p className="text-xs text-muted-foreground">Next certificate will be numbered</p>
+                    <p className="font-mono text-lg font-semibold">{numberingPreview}</p>
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                    <div>
+                        <label className="text-sm font-medium" htmlFor="numbering-pattern">
+                            Format
+                        </label>
+                        <input
+                            id="numbering-pattern"
+                            type="text"
+                            value={numberingPattern}
+                            placeholder={DEFAULT_NUMBERING_PATTERN}
+                            onChange={(e) => setNumberingPattern(e.target.value)}
+                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Leave blank for the default{' '}
+                            <span className="font-mono">{DEFAULT_NUMBERING_PATTERN}</span>. Tokens:{' '}
+                            <span className="font-mono">{'{PREFIX}'}</span>,{' '}
+                            <span className="font-mono">{'{YYYY}'}</span>,{' '}
+                            <span className="font-mono">{'{YY}'}</span>,{' '}
+                            <span className="font-mono">{'{SEQ}'}</span> or{' '}
+                            <span className="font-mono">{'{SEQ:4}'}</span> to set the digit count,{' '}
+                            <span className="font-mono">{'{SUFFIX}'}</span>.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="text-sm font-medium" htmlFor="numbering-prefix">
+                            Prefix
+                        </label>
+                        <input
+                            id="numbering-prefix"
+                            type="text"
+                            value={numberingPrefix}
+                            placeholder={derivedPrefix}
+                            onChange={(e) => setNumberingPrefix(e.target.value)}
+                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Blank uses the first three letters of your institute name (
+                            <span className="font-mono">{derivedPrefix}</span>).
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="text-sm font-medium" htmlFor="numbering-padding">
+                            Sequence digits
+                        </label>
+                        <input
+                            id="numbering-padding"
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={sequencePadding}
+                            onChange={(e) =>
+                                setSequencePadding(
+                                    Math.min(10, Math.max(1, Number(e.target.value) || 1))
+                                )
+                            }
+                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Applies to a bare {'{SEQ}'}. Numbers past this width get longer rather
+                            than wrapping.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="text-sm font-medium" htmlFor="numbering-suffix">
+                            Suffix (optional)
+                        </label>
+                        <input
+                            id="numbering-suffix"
+                            type="text"
+                            value={numberingSuffix}
+                            onChange={(e) => setNumberingSuffix(e.target.value)}
+                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Only used if your format contains {'{SUFFIX}'}.
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="text-sm font-medium" htmlFor="qr-verify-url">
+                        QR verification link (optional)
+                    </label>
+                    <input
+                        id="qr-verify-url"
+                        type="text"
+                        value={qrVerificationUrlTemplate}
+                        placeholder="https://your-site.com/verify?c={{CERTIFICATE_ID}}"
+                        onChange={(e) => setQrVerificationUrlTemplate(e.target.value)}
+                        className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        Controls what the QR Code field encodes. Blank encodes the certificate
+                        number itself. Include {'{{CERTIFICATE_ID}}'} and a scan will open your
+                        verification page instead.
+                    </p>
                 </div>
             </div>
 
@@ -1182,6 +1407,9 @@ const FIELD_NAME_TO_TOKEN_HTML: Record<string, string> = {
     date_of_completion: '{{DATE_OF_COMPLETION}}',
     issue_date: '{{DATE_OF_COMPLETION}}',
     certificate_id: '{{CERTIFICATE_ID}}',
+    // Image tokens — a template uses these as <img src="{{CERTIFICATE_QR}}">.
+    certificate_qr: '{{CERTIFICATE_QR}}',
+    certificate_barcode: '{{CERTIFICATE_BARCODE}}',
     theme_color: '{{INSTITUTE_THEME_COLOR}}',
 };
 
@@ -1268,6 +1496,11 @@ const HtmlCertificateEditor = ({
             // substitute correctly.
             '{{ISSUE_DATE}}': new Date().toLocaleDateString(),
             '{{CERTIFICATE_ID}}': sampleCertId,
+            // Schematic stand-ins: the real codes only exist once a number is
+            // allocated at issuance, but leaving the token unsubstituted would
+            // render a broken image in the preview.
+            '{{CERTIFICATE_QR}}': CERTIFICATE_QR_PLACEHOLDER,
+            '{{CERTIFICATE_BARCODE}}': CERTIFICATE_BARCODE_PLACEHOLDER,
             '{{ENROLLMENT_NUMBER}}': 'ENR2024001',
             '{{EMAIL}}': 'student@example.com',
             '{{MOBILE_NUMBER}}': '+1 555 0100',
@@ -1502,6 +1735,8 @@ const CertificateSettingsPreview = ({
             // Legacy alias for pre-rename templates.
             '{{ISSUE_DATE}}': new Date().toLocaleDateString(),
             '{{CERTIFICATE_ID}}': 'PREVIEW-0000-2026',
+            '{{CERTIFICATE_QR}}': CERTIFICATE_QR_PLACEHOLDER,
+            '{{CERTIFICATE_BARCODE}}': CERTIFICATE_BARCODE_PLACEHOLDER,
             '{{ENROLLMENT_NUMBER}}': 'ENR2024001',
             '{{EMAIL}}': 'student@example.com',
             '{{MOBILE_NUMBER}}': '+1 555 0100',

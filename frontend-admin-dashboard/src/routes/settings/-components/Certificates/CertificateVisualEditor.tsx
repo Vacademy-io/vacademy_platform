@@ -14,7 +14,17 @@ import type {
 // Instead we encode "this field is an image" via the fieldName itself:
 // - `institute_logo` / `signature`: resolve URL from props.systemImageUrls.
 // - `custom_image:<id>`: an admin-uploaded image; URL lives in customImages.
-const SYSTEM_IMAGE_FIELDS = new Set(['institute_logo', 'signature']);
+// certificate_qr / certificate_barcode resolve to base64 PNGs on the backend, so
+// they must be treated as images here too — otherwise the editor sizes them as
+// text boxes and the serializer emits a raw data URI as visible text.
+import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
+
+const SYSTEM_IMAGE_FIELDS = new Set([
+    'institute_logo',
+    'signature',
+    'certificate_qr',
+    'certificate_barcode',
+]);
 
 const isImageField = (f: FieldMapping): boolean =>
     SYSTEM_IMAGE_FIELDS.has(f.fieldName) || f.fieldName.startsWith('custom_image:');
@@ -179,6 +189,11 @@ export const CertificateVisualEditor = ({
     const resolveImageUrl = (f: FieldMapping): string => {
         if (f.fieldName === 'institute_logo') return systemImageUrls?.institute_logo || '';
         if (f.fieldName === 'signature') return systemImageUrls?.signature || '';
+        // The real QR/barcode only exist once a number is allocated at issuance,
+        // so show a schematic stand-in — otherwise these render as an empty box
+        // and there is nothing to position.
+        const codePlaceholder = resolveCertificateCodePlaceholder(f.fieldName);
+        if (codePlaceholder) return codePlaceholder;
         if (f.fieldName.startsWith('custom_image:')) {
             const id = f.fieldName.split(':')[1];
             return customImages?.find((c) => c.id === id)?.dataUrl || '';

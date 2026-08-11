@@ -239,6 +239,10 @@ export const PAYMENT_LOGS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/pay
 export const COLLECT_PUBLIC_USER_DATA = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 
 export const GENERATE_CERTIFICATE = `${BASE_URL}/admin-core-service/institute/v1/certificate/learner/get`;
+// Whether certificates are on for a batch, and at what completion threshold.
+// Resolved server-side from Certificate Settings (course override -> institute),
+// replacing the duplicate copy that used to live in Student Display settings.
+export const CERTIFICATE_CONFIG = `${BASE_URL}/admin-core-service/certificate/learner/v1/config`;
 
 // Payment options API endpoint
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;

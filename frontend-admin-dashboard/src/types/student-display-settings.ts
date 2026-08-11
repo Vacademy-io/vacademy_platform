@@ -225,13 +225,9 @@ export interface StudentProfileSettings {
     showMembershipStatus: boolean;
 }
 
-// Certificates
-export interface StudentCertificateSettings {
-    // Whether certificates feature is enabled
-    enabled: boolean;
-    // Percentage threshold after which certificate can be generated
-    generationThresholdPercent: number;
-}
+// Certificate settings used to be duplicated here. Certificate Settings is now
+// the single source of truth; the learner app reads the resolved values from
+// GET /admin-core-service/certificate/learner/v1/config.
 
 // Guided in-app tutorials (learner Help menu). The learner app reads exactly
 // these keys from STUDENT_DISPLAY_SETTINGS — do not rename.
@@ -341,7 +337,6 @@ export interface StudentDisplaySettingsData {
         // Full-screen APP_OVERLAY announcements on app open. Default true.
         allowAppOverlays: boolean;
     };
-    certificates: StudentCertificateSettings;
     liveClasses: StudentLiveClassesSettings;
     tutorials: StudentTutorialSettings;
     postLoginRedirectRoute: string;

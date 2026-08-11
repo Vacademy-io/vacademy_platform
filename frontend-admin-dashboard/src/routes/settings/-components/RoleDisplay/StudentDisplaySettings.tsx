@@ -1123,46 +1123,12 @@ export default function StudentDisplaySettings(): JSX.Element {
                 </div>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Certificates</CardTitle>
-                    <CardDescription>Control when certificates can be generated</CardDescription>
-                </CardHeader>
-                <div className="space-y-2 p-4 pt-0">
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            checked={settings.certificates.enabled}
-                            onCheckedChange={(v) =>
-                                update('certificates', {
-                                    ...settings.certificates,
-                                    enabled: v,
-                                })
-                            }
-                        />
-                        <Label className="text-xs">Certificates Enabled</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs">Generation Threshold (%)</Label>
-                        <Input
-                            className="h-8 w-24"
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={settings.certificates.generationThresholdPercent}
-                            onChange={(e) => {
-                                const value = Math.max(
-                                    0,
-                                    Math.min(100, Number(e.target.value) || 0)
-                                );
-                                update('certificates', {
-                                    ...settings.certificates,
-                                    generationThresholdPercent: value,
-                                });
-                            }}
-                        />
-                    </div>
-                </div>
-            </Card>
+            {/* The Certificates card lived here as a second copy of the enable
+                flag and completion threshold, editable on a different page from
+                the certificate template. The two could disagree, and only this
+                copy was honoured by the learner app. Certificate Settings is now
+                the single source of truth — enablement, threshold, template and
+                numbering, plus per-course overrides. */}
 
             <Card>
                 <CardHeader>

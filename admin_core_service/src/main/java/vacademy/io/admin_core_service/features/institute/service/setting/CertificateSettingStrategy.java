@@ -108,6 +108,8 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setImageTemplateJson(incoming.getImageTemplateJson() != null ? incoming.getImageTemplateJson() : existing.getImageTemplateJson());
                     dto.setHtmlEditorTemplate(incoming.getHtmlEditorTemplate() != null ? incoming.getHtmlEditorTemplate() : existing.getHtmlEditorTemplate());
                     dto.setPreferredEditorMode(incoming.getPreferredEditorMode() != null ? incoming.getPreferredEditorMode() : existing.getPreferredEditorMode());
+                    dto.setCertificateNumbering(incoming.getCertificateNumbering() != null ? incoming.getCertificateNumbering() : existing.getCertificateNumbering());
+                    dto.setQrVerificationUrlTemplate(incoming.getQrVerificationUrlTemplate() != null ? incoming.getQrVerificationUrlTemplate() : existing.getQrVerificationUrlTemplate());
                     return dto;
                 })
                 .collect(Collectors.toList());

@@ -205,10 +205,6 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     enabledTours: [...LEARNER_TOUR_KEYS],
     pdfGuideEnabled: false,
   },
-  certificates: {
-    enabled: true,
-    generationThresholdPercent: 80,
-  },
   concentration: {
     enabled: true,
     frequency: {

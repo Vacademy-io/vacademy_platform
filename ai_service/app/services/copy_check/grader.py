@@ -14,16 +14,26 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any, Optional
 
+from ...config import get_settings
 from ..chat_llm_client import ChatLLMClient
-from .prompt_builder import GRADING_SYSTEM, build_grading_prompt
+from .prompt_builder import GRADING_SYSTEM, GRADING_SYSTEM_VISION, build_grading_prompt
 
 logger = logging.getLogger(__name__)
 
+# Text-only path (legacy: grades the printed-text OCR of the handwriting).
 DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
 ESCALATION_MODEL = "google/gemini-2.5-flash"
+# Vision path: the LLM reads the actual page image. Defaults follow the repo's
+# "google/..." OpenRouter model-id convention (see config.py's validated list);
+# override via env without a code change.
+VISION_MODEL = os.getenv("COPY_CHECK_VISION_MODEL", "google/gemini-2.5-flash")
+VISION_ESCALATION_MODEL = os.getenv(
+    "COPY_CHECK_VISION_ESCALATION_MODEL", "google/gemini-2.5-pro"
+)
 ESCALATION_CONF_THRESHOLD = 0.60
 MAX_ESCALATIONS_PER_COPY = 2
 # Budget tuned for typical 8-question copies. Each grading call re-sends the
@@ -73,6 +83,10 @@ class CopyCheckGrader:
         self._prompt_tokens = 0
         self._completion_tokens = 0
         self._escalations_used = 0
+        # Vision-image accounting: how many page images we've attached across all
+        # grading calls for this copy, and the per-copy cap that bounds cost.
+        self._images_used = 0
+        self._max_images_per_copy = get_settings().copy_check_vision_max_images_per_copy
 
     def add_tokens(self, n: int) -> None:
         """External counter for non-grading calls (e.g. criteria generation
@@ -120,6 +134,10 @@ class CopyCheckGrader:
         return self._tokens_used
 
     @property
+    def images_used(self) -> int:
+        return self._images_used
+
+    @property
     def prompt_tokens(self) -> int:
         return self._prompt_tokens
 
@@ -133,9 +151,21 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         preferred_model: Optional[str] = None,
+        page_images: Optional[list[str]] = None,
     ) -> dict[str, Any]:
-        model = preferred_model or DEFAULT_MODEL
-        verdict = await self._call(question, rubric, layout_map, model)
+        """Grade one question.
+
+        `page_images`: base64 image data URLs of the page(s) this question's
+        answer occupies. When present, the LLM reads the handwriting from the
+        image and the OCR transcript is demoted to an assistive hint (vision
+        path). When None/empty, the legacy text-only path runs unchanged.
+        """
+        has_images = bool(page_images)
+        # Teacher's explicit model pick always wins; otherwise choose the vision
+        # default when images are attached, else the cheap text default.
+        model = preferred_model or (VISION_MODEL if has_images else DEFAULT_MODEL)
+        escalation_model = VISION_ESCALATION_MODEL if has_images else ESCALATION_MODEL
+        verdict = await self._call(question, rubric, layout_map, model, page_images)
         if (
             float(verdict.get("confidence", 0)) < ESCALATION_CONF_THRESHOLD
             and self._escalations_used < MAX_ESCALATIONS_PER_COPY
@@ -143,10 +173,12 @@ class CopyCheckGrader:
             self._escalations_used += 1
             logger.info(
                 "Escalating Q%s to %s (conf=%.2f)",
-                question["question_id"], ESCALATION_MODEL, verdict.get("confidence", 0),
+                question["question_id"], escalation_model, verdict.get("confidence", 0),
             )
             try:
-                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL)
+                verdict = await self._call(
+                    question, rubric, layout_map, escalation_model, page_images,
+                )
             except Exception as e:
                 logger.warning(f"Escalation failed, keeping initial verdict: {e}")
         return verdict
@@ -157,15 +189,42 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         model: str,
+        page_images: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         if self._tokens_used >= FAIL_TOKENS_PER_COPY:
             raise RuntimeError(
                 f"copy-check token budget exhausted: {self._tokens_used} >= {FAIL_TOKENS_PER_COPY}"
             )
-        prompt = build_grading_prompt(question, rubric, layout_map)
+        # Enforce the per-copy image budget: trim (or drop) this call's images if
+        # we're at/over the cap, so a big copy can't run up unbounded vision cost.
+        imgs = list(page_images or [])
+        if imgs:
+            remaining = self._max_images_per_copy - self._images_used
+            if remaining <= 0:
+                logger.warning(
+                    "copy-check image budget exhausted (%d/%d sent); grading Q%s text-only",
+                    self._images_used, self._max_images_per_copy, question.get("question_id"),
+                )
+                imgs = []
+            elif len(imgs) > remaining:
+                logger.info(
+                    "copy-check image budget: trimming Q%s from %d to %d page image(s)",
+                    question.get("question_id"), len(imgs), remaining,
+                )
+                imgs = imgs[:remaining]
+        vision = bool(imgs)
+        system = GRADING_SYSTEM_VISION if vision else GRADING_SYSTEM
+        prompt = build_grading_prompt(question, rubric, layout_map, vision=vision)
+        user_msg: dict[str, Any] = {"role": "user", "content": prompt}
+        if vision:
+            # Shape expected by ChatLLMClient._convert_to_multimodal_messages:
+            # a user message with an `attachments` list of {"type","url"} dicts;
+            # the client turns each into an OpenAI "image_url" content part.
+            user_msg["attachments"] = [{"type": "image", "url": u} for u in imgs]
+            self._images_used += len(imgs)
         messages = [
-            {"role": "system", "content": GRADING_SYSTEM},
-            {"role": "user", "content": prompt},
+            {"role": "system", "content": system},
+            user_msg,
         ]
         try:
             response = await self.llm.chat_completion(

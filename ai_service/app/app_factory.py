@@ -30,6 +30,7 @@ from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.kb_paper import router as kb_paper_router
+from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.input_asset import router as input_asset_router
 from .routers.reels import router as reels_router
@@ -228,6 +229,7 @@ def create_app() -> FastAPI:
     # Question papers generated from a knowledge base (V436). Shares the
     # /knowledge-base/v1 prefix and the same Caller auth dependency.
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
+    app.include_router(kb_library_router, prefix=settings.api_base_path)
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
     # Primary path: /input-asset/* — handles both video and image kinds.
     app.include_router(

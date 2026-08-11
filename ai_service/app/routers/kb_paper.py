@@ -35,7 +35,7 @@ from ..services.ai_task_service import AiTaskService
 from ..services.kb import generations as kb_generations
 from ..services.kb import paper as kb_paper
 from ..services.kb.repository import KbRepository
-from .knowledge_base import Caller, get_caller
+from .knowledge_base import Caller, get_caller, require_usable
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +132,17 @@ def _bill(
 
 
 def _assert_kb(db: Session, kb_id: str, institute_id: str) -> Dict[str, Any]:
-    kb = KbRepository(db).get_kb(kb_id, institute_id)
+    """Load a KB the caller may actually generate from.
+
+    Every paper endpoint funnels through here, so the entitlement gate lives
+    here too: a shared library the institute has not unlocked is a 402, and a
+    new endpoint added later cannot forget the check.
+    """
+    repo = KbRepository(db)
+    kb = repo.get_kb(kb_id, institute_id)
     if not kb:
         raise HTTPException(404, "Knowledge base not found")
+    require_usable(repo, kb, institute_id)
     return kb
 
 
@@ -637,7 +645,7 @@ async def list_generations(
     _assert_kb(db, kb_id, resolved)
     return {
         "generations": kb_generations.list_for_kb(
-            db, kb_id, artifact_type=artifact_type, limit=limit
+            db, kb_id, resolved, artifact_type=artifact_type, limit=limit
         )
     }
 

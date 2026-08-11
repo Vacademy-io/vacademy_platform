@@ -183,6 +183,26 @@ def _require_writable(repo: KbRepository, kb: Dict[str, Any], institute_id: str)
         )
 
 
+def require_usable(repo: KbRepository, kb: Dict[str, Any], institute_id: str) -> None:
+    """Gate every path that reads passages out of the corpus or writes from it.
+
+    Being able to READ a listing is not the right to USE the material: the
+    catalogue is deliberately open so an institute can judge a library before
+    paying for it. 402 rather than 403 because this is a price, not a
+    prohibition — the client turns it into an unlock prompt.
+    """
+    if repo.is_usable(kb, institute_id):
+        return
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "message": "Unlock this library to use it",
+            "knowledge_base_id": kb["id"],
+            "reason": "LIBRARY_LOCKED",
+        },
+    )
+
+
 def _preflight_or_402(
     db: Session, *, tool_key: str, tool_params: dict, institute_id: str
 ) -> dict:
@@ -351,7 +371,10 @@ async def get_outline(
     """
     resolved = caller.require_institute(institute_id)
     repo = KbRepository(db)
-    _load_kb_or_404(repo, kb_id, resolved)
+    kb = _load_kb_or_404(repo, kb_id, resolved)
+    # Page-level section summaries of the actual book. Richer than the topic
+    # tree the catalogue gives away as a preview, so it needs the unlock.
+    require_usable(repo, kb, resolved)
     return {"nodes": repo.get_structure_outline(kb_id)}
 
 
@@ -696,7 +719,9 @@ async def search_base(
     """Raw ranked chunks with page anchors and figures. Not metered (no LLM)."""
     resolved = caller.require_institute(body.institute_id)
     repo = KbRepository(db)
-    _load_kb_or_404(repo, kb_id, resolved)
+    kb = _load_kb_or_404(repo, kb_id, resolved)
+    # Returns passages verbatim, so this is squarely "using" the material.
+    require_usable(repo, kb, resolved)
     hits = await KbRetrievalService(db).search(
         kb_id=kb_id, institute_id=resolved, query=body.query,
         top_k=body.top_k, similarity_threshold=body.similarity_threshold,
@@ -718,7 +743,8 @@ async def ask_base(
     """
     resolved = caller.require_institute(body.institute_id)
     repo = KbRepository(db)
-    _load_kb_or_404(repo, kb_id, resolved)
+    kb = _load_kb_or_404(repo, kb_id, resolved)
+    require_usable(repo, kb, resolved)
     _preflight_or_402(db, tool_key="kb_ask", tool_params={}, institute_id=resolved)
 
     try:

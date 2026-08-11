@@ -140,8 +140,14 @@ class KbRepository:
         return self.get_kb(row[0], institute_id)  # type: ignore[return-value]
 
     def list_kbs(self, institute_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
-        """KBs visible to an institute: its own, plus any PLATFORM-owned
-        curated library. Ordered so the curated ones never bury a tenant's own."""
+        """KBs an institute can USE: its own, plus libraries it has unlocked.
+
+        A PLATFORM library the institute has not paid for is deliberately absent.
+        This list feeds the paper builder and the assessment section picker, so
+        anything in it is offered as ready to use — listing a locked library here
+        would put a paywall in the middle of someone building an assessment.
+        Browsing the catalogue is a separate call with separate rules.
+        """
         status_clause = "" if include_archived else "AND kb.status = 'ACTIVE'"
         rows = self.db.execute(
             text(
@@ -159,7 +165,14 @@ class KbRepository:
                           FROM knowledge_base_source s
                          WHERE s.knowledge_base_id = kb.id) AS review_pages
                 FROM knowledge_base kb
-                WHERE (kb.institute_id = :institute_id OR kb.owner_type = 'PLATFORM')
+                WHERE (
+                        kb.institute_id = :institute_id
+                        OR EXISTS (
+                            SELECT 1 FROM knowledge_base_entitlement e
+                             WHERE e.knowledge_base_id = kb.id
+                               AND e.institute_id = :institute_id
+                        )
+                      )
                 {status_clause}
                 ORDER BY (kb.owner_type = 'PLATFORM'), kb.updated_at DESC
                 """
@@ -200,9 +213,39 @@ class KbRepository:
         return self._kb_row(row) if row else None
 
     def is_writable(self, kb: Dict[str, Any], institute_id: str) -> bool:
-        """PLATFORM-owned KBs are read-only to tenants — an institute must never
-        be able to mutate the shared curated library."""
-        return kb["owner_type"] == "INSTITUTE" and kb["institute_id"] == institute_id
+        """Only the owning institute may mutate a knowledge base.
+
+        A PLATFORM library is owned by the publisher institute, so this keeps it
+        read-only to every tenant that did not create it while still letting the
+        publisher maintain it. Requiring owner_type == 'INSTITUTE' as well —
+        which this used to do — locked the publisher out of its OWN library the
+        moment it was published: no re-index, no new chapter, no fixing a bad
+        ingest. The ownership match alone is what carries the protection.
+        """
+        return kb["institute_id"] == institute_id
+
+    def is_usable(self, kb: Dict[str, Any], institute_id: str) -> bool:
+        """May this institute generate FROM this knowledge base?
+
+        Distinct from readability on purpose. get_kb lets any institute read a
+        PLATFORM row because that is what the catalogue page renders — but
+        reading the shop window is not the right to take the goods. Every path
+        that retrieves passages or writes questions asks THIS instead.
+        """
+        if kb["institute_id"] == institute_id:
+            return True
+        if kb["owner_type"] != "PLATFORM":
+            return False
+        return self.db.execute(
+            text(
+                """
+                SELECT 1 FROM knowledge_base_entitlement
+                 WHERE knowledge_base_id = :kb_id AND institute_id = :institute_id
+                 LIMIT 1
+                """
+            ),
+            {"kb_id": kb["id"], "institute_id": institute_id},
+        ).fetchone() is not None
 
     def update_kb(
         self,

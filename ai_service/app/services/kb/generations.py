@@ -150,13 +150,22 @@ def update(
 def list_for_kb(
     db: Session,
     kb_id: str,
+    institute_id: str,
     *,
     artifact_type: Optional[str] = None,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
-    """History for one knowledge base, newest first. Payloads omitted."""
+    """History for one knowledge base, newest first. Payloads omitted.
+
+    institute_id is REQUIRED and positional on purpose. A shared PLATFORM
+    library is readable by every institute, so scoping only by knowledge_base_id
+    would show each tenant what every other tenant has been making from it —
+    paper titles alone reveal what a competing institute is teaching and when.
+    """
     clause = "AND artifact_type = :artifact_type" if artifact_type else ""
-    params: Dict[str, Any] = {"kb_id": kb_id, "limit": limit}
+    params: Dict[str, Any] = {
+        "kb_id": kb_id, "institute_id": institute_id, "limit": limit,
+    }
     if artifact_type:
         params["artifact_type"] = artifact_type
     rows = db.execute(
@@ -164,7 +173,8 @@ def list_for_kb(
             f"""
             SELECT {_LIST_COLUMNS}
             FROM knowledge_base_generation
-            WHERE knowledge_base_id = :kb_id {clause}
+            WHERE knowledge_base_id = :kb_id
+              AND institute_id = :institute_id {clause}
             ORDER BY created_at DESC
             LIMIT :limit
             """

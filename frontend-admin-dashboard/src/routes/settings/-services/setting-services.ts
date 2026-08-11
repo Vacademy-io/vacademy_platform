@@ -36,6 +36,23 @@ export interface CertificateSavePayload {
      * page in the right mode on next load. Backend stores it verbatim.
      */
     preferredEditorMode?: 'visual' | 'html';
+    /**
+     * Certificate number format. Omit to keep the shipped default —
+     * {PREFIX}{YYYY}{SEQ:3}, i.e. EDU2026001 — where PREFIX is the first three
+     * letters of the institute name.
+     */
+    certificateNumbering?: {
+        pattern?: string;
+        prefix?: string;
+        suffix?: string;
+        sequencePadding?: number;
+    };
+    /**
+     * What {{CERTIFICATE_QR}} encodes. Blank encodes the bare certificate
+     * number; a URL containing {{CERTIFICATE_ID}} makes a scan open a
+     * verification page instead.
+     */
+    qrVerificationUrlTemplate?: string;
 }
 
 export const handleConfigureCertificateSettings = async (
@@ -82,6 +99,8 @@ export const handleConfigureCertificateSettings = async (
                           imageTemplateJson: payload.imageTemplateJson,
                           htmlEditorTemplate: payload.htmlEditorTemplate,
                           preferredEditorMode: payload.preferredEditorMode,
+                          certificateNumbering: payload.certificateNumbering,
+                          qrVerificationUrlTemplate: payload.qrVerificationUrlTemplate,
                       },
                   },
               },

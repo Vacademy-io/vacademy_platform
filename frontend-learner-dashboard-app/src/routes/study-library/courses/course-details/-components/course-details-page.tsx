@@ -250,6 +250,7 @@ export const CourseDetailsPage = () => {
     showConfetti,
     completionPercentage,
     certificateThreshold,
+    certificatesEnabled,
   } = useCertificateGeneration({
     packageSessionIdForCurrentLevel,
     courseDetailsData,
@@ -631,6 +632,7 @@ export const CourseDetailsPage = () => {
                     packageSessionIdForCurrentLevel
                   }
                   percentageCompleted={completionPercentage}
+                  certificatesEnabled={certificatesEnabled}
                   onEnrollmentClick={onEnrollmentClick}
                   onRatingsLoadingChange={handleRatingsLoadingChange}
                 />

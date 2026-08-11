@@ -225,13 +225,10 @@ export interface StudentTutorialSettings {
   pdfGuideEnabled: boolean;
 }
 
-// Certificates
-export interface StudentCertificateSettings {
-  // Whether certificate generation is enabled
-  enabled: boolean;
-  // Percentage threshold after which certificate can be generated
-  generationThresholdPercent: number;
-}
+// Certificate settings used to live here as a duplicate of the ones on the
+// Certificate Settings page. Certificate Settings is now the single source of
+// truth; the learner app reads the resolved values from
+// GET /admin-core-service/certificate/learner/v1/config.
 
 // Course Settings
 export interface StudentCourseSettingsQuiz {
@@ -272,7 +269,6 @@ export interface StudentDisplaySettingsData {
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
   tutorials: StudentTutorialSettings;
-  certificates: StudentCertificateSettings;
   concentration: ConcentrationSettings;
   ui: StudentUISettings;
   postLoginRedirectRoute: string;

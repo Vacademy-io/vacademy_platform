@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import type { ImageTemplate, FieldMapping } from '@/types/certificate/certificate-types';
+import { resolveCertificateCodePlaceholder } from './certificate-code-placeholders';
 
 /**
  * Sample values used when generating the downloadable template preview PDF.
@@ -108,7 +109,14 @@ interface DownloadOptions {
     signatureUrl?: string;
 }
 
-const SYSTEM_IMAGE_FIELDS = new Set(['institute_logo', 'signature']);
+const SYSTEM_IMAGE_FIELDS = new Set([
+    'institute_logo',
+    'signature',
+    // Image fields on the issued PDF too — drawing them as text here would make
+    // the downloadable preview disagree with what learners actually receive.
+    'certificate_qr',
+    'certificate_barcode',
+]);
 
 /**
  * Renders the current visual editor state into a PDF blob using sample values
@@ -136,10 +144,10 @@ export async function downloadCertificateTemplatePreview(
     for (const f of fieldMappings) {
         // Image fields → draw the actual image at the field's box.
         if (SYSTEM_IMAGE_FIELDS.has(f.fieldName)) {
+            const codePlaceholder = resolveCertificateCodePlaceholder(f.fieldName);
             const url =
-                f.fieldName === 'institute_logo'
-                    ? opts.instituteLogoUrl
-                    : opts.signatureUrl;
+                codePlaceholder ??
+                (f.fieldName === 'institute_logo' ? opts.instituteLogoUrl : opts.signatureUrl);
             if (url) {
                 try {
                     const img = await loadImage(url);

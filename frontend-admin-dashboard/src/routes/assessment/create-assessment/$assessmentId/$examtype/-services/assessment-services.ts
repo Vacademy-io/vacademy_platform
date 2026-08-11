@@ -249,6 +249,9 @@ export const convertCustomFields = (customFields: CustomFields): ConvertedCustom
             type: field.type,
             default_value: '', // Provide a default value, if necessary
             description: '', // Provide a description, if necessary
+            // Help text and the other per-field settings. This is the create-assessment path;
+            // dropping it here meant help text saved on edit but never on first creation.
+            config: field.config ?? '',
             is_mandatory: field.isRequired,
             key: field.key ?? '', // Use the ID as the key
             comma_separated_options: field.options

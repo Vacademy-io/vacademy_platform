@@ -590,9 +590,21 @@ public class AuthManager {
             throw new VacademyException("Invalid or expired OTP");
         }
 
-        // Find user by phone number
-        Optional<User> userOptional = userRepository.findLatestUserByMobileNumber(
-                authRequestDTO.getPhoneNumber().replaceAll("[^0-9]", ""));
+        // Find the user behind this phone number. Prefer one who holds a role in
+        // the institute being logged into: a number can front several accounts,
+        // and the newest of them may have no role here at all — that mints a token
+        // with empty authorities, so the login "succeeds" while the portal has
+        // nowhere to send the learner. Falls back to the previous behaviour when
+        // no institute was supplied or none of the accounts match it.
+        String phoneDigits = authRequestDTO.getPhoneNumber().replaceAll("[^0-9]", "");
+        Optional<User> userOptional = Optional.empty();
+        if (authRequestDTO.getInstituteId() != null && !authRequestDTO.getInstituteId().isBlank()) {
+            userOptional = userRepository.findLatestUserByMobileNumberAndInstitute(
+                    phoneDigits, authRequestDTO.getInstituteId());
+        }
+        if (userOptional.isEmpty()) {
+            userOptional = userRepository.findLatestUserByMobileNumber(phoneDigits);
+        }
 
         if (userOptional.isEmpty()) {
             throw new VacademyException("No user found with phone number: " + authRequestDTO.getPhoneNumber());

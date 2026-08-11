@@ -390,4 +390,36 @@ public interface UserRepository extends CrudRepository<User, String> {
                         """, nativeQuery = true)
         Optional<User> findLatestUserByMobileNumber(@Param("digitsOnly") String digitsOnly);
 
+        /**
+         * Same phone matching as {@link #findLatestUserByMobileNumber}, but only
+         * among users who actually hold a role in the given institute.
+         *
+         * <p>One phone number can front several accounts — a learner who enrolled
+         * twice, staff who also test as a learner, a shared family number. Picking
+         * the most recently created one regardless of institute can hand back an
+         * account with no role in the institute being logged into, which mints a
+         * token carrying no authorities: the login "succeeds" and the portal has
+         * nowhere to put the user. Scoping to the institute picks an account that
+         * can actually sign in there.</p>
+         */
+        @Query(value = """
+                        SELECT u.* FROM users u
+                        JOIN user_role ur ON ur.user_id = u.id
+                        WHERE u.mobile_number IS NOT NULL AND TRIM(u.mobile_number) != ''
+                        AND ur.institute_id = :instituteId
+                        AND ur.status IN ('ACTIVE', 'INVITED')
+                        AND (
+                            REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g') = :digitsOnly
+                            OR (
+                                LENGTH(:digitsOnly) >= 10
+                                AND LENGTH(REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g')) >= 10
+                                AND RIGHT(REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g'), 10) = RIGHT(:digitsOnly, 10)
+                            )
+                        )
+                        ORDER BY u.created_at DESC
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<User> findLatestUserByMobileNumberAndInstitute(@Param("digitsOnly") String digitsOnly,
+                        @Param("instituteId") String instituteId);
+
 }

@@ -632,27 +632,32 @@ export function calculateTotalTime(testData: z.infer<typeof sectionDetailsSchema
 
 export function convertToCustomFieldsData(data: RegistrationFormField[] | undefined) {
     if (!data) return [];
-    return data?.map((field) => ({
-        id: field.id,
-        type: field.field_type,
-        name: field.field_name,
-        oldKey:
-            field.field_key === 'full_name' ||
-            field.field_key === 'phone_number' ||
-            field.field_key === 'email'
-                ? true
-                : false,
-        isRequired: field.is_mandatory,
-        key: field.field_key,
-        ...(field.field_type === 'dropdown' && {
-            options: field.comma_separated_options.split(',').map((value, index) => ({
-                id: String(index),
-                value: value.trim(),
-                disabled: false,
-            })),
-        }),
-        order: field.field_order,
-    }));
+    // field_order is the form order — the learner page sorts by it. The API serializes these
+    // from an unordered set, so without sorting here the builder lists them in an arbitrary
+    // order, and dragging a row would then save that arbitrary order over the real one.
+    return [...data]
+        .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
+        .map((field) => ({
+            id: field.id,
+            type: field.field_type,
+            name: field.field_name,
+            oldKey:
+                field.field_key === 'full_name' ||
+                field.field_key === 'phone_number' ||
+                field.field_key === 'email'
+                    ? true
+                    : false,
+            isRequired: field.is_mandatory,
+            key: field.field_key,
+            ...(field.field_type === 'dropdown' && {
+                options: field.comma_separated_options.split(',').map((value, index) => ({
+                    id: String(index),
+                    value: value.trim(),
+                    disabled: false,
+                })),
+            }),
+            order: field.field_order,
+        }));
 }
 
 export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {

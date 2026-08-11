@@ -8,6 +8,7 @@ import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTe
 
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
@@ -116,8 +117,13 @@ public class Assessment {
     @OneToMany(mappedBy = "assessment", fetch = FetchType.EAGER)
     private Set<AssessmentBatchRegistration> batchRegistrations = new HashSet<>();
 
+    // Serialized straight to the client for both the admin's step-3 form builder and the
+    // public registration page, so iteration order IS the form order. Without @OrderBy this
+    // is a HashSet and the two screens show the fields in different, arbitrary orders —
+    // the admin then reads that hash order as the real one and saves it back on any reorder.
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
-    private Set<AssessmentCustomField> assessmentCustomFields = new HashSet<>();
+    @OrderBy("fieldOrder ASC, createdAt ASC")
+    private Set<AssessmentCustomField> assessmentCustomFields = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
     private Set<AssessmentInstituteMapping> assessmentInstituteMappings = new HashSet<>();

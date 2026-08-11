@@ -13,7 +13,6 @@ import {
     type CustomFieldConfig,
 } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -43,8 +42,13 @@ interface CampaignCustomFieldsCardProps {
         config?: Record<string, unknown>
     ) => void;
     handleAddPhoneNumber?: (type: string, name: string, oldKey: boolean) => void;
-    handleUpdateFieldName: (index: number, name: string) => void;
-    handleUpdateFieldOptions: (index: number, values: string[]) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) => void;
 }
 
 /**
@@ -76,8 +80,7 @@ const CampaignCustomFieldsCard = ({
     handleAddDropdownOptions,
     handleCloseDialog,
     handleAddPhoneNumber,
-    handleUpdateFieldName,
-    handleUpdateFieldOptions,
+    handleEditFieldAt,
 }: CampaignCustomFieldsCardProps) => {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues } = form;
@@ -122,10 +125,6 @@ const CampaignCustomFieldsCard = ({
                                             return null;
                                         }
                                         const isEditing = editingIndex === index;
-                                        const hasOptions =
-                                            field.type === 'dropdown' ||
-                                            field.type === 'radio' ||
-                                            field.type === 'multi_select';
                                         return (
                                             <SortableItem key={field.id} value={field.id} asChild>
                                                 <div>
@@ -139,11 +138,7 @@ const CampaignCustomFieldsCard = ({
                                                         onToggleRequired={() =>
                                                             toggleIsRequired(index)
                                                         }
-                                                        onEdit={() =>
-                                                            setEditingIndex(
-                                                                isEditing ? null : index
-                                                            )
-                                                        }
+                                                        onEdit={() => setEditingIndex(index)}
                                                         onDelete={() => {
                                                             setEditingIndex(null);
                                                             handleDeleteOpenField(index);
@@ -157,28 +152,7 @@ const CampaignCustomFieldsCard = ({
                                                                 <DotsSixVertical size={18} />
                                                             </SortableDragHandle>
                                                         }
-                                                    >
-                                                        <InlineFieldEditor
-                                                            name={field.name}
-                                                            onNameChange={(next) =>
-                                                                handleUpdateFieldName(index, next)
-                                                            }
-                                                            {...(hasOptions
-                                                                ? {
-                                                                      options: (
-                                                                          field.options ?? []
-                                                                      ).map((o) => o.value),
-                                                                      onOptionsChange: (
-                                                                          next: string[]
-                                                                      ) =>
-                                                                          handleUpdateFieldOptions(
-                                                                              index,
-                                                                              next
-                                                                          ),
-                                                                  }
-                                                                : {})}
-                                                        />
-                                                    </FormFieldRow>
+                                                    />
                                                 </div>
                                             </SortableItem>
                                         );
@@ -226,6 +200,47 @@ const CampaignCustomFieldsCard = ({
                                     .map((f) => f.name) ?? []
                             }
                         />
+                        {/* Editing reuses the add dialog, prefilled. Keyed per row so opening a
+                            different field re-runs the prefill. */}
+                        {editingIndex !== null && customFieldsArray[editingIndex] && (
+                            <SharedAddCustomFieldDialog
+                                key={customFieldsArray[editingIndex]._rhfKey}
+                                mode="edit"
+                                open
+                                onOpenChange={(isOpen) => {
+                                    if (!isOpen) setEditingIndex(null);
+                                }}
+                                initialField={{
+                                    type: customFieldsArray[editingIndex].type,
+                                    name: customFieldsArray[editingIndex].name,
+                                    options: (customFieldsArray[editingIndex].options ?? []).map(
+                                        (o) => o.value
+                                    ),
+                                    isRequired: customFieldsArray[editingIndex].isRequired,
+                                }}
+                                onAddField={(type, name, _oldKey, options, config) => {
+                                    handleEditFieldAt(
+                                        editingIndex,
+                                        type,
+                                        name,
+                                        options,
+                                        config as Record<string, unknown>
+                                    );
+                                    setEditingIndex(null);
+                                }}
+                                // Its own name must stay available, or saving an unchanged
+                                // label would be blocked as a duplicate.
+                                existingFieldNames={
+                                    customFields
+                                        ?.filter(
+                                            (f, i) =>
+                                                i !== editingIndex &&
+                                                (f as any).status !== 'DELETED'
+                                        )
+                                        .map((f) => f.name) ?? []
+                                }
+                            />
+                        )}
                     </div>
 
                     {/* Preview Dialog */}

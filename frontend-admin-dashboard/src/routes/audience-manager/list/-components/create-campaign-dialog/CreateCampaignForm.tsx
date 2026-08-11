@@ -619,10 +619,25 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('custom_fields', updatedFields as typeof customFields);
     };
 
-    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
-
-    const handleUpdateFieldOptions = (index: number, values: string[]) =>
-        patchFieldAt(index, { options: values.map((value, i) => ({ id: String(i), value })) });
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options and
+     * required come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) =>
+        patchFieldAt(index, {
+            type,
+            name,
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
+            // The dialog only returns options for choice types, so switching away from one
+            // clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+        });
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
@@ -1407,8 +1422,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 handleEditClick={handleEditClick}
                 handleDeleteOptionField={handleDeleteOptionField}
                 handleAddDropdownOptions={handleAddDropdownOptions}
-                handleUpdateFieldName={handleUpdateFieldName}
-                handleUpdateFieldOptions={handleUpdateFieldOptions}
+                handleEditFieldAt={handleEditFieldAt}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
             />

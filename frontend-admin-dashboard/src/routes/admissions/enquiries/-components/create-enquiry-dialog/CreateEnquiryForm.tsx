@@ -208,10 +208,25 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
         setValue('custom_fields', updatedFields);
     };
 
-    const handleUpdateFieldName = (index: number, name: string) => patchFieldAt(index, { name });
-
-    const handleUpdateFieldOptions = (index: number, values: string[]) =>
-        patchFieldAt(index, { options: values.map((value, i) => ({ id: String(i), value })) });
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options and
+     * required come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: { id: string; value: string }[],
+        config?: Record<string, unknown>
+    ) =>
+        patchFieldAt(index, {
+            type,
+            name,
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
+            // The dialog only returns options for choice types, so switching away from one
+            // clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+        });
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
@@ -750,8 +765,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
                 updateFieldOrders={updateFieldOrders}
                 handleDeleteOpenField={handleDeleteOpenField}
                 toggleIsRequired={toggleIsRequired}
-                handleUpdateFieldName={handleUpdateFieldName}
-                handleUpdateFieldOptions={handleUpdateFieldOptions}
+                handleEditFieldAt={handleEditFieldAt}
             />
 
             {/* Counsellor Settings Toggle */}

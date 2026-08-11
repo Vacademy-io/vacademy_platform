@@ -137,6 +137,12 @@ public class LiveSessionStep2RequestDTO {
         private boolean isHidden;
         private String type;
         private List<FieldOptionDTO> options;
+        /**
+         * Position in the registration form. The client has always sent this; without the
+         * property it was dropped at deserialization, so reordering fields in the builder
+         * never reached the database. Null means "leave the stored order alone".
+         */
+        private Integer formOrder;
     }
 
     @Data

@@ -8,21 +8,25 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
     CaretDown,
     CaretUp,
+    Check,
     CheckCircle,
     Eye,
     Gear,
     Lightbulb,
+    PencilSimple,
     Plus,
     PlusSquare,
     X,
 } from '@phosphor-icons/react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 import {
     CUSTOM_FIELD_TYPES,
     COMMON_FILE_TYPES,
@@ -57,8 +61,20 @@ export interface CustomFieldConfig {
     helpText?: string;
 }
 
+/** An existing field's current settings, used to prefill the dialog in edit mode. */
+export interface CustomFieldInitialValues {
+    /** Stored type string — `textfield` is accepted as an alias of `text`. */
+    type: string;
+    name: string;
+    /** Option labels for choice types. */
+    options?: string[];
+    isRequired?: boolean;
+    config?: CustomFieldConfig;
+}
+
 interface AddCustomFieldDialogProps {
-    trigger: React.ReactNode;
+    /** Omit when driving the dialog with `open`/`onOpenChange` from outside. */
+    trigger?: React.ReactNode;
     onAddField: (
         type: string,
         name: string,
@@ -68,6 +84,15 @@ interface AddCustomFieldDialogProps {
     ) => void;
     existingFieldNames: string[];
     supportedTypes?: CustomFieldType[];
+    /**
+     * 'edit' prefills every input from `initialField` and swaps the copy/actions.
+     * The submit callback is the same either way — the caller knows which field it opened.
+     */
+    mode?: 'add' | 'edit';
+    initialField?: CustomFieldInitialValues;
+    /** Controlled open state. Pass a `key` per edited field so the prefill re-runs. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 const hasOptionsType = (type: CustomFieldType) =>
@@ -81,9 +106,21 @@ export const AddCustomFieldDialog = ({
     onAddField,
     existingFieldNames,
     supportedTypes,
+    mode = 'add',
+    initialField,
+    open: controlledOpen,
+    onOpenChange,
 }: AddCustomFieldDialogProps) => {
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const isEditMode = mode === 'edit';
+    const isControlled = controlledOpen !== undefined;
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isDialogOpen = isControlled ? controlledOpen : internalOpen;
+    const setIsDialogOpen = (next: boolean) => {
+        if (isControlled) onOpenChange?.(next);
+        else setInternalOpen(next);
+    };
     const [selectedType, setSelectedType] = useState<CustomFieldType>('text');
+    const [typePickerOpen, setTypePickerOpen] = useState(false);
     const [fieldName, setFieldName] = useState('');
     const [isNameValid, setIsNameValid] = useState(false);
     const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
@@ -118,6 +155,34 @@ export const AddCustomFieldDialog = ({
         setMaxSizeMB(5);
     };
 
+    /** Load an existing field's settings into the form so editing starts from what is there. */
+    const prefillFrom = (field: CustomFieldInitialValues) => {
+        // Callers store short text as `textfield`; the picker knows it as `text`.
+        const type = (field.type === 'textfield' ? 'text' : field.type) as CustomFieldType;
+        const config = field.config ?? {};
+        setSelectedType(type);
+        setFieldName(field.name ?? '');
+        setDropdownOptions((field.options ?? []).map((value, idx) => ({ id: String(idx), value })));
+        setIsRequired(field.isRequired ?? true);
+        setDefaultValue(type === 'checkbox' ? '' : config.defaultValue ?? '');
+        setCheckboxDefault(config.defaultValue === 'true');
+        setCheckboxHeading(config.heading ?? '');
+        setCheckboxDescription(config.description ?? '');
+        setHelpText(config.helpText ?? '');
+        setHelpTextEnabled(Boolean(config.helpText));
+        setAllowedFileTypes(config.allowedFileTypes ?? []);
+        setMaxSizeMB(config.maxSizeMB ?? 5);
+        // Open the panel straight away when it holds values the admin came to change.
+        setShowAdvanced(
+            Boolean(
+                config.heading ||
+                    config.description ||
+                    config.allowedFileTypes?.length ||
+                    config.defaultValue === 'true'
+            )
+        );
+    };
+
     const buildConfig = (): CustomFieldConfig | undefined => {
         const config: CustomFieldConfig = {};
         if (selectedType === 'checkbox') {
@@ -146,70 +211,134 @@ export const AddCustomFieldDialog = ({
             hasOptionsType(selectedType) ? dropdownOptions : undefined,
             buildConfig()
         );
-        resetForm();
+        // Editing has nothing to clear out for — the dialog closes on the caller's terms.
+        if (!isEditMode) resetForm();
         if (!keepOpen) setIsDialogOpen(false);
     };
 
+    const initialName = initialField?.name;
     useEffect(() => {
         const trimmed = fieldName.trim();
+        // Leaving an edited field's label alone is always allowed. Forms built before the
+        // duplicate check existed do contain repeated labels, and blocking those would make
+        // the field's options and type uneditable until the admin renamed it first.
+        const unchanged =
+            isEditMode && trimmed.toLowerCase() === (initialName ?? '').trim().toLowerCase();
         setIsNameValid(
             trimmed.length > 0 &&
-                !existingFieldNames.some((name) => name.toLowerCase() === trimmed.toLowerCase())
+                (unchanged ||
+                    !existingFieldNames.some((name) => name.toLowerCase() === trimmed.toLowerCase()))
         );
-    }, [fieldName, existingFieldNames]);
+    }, [fieldName, existingFieldNames, isEditMode, initialName]);
 
+    // Prefill on open in edit mode, wipe on close in add mode. initialField is a fresh
+    // object on every parent render, so it must stay out of the deps — callers key the
+    // dialog by field id, which remounts it when a different field is opened.
     useEffect(() => {
-        if (!isDialogOpen) resetForm();
-    }, [isDialogOpen]);
+        if (isDialogOpen && isEditMode && initialField) prefillFrom(initialField);
+        else if (!isDialogOpen) resetForm();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isDialogOpen, isEditMode]);
 
     const optionValues = dropdownOptions.map((o) => o.value);
 
     return (
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>{trigger}</DialogTrigger>
-            <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-0 p-0">{/* design-lint-ignore: vh/max-w dialog sizing matches MyDialog primitive */}
-                <div className="flex items-start gap-3 border-b border-neutral-200 p-6">
+            {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+            {/* DialogContent hard-codes a fixed 400px width, so the width itself must be
+                overridden — a max-width alone leaves the two-column body squeezed. */}
+            <DialogContent className="flex max-h-[85vh] w-[90vw] max-w-4xl flex-col gap-0 p-0">{/* design-lint-ignore: vw/vh dialog sizing matches MyDialog primitive */}
+                <div className="flex shrink-0 items-start gap-3 border-b border-neutral-200 p-6">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                        <PlusSquare size={22} />
+                        {isEditMode ? <PencilSimple size={22} /> : <PlusSquare size={22} />}
                     </span>
                     <div className="flex flex-col">
-                        <h1 className="text-title font-semibold">Add Custom Field</h1>
+                        <h1 className="text-title font-semibold">
+                            {isEditMode ? 'Edit Custom Field' : 'Add Custom Field'}
+                        </h1>
                         <p className="text-caption text-neutral-500">
-                            Create a new field and customize how it appears in the registration
-                            form.
+                            {isEditMode
+                                ? 'Change how this field appears in the registration form.'
+                                : 'Create a new field and customize how it appears in the registration form.'}
                         </p>
                     </div>
                 </div>
 
-                <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
+                <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
                     {/* ---------------- Left: the form ---------------- */}
                     <div className="flex flex-col gap-5">
                         <div className="flex flex-col gap-1">
                             <Label className="text-body font-semibold">1. Field Type</Label>
-                            <Select
-                                value={selectedType}
-                                onValueChange={(val) => {
-                                    setSelectedType(val as CustomFieldType);
-                                    setDropdownOptions(
-                                        hasOptionsType(val as CustomFieldType)
-                                            ? [{ id: '0', value: 'Option 1' }]
-                                            : []
-                                    );
-                                    setDefaultValue('');
-                                    setAllowedFileTypes([]);
-                                }}
+                            {/* Searchable: the type list is long enough to scroll. */}
+                            {/* modal: without it the dialog's scroll-lock swallows wheel
+                                events over this portalled list, so it cannot scroll. */}
+                            <Popover
+                                modal
+                                open={typePickerOpen}
+                                onOpenChange={setTypePickerOpen}
                             >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select field type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableTypes.map((ft) => (
-                                        <SelectItem key={ft.value} value={ft.value}>
-                                            {ft.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        role="combobox"
+                                        aria-expanded={typePickerOpen}
+                                        className="flex h-9 w-full items-center justify-between rounded-md border border-neutral-300 bg-transparent px-3 text-body"
+                                    >
+                                        {availableTypes.find((t) => t.value === selectedType)
+                                            ?.label ?? 'Select field type'}
+                                        <CaretDown size={14} className="opacity-60" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">{/* design-lint-ignore: radix css var, not a spacing token */}
+                                    <Command>
+                                        <CommandInput
+                                            placeholder="Search field type…"
+                                            className="h-9"
+                                        />
+                                        <CommandList className="max-h-64 overscroll-contain">
+                                            <CommandEmpty>No field type found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {availableTypes.map((ft) => (
+                                                    <CommandItem
+                                                        key={ft.value}
+                                                        value={ft.label}
+                                                        onSelect={() => {
+                                                            const val =
+                                                                ft.value as CustomFieldType;
+                                                            setSelectedType(val);
+                                                            // Options survive a move between
+                                                            // choice types (dropdown → radio →
+                                                            // multi-select); editing a saved
+                                                            // field must not silently discard
+                                                            // the list the admin already has.
+                                                            setDropdownOptions((prev) =>
+                                                                hasOptionsType(val)
+                                                                    ? prev.length > 0
+                                                                        ? prev
+                                                                        : [
+                                                                              {
+                                                                                  id: '0',
+                                                                                  value: 'Option 1',
+                                                                              },
+                                                                          ]
+                                                                    : []
+                                                            );
+                                                            setDefaultValue('');
+                                                            setAllowedFileTypes([]);
+                                                            setTypePickerOpen(false);
+                                                        }}
+                                                    >
+                                                        <span className="flex-1">{ft.label}</span>
+                                                        {selectedType === ft.value && (
+                                                            <Check size={16} />
+                                                        )}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
                             <p className="text-caption text-neutral-500">
                                 Choose the type of input you want to collect.
                             </p>
@@ -501,6 +630,18 @@ export const AddCustomFieldDialog = ({
                                         }}
                                     />
                                 </div>
+                                {hasOptionsType(selectedType) && optionValues.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 pt-1">
+                                        {optionValues.map((opt, i) => (
+                                            <span
+                                                key={i}
+                                                className="rounded-md bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600"
+                                            >
+                                                {opt || `Option ${i + 1}`}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 <p className="text-caption text-neutral-500">
                                     {helpTextEnabled && helpText.trim()
                                         ? helpText.trim()
@@ -522,7 +663,7 @@ export const AddCustomFieldDialog = ({
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-3 border-t border-neutral-200 p-4">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-neutral-200 p-4">
                     <MyButton
                         type="button"
                         scale="medium"
@@ -532,15 +673,17 @@ export const AddCustomFieldDialog = ({
                     >
                         <X size={16} /> Cancel
                     </MyButton>
-                    <MyButton
-                        type="button"
-                        scale="medium"
-                        buttonType="secondary"
-                        disable={!isNameValid}
-                        onClick={() => submit(true)}
-                    >
-                        <Plus size={16} /> Save &amp; Add Another
-                    </MyButton>
+                    {!isEditMode && (
+                        <MyButton
+                            type="button"
+                            scale="medium"
+                            buttonType="secondary"
+                            disable={!isNameValid}
+                            onClick={() => submit(true)}
+                        >
+                            <Plus size={16} /> Save &amp; Add Another
+                        </MyButton>
+                    )}
                     <MyButton
                         type="button"
                         scale="medium"
@@ -548,7 +691,7 @@ export const AddCustomFieldDialog = ({
                         disable={!isNameValid}
                         onClick={() => submit(false)}
                     >
-                        <CheckCircle size={16} /> Add Field
+                        <CheckCircle size={16} /> {isEditMode ? 'Save Changes' : 'Add Field'}
                     </MyButton>
                 </div>
             </DialogContent>

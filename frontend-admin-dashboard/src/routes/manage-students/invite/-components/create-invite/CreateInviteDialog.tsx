@@ -55,8 +55,7 @@ export const CreateInviteDialog = ({
         toggleIsRequired,
         handleAddOpenFieldValues,
         handleDeleteOpenField,
-        handleUpdateFieldName,
-        handleUpdateFieldOptions,
+        handleEditFieldAt,
     } = useInviteForm(initialValues);
     const addCourseMutation = useAddCourse();
 
@@ -268,8 +267,7 @@ export const CreateInviteDialog = ({
                                 toggleIsRequired={toggleIsRequired}
                                 handleAddOpenFieldValues={handleAddOpenFieldValues}
                                 handleDeleteOpenField={handleDeleteOpenField}
-                                handleUpdateFieldName={handleUpdateFieldName}
-                                handleUpdateFieldOptions={handleUpdateFieldOptions}
+                                handleEditFieldAt={handleEditFieldAt}
                             />
                         </div>
 

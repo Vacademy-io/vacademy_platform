@@ -70,7 +70,6 @@ import {
     CustomFieldConfig,
 } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
-import { InlineFieldEditor } from '@/components/common/custom-fields/InlineFieldEditor';
 import {
     FormFieldRow,
     FormFieldRowHeader,
@@ -199,6 +198,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         keyName: '_rhfKey',
     });
 
+    /** The row whose pencil was clicked — drives the prefilled edit dialog. */
+    const editingField = customFieldsArray.find((field) => field.id === editingFieldId);
+
     // Async-load institute defaults directly from the live backend endpoint.
     // Only for brand-new drafts — for an existing assessment, custom_fields is
     // already loaded from its saved registration_form_fields (see the
@@ -324,14 +326,6 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         setValue('open_test.custom_fields', updatedFields);
     };
 
-    const handleUpdateFieldName = (id: string, newName: string) => patchField(id, { name: newName });
-
-    const isDuplicateFieldName = (id: string, name: string) =>
-        name.trim().length > 0 &&
-        customFieldsArray.some(
-            (f) => f.id !== id && f.name.trim().toLowerCase() === name.trim().toLowerCase()
-        );
-
     const handleDuplicateField = (id: string) => {
         const sourceIndex = customFieldsArray.findIndex((f) => f.id === id);
         const source = customFieldsArray[sourceIndex];
@@ -347,11 +341,6 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         setValue('open_test.custom_fields', updatedFields);
         setEditingFieldId(newId);
     };
-
-    const handleUpdateFieldOptions = (id: string, values: string[]) =>
-        patchField(id, {
-            options: values.map((value, idx) => ({ id: String(idx), value })),
-        });
 
     const handleAddOpenFieldValues = (type: string, name: string, oldKey: boolean) => {
         // Add the new field to the array
@@ -438,6 +427,31 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         };
         const updatedFields = [...customFields, newField];
         setValue('open_test.custom_fields', updatedFields);
+    };
+
+    // Same dialog as "Add Custom Field", prefilled — so type, label, options and
+    // required all stay editable from one place. The id is kept so the save-time
+    // diff still reads this as an update rather than an add + remove.
+    const handleEditCustomField = (
+        id: string,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) => {
+        patchField(id, {
+            type,
+            name,
+            isRequired: config?.isRequired ?? true,
+            // Dropping the options on a switch to a non-choice type stops stale
+            // values from reappearing if the admin switches back.
+            options: options?.map((opt, index) => ({
+                id: String(index),
+                value: opt.value,
+                disabled: false,
+            })),
+        });
+        setEditingFieldId(null);
     };
 
     // Function that explicitly updates the order property of all fields
@@ -890,10 +904,6 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                 {customFieldsArray.map((field, index) => {
                                                     const isEditingField =
                                                         editingFieldId === field.id;
-                                                    const hasOptions =
-                                                        field.type === 'dropdown' ||
-                                                        field.type === 'radio' ||
-                                                        field.type === 'multi_select';
                                                     return (
                                                         <SortableItem
                                                             key={field.id}
@@ -912,11 +922,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                                         toggleIsRequired(field.id)
                                                                     }
                                                                     onEdit={() =>
-                                                                        setEditingFieldId(
-                                                                            isEditingField
-                                                                                ? null
-                                                                                : field.id
-                                                                        )
+                                                                        setEditingFieldId(field.id)
                                                                     }
                                                                     onDuplicate={() =>
                                                                         handleDuplicateField(
@@ -939,40 +945,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                                             />
                                                                         </SortableDragHandle>
                                                                     }
-                                                                >
-                                                                    <InlineFieldEditor
-                                                                        name={field.name}
-                                                                        onNameChange={(next) =>
-                                                                            handleUpdateFieldName(
-                                                                                field.id,
-                                                                                next
-                                                                            )
-                                                                        }
-                                                                        duplicateName={isDuplicateFieldName(
-                                                                            field.id,
-                                                                            field.name
-                                                                        )}
-                                                                        {...(hasOptions
-                                                                            ? {
-                                                                                  options: (
-                                                                                      field.options ??
-                                                                                      []
-                                                                                  ).map(
-                                                                                      (o) =>
-                                                                                          o.value
-                                                                                  ),
-                                                                                  onOptionsChange:
-                                                                                      (
-                                                                                          next: string[]
-                                                                                      ) =>
-                                                                                          handleUpdateFieldOptions(
-                                                                                              field.id,
-                                                                                              next
-                                                                                          ),
-                                                                              }
-                                                                            : {})}
-                                                                    />
-                                                                </FormFieldRow>
+                                                                />
                                                             </div>
                                                         </SortableItem>
                                                     );
@@ -1064,6 +1037,44 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                 .map((f) => f.name)}
                                         />
                                     </div>
+                                    {/* Editing reuses the add dialog, prefilled. Keyed by field id
+                                        so opening a different row re-runs the prefill. */}
+                                    {editingField && (
+                                        <SharedAddCustomFieldDialog
+                                            key={editingField.id}
+                                            mode="edit"
+                                            open
+                                            onOpenChange={(isOpen) => {
+                                                if (!isOpen) setEditingFieldId(null);
+                                            }}
+                                            initialField={{
+                                                type: editingField.type,
+                                                name: editingField.name,
+                                                options: (editingField.options ?? []).map(
+                                                    (o) => o.value
+                                                ),
+                                                isRequired: editingField.isRequired,
+                                            }}
+                                            onAddField={(type, name, _oldKey, options, config) =>
+                                                handleEditCustomField(
+                                                    editingField.id,
+                                                    type,
+                                                    name,
+                                                    options,
+                                                    config
+                                                )
+                                            }
+                                            // Its own name must stay available, or saving an
+                                            // unchanged label would be blocked as a duplicate.
+                                            existingFieldNames={customFieldsArray
+                                                .filter(
+                                                    (f) =>
+                                                        f.id !== editingField.id &&
+                                                        (f as any).status !== 'DELETED'
+                                                )
+                                                .map((f) => f.name)}
+                                        />
+                                    )}
                                     <Dialog>
                                         <DialogTrigger className="flex justify-start">
                                             <MyButton

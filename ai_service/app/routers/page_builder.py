@@ -1964,12 +1964,23 @@ async def _compose_one_page(
     # Matching the reference's colour is the cue people judge first, and it is
     # the cheapest one to get right, so it should not depend on the model
     # remembering one line of the prompt.
-    ref_primary = coerce_hex_color((inspiration.get("palette") or {}).get("primary")) if inspiration else None
+    ref_palette = (inspiration.get("palette") or {}) if inspiration else {}
+    ref_primary = coerce_hex_color(ref_palette.get("primary"))
     if ref_primary and isinstance(global_settings, dict):
         theme = global_settings.get("theme")
         if isinstance(theme, dict) and not theme.get("primaryColor"):
             theme["primaryColor"] = ref_primary
             warnings.append(f"Applied the reference design's accent colour ({ref_primary})")
+    # Same backstop for the canvas. The colour one demonstrably works — two runs
+    # in a row came back with primaryColor set — while the canvas, which is only
+    # ever asked for in prose, came back null both times even though the model
+    # clearly understood the warmth (it painted #FFF7ED onto a section instead).
+    # A tinted page surface is not something a composer reliably remembers to
+    # set, so stop relying on it remembering.
+    ref_bg = coerce_hex_color(ref_palette.get("background"))
+    if ref_bg and ref_bg not in ("#ffffff", "#fefefe") and not page.get("backgroundColor"):
+        page["backgroundColor"] = ref_bg
+        warnings.append(f"Applied the reference design's page background ({ref_bg})")
     if fixed_global is not None:
         global_settings = fixed_global  # pin the shared theme across the site
 

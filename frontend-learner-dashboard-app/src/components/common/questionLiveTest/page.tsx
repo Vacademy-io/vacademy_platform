@@ -347,12 +347,18 @@ export default function Page() {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    // A capped viewport height plus overflow-hidden is what makes the footer stay
-    // put: without it the column grows with the question, `flex-1` has nothing to
-    // flex against, and the whole document scrolls — taking the footer with it.
-    // Dynamic viewport units (h-dvh, not h-screen) so the Android browser chrome
-    // collapsing on scroll doesn't clip the footer off the bottom.
-    <div className="flex h-dvh flex-col w-full overflow-hidden bg-gray-50">
+    // fixed inset-0, not h-dvh: body carries safe-area padding, so a 100dvh child
+    // starts below the top inset and overflows the screen by that much — pushing
+    // the footer off the bottom, behind the Android nav bar, where it can't be
+    // tapped. Positioning against the viewport ignores that padding, so we
+    // re-apply the top inset here (same calc body uses, which offsets the navbar's
+    // own built-in spacing). The bottom inset is handled inside Footer.
+    <div
+      className="fixed inset-0 flex flex-col w-full overflow-hidden bg-gray-50"
+      style={{ // design-lint-ignore: dynamic safe-area inset padding
+        paddingTop: "calc(env(safe-area-inset-top, 0px) - 20px)",
+      }}
+    >
       <Navbar playMode={playMode} evaluationType={evaluationType} />
       <SectionTabs />
       <div className="flex-1 min-h-0 overflow-hidden">

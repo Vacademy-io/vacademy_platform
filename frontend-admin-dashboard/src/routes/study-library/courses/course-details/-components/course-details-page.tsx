@@ -365,8 +365,13 @@ export const CourseDetailsPage = () => {
         );
         if (byCourseId) return byCourseId;
 
-        // If course-init returned a single course, fall back to it
-        if (normalizedStudyLibraryData.length === 1) {
+        // If course-init returned a single course and the URL gives us nothing to
+        // match against, fall back to it. Never fall back when a courseId *is*
+        // present and failed to match: the single course in the store is then a
+        // leftover from a previously viewed course, and returning it renders that
+        // course's name/description under the requested course's URL. Resolving to
+        // null instead lets the safety net below re-fetch the correct course.
+        if (normalizedStudyLibraryData.length === 1 && !searchParams.courseId) {
             return normalizedStudyLibraryData[0];
         }
 

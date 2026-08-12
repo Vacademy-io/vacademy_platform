@@ -38,6 +38,14 @@ on:
         description: "Version being published (for the run name only; the real version comes from electron/package.json)"
         required: false
         default: ""
+      publish_mode:
+        description: "electron-builder --publish mode. 'always' needs ELECTRON_PUBLISH_TOKEN; use 'never' to just build and download the installer from the run artifacts."
+        required: false
+        default: "always"
+        type: choice
+        options:
+          - always
+          - never
 
 jobs:
   build:
@@ -94,13 +102,17 @@ jobs:
         env:
           # PAT with contents:write on Vacademy-io/electron-build-repo (cross-repo publish).
           GH_TOKEN: ${{ secrets.ELECTRON_PUBLISH_TOKEN }}
-        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish always
+        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish ${{ inputs.publish_mode }}
 
+      # always(): the installers are built before the publish step runs, so a
+      # publish failure (e.g. missing ELECTRON_PUBLISH_TOKEN) would otherwise
+      # discard a perfectly good build instead of leaving it downloadable.
       - name: Upload build artifacts (installer + update manifest)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.flavor }}-ota
           path: |
             frontend-learner-dashboard-app/electron/dist/*.exe
             frontend-learner-dashboard-app/electron/dist/latest.yml
-          if-no-files-found: error
+          if-no-files-found: warn

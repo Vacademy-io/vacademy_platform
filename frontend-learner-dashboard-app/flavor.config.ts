@@ -87,6 +87,16 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "ssdc",
   },
 
+  // SSDC HORIZON desktop (Electron) app. On Electron the flavor is resolved from
+  // App.getInfo(), which returns the electron-builder appId — not the Android or
+  // iOS bundle id — so this key must exist or the desktop build silently falls
+  // back to the default domain: no SSDC catalogue and no login logo.
+  "com.ssdc.horizon.app": {
+    appName: "SSDC Horizon",
+    domain: "vacademy.io",
+    subdomain: "ssdc",
+  },
+
   // Enark Uplift Teacher Training Android app
   "com.enarkuplift.app": {
     appName: "Uplift Teacher Training",

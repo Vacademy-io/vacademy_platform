@@ -8,16 +8,19 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service to analyze student activity data using LLM
@@ -32,19 +35,30 @@ public class StudentAnalyticsLLMService {
 
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
+        /**
+         * Hard ceiling on generated tokens. The insight JSON this service asks for fits
+         * comfortably; before this cap was added the job routinely emitted ~10K
+         * completion tokens per activity log, and output costs 5-10x input on every
+         * model in the chain.
+         */
+        private static final int MAX_COMPLETION_TOKENS = 2000;
+
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
         private final AiTokenUsageService aiTokenUsageService;
         private final AIModelRegistryService aiModelRegistryService;
+        private final CreditClient creditClient;
 
         public StudentAnalyticsLLMService(
                         @Value("${openrouter.api.key}") String apiKey,
                         ObjectMapper objectMapper,
                         AiTokenUsageService aiTokenUsageService,
-                        AIModelRegistryService aiModelRegistryService) {
+                        AIModelRegistryService aiModelRegistryService,
+                        CreditClient creditClient) {
                 this.objectMapper = objectMapper;
                 this.aiTokenUsageService = aiTokenUsageService;
                 this.aiModelRegistryService = aiModelRegistryService;
+                this.creditClient = creditClient;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -59,9 +73,14 @@ public class StudentAnalyticsLLMService {
          * 
          * @param rawJson      The raw JSON string containing student submission data
          * @param activityType Type of activity (quiz, question, assignment, assessment)
+         * @param instituteId  Institute that owns the activity, for usage attribution
+         *                     and credit deduction. May be null when it cannot be
+         *                     resolved, in which case the spend stays unattributed.
+         * @param userId       Learner the activity belongs to. May be null.
          * @return Mono containing the processed insights as JsonNode
          */
-        public Mono<JsonNode> generateStudentInsights(String rawJson, String activityType) {
+        public Mono<JsonNode> generateStudentInsights(String rawJson, String activityType,
+                        String instituteId, String userId) {
                 String prompt = createStudentAnalysisPrompt(rawJson, activityType);
 
                 List<String> modelPriority = aiModelRegistryService.getModelPriority("analytics");
@@ -70,21 +89,34 @@ public class StudentAnalyticsLLMService {
                         return Mono.error(new RuntimeException("No AI models available for generating student insights."));
                 }
 
-                log.debug("[LLM-Analytics] Model priority size: {}, ActivityType: {}, PromptChars: {}",
-                                modelPriority.size(), activityType, prompt.length());
+                log.debug("[LLM-Analytics] Model priority size: {}, ActivityType: {}, PromptChars: {}, InstituteId: {}",
+                                modelPriority.size(), activityType, prompt.length(), instituteId);
 
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, modelPriority, 0);
+                return tryModelsWithFallback(prompt, modelPriority, 0, instituteId, userId);
+        }
+
+        /**
+         * The model the next analytics call will most likely use. Exposed so callers can
+         * run an affordability check against the right price point before building a
+         * prompt, without needing the model registry themselves.
+         *
+         * @return the highest-priority analytics model, or null if none are configured
+         */
+        public String getPrimaryAnalyticsModel() {
+                List<String> modelPriority = aiModelRegistryService.getModelPriority("analytics");
+                return (modelPriority == null || modelPriority.isEmpty()) ? null : modelPriority.get(0);
         }
 
         /**
          * Recursively try models with fallback logic
-         * 
+         *
          * @param prompt     The prompt to send to LLM
          * @param modelIndex Current model index in priority list
          * @return Mono containing the insights or error
          */
-        private Mono<JsonNode> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex) {
+        private Mono<JsonNode> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex,
+                        String instituteId, String userId) {
                 if (modelIndex >= modelPriority.size()) {
                         log.error("All LLM models failed after retries. Tried: {}", modelPriority);
                         return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
@@ -95,8 +127,9 @@ public class StudentAnalyticsLLMService {
                 log.debug("[LLM-Analytics] Trying model {}/{}: {}",
                                 modelIndex + 1, modelPriority.size(), currentModel);
 
-                return generateWithModel(prompt, currentModel)
+                return generateWithModel(prompt, currentModel, instituteId, userId)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
+                                                .filter(StudentAnalyticsLLMService::isRetryable)
                                                 .doBeforeRetry(signal -> log.warn(
                                                                 "Retry {}/{} for model: {}",
                                                                 signal.totalRetries() + 1, MAX_RETRIES_PER_MODEL,
@@ -109,14 +142,35 @@ public class StudentAnalyticsLLMService {
                                 .onErrorResume(error -> {
                                         log.warn("Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1);
+                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1,
+                                                        instituteId, userId);
                                 });
+        }
+
+        /**
+         * Only retry failures that a retry could plausibly fix.
+         *
+         * The chain previously retried everything, so a 402 (out of credit) or a 404
+         * (model id does not exist) burned three attempts per model across the whole
+         * priority list - 42 requests for a single activity log, none of which could
+         * ever have succeeded. 429 and 5xx are genuinely transient and still retry.
+         */
+        private static boolean isRetryable(Throwable error) {
+                if (error instanceof WebClientResponseException webError) {
+                        int status = webError.getStatusCode().value();
+                        if (status == 429) {
+                                return true;
+                        }
+                        return status < 400 || status >= 500;
+                }
+                // Timeouts and connection resets are transient.
+                return true;
         }
 
         /**
          * Generate insights with specific model
          */
-        private Mono<JsonNode> generateWithModel(String prompt, String model) {
+        private Mono<JsonNode> generateWithModel(String prompt, String model, String instituteId, String userId) {
                 Map<String, Object> payload = Map.of(
                                 "model", model,
                                 "messages", List.of(
@@ -124,6 +178,7 @@ public class StudentAnalyticsLLMService {
                                                                 "You are an expert educational data analyst specializing in student performance analysis. "
                                                                                 + "You analyze student submission data and provide actionable insights in strict JSON format."),
                                                 Map.of("role", "user", "content", prompt)),
+                                "max_tokens", MAX_COMPLETION_TOKENS,
                                 "response_format", Map.of("type", "json_object"));
 
                 long requestStart = System.nanoTime();
@@ -140,7 +195,7 @@ public class StudentAnalyticsLLMService {
                                         long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
                                         log.debug("[LLM-Analytics] Response received model={} in {} ms, size={} chars",
                                                         model, durationMs, response.length());
-                                        logTokenUsage(response, model);
+                                        logTokenUsage(response, model, instituteId, userId);
                                 })
                                 .doOnError(error -> {
                                         long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
@@ -151,9 +206,13 @@ public class StudentAnalyticsLLMService {
         }
 
         /**
-         * Log token usage from API response
+         * Record token usage against the owning institute and charge it.
+         *
+         * Both calls are @Async so neither the DB write nor the ai_service HTTP round
+         * trip runs on the Reactor event loop, and both swallow their own failures -
+         * billing must never break analytics processing.
          */
-        private void logTokenUsage(String responseBody, String model) {
+        private void logTokenUsage(String responseBody, String model, String instituteId, String userId) {
                 try {
                         JsonNode root = objectMapper.readTree(responseBody);
                         JsonNode usage = root.get("usage");
@@ -170,12 +229,45 @@ public class StudentAnalyticsLLMService {
                                                 model,
                                                 promptTokens,
                                                 completionTokens,
-                                                null, // No institute ID in this context
-                                                null // No user ID in this context
-                                );
+                                                toUuidOrNull(instituteId),
+                                                toUuidOrNull(userId));
+
+                                if (instituteId != null && !instituteId.isBlank()) {
+                                        // usage_log_id is intentionally null: the ai_token_usage row above is
+                                        // written asynchronously, so its id is not available here, and
+                                        // ai_service would otherwise try to link a row it cannot yet see.
+                                        creditClient.deductCreditsAsync(
+                                                        instituteId,
+                                                        RequestType.ANALYTICS.getValue(),
+                                                        model,
+                                                        promptTokens,
+                                                        completionTokens,
+                                                        null);
+                                } else {
+                                        log.warn("[LLM-Analytics] No institute resolved for model={} - "
+                                                        + "{} tokens recorded unattributed and NOT charged",
+                                                        model, promptTokens + completionTokens);
+                                }
                         }
                 } catch (Exception e) {
                         log.warn("Failed to log token usage: {}", e.getMessage());
+                }
+        }
+
+        /**
+         * ai_token_usage stores institute_id/user_id as UUIDs while activity_log and
+         * the enriched raw JSON carry them as strings. A malformed value must not sink
+         * the usage record, so it degrades to null (unattributed) instead of throwing.
+         */
+        private static UUID toUuidOrNull(String value) {
+                if (value == null || value.isBlank()) {
+                        return null;
+                }
+                try {
+                        return UUID.fromString(value.trim());
+                } catch (IllegalArgumentException e) {
+                        log.warn("[LLM-Analytics] Not a valid UUID, recording as unattributed: {}", value);
+                        return null;
                 }
         }
 

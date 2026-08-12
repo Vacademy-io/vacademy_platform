@@ -228,7 +228,12 @@ public class PlivoCallbackController {
 
         TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
         if (row == null) return xml(HANGUP_XML);
-        TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
+        // The AI carrier that placed this call — see TelephonyConfigCache#forCallProvider.
+        // The token we must verify against is the one the bot's answer XML embedded, which
+        // came from THIS config; the primary provider's token would never match on an
+        // institute running a dedicated AI line.
+        TelephonyConfigCache.Resolved resolved =
+                configCache.forCallProvider(row.getInstituteId(), row.getProviderType()).orElse(null);
         if (resolved == null) return xml(HANGUP_XML);
         if (!verifyToken(resolved.getWebhookToken(), token)) return xml(HANGUP_XML);
 
@@ -237,11 +242,14 @@ public class PlivoCallbackController {
             return xml(HANGUP_XML);
         }
         // Caller-ID: inbound rows carry the dialled DID; outbound AI rows have no
-        // caller_id, so fall back to the institute's first enabled Voice number.
+        // caller_id, so fall back to the carrier's own number — the dedicated AI line's
+        // configured caller-ID (null on a primary row), else the institute's first
+        // enabled Voice number, exactly as before.
         String callerId = firstNonBlank(row.getCallerId(),
-                resolved.getEnabledNumbers().stream()
-                        .filter(n -> Boolean.TRUE.equals(n.getEnabled()))
-                        .findFirst().map(n -> n.getPhoneNumber()).orElse(null));
+                firstNonBlank(resolved.getAiCallerId(),
+                        resolved.getEnabledNumbers().stream()
+                                .filter(n -> Boolean.TRUE.equals(n.getEnabled()))
+                                .findFirst().map(n -> n.getPhoneNumber()).orElse(null)));
         String statusBase = buildStatusUrl(ProviderType.PLIVO, resolved.getWebhookToken(), corr);
         log.info("plivo ai-next: corr={} handing off to {}", corr, target);
         // record=false: the whole session is already captured by the bot's

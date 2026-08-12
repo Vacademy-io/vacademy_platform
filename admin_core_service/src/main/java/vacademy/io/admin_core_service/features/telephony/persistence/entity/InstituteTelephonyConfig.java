@@ -3,13 +3,20 @@ package vacademy.io.admin_core_service.features.telephony.persistence.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.telephony.enums.ConfigRole;
 
 import java.sql.Timestamp;
 
 /**
- * Per-institute provider configuration. One row per institute (UNIQUE on
- * institute_id). Provider-neutral columns — the api_username / api_password /
- * api_account_id triplet maps to whatever the provider calls its credentials.
+ * Per-institute provider configuration. One row per (institute, {@link ConfigRole})
+ * — UNIQUE on (institute_id, role) since V448. Provider-neutral columns: the
+ * api_username / api_password / api_account_id triplet maps to whatever the
+ * provider calls its credentials.
+ *
+ * <p>Every institute has exactly one {@code PRIMARY} row (the provider its humans
+ * call on) and optionally one {@code AI_VOICE} row — a dedicated Plivo line the
+ * Vacademy AI bot streams over when the primary provider can't carry media. See
+ * {@link ConfigRole}.
  */
 @Entity
 @Table(name = "institute_telephony_config")
@@ -24,8 +31,18 @@ public class InstituteTelephonyConfig {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    @Column(name = "institute_id", nullable = false, unique = true)
+    /** No longer unique on its own — see {@code role} and the (institute_id, role) index. */
+    @Column(name = "institute_id", nullable = false)
     private String instituteId;
+
+    /**
+     * {@link ConfigRole#PRIMARY} (humans) or {@link ConfigRole#AI_VOICE} (the
+     * Vacademy AI bot's dedicated Plivo line). Defaults to PRIMARY so any code path
+     * that builds a config without thinking about roles keeps the old meaning.
+     */
+    @Column(name = "role", nullable = false, length = 16)
+    @Builder.Default
+    private String role = ConfigRole.PRIMARY;
 
     @Column(name = "provider_type", nullable = false, length = 32)
     private String providerType;

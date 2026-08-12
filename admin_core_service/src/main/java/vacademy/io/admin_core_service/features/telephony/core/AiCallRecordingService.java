@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.spi.RecordingFetcher;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderCredentials;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.io.InputStream;
@@ -47,6 +49,7 @@ public class AiCallRecordingService {
     private final TelephonyProviderRegistry registry;
     private final MediaService mediaService;
     private final TelephonyCallLogRepository callLogRepo;
+    private final TelephonyConfigCache configCache;
     private final vacademy.io.admin_core_service.features.call_intelligence.core.CallIntelligenceEnqueueService callIntelligenceEnqueueService;
 
     private enum Step { DONE, STOP, RETRY }
@@ -87,8 +90,18 @@ public class AiCallRecordingService {
                 return Step.STOP;
             }
 
+            // AAVTAAR's recordings are public URLs, so it has always fetched with no
+            // credentials. VACADEMY_AI's are Plivo objects behind Basic auth on the
+            // carrier's subaccount — pass those. Resolved by the ROW's provider so an
+            // institute whose AI runs on a dedicated line gets that line's credentials,
+            // not its (possibly Airtel) primary provider's. Null stays null for AAVTAAR.
+            ProviderCredentials creds = ProviderType.VACADEMY_AI.equals(row.getProviderType())
+                    ? configCache.getForAi(row.getInstituteId())
+                            .map(TelephonyConfigCache.Resolved::getCredentials).orElse(null)
+                    : null;
+
             byte[] bytes;
-            try (InputStream in = fetcherOpt.get().fetch(recordingUrl, null)) {
+            try (InputStream in = fetcherOpt.get().fetch(recordingUrl, creds)) {
                 bytes = in.readAllBytes();
             }
             if (bytes.length == 0 || !looksLikeAudio(bytes)) {

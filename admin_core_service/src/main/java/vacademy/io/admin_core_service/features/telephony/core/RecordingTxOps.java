@@ -55,7 +55,13 @@ public class RecordingTxOps {
         if (Boolean.TRUE.equals(row.getRecordingLogged())) return;
         if (row.getRecordingUrl() == null || row.getRecordingUrl().isBlank()) return;
 
-        TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId())
+        // Credentials must come from the account that RECORDED the call. A Vacademy AI
+        // recording lives in the AI carrier's Plivo subaccount, which for an institute
+        // with a dedicated AI line is neither the primary provider nor the same Plivo
+        // account — fetching it with the primary's credentials 401s and the recording is
+        // silently lost. Identical to the old behaviour for every non-AI row.
+        TelephonyConfigCache.Resolved resolved =
+                configCache.forCallProvider(row.getInstituteId(), row.getProviderType())
                 .orElseThrow(() -> new IllegalStateException(
                         "telephony config missing for institute " + row.getInstituteId()));
 

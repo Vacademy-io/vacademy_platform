@@ -2158,9 +2158,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
      * Find limited activity logs with only necessary fields for processing
      * Used by LLM analytics scheduler to optimize data fetching
      */
-    @Query(value = "SELECT id, source_type AS sourceType, raw_json AS rawJson, processed_json AS processedJson, status, created_at AS createdAt FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
+    @Query(value = "SELECT id, user_id AS userId, source_type AS sourceType, raw_json AS rawJson, processed_json AS processedJson, status, created_at AS createdAt FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
     List<ActivityLogProcessingProjection> findProcessingDataByStatusWithLimit(@Param("statuses") List<String> statuses,
             @Param("limit") int limit);
+
+    /**
+     * Resolve the institute that owns a learner, for attributing AI spend on their
+     * activity logs. Prefers an ACTIVE enrolment, then the most recent one, because a
+     * learner may hold mappings in several institutes over time.
+     */
+    @Query(value = "SELECT institute_id FROM student_session_institute_group_mapping " +
+            "WHERE user_id = :userId AND institute_id IS NOT NULL " +
+            "ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC LIMIT 1", nativeQuery = true)
+    Optional<String> findInstituteIdByUserId(@Param("userId") String userId);
 
     /**
      * Count activity logs by status

@@ -74,7 +74,7 @@ immutable `:<git-sha>` rewritten by CI in `/opt/voice-bot/.env`
     .placeCall()       → assigned-lead guard → daily cap → 30s dedup
                        → INSERT telephony_call_log (status=INITIATED, id = corr)
                             │
- 3. VacademyAiOutboundCaller → Plivo Call API on the institute's Vacademy Voice subaccount
+ 3. VacademyAiOutboundCaller → Plivo Call API on the institute's AI CARRIER (§2.5)
                        answer_url = {bot}/answer?corr&agent&inst&nxt[&rcb]
                             │
  4. Lead answers   → Plivo GETs {bot}/answer
@@ -132,6 +132,57 @@ or `<Hangup/>`. With the pipecat default (`True`), the call would be API-killed 
 
 The credit gate exists because AI calls were previously billed only *after* the fact — an
 institute was observed live at **−5759 credits still dialling**.
+
+### 2.5 Which line the call goes out on (the AI carrier)
+
+Vacademy AI is **not a carrier** — it is a media application on top of Plivo. The bot only
+ever receives audio through Plivo's `<Stream>`, and Airtel IQ (a white-labelled Vonage VBC)
+and Exotel expose no media fork, so an AI call **must** be placed on a Plivo line.
+
+Until V448 that line was, by definition, the institute's own telephony provider: the dialer
+refused any institute whose `institute_telephony_config.provider_type != PLIVO`, and
+`institute_telephony_config` was `UNIQUE(institute_id)` — one provider, full stop. An
+institute running its counsellors on Airtel therefore **could not use AI calling at all**,
+and the failure was invisible until the first dial (the AI settings saved happily with
+`provider=VACADEMY_AI`).
+
+V448 adds a **role** to that table so an institute can hold two rows:
+
+| `role` | What it is | Who resolves it |
+|---|---|---|
+| `PRIMARY` | the provider humans click-to-call and receive inbound on | `TelephonyConfigCache.get()` — every human-calling path |
+| `AI_VOICE` | an **optional** dedicated Plivo subaccount used only by `VACADEMY_AI` calls | `TelephonyConfigCache.getForAi()` |
+
+`getForAi()` returns the `AI_VOICE` row when one exists **and is enabled**, else falls back
+to `PRIMARY` — so an institute already on Vacademy Voice is byte-identical to before, and a
+disabled AI line degrades to the primary rather than blocking every dial. Any path handed an
+*existing* call uses `forCallProvider(instituteId, row.providerType)`, which routes only
+`VACADEMY_AI` rows to the AI carrier.
+
+Four places had to follow the carrier, not the institute:
+
+| Path | Why |
+|---|---|
+| `VacademyAiOutboundCaller` | credentials + caller-ID come from the account that dials |
+| `TelephonyWebhookController` | a `VACADEMY_AI` row's status/recording callbacks are **Plivo** events; the authoritative provider is the carrier, not the institute's human one, or every callback 400s on the provider-mismatch guard |
+| `PlivoCallbackController.aiNext` | the `?token=` the bot embedded came from the AI config; the primary's token would never match |
+| `RecordingTxOps` / `AiCallRecordingService` | the recording lives in the AI carrier's subaccount and needs *its* Basic auth |
+
+**A dedicated line's caller-ID lives on the config** (`provider_config.callerId`), *not* as a
+`telephony_provider_number`. That is deliberate: adding one therefore cannot alter the
+institute's number pool, the Numbers card, or `findEnabledByPhoneNumber` — the inbound DID
+lookup that attributes every incoming call. `Resolved.getAiCallerId()` returns null on a
+PRIMARY row for the same reason.
+
+Managed at **Settings → Calling → AI calling line**
+(`GET|PUT|DELETE /v1/telephony/ai-carrier/{instituteId}`, `AiVoiceCarrierService`): pick
+*"use our calling account"* (refused, with the reason, when the primary can't carry AI) or
+*"use a separate line"* (Plivo Auth ID/Token + caller-ID). Unlinking is non-destructive —
+AI falls back to the primary provider.
+
+> Inbound AI (the IVR `AI_AGENT` node) on a **dedicated** line is not wired: it would need
+> the DID registered as an inbound-routable number, which is exactly what this design keeps
+> out of the number pool. Outbound AI is unaffected.
 
 ---
 
@@ -703,11 +754,13 @@ re-asked for.
 | `call_intelligence` | recording analysis queue + results | unique on `call_log_id`; `status`, rubric outputs |
 | `credit_pricing` | global rates | `request_type`, `token_rate` (credits/min here), `minimum_charge` |
 | `institutes.setting_json` | per-institute settings | `AI_CALLING_SETTING`, `VOICE_CALLING_SETTING` (incl. ops-only `billing`), `CRM_INTELLIGENCE_SETTING` |
+| `institute_telephony_config` | the carrier accounts — **one row per (institute, `role`)** since V448 | `role` (`PRIMARY` \| `AI_VOICE`), `provider_type`, `provider_secrets_enc`, `provider_config` (an AI line's `callerId` lives here, **not** in `telephony_provider_number` — §2.5), `webhook_token_enc`, `enabled` |
 
 Relevant migrations: V345 (call intelligence), V354 (handoff target), V378 (call credit
 rates + `credits_billed_at` + sweep indexes), V379 (voice tuning), V421 (`tts_model` +
 `ai_tts_model_pricing`), V426 (google/smallest pricing), V429 (voice rate card),
-V430/V431 (edge pricing + discount).
+V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role` +
+`UNIQUE(institute_id, role)` — the AI carrier split, §2.5).
 
 ---
 
@@ -782,6 +835,8 @@ V430/V431 (edge pricing + discount).
 | **Every call `Incomplete`** | analysis LLM unreachable/misrouted (provider mismatch) | `report._llm_target`; bot log `analysis failed` |
 | **Lead outcome never applied** | report never delivered | bot log `report spooled…`; `_report_spool/*.json`, `.dead` files |
 | **Calls stopped dialling** | credit gate (fails closed) or daily cap | admin_core log `AI call BLOCKED — no credits` / `hit the daily cap`; wallet balance |
+| **"AI calling runs over a Vacademy Voice (Plivo) line…"** on the first dial | the institute has no AI carrier — its primary provider is Airtel/Exotel and no `AI_VOICE` row exists (§2.5) | Settings → Calling → **AI calling line**; `GET /v1/telephony/ai-carrier/{id}` reports `ready` + `blockingReason` |
+| **AI calls dial but every callback 400s** | `?provider=` vs stored-config mismatch — pre-V448 shape, or a `VACADEMY_AI` row whose AI carrier was unlinked mid-flight | admin_core log `telephony webhook: ?provider=… != configured …`; the carrier is authoritative for `VACADEMY_AI` rows |
 | **Charged for the wrong engine** | agent's configured engine ≠ engine that spoke | `diagnostics.tts.vendor` vs `ai_agent.tts_model`; billing prices the *configured* one by design |
 | **"All lines busy"** | `MAX_CONCURRENT_CALLS` reached | `/health` `activeCalls`; resize the box |
 | **IVR prompt plays silence** | wrong MP3 profile or a 206 response | `TTS_PROMPT_SAMPLE_RATE=44100`; `/tts/{token}.mp3` must be a full 200 |

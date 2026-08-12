@@ -309,6 +309,11 @@ export const TELEPHONY_IVR_MENU_BY_ID = (menuId: string) =>
 // Vacademy Voice product config (enable flag, caller-ID, recording, compliance, plan).
 export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/voice-config/${encodeURIComponent(instituteId)}`;
+// Which line AI calls go out on: the team's provider, or a dedicated Vacademy Voice
+// line for institutes whose provider (Airtel/Exotel) can't carry a media stream.
+// GET | PUT { mode: PRIMARY|DEDICATED, … } | DELETE (unlink).
+export const TELEPHONY_AI_CARRIER = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ai-carrier/${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;

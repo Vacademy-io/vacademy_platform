@@ -58,11 +58,11 @@ type Step = 'chat' | 'brief' | 'assets' | 'confirm' | 'review';
  *  screenshot thumbnails, and review renders a preview of the whole generated
  *  page.
  *
- *  These are w-* not max-w-*: DialogContent's base class is `w-[400px]
- *  max-w-[90vw]`, so a max-width only raises a ceiling the dialog never reaches
- *  and every dialog in the app is 400px wide no matter what max-w it passes.
- *  tailwind-merge replaces the w-[400px]; the vw guard is folded into each
- *  token's min(). */
+ *  These are w-* not max-w-*: DialogContent's base class pins a FIXED 400px
+ *  width (with a 90vw cap), so a max-width only raises a ceiling the dialog
+ *  never reaches — every dialog in the app is 400px wide no matter what max-w
+ *  it passes. tailwind-merge replaces the fixed width; the small-screen guard
+ *  is folded into each token's min(). */
 const STEP_WIDTH: Record<Step, string> = {
     chat: 'w-dialog-xl',
     brief: 'w-dialog-md',

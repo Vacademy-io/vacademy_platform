@@ -40,6 +40,7 @@ import vacademy.io.admin_core_service.features.certificate.repository.IssuedCert
 import vacademy.io.admin_core_service.features.certificate.service.CertificateCodeService;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateNumberService;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateSettingsResolver;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateVerificationService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.learner_operation.entity.LearnerOperation;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
@@ -73,6 +74,7 @@ public class InstituteSettingService {
     private final CertificateSettingsResolver certificateSettingsResolver;
     private final CertificateNumberService certificateNumberService;
     private final CertificateCodeService certificateCodeService;
+    private final CertificateVerificationService certificateVerificationService;
     private final LearnerOperationRepository learnerOperationRepository;
 
     // The default completion threshold now lives in
@@ -86,6 +88,7 @@ public class InstituteSettingService {
             CertificateSettingsResolver certificateSettingsResolver,
             CertificateNumberService certificateNumberService,
             CertificateCodeService certificateCodeService,
+            CertificateVerificationService certificateVerificationService,
             LearnerOperationRepository learnerOperationRepository) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
@@ -97,6 +100,7 @@ public class InstituteSettingService {
         this.certificateSettingsResolver = certificateSettingsResolver;
         this.certificateNumberService = certificateNumberService;
         this.certificateCodeService = certificateCodeService;
+        this.certificateVerificationService = certificateVerificationService;
         this.learnerOperationRepository = learnerOperationRepository;
     }
 
@@ -480,7 +484,8 @@ public class InstituteSettingService {
      * certificate-verification endpoint today, and a QR pointing at an
      * authenticated route would just show a scanner a login wall.
      */
-    private String resolveCertificateCodePayload(Institute institute, String certificateId) {
+    private String resolveCertificateCodePayload(Institute institute, String certificateId,
+                                                 String verificationToken) {
         if (!StringUtils.hasText(certificateId)) {
             return null;
         }
@@ -505,6 +510,18 @@ public class InstituteSettingService {
         } catch (Exception e) {
             log.warn("Could not read the QR verification URL template; encoding the number instead", e);
         }
+
+        // No institute-specific template configured: point the QR at the
+        // platform verification page on the institute's own learner portal, so a
+        // white-labelled school sends its graduates to its own domain.
+        String platformVerifyUrl = certificateVerificationService
+                .buildVerificationUrl(institute, certificateId, verificationToken);
+        if (StringUtils.hasText(platformVerifyUrl)) {
+            return platformVerifyUrl;
+        }
+
+        // Last resort — no portal configured, or a legacy certificate with no
+        // token. Encoding the bare number at least identifies the certificate.
         return certificateId;
     }
 
@@ -839,6 +856,14 @@ public class InstituteSettingService {
         // Keep the original issuance date on a re-render — see resolveExistingCertificate.
         final Date originalIssuedAt = alreadyIssued.map(IssuedCertificate::getIssuedAt).orElse(null);
 
+        // Verification token: reused on a re-render so a certificate already in
+        // circulation keeps working, minted fresh otherwise. Rotating it would
+        // silently break every QR already printed or emailed.
+        final String verificationToken = alreadyIssued
+                .map(IssuedCertificate::getVerificationToken)
+                .filter(StringUtils::hasText)
+                .orElseGet(certificateVerificationService::newVerificationToken);
+
         placeHolderMapping.put("1",
                 studentSessionInstituteGroupMapping.getPackageSession().getSession().getSessionName());
         placeHolderMapping.put("2", studentSessionInstituteGroupMapping.getPackageSession().getLevel().getLevelName());
@@ -916,7 +941,7 @@ public class InstituteSettingService {
         // the renderer never has to fetch them. Both are img-src tokens: a
         // template uses them as <img src="{{CERTIFICATE_QR}}">.
         String codePayload = resolveCertificateCodePayload(
-                studentSessionInstituteGroupMapping.getInstitute(), certificateId);
+                studentSessionInstituteGroupMapping.getInstitute(), certificateId, verificationToken);
         namedPlaceholders.put("{{CERTIFICATE_QR}}",
                 Optional.ofNullable(certificateCodeService.generateQrDataUri(codePayload)).orElse(""));
         namedPlaceholders.put("{{CERTIFICATE_BARCODE}}",
@@ -1075,6 +1100,7 @@ public class InstituteSettingService {
                         .completionPercentage(auditPercentage)
                         // Re-render keeps the date the learner actually earned it.
                         .issuedAt(originalIssuedAt != null ? originalIssuedAt : new Date())
+                        .verificationToken(verificationToken)
                         .fileId(file.getId())
                         .templateHtmlSnapshot(renderedHtml)
                         .build();

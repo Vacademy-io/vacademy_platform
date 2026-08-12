@@ -10,6 +10,14 @@ import java.util.Optional;
 @Repository
 public interface IssuedCertificateRepository extends JpaRepository<IssuedCertificate, String> {
 
+    /**
+     * Public verification lookup. BOTH the number and the token must match —
+     * certificate numbers are sequential, so a number-only finder here would
+     * make the public endpoint enumerable.
+     */
+    Optional<IssuedCertificate> findByCertificateIdAndVerificationToken(
+            String certificateId, String verificationToken);
+
     Optional<IssuedCertificate> findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(
             String userId, String packageSessionId);
 

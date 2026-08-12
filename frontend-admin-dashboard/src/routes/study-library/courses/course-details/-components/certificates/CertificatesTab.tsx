@@ -90,6 +90,7 @@ export const CertificatesTab = ({
                 packageSessionId={packageSessionId}
                 packageId={packageId}
                 courseName={courseName}
+                certificatesEnabled={settings?.effective_enabled ?? false}
             />
 
             <CourseCertificateSettingsDialog

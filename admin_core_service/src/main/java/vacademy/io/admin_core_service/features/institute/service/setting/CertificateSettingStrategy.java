@@ -111,6 +111,7 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setPreferredEditorMode(incoming.getPreferredEditorMode() != null ? incoming.getPreferredEditorMode() : existing.getPreferredEditorMode());
                     dto.setCertificateNumbering(incoming.getCertificateNumbering() != null ? incoming.getCertificateNumbering() : existing.getCertificateNumbering());
                     dto.setQrVerificationUrlTemplate(incoming.getQrVerificationUrlTemplate() != null ? incoming.getQrVerificationUrlTemplate() : existing.getQrVerificationUrlTemplate());
+                    dto.setBadgeCodeType(incoming.getBadgeCodeType() != null ? incoming.getBadgeCodeType() : existing.getBadgeCodeType());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -118,6 +119,20 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
         CertificateSettingDataDto dataDto = new CertificateSettingDataDto();
         dataDto.setData(certificateSetting);
         return dataDto;
+    }
+
+    /**
+     * The shipped defaults keyed by certificate type, used as the merge base for
+     * an institute that has never saved certificate settings. Anything the admin
+     * did not send falls back to the default rather than to null.
+     */
+    private Map<String, CertificateSettingDto> extractDefaultsByKey(CertificateSettingRequest defaults) {
+        Map<String, CertificateSettingDto> out = new HashMap<>();
+        if (defaults == null || defaults.getRequest() == null) return out;
+        defaults.getRequest().forEach((k, v) -> {
+            if (v != null) out.put(k, v);
+        });
+        return out;
     }
 
     /**
@@ -178,18 +193,38 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
             ObjectMapper objectMapper = new ObjectMapper();
             CertificateSettingRequest certificateSettingRequest = (CertificateSettingRequest) settingRequest;
 
-            // Parse existing settings
-            InstituteSettingDto instituteSettingDto = objectMapper.readValue(
-                    institute.getSetting(), InstituteSettingDto.class
-            );
+            // An institute with no settings blob at all still has to be able to
+            // configure certificates. Parsing null/empty here used to throw and
+            // surface as "Error rebuilding setting", so those admins could never
+            // turn certificates on.
+            InstituteSettingDto instituteSettingDto;
+            if (!StringUtils.hasText(institute.getSetting())) {
+                instituteSettingDto = new InstituteSettingDto();
+                instituteSettingDto.setInstituteId(institute.getId());
+                instituteSettingDto.setSetting(new HashMap<>());
+            } else {
+                instituteSettingDto = objectMapper.readValue(
+                        institute.getSetting(), InstituteSettingDto.class);
+            }
 
             Map<String, SettingDto> settingMap = instituteSettingDto.getSetting();
-            if (settingMap == null) throw new VacademyException("No Setting Found");
+            if (settingMap == null) {
+                settingMap = new HashMap<>();
+                instituteSettingDto.setSetting(settingMap);
+            }
 
             CertificateSettingDataDto newData = null;
 
             if (!settingMap.containsKey(key)) {
-                newData = createCertificateSettingFromRequest(createDefaultCertificateSetting());
+                // Seed from the defaults, then apply what the admin actually
+                // sent. The previous code discarded certificateSettingRequest
+                // entirely here and persisted the defaults — so the very first
+                // save of certificate settings silently wrote
+                // isDefaultCertificateSettingOn=false while returning 200, and
+                // the toggle sprang back to off on reload.
+                Map<String, CertificateSettingDto> defaultsByKey =
+                        extractDefaultsByKey(createDefaultCertificateSetting());
+                newData = createCertificateSettingFromRequest(certificateSettingRequest, defaultsByKey);
                 SettingDto settingDto = new SettingDto();
                 settingDto.setKey(SettingKeyEnums.CERTIFICATE_SETTING.name());
                 settingDto.setName("Certificate Setting");

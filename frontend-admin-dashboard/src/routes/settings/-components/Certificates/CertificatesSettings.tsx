@@ -165,6 +165,7 @@ type CertificateConfig = {
         sequencePadding?: number;
     };
     qrVerificationUrlTemplate?: string;
+    badgeCodeType?: 'QR' | 'BARCODE';
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
     autoIssuePercentage?: number;
@@ -273,6 +274,11 @@ const CertificatesSettings = () => {
     const [numberingSuffix, setNumberingSuffix] = useState<string>('');
     const [sequencePadding, setSequencePadding] = useState<number>(3);
     const [qrVerificationUrlTemplate, setQrVerificationUrlTemplate] = useState<string>('');
+    const [badgeCodeType, setBadgeCodeType] = useState<'QR' | 'BARCODE'>('QR');
+    // True while the visual editor is showing a template that was auto-loaded
+    // as a starting point rather than saved by this institute or picked just
+    // now. Keeps the gallery from claiming it is the active design.
+    const [isAutoLoadedTemplate, setIsAutoLoadedTemplate] = useState(false);
 
     const derivedPrefix = useMemo(
         () => derivePrefixFromInstituteName(instituteDetails?.institute_name),
@@ -352,8 +358,12 @@ const CertificatesSettings = () => {
         setNumberingSuffix(ex.certificateNumbering?.suffix ?? '');
         setSequencePadding(ex.certificateNumbering?.sequencePadding ?? 3);
         setQrVerificationUrlTemplate(ex.qrVerificationUrlTemplate ?? '');
+        setBadgeCodeType(ex.badgeCodeType === 'BARCODE' ? 'BARCODE' : 'QR');
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
         setImageTemplate(parsed.imageTemplate);
+        // Restored from saved settings, so it genuinely is this
+        // institute's template, not a starting point.
+        if (parsed.imageTemplate) setIsAutoLoadedTemplate(false);
         setFieldMappings(parsed.fieldMappings);
         setCustomImages(parsed.customImages);
         // Restore the custom-upload slot. Priority order:
@@ -421,11 +431,18 @@ const CertificatesSettings = () => {
     // Which gallery card is currently active. Built-in template ids carry the
     // BUILTIN_TEMPLATE_ID_PREFIX so we can recognize them on reload; anything
     // else is treated as the admin's own upload.
-    const activeTemplateId: string | undefined = imageTemplate
-        ? isBuiltinTemplateId(imageTemplate.id)
-            ? imageTemplate.id
-            : 'custom'
-        : undefined;
+    //
+    // A template that was auto-loaded (rather than saved or clicked) is only a
+    // starting point for the editor — it is NOT what this institute issues. The
+    // gallery must not mark it "Selected": 524 of 527 institutes have no saved
+    // editor state but do have a real certificate template, so the highlight
+    // would confidently point at a design they have never used.
+    const activeTemplateId: string | undefined =
+        imageTemplate && !isAutoLoadedTemplate
+            ? isBuiltinTemplateId(imageTemplate.id)
+                ? imageTemplate.id
+                : 'custom'
+            : undefined;
     // The 4th card stays populated for as long as the admin has *ever*
     // uploaded a file in this session (or restored one from a saved slot) —
     // independent of which template is currently active. Only an explicit
@@ -529,6 +546,7 @@ const CertificatesSettings = () => {
             });
         }
         setActiveView('design');
+        setIsAutoLoadedTemplate(false);
     };
 
     const handleTemplateRemove = () => {
@@ -573,6 +591,7 @@ const CertificatesSettings = () => {
         setFieldMappings(defaultMappings);
         setCustomImages([]);
         setTemplateCustomizations(initialCustomizations);
+        setIsAutoLoadedTemplate(false);
         setActiveView('design');
     };
 
@@ -585,6 +604,7 @@ const CertificatesSettings = () => {
         setFieldMappings(customUploadSlot.fieldMappings);
         setCustomImages(customUploadSlot.customImages);
         setTemplateCustomizations(null);
+        setIsAutoLoadedTemplate(false);
         setActiveView('design');
     };
 
@@ -625,6 +645,8 @@ const CertificatesSettings = () => {
         if (imageTemplate) return;
         autoDefaultAppliedRef.current = true;
         handleSelectBuiltinTemplate(DEFAULT_BUILTIN_TEMPLATE);
+        // Flag after the handler, which clears it for explicit picks.
+        setIsAutoLoadedTemplate(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [settingString, editorMode, imageTemplate]);
 
@@ -785,6 +807,7 @@ const CertificatesSettings = () => {
                     sequencePadding,
                 },
                 qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
+                badgeCodeType,
             });
 
             // Patch the institute store with the just-saved values so a
@@ -819,6 +842,20 @@ const CertificatesSettings = () => {
                             ? htmlAuthored
                             : (existing?.htmlEditorTemplate ?? undefined),
                     preferredEditorMode: editorMode,
+                    // These must mirror exactly what was just sent to the server.
+                    // The record spreads `existing` first, so omitting them left
+                    // the OLD values in the local store — and because the line
+                    // below stamps this string as already-hydrated, the settings
+                    // page read those stale values back and the admin saw their
+                    // change revert moments after saving.
+                    certificateNumbering: {
+                        pattern: numberingPattern.trim() || undefined,
+                        prefix: numberingPrefix.trim() || undefined,
+                        suffix: numberingSuffix.trim() || undefined,
+                        sequencePadding,
+                    },
+                    qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
+                    badgeCodeType,
                 };
                 const nextSettings = {
                     ...parsedSettings,
@@ -837,6 +874,8 @@ const CertificatesSettings = () => {
                 // Mark this string as already hydrated so the effect doesn't
                 // re-run and overwrite our just-set local state with itself.
                 hydratedFromRef.current = nextSettingString;
+                // Saved now, so it is no longer merely auto-loaded.
+                setIsAutoLoadedTemplate(false);
                 setInstituteDetails({
                     ...instituteDetails,
                     setting: nextSettingString,
@@ -1130,6 +1169,27 @@ const CertificatesSettings = () => {
                             Only used if your format contains {'{SUFFIX}'}.
                         </p>
                     </div>
+                </div>
+
+                <div>
+                    <label className="text-sm font-medium" htmlFor="badge-code-type">
+                        Scannable code on the certificate
+                    </label>
+                    <select
+                        id="badge-code-type"
+                        value={badgeCodeType}
+                        onChange={(e) => setBadgeCodeType(e.target.value === 'BARCODE' ? 'BARCODE' : 'QR')}
+                        className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                    >
+                        <option value="QR">QR code (default)</option>
+                        <option value="BARCODE">Barcode (Code 128)</option>
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        Stamped next to the certificate number on every certificate. To position it
+                        yourself instead, drag the <strong>QR Code</strong> or <strong>Barcode</strong>{' '}
+                        field onto the design below — your placement then replaces this automatic one,
+                        so you never get two.
+                    </p>
                 </div>
 
                 <div>

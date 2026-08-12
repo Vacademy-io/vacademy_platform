@@ -53,6 +53,8 @@ export interface CertificateSavePayload {
      * verification page instead.
      */
     qrVerificationUrlTemplate?: string;
+    /** Which code is stamped beside the number on every certificate. */
+    badgeCodeType?: 'QR' | 'BARCODE';
 }
 
 export const handleConfigureCertificateSettings = async (
@@ -101,6 +103,7 @@ export const handleConfigureCertificateSettings = async (
                           preferredEditorMode: payload.preferredEditorMode,
                           certificateNumbering: payload.certificateNumbering,
                           qrVerificationUrlTemplate: payload.qrVerificationUrlTemplate,
+                          badgeCodeType: payload.badgeCodeType,
                       },
                   },
               },

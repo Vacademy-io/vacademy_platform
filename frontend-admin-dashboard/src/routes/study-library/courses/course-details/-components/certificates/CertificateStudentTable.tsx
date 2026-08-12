@@ -20,6 +20,13 @@ interface CertificateStudentTableProps {
     packageSessionId: string;
     packageId: string;
     courseName?: string;
+    /**
+     * Whether certificates are switched on for this course. When false the
+     * issuing actions are disabled — the backend refuses them anyway, and
+     * offering a Generate button directly under a "certificates are turned off"
+     * banner just invites a confusing error.
+     */
+    certificatesEnabled: boolean;
 }
 
 const PAGE_SIZE = 25;
@@ -44,6 +51,7 @@ export const CertificateStudentTable = ({
     packageSessionId,
     packageId,
     courseName,
+    certificatesEnabled,
 }: CertificateStudentTableProps) => {
     const [page, setPage] = useState(0);
     const [search, setSearch] = useState('');
@@ -108,6 +116,38 @@ export const CertificateStudentTable = ({
         onSuccess: () => toast.success('Certificate email sent'),
         onError: () => toast.error('Could not send the certificate email'),
     });
+
+    /**
+     * Save the certificate PDF under its certificate number.
+     *
+     * <p>The naive `a.download = name; a.click()` does not work here: the file is
+     * served from S3, and browsers ignore the `download` attribute cross-origin —
+     * the PDF opens in a tab under a random name instead of saving. An anchor
+     * that is never appended to the DOM is also ignored by some browsers. So
+     * fetch the bytes and download from a same-origin blob URL, falling back to
+     * opening the file if the fetch is blocked (e.g. by CORS).
+     */
+    const downloadCertificate = async (learner: CourseCertificateLearner) => {
+        if (!learner.file_id) return;
+        const fileName = `${learner.certificate_number ?? 'certificate'}.pdf`;
+        try {
+            const response = await fetch(learner.file_id);
+            if (!response.ok) throw new Error(String(response.status));
+            const blobUrl = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+        } catch {
+            window.open(learner.file_id, '_blank', 'noopener,noreferrer');
+            toast.info('Opened the certificate in a new tab', {
+                description: 'Your browser blocked the direct download — save it from there.',
+            });
+        }
+    };
 
     const columns: ColumnDef<CourseCertificateLearner>[] = useMemo(
         () => [
@@ -175,6 +215,10 @@ export const CertificateStudentTable = ({
                     const learner = row.original;
                     const hasCertificate = !!learner.certificate_number;
                     const busy = issueMutation.isPending || resendMutation.isPending;
+                    // Generate / Regenerate / Resend all issue or re-issue, so
+                    // they follow the course's enable state. Preview and
+                    // Download only read an already-issued file and stay live.
+                    const issuingBlocked = busy || !certificatesEnabled;
 
                     if (!hasCertificate) {
                         return (
@@ -182,7 +226,7 @@ export const CertificateStudentTable = ({
                                 buttonType="secondary"
                                 scale="small"
                                 type="button"
-                                disable={busy}
+                                disable={issuingBlocked}
                                 onClick={() =>
                                     issueMutation.mutate({
                                         userId: learner.user_id,
@@ -216,13 +260,7 @@ export const CertificateStudentTable = ({
                                 layoutVariant="icon"
                                 type="button"
                                 disable={!learner.file_id}
-                                onClick={() => {
-                                    if (!learner.file_id) return;
-                                    const link = document.createElement('a');
-                                    link.href = learner.file_id;
-                                    link.download = `${learner.certificate_number ?? 'certificate'}.pdf`;
-                                    link.click();
-                                }}
+                                onClick={() => void downloadCertificate(learner)}
                             >
                                 <DownloadSimple />
                             </MyButton>
@@ -231,7 +269,7 @@ export const CertificateStudentTable = ({
                                 scale="small"
                                 layoutVariant="icon"
                                 type="button"
-                                disable={busy || !learner.certificate_number}
+                                disable={issuingBlocked || !learner.certificate_number}
                                 onClick={() =>
                                     learner.certificate_number &&
                                     resendMutation.mutate(learner.certificate_number)
@@ -244,7 +282,7 @@ export const CertificateStudentTable = ({
                                 scale="small"
                                 layoutVariant="icon"
                                 type="button"
-                                disable={busy}
+                                disable={issuingBlocked}
                                 onClick={() =>
                                     issueMutation.mutate({
                                         userId: learner.user_id,
@@ -259,7 +297,7 @@ export const CertificateStudentTable = ({
                 },
             },
         ],
-        [issueMutation, resendMutation]
+        [issueMutation, resendMutation, certificatesEnabled]
     );
 
     const tableData: TableData<CourseCertificateLearner> | undefined = useMemo(() => {

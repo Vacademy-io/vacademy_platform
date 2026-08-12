@@ -978,6 +978,13 @@ public class SendEmailNodeHandler implements NodeHandler {
                     });
                 }
 
+                // Finally, fall back to the workflow context for anything still unmapped.
+                // Without this, a node with no templateVars (or an incomplete one) could
+                // only ever resolve fields that happen to live on the iterated item — so
+                // e.g. {{instituteName}}, which is a context key, shipped literally. The
+                // attachment-email path has always done this; the regular path had not.
+                addScalarContextFallback(itemContext, finalVars);
+
                 request.put("subject", template.getSubject());
                 request.put("body", template.getContent());
                 request.put("placeholders", finalVars);
@@ -1013,6 +1020,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                         }
                     });
                 }
+                addScalarContextFallback(itemContext, placeholders);
                 request.put("placeholders", placeholders);
             } else {
                 log.warn("Email data is missing 'templateName' or 'subject'");
@@ -1038,6 +1046,41 @@ public class SendEmailNodeHandler implements NodeHandler {
                     .build());
             return null;
         }
+    }
+
+    /**
+     * Adds workflow-context values as placeholders for any key not already resolved.
+     *
+     * Scalars only: the context also carries DTOs, lists and the raw node plumbing
+     * (executionId, currentNodeId, the email request lists), and stringifying those into
+     * a placeholder map would be noise at best and a leaked object dump at worst. Nested
+     * {@code customFields} entries are flattened in too, since audience templates address
+     * them by field name.
+     *
+     * Never overwrites an existing entry — item fields and explicit templateVars win.
+     */
+    private void addScalarContextFallback(Map<String, Object> itemContext, Map<String, String> finalVars) {
+        if (itemContext == null || finalVars == null) {
+            return;
+        }
+        itemContext.forEach((key, value) -> {
+            if (isScalar(value)) {
+                finalVars.putIfAbsent(key, String.valueOf(value));
+            }
+        });
+        Object customFields = itemContext.get("customFields");
+        if (customFields instanceof Map<?, ?> cf) {
+            cf.forEach((key, value) -> {
+                if (key != null && isScalar(value)) {
+                    finalVars.putIfAbsent(String.valueOf(key), String.valueOf(value));
+                }
+            });
+        }
+    }
+
+    private boolean isScalar(Object value) {
+        return value instanceof String || value instanceof Number
+                || value instanceof Boolean || value instanceof Character;
     }
 
     private void resolveAsSpelOrLiteral(String placeholderKey, String fieldName,

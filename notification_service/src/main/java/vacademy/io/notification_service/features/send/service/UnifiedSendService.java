@@ -149,7 +149,11 @@ public class UnifiedSendService implements SendChannelRouter {
                 }
             }
 
-            Map<String, String> vars = r.getVariables() != null ? r.getVariables() : Map.of();
+            // Canonical aliases, restricted to names the template actually declares a
+            // position for — WhatsApp params go to the provider verbatim, so we must not
+            // pad the payload with a dozen unused spellings.
+            Map<String, String> vars = UnifiedVariableAliases.expandForTemplate(
+                    r.getVariables(), nameToPosition);
 
             // Convert named vars to positional if we have the template mapping
             Map<String, String> resolvedVars;
@@ -426,13 +430,16 @@ public class UnifiedSendService implements SendChannelRouter {
                 String subject = templateSubject != null ? templateSubject : "Notification";
                 String body = templateBody != null ? templateBody : "";
 
-                if (r.getVariables() != null) {
-                    for (Map.Entry<String, String> var : r.getVariables().entrySet()) {
-                        String placeholder = "{{" + var.getKey() + "}}";
-                        String value = var.getValue() != null ? var.getValue() : "";
-                        subject = subject.replace(placeholder, value);
-                        body = body.replace(placeholder, value);
-                    }
+                // Expand the caller's variables over the canonical alias set before
+                // substituting, so a template written against {{name}} still renders when
+                // the caller supplied fullName/parentName (and vice versa). Callers'
+                // explicit keys always win; this only adds the spellings they omitted.
+                Map<String, String> vars = UnifiedVariableAliases.expand(r.getVariables());
+                for (Map.Entry<String, String> var : vars.entrySet()) {
+                    String placeholder = "{{" + var.getKey() + "}}";
+                    String value = var.getValue() != null ? var.getValue() : "";
+                    subject = subject.replace(placeholder, value);
+                    body = body.replace(placeholder, value);
                 }
 
                 // Check if user has unsubscribed from this email sender.

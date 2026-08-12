@@ -57,7 +57,15 @@ export function Footer({ onToggleSidebar }: FooterProps) {
   };
 
   return (
-    <div className="sticky bottom-0 flex h-16 bg-primary-50 items-center justify-between border-t  px-4">
+    // min-h (not h) plus a safe-area inset: the page is h-dvh, and on Android's
+    // edge-to-edge WebView the dynamic viewport extends behind the system nav
+    // bar — without this the pager sits under it and cannot be tapped.
+    <div
+      className="sticky bottom-0 z-10 flex min-h-16 shrink-0 bg-primary-50 items-center justify-between border-t px-4"
+      style={{ // design-lint-ignore: dynamic safe-area inset padding
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4px)",
+      }}
+    >
       <Button
         variant="outline"
         size="icon"

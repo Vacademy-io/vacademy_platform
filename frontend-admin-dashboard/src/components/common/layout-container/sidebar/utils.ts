@@ -844,6 +844,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         to: '/ai-center/ai-tools',
     },
     {
+        icon: Books,
+        title: 'Knowledge Base',
+        id: 'knowledge-base-tab',
+        category: 'AI',
+        to: '/knowledge-base',
+    },
+    {
         icon: Robot, // Or User icon if available
         title: 'Instructor Copilot',
         id: 'instructor-copilot-tab',

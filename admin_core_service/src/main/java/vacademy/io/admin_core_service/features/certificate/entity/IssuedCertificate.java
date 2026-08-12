@@ -60,6 +60,14 @@ public class IssuedCertificate {
     @Column(name = "file_id", length = 255)
     private String fileId;
 
+    // Random, unguessable companion to certificateId, required by the public
+    // verification endpoint. Certificate numbers are sequential by design, so a
+    // public lookup keyed on the number alone would let anyone holding one
+    // certificate enumerate every learner in the institute. Null on certificates
+    // issued before verification existed; those cannot be verified publicly.
+    @Column(name = "verification_token", length = 64)
+    private String verificationToken;
+
     // Captures the exact HTML used so the same PDF can be reproduced even after
     // the institute edits its template later.
     @Column(name = "template_html_snapshot", columnDefinition = "TEXT")

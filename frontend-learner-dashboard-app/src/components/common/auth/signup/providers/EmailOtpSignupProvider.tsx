@@ -206,14 +206,22 @@ export function EmailOtpSignupProvider({
     
     try {
       setIsSubmitting(true);
-      // Resend OTP via API
-      await axios.post(LIVE_SESSION_REQUEST_OTP, {
-        to: initialEmail,
-        subject: "Email Verification",
-        service: "signup",
-        name: "User",
-        otp: "",
-      });
+      // Resend OTP via API. instituteId must ride along exactly as it does on the initial send —
+      // it selects the sender address and branding, so omitting it here made a resend arrive from
+      // support@vacademy.io while the first mail came from the institute's own address.
+      await axios.post(
+        LIVE_SESSION_REQUEST_OTP,
+        {
+          to: initialEmail,
+          subject: "Email Verification",
+          service: "signup",
+          name: "User",
+          otp: "",
+        },
+        {
+          params: { instituteId },
+        },
+      );
       
       setTimer(30);
       toast.success("Verification code resent!");

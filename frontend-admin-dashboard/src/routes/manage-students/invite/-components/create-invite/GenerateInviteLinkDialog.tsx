@@ -490,6 +490,35 @@ const GenerateInviteLinkDialog = ({
         setValue('custom_fields', updatedFields);
     };
 
+    // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const current = form.getValues('custom_fields');
+        const updatedFields = current?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        form.setValue('custom_fields', updatedFields);
+    };
+
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options and
+     * required come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: { id: string; value: string }[],
+        config?: Record<string, unknown>
+    ) =>
+        patchFieldAt(index, {
+            type,
+            name,
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
+            // The dialog only returns options for choice types, so switching away from one
+            // clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+        });
+
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         // Create the new field
         const newField = {
@@ -988,6 +1017,7 @@ const GenerateInviteLinkDialog = ({
                                 handleEditClick={handleEditClick}
                                 handleDeleteOptionField={handleDeleteOptionField}
                                 handleAddDropdownOptions={handleAddDropdownOptions}
+                                handleEditFieldAt={handleEditFieldAt}
                                 handleCloseDialog={handleCloseDialog}
                             />
                             {/* Learner Access Duration Card */}

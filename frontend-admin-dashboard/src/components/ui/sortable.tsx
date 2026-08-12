@@ -333,6 +333,11 @@ const SortableDragHandle = React.forwardRef<HTMLButtonElement, SortableDragHandl
         return (
             <Button
                 ref={composeRefs(ref)}
+                // A <button> defaults to type="submit", so grabbing a row inside a form
+                // submitted it — and forms with no onSubmit (the assessment/live-session
+                // builders) fell through to a native submit, reloading the page mid-drag.
+                // Before the spread, so a caller can still override it.
+                type="button"
                 data-state={isDragging ? 'dragging' : undefined}
                 className={cn('cursor-grab data-[state=dragging]:cursor-grabbing', className)}
                 {...attributes}

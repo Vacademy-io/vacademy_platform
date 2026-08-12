@@ -19,8 +19,7 @@ import {
     DownloadSimple,
     Plus,
     TrashSimple,
-    XCircle,
-} from '@phosphor-icons/react';
+    XCircle, PencilSimple } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,6 +28,10 @@ import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId as getInstId } from '@/constants/helper';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Switch } from '@/components/ui/switch';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
@@ -111,6 +114,40 @@ const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
     return `${datePart}T${timePart}+05:30`;
 };
 
+
+// Live-session field types that carry an admin-authored option list.
+const hasOptionsType = (type?: string) => {
+    const t = (type ?? '').toLowerCase();
+    return t === 'dropdown' || t === 'radio' || t === 'multi_select' || t === 'checkbox';
+};
+
+/**
+ * Options are stored in the custom field's `config` JSON, written by three different
+ * generations of this feature: a bare array, `{ options: [...] }`, and the older
+ * `{ coommaSepartedOptions: "a,b" }` (sic). Anything unparseable means "no options".
+ */
+const parseFieldOptions = (config?: string | null): { label: string; name: string }[] => {
+    if (!config) return [];
+    try {
+        const parsed = JSON.parse(config);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toOption = (o: any) => ({
+            label: o.value || o.label || o.name || '',
+            name: o.value || o.name || o.label || '',
+        });
+        if (Array.isArray(parsed)) return parsed.map(toOption);
+        if (Array.isArray(parsed?.options)) return parsed.options.map(toOption);
+        if (typeof parsed?.coommaSepartedOptions === 'string') {
+            return parsed.coommaSepartedOptions
+                .split(',')
+                .map((v: string) => ({ label: v.trim(), name: v.trim() }));
+        }
+    } catch {
+        /* not JSON — treat as no options */
+    }
+    return [];
+};
+
 export default function ScheduleStep2() {
     const { clearSessionId, clearStep1Data, clearBulkSessionIds, clearDeepLink } =
         useLiveSessionStore();
@@ -120,6 +157,7 @@ export default function ScheduleStep2() {
     const isBulkFlow = bulkSessionIds.length > 0;
     const { studyLibraryData } = useStudyLibraryStore();
     const [addCustomFieldDialog, setAddCustomFieldDialog] = useState<boolean>(false);
+    const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
     const queryClient = useQueryClient();
     const [previewDialog, setPreviewDialog] = useState<boolean>(false);
     const [previewOpen, setPreviewOpen] = useState<boolean>(false);
@@ -647,13 +685,28 @@ export default function ScheduleStep2() {
                 const SEEDED_LABELS = ['full name', 'email', 'phone number', 'mobile number'];
                 const fields =
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    sessionDetails?.notifications?.addedFields.map((field: any) => ({
-                        id: field.id,
-                        label: field.label,
-                        required: field.required,
-                        isDefault: SEEDED_LABELS.includes((field.label || '').toLowerCase()),
-                        type: field.type,
-                    })) ?? [];
+                    [...(sessionDetails?.notifications?.addedFields ?? [])]
+                        // The saved position, not whatever order the API happened to return:
+                        // every save rewrites form_order from this array's index, so listing
+                        // them unsorted would write a scrambled order back to the learner form.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        .sort((a: any, b: any) => (a.formOrder ?? 0) - (b.formOrder ?? 0))
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        .map((field: any) => {
+                            // Options live in the field's config JSON. Dropping them here left
+                            // the editor showing a choice field with no choices.
+                            const options = parseFieldOptions(field.config);
+                            return {
+                                id: field.id,
+                                label: field.label,
+                                required: field.required,
+                                isDefault: SEEDED_LABELS.includes(
+                                    (field.label || '').toLowerCase()
+                                ),
+                                type: field.type,
+                                ...(options.length > 0 ? { options } : {}),
+                            };
+                        });
 
                 form.setValue('fields', fields);
                 form.setValue(
@@ -690,49 +743,14 @@ export default function ScheduleStep2() {
                         const resolvedType = (
                             rawType === 'textfield' ? 'text' : rawType
                         ) as InputType;
-                        const hasOptions =
-                            resolvedType === InputType.DROPDOWN || resolvedType === InputType.RADIO;
+                        const hasOptions = hasOptionsType(resolvedType);
                         return {
                             label: cf.fieldName,
                             required: cf.isMandatory || SEEDED.includes(nameLC),
                             isDefault: SEEDED.includes(nameLC),
                             type: resolvedType,
-                            ...(hasOptions && cf.config
-                                ? (() => {
-                                      try {
-                                          const parsed = JSON.parse(cf.config);
-                                          if (Array.isArray(parsed)) {
-                                              return {
-                                                  options: parsed.map((o: any) => ({
-                                                      label: o.value || o.label,
-                                                      name: o.value || o.name,
-                                                  })),
-                                              };
-                                          }
-                                          // New object-format config: { options: [...], defaultValue, ... }
-                                          if (Array.isArray(parsed?.options)) {
-                                              return {
-                                                  options: parsed.options.map((o: any) => ({
-                                                      label: o.value || o.label,
-                                                      name: o.value || o.name,
-                                                  })),
-                                              };
-                                          }
-                                          if (parsed.coommaSepartedOptions) {
-                                              return {
-                                                  options: parsed.coommaSepartedOptions
-                                                      .split(',')
-                                                      .map((v: string) => ({
-                                                          label: v.trim(),
-                                                          name: v.trim(),
-                                                      })),
-                                              };
-                                          }
-                                      } catch {
-                                          /* ignore */
-                                      }
-                                      return {};
-                                  })()
+                            ...(hasOptions && parseFieldOptions(cf.config).length > 0
+                                ? { options: parseFieldOptions(cf.config) }
                                 : {}),
                         };
                     });
@@ -1679,6 +1697,7 @@ export default function ScheduleStep2() {
                                         </div>
                                     )}
                                 </div>
+                                <FormFieldRowHeader />
                                 <Sortable
                                     value={fields}
                                     onMove={({ activeIndex, overIndex }) =>
@@ -1687,75 +1706,32 @@ export default function ScheduleStep2() {
                                 >
                                     {fields.map((field, index) => (
                                         <SortableItem key={field.id} value={field.id} asChild>
-                                            <SortableItem key={field.id} value={field.id} asChild>
-                                                <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
-                                                    <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
-                                                        {field.isDefault ? (
-                                                            <div className="flex w-full items-center gap-1 text-neutral-600">
-                                                                <span>{field.label}</span>
-                                                                {watch(
-                                                                    `fields.${index}.required`
-                                                                ) && (
-                                                                    <span className="text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex w-full items-center gap-1">
-                                                                <Controller
-                                                                    control={control}
-                                                                    name={`fields.${index}.label`}
-                                                                    render={({ field }) => (
-                                                                        <input
-                                                                            {...field}
-                                                                            className="flex-1 border-none bg-transparent outline-none"
-                                                                            placeholder="Enter label"
-                                                                        />
-                                                                    )}
-                                                                />
-                                                                {watch(
-                                                                    `fields.${index}.required`
-                                                                ) && (
-                                                                    <span className="text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {!field.isDefault && (
-                                                            <div
-                                                                className="mr-2 cursor-pointer rounded border-2 p-1 text-red-300"
-                                                                onClick={() => remove(index)}
-                                                            >
-                                                                <TrashSimple />
-                                                            </div>
-                                                        )}
+                                            <div>
+                                                <FormFieldRow
+                                                    position={index + 1}
+                                                    name={watch(`fields.${index}.label`) ?? ''}
+                                                    type={watch(`fields.${index}.type`) ?? ''}
+                                                    isRequired={
+                                                        watch(`fields.${index}.required`) ?? false
+                                                    }
+                                                    locked={field.isDefault}
+                                                    isEditing={editingFieldIndex === index}
+                                                    onToggleRequired={() =>
+                                                        setValue(
+                                                            `fields.${index}.required`,
+                                                            !watch(`fields.${index}.required`),
+                                                            { shouldDirty: true }
+                                                        )
+                                                    }
+                                                    onEdit={() => setEditingFieldIndex(index)}
+                                                    onDelete={() => remove(index)}
+                                                    dragHandle={
                                                         <SortableDragHandle className="cursor-grab border-none shadow-none">
-                                                            <DotsSixVertical />
+                                                            <DotsSixVertical size={18} />
                                                         </SortableDragHandle>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <Controller
-                                                            control={control}
-                                                            name={`fields.${index}.required`}
-                                                            render={({ field }) => (
-                                                                <label className="flex items-center gap-2">
-                                                                    <span className="text-sm">
-                                                                        Required
-                                                                    </span>
-                                                                    <Switch
-                                                                        checked={field.value}
-                                                                        onCheckedChange={
-                                                                            field.onChange
-                                                                        }
-                                                                    />
-                                                                </label>
-                                                            )}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </SortableItem>
+                                                    }
+                                                />
+                                            </div>
                                         </SortableItem>
                                     ))}
                                 </Sortable>
@@ -1804,6 +1780,70 @@ export default function ScheduleStep2() {
                                             .filter((f) => (f as any).status !== 'DELETED')
                                             .map((f) => f.label)}
                                     />
+                                    {/* Editing reuses the add dialog, prefilled. Keyed per row so
+                                        opening a different field re-runs the prefill. */}
+                                    {editingFieldIndex !== null && fields[editingFieldIndex] && (
+                                        <SharedAddCustomFieldDialog
+                                            key={fields[editingFieldIndex].id}
+                                            mode="edit"
+                                            open
+                                            onOpenChange={(isOpen) => {
+                                                if (!isOpen) setEditingFieldIndex(null);
+                                            }}
+                                            initialField={{
+                                                type: getValues(`fields.${editingFieldIndex}.type`),
+                                                name:
+                                                    getValues(
+                                                        `fields.${editingFieldIndex}.label`
+                                                    ) ?? '',
+                                                options: (
+                                                    getValues(
+                                                        `fields.${editingFieldIndex}.options`
+                                                    ) ?? []
+                                                ).map((o) => o.label),
+                                                isRequired: getValues(
+                                                    `fields.${editingFieldIndex}.required`
+                                                ),
+                                            }}
+                                            onAddField={(type, name, _oldKey, options, config) => {
+                                                const idx = editingFieldIndex;
+                                                // Same normalization as the add path, so an edited
+                                                // field stores the identical type string.
+                                                const normalized = (type || 'text').toLowerCase();
+                                                const resolvedType =
+                                                    normalized === 'textfield'
+                                                        ? InputType.TEXT
+                                                        : (normalized as InputType);
+                                                setValue(`fields.${idx}.label`, name, {
+                                                    shouldDirty: true,
+                                                });
+                                                setValue(`fields.${idx}.type`, resolvedType, {
+                                                    shouldDirty: true,
+                                                });
+                                                setValue(
+                                                    `fields.${idx}.required`,
+                                                    config?.isRequired ?? true,
+                                                    { shouldDirty: true }
+                                                );
+                                                // The dialog only returns options for choice
+                                                // types, so switching away from one clears them.
+                                                setValue(
+                                                    `fields.${idx}.options`,
+                                                    options?.map((opt) => ({
+                                                        name: opt.value,
+                                                        label: opt.value,
+                                                    })) ?? [],
+                                                    { shouldDirty: true }
+                                                );
+                                                setEditingFieldIndex(null);
+                                            }}
+                                            // Its own name must stay available, or saving an
+                                            // unchanged label would be blocked as a duplicate.
+                                            existingFieldNames={fields
+                                                .filter((_, i) => i !== editingFieldIndex)
+                                                .map((f) => f.label)}
+                                        />
+                                    )}
                                     <MyButton
                                         buttonType="secondary"
                                         type="button"

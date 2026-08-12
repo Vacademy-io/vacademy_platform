@@ -56,6 +56,9 @@ type TipTapEditorProps = {
   // Optional: keep the toolbar pinned while the page scrolls a long document
   // (used by the HTML document slide editor, which relies on page scroll).
   stickyToolbar?: boolean;
+  // Optional: drop the editor's own border/background so the surrounding card
+  // reads as the input (used by answer-option rows).
+  borderless?: boolean;
 };
 
 export function TipTapEditor({
@@ -71,6 +74,7 @@ export function TipTapEditor({
   hideToolbar = false,
   minimalToolbar = false,
   stickyToolbar = false,
+  borderless = false,
 }: TipTapEditorProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -1013,7 +1017,7 @@ export function TipTapEditor({
   return (
     <div
       ref={wrapperRef}
-      className={`rounded-md border bg-white shadow-sm ${className || ''}`.trim()}
+      className={`${borderless ? '' : 'rounded-md border bg-white shadow-sm'} ${className || ''}`.trim()}
       style={{ width: '100%', maxHeight: 'inherit', minHeight: 'inherit' }}
     >
       {editable && !hideToolbar && minimalToolbar && (
@@ -1126,7 +1130,7 @@ export function TipTapEditor({
           </span>
         </div>
       )}
-      <div className="p-2" style={{ maxHeight: 'inherit', minHeight: 'inherit', overflowY: 'auto' }}>
+      <div className={borderless ? 'p-0' : 'p-2'} style={{ maxHeight: 'inherit', minHeight: 'inherit', overflowY: 'auto' }}>
         <EditorContent
           editor={editor}
           onBlur={onBlur}

@@ -133,6 +133,9 @@ export interface CustomFieldFullConfig {
   // block above a "Yes, I agree" checkbox). Stored here instead of fieldName
   // because fieldName is varchar(255); config is unbounded text.
   description?: string;
+  // Short hint rendered under the input, set by the admin in the custom-field
+  // dialog. Distinct from `description`, which is the checkbox consent body.
+  helpText?: string;
 }
 
 // Sentinel value for the admin's "All Files" option — equivalent to no

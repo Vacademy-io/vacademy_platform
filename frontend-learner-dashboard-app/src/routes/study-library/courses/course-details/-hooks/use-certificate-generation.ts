@@ -6,8 +6,8 @@ import LocalStorageUtils from "@/utils/localstorage";
 import {
   generateCertificateWithCache,
   getCachedCertificateStatus,
+  getCertificateConfig,
 } from "@/services/certificates";
-import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 type SearchParamsLike = {
   courseId?: string;
@@ -123,6 +123,9 @@ export function useCertificateGeneration({
     useState<boolean>(false);
   const [completionPercentage, setCompletionPercentage] = useState<number>(0);
   const [certificateThreshold, setCertificateThreshold] = useState<number>(80);
+  // Whether certificates are switched on for this batch, resolved server-side.
+  // Starts false so no certificate UI flashes before the answer arrives.
+  const [certificatesEnabled, setCertificatesEnabled] = useState<boolean>(false);
 
   // Progress is recorded per batch, not per course, so the number shown has to
   // belong to the package_session whose content this page is rendering. A
@@ -186,21 +189,22 @@ export function useCertificateGeneration({
   // Trigger certificate generation after entering this page once essentials are available
   useEffect(() => {
     const tryGenerateCertificate = async () => {
-      let settings;
-      try {
-        settings = await getStudentDisplaySettings(false);
-      } catch {
-        // If we can't fetch settings, assume certificate generation is disabled
+      if (!packageSessionIdForCurrentLevel) return;
+
+      // Resolved server-side from Certificate Settings, per batch, so a course
+      // that overrides the institute default is honoured here too. Fails closed:
+      // a fetch error yields enabled=false rather than attempting issuance.
+      const certificateConfig = await getCertificateConfig(
+        packageSessionIdForCurrentLevel,
+      );
+      setCertificatesEnabled(certificateConfig.enabled);
+
+      if (!certificateConfig.enabled) {
         return;
       }
 
-      if (!settings.certificates?.enabled) {
-        return;
-      }
-
       try {
-        const threshold =
-          settings.certificates?.generationThresholdPercent ?? 80;
+        const threshold = certificateConfig.thresholdPercent;
         setCertificateThreshold(threshold);
         // Same batch-scoped value the progress card shows — certificates are
         // issued per package_session, so gating on another batch's percentage
@@ -300,5 +304,6 @@ export function useCertificateGeneration({
     setCertificateDialogOpen,
     completionPercentage,
     certificateThreshold,
+    certificatesEnabled,
   };
 }

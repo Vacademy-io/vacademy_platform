@@ -5,13 +5,21 @@ export interface ContentGenerationRequest {
         todos: Array<{
             name: string;
             title: string;
-            type: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
+            type:
+                | 'DOCUMENT'
+                | 'ASSESSMENT'
+                | 'VIDEO'
+                | 'AI_VIDEO'
+                | 'AI_SLIDES'
+                | 'AI_STORYBOOK'
+                | 'VIDEO_CODE'
+                | 'AI_VIDEO_CODE';
             path: string;
-            action_type: "ADD" | "UPDATE";
+            action_type: 'ADD' | 'UPDATE';
             prompt: string;
-            keyword?: string;  // Required for VIDEO type
+            keyword?: string; // Required for VIDEO type
             order?: number;
-            [key: string]: any;  // Allow other fields from outline response
+            [key: string]: any; // Allow other fields from outline response
         }>;
     };
     institute_id?: string;
@@ -19,11 +27,19 @@ export interface ContentGenerationRequest {
 }
 
 export interface ContentUpdate {
-    type: "SLIDE_CONTENT_UPDATE" | "SLIDE_CONTENT_ERROR";
+    type: 'SLIDE_CONTENT_UPDATE' | 'SLIDE_CONTENT_ERROR';
     path: string;
     status: boolean | string; // Can be boolean or "COMPLETED" | "GENERATING" for AI_VIDEO
-    actionType: "ADD" | "UPDATE";
-    slideType: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
+    actionType: 'ADD' | 'UPDATE';
+    slideType:
+        | 'DOCUMENT'
+        | 'ASSESSMENT'
+        | 'VIDEO'
+        | 'AI_VIDEO'
+        | 'AI_SLIDES'
+        | 'AI_STORYBOOK'
+        | 'VIDEO_CODE'
+        | 'AI_VIDEO_CODE';
     title?: string;
     contentData: any;
     errorMessage?: string;
@@ -54,24 +70,31 @@ export async function generateContent(
     videoSettings?: Record<string, string>,
     // Media fileIds of uploaded reference PDFs — the backend embeds their real
     // figures into DOCUMENT slides.
-    referenceDocumentFileIds?: string[]
+    referenceDocumentFileIds?: string[],
+    // Knowledge base this course is built from. Each slide retrieves the
+    // passages about its own topic instead of writing from model knowledge.
+    kbGrounding?: { knowledge_base_id: string; node_ids: string[]; mode: string }
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
-    
+
     console.log('=== Content Generation API Request ===');
     console.log('URL:', apiUrl);
     console.log('Todos count:', todos.length);
-    
+
     if (onProgress) {
         onProgress('Connecting to content generation service...');
     }
 
     try {
         console.log('🚀 Making API request to:', apiUrl);
-        console.log('📦 Request payload size:', JSON.stringify({
-            course_tree: { todos },
-            institute_id: instituteId,
-        }).length, 'bytes');
+        console.log(
+            '📦 Request payload size:',
+            JSON.stringify({
+                course_tree: { todos },
+                institute_id: instituteId,
+            }).length,
+            'bytes'
+        );
 
         // Create AbortController for this request
         const controller = new AbortController();
@@ -100,6 +123,7 @@ export async function generateContent(
                         referenceDocumentFileIds && referenceDocumentFileIds.length > 0
                             ? referenceDocumentFileIds
                             : undefined,
+                    kb_grounding: kbGrounding?.knowledge_base_id ? kbGrounding : undefined,
                 }),
                 signal: controller.signal,
             });
@@ -218,7 +242,9 @@ export async function generateContent(
 
                 // Prevent buffer from growing too large
                 if (buffer.length > maxBufferSize) {
-                    console.warn(`⚠️ Buffer size exceeded ${maxBufferSize} bytes, truncating buffer`);
+                    console.warn(
+                        `⚠️ Buffer size exceeded ${maxBufferSize} bytes, truncating buffer`
+                    );
                     // Truncate buffer to prevent memory issues
                     buffer = buffer.substring(buffer.length - maxBufferSize / 2);
                 }
@@ -249,36 +275,55 @@ export async function generateContent(
                             // Skip invalid JSON lines but log for debugging
                             console.warn('⚠️ Failed to parse content update:', {
                                 data: data.substring(0, 200) + (data.length > 200 ? '...' : ''),
-                                error: parseError instanceof Error ? parseError.message : 'Unknown error'
+                                error:
+                                    parseError instanceof Error
+                                        ? parseError.message
+                                        : 'Unknown error',
                             });
                             continue;
                         }
 
                         // Check for error events from SSE stream - throw immediately to break out of the loop
                         if (update.type === 'ERROR') {
-                            throw new Error(update.message || `Server error (code: ${update.code || 'unknown'})`);
+                            throw new Error(
+                                update.message || `Server error (code: ${update.code || 'unknown'})`
+                            );
                         }
 
                         totalProcessed++;
 
-                        if (update.type === 'SLIDE_CONTENT_UPDATE' || update.type === 'SLIDE_CONTENT_ERROR') {
+                        if (
+                            update.type === 'SLIDE_CONTENT_UPDATE' ||
+                            update.type === 'SLIDE_CONTENT_ERROR'
+                        ) {
                             console.log(`📦 Content update #${totalProcessed} received:`, {
                                 type: update.type,
                                 path: update.path,
                                 slideType: update.slideType,
-                                contentDataSize: update.contentData ? JSON.stringify(update.contentData).length : 0
+                                contentDataSize: update.contentData
+                                    ? JSON.stringify(update.contentData).length
+                                    : 0,
                             });
 
                             // Validate the update structure
                             if (update.type === 'SLIDE_CONTENT_UPDATE') {
                                 // For AI_VIDEO, contentData might be undefined in intermediate events
                                 if (!update.path || !update.slideType) {
-                                    console.error('❌ Invalid SLIDE_CONTENT_UPDATE structure:', update);
+                                    console.error(
+                                        '❌ Invalid SLIDE_CONTENT_UPDATE structure:',
+                                        update
+                                    );
                                     continue; // Skip this update but continue processing
                                 }
                                 // Allow contentData to be undefined for AI_VIDEO intermediate events
-                                if (update.contentData === undefined && update.slideType !== 'AI_VIDEO') {
-                                    console.warn('⚠️ SLIDE_CONTENT_UPDATE missing contentData (non-AI_VIDEO):', update);
+                                if (
+                                    update.contentData === undefined &&
+                                    update.slideType !== 'AI_VIDEO'
+                                ) {
+                                    console.warn(
+                                        '⚠️ SLIDE_CONTENT_UPDATE missing contentData (non-AI_VIDEO):',
+                                        update
+                                    );
                                     // Continue processing anyway for AI_VIDEO
                                 }
                             }
@@ -300,7 +345,9 @@ export async function generateContent(
                 // Periodic buffer cleanup and heartbeat
                 if (totalProcessed % 10 === 0) {
                     const elapsed = Date.now() - streamStartTime;
-                    console.log(`🔄 Processed ${totalProcessed} updates in ${elapsed}ms, buffer size: ${buffer.length} bytes`);
+                    console.log(
+                        `🔄 Processed ${totalProcessed} updates in ${elapsed}ms, buffer size: ${buffer.length} bytes`
+                    );
 
                     // Send progress update every 10 updates
                     if (onProgress) {
@@ -317,12 +364,17 @@ export async function generateContent(
                 const message = streamError.message.toLowerCase();
 
                 if (message.includes('aborted') || message.includes('abort')) {
-                    errorMessage = 'Connection was aborted - this may be due to network issues or server timeout';
+                    errorMessage =
+                        'Connection was aborted - this may be due to network issues or server timeout';
                 } else if (message.includes('buffer')) {
                     errorMessage = 'Stream buffer overflow - content may be too large';
                 } else if (message.includes('timeout')) {
                     errorMessage = 'Stream processing timed out - server may be overloaded';
-                } else if (message.includes('network') || message.includes('fetch') || message.includes('failed to fetch')) {
+                } else if (
+                    message.includes('network') ||
+                    message.includes('fetch') ||
+                    message.includes('failed to fetch')
+                ) {
                     errorMessage = 'Network error during content generation';
                 } else if (message.includes('cancelled') || message.includes('cancel')) {
                     errorMessage = 'Request was cancelled';
@@ -365,28 +417,32 @@ export async function generateContent(
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
 
         // Don't retry SSE errors from backend (they have a specific message to show the user)
-        const isSSEError = errorMessage.startsWith('Stream processing failed:') &&
+        const isSSEError =
+            errorMessage.startsWith('Stream processing failed:') &&
             !errorMessage.toLowerCase().includes('aborted') &&
             !errorMessage.toLowerCase().includes('network') &&
             !errorMessage.toLowerCase().includes('timeout') &&
             !errorMessage.toLowerCase().includes('buffer');
 
         // Retry logic for certain types of errors (but not SSE backend errors)
-        const shouldRetry = !isSSEError && retryCount < 2 && (
-            errorMessage.toLowerCase().includes('aborted') ||
-            errorMessage.toLowerCase().includes('network') ||
-            errorMessage.toLowerCase().includes('timeout')
-        );
+        const shouldRetry =
+            !isSSEError &&
+            retryCount < 2 &&
+            (errorMessage.toLowerCase().includes('aborted') ||
+                errorMessage.toLowerCase().includes('network') ||
+                errorMessage.toLowerCase().includes('timeout'));
 
         if (shouldRetry) {
             const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
-            console.log(`🔄 Retrying content generation in ${delay}ms (attempt ${retryCount + 1}/3)`);
+            console.log(
+                `🔄 Retrying content generation in ${delay}ms (attempt ${retryCount + 1}/3)`
+            );
 
             if (onProgress) {
                 onProgress(`Connection interrupted, retrying in ${delay / 1000} seconds...`);
             }
 
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve) => setTimeout(resolve, delay));
             return generateContent(
                 todos,
                 instituteId,
@@ -407,4 +463,3 @@ export async function generateContent(
         throw error;
     }
 }
-

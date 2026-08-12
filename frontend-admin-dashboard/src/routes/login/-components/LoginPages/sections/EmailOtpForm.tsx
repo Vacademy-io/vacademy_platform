@@ -103,9 +103,14 @@ export function EmailLogin({
 
     const sendOtpMutation = useMutation({
         mutationFn: (email: string) => {
+            // institute_id decides which sender address and branding the OTP mail goes out with.
+            // Without it the backend falls back to support@vacademy.io and Vacademy branding, so a
+            // white-labelled portal mails its admins under the wrong name. The phone login on this
+            // same page already reads the institute from the resolved domain branding.
+            const instituteId = getCachedInstituteBranding()?.instituteId;
             return axios.post(
                 REQUEST_OTP,
-                { email, client_name: 'ADMIN' },
+                { email, client_name: 'ADMIN', ...(instituteId && { institute_id: instituteId }) },
                 {
                     headers: {
                         'Content-Type': 'application/json',

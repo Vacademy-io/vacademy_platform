@@ -1,10 +1,13 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
@@ -369,13 +372,15 @@ public class Step2Service {
                 existing.setFieldType(dto.getType());
                 existing.setIsMandatory(dto.isRequired());
                 existing.setIsHidden(false);
+                // Reordering an existing field arrives through this path, so ignoring the
+                // order here made drag-and-drop a silent no-op on the learner form. Leave
+                // the stored order alone when the client omits it.
+                if (dto.getFormOrder() != null) {
+                    existing.setFormOrder(dto.getFormOrder());
+                }
 
-                try {
-                    if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
-                        existing.setConfig(objectMapper.writeValueAsString(dto.getOptions()));
-                    }
-                } catch (JsonProcessingException e) {
-                    throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert field options to JSON");
+                if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
+                    existing.setConfig(mergeOptionsIntoConfig(existing.getConfig(), dto.getOptions()));
                 }
 
                 customFieldRepository.save(existing);
@@ -387,6 +392,32 @@ public class Step2Service {
                 customFieldRepository.deleteById(id);
                 instituteCustomFieldRepository.deleteByCustomFieldId(id);
             }
+        }
+    }
+
+    /**
+     * Writes the field's options without discarding the rest of its config. Configs come in two
+     * shapes: a bare options array, and an object that holds options alongside other settings
+     * ({@code maxLength}, default values, ...). Overwriting wholesale would drop those siblings,
+     * so an object config keeps its other keys and only has "options" replaced. The stored shape
+     * is never changed — readers already handle whichever one the field had.
+     */
+    private String mergeOptionsIntoConfig(String existingConfig,
+            List<LiveSessionStep2RequestDTO.FieldOptionDTO> options) {
+        try {
+            if (StringUtils.hasText(existingConfig)) {
+                JsonNode parsed = objectMapper.readTree(existingConfig);
+                if (parsed.isObject()) {
+                    ObjectNode merged = (ObjectNode) parsed;
+                    merged.set("options", objectMapper.valueToTree(options));
+                    // The legacy key would otherwise keep shadowing the freshly saved options.
+                    merged.remove("coommaSepartedOptions");
+                    return objectMapper.writeValueAsString(merged);
+                }
+            }
+            return objectMapper.writeValueAsString(options);
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert field options to JSON");
         }
     }
 
@@ -408,7 +439,9 @@ public class Step2Service {
                 .fieldType(dto.getType())
                 .defaultValue(null)
                 .config(configJson)
-                .formOrder(index)
+                // The client's position wins: `index` only counts newly added fields, so on
+                // its own it restarts at 0 and collides with the fields already stored.
+                .formOrder(dto.getFormOrder() != null ? dto.getFormOrder() : index)
                 .isMandatory(dto.isRequired())
                 .isFilter(false)
                 .isSortable(false)

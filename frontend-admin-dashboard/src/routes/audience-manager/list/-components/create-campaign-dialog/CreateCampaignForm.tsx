@@ -8,6 +8,7 @@ import { useCreateAudienceCampaign } from '../../-hooks/useCreateAudienceCampaig
 import { useUpdateAudienceCampaign } from '../../-hooks/useUpdateAudienceCampaign';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import CampaignCustomFieldsCard from './CampaignCustomFieldsCard';
+import type { DropdownOption } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -610,6 +611,34 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('custom_fields', updatedFields);
     };
 
+    // Index-based to match toggleIsRequired/handleDeleteOpenField in this file.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const updatedFields = customFieldsArray?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        setValue('custom_fields', updatedFields as typeof customFields);
+    };
+
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options and
+     * required come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) =>
+        patchFieldAt(index, {
+            type,
+            name,
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
+            // The dialog only returns options for choice types, so switching away from one
+            // clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+        });
+
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
         const newField = {
             id: String(customFields.length),
@@ -706,7 +735,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         type: string,
         name: string,
         oldKey: boolean,
-        options?: { id: number; value: string; disabled: boolean }[],
+        options?: DropdownOption[],
         config?: Record<string, unknown>
     ) => {
         const rawOptions =
@@ -1393,6 +1422,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 handleEditClick={handleEditClick}
                 handleDeleteOptionField={handleDeleteOptionField}
                 handleAddDropdownOptions={handleAddDropdownOptions}
+                handleEditFieldAt={handleEditFieldAt}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
             />

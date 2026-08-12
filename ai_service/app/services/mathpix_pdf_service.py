@@ -39,6 +39,53 @@ async def submit(url: str) -> Optional[str]:
         return resp.json().get("pdf_id")
 
 
+async def submit_bytes(pdf_bytes: bytes, filename: str = "page.pdf") -> Optional[str]:
+    """POST raw PDF bytes to MathPix (multipart); returns the pdf_id.
+
+    Used by knowledge-base ingestion, which OCRs scanned pages ONE AT A TIME so
+    every extracted line keeps its real page number. MathPix's markdown output
+    for a multi-page PDF carries no page delimiters, so a whole-book submission
+    would return one undifferentiated blob — and page attribution is what makes
+    citations ("page 214"), the low-confidence review gate, and figure↔page
+    matching possible at all.
+
+    This costs nothing extra: MathPix bills per page processed, so N single-page
+    jobs and one N-page job are the same price. It trades more HTTP round-trips
+    for exact attribution plus per-page failure isolation (one unreadable page no
+    longer fails the whole book).
+
+    Avoids the URL path so a private page never needs a public S3 object first.
+    """
+    files = {"file": (filename, pdf_bytes, "application/pdf")}
+    data = {"options_json": '{"conversion_formats": {"md": true}}'}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(_API_PDF, files=files, data=data, headers=_headers())
+        resp.raise_for_status()
+        return resp.json().get("pdf_id")
+
+
+async def poll_for_markdown(
+    pdf_id: str,
+    max_tries: int = 30,
+    delay_seconds: float = 2.0,
+) -> Optional[str]:
+    """Poll until conversion completes, then return raw Markdown (not HTML).
+
+    Defaults are tuned for SINGLE-PAGE jobs (fast, so poll often) rather than the
+    whole-book cadence of poll_for_html (20 × 20s = 400s). Returns None on
+    timeout instead of raising, so one slow page degrades to "needs review"
+    rather than failing the entire ingest.
+    """
+    for _ in range(max_tries):
+        if await is_completed(pdf_id):
+            md = await fetch_markdown(pdf_id)
+            if md is not None:
+                return md
+        await asyncio.sleep(delay_seconds)
+    logger.warning("MathPix conversion timed out for pdf_id=%s", pdf_id)
+    return None
+
+
 async def is_completed(pdf_id: str) -> bool:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(f"{_API_CONVERTER}{pdf_id}", headers=_headers())

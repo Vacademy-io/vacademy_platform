@@ -44,6 +44,13 @@ export const CATALOGUE_FONTS: CatalogueFontEntry[] = [
     { label: 'Outfit', stack: 'Outfit, sans-serif', css2: `Outfit${W_TEXT}` },
     { label: 'Nunito', stack: 'Nunito, sans-serif', css2: `Nunito${W_TEXT}` },
     { label: 'Space Grotesk', stack: '"Space Grotesk", sans-serif', css2: `Space Grotesk${W_DISPLAY}`, display: true },
+    // ── Rounded / friendly (family, pre-school, kids brands) ──────────
+    // The registry had no rounded geometric face, so every warm childcare
+    // reference was rebuilt in Nunito or Inter — close in weight, wrong in
+    // character. Rubik in particular is what these brands actually use.
+    { label: 'Rubik', stack: 'Rubik, sans-serif', css2: `Rubik${W_DISPLAY}`, display: true },
+    { label: 'Quicksand', stack: 'Quicksand, sans-serif', css2: 'Quicksand:wght@400;500;600;700' },
+    { label: 'Baloo 2', stack: '"Baloo 2", sans-serif', css2: 'Baloo 2:wght@400;500;600;700;800', display: true },
     // ── Serif / display (editorial headlines) ─────────────────────────
     { label: 'Playfair Display', stack: '"Playfair Display", serif', css2: `Playfair Display${W_DISPLAY}`, serif: true, display: true },
     { label: 'Fraunces', stack: 'Fraunces, serif', css2: `Fraunces${W_DISPLAY}`, serif: true, display: true },

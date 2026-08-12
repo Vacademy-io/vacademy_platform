@@ -35,6 +35,7 @@ import { Route as ManageContactsIndexRouteImport } from "./routes/manage-contact
 import { Route as ManageBookingsIndexRouteImport } from "./routes/manage-bookings/index"
 import { Route as LoginIndexRouteImport } from "./routes/login/index"
 import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insights/index"
+import { Route as KnowledgeBaseIndexRouteImport } from "./routes/knowledge-base/index"
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
 import { Route as InstitutePulseIndexRouteImport } from "./routes/institute-pulse/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
@@ -55,6 +56,8 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as KnowledgeBasePublishRouteImport } from "./routes/knowledge-base/publish"
+import { Route as KnowledgeBaseKbIdRouteImport } from "./routes/knowledge-base/$kbId"
 import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
 import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
@@ -150,6 +153,8 @@ import { Route as PlanningActivityLogsLogIdRouteImport } from "./routes/planning
 import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pages/editor/$tagName"
 import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
+import { Route as KnowledgeBasePaperKbIdRouteImport } from "./routes/knowledge-base/paper/$kbId"
+import { Route as KnowledgeBaseLibraryKbIdRouteImport } from "./routes/knowledge-base/library/$kbId"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as AudienceManagerOnboardingFlowIdRouteImport } from "./routes/audience-manager/onboarding/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
@@ -384,6 +389,13 @@ const LearnerInsightsIndexRoute = LearnerInsightsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/learner-insights/index.lazy").then((d) => d.Route),
 )
+const KnowledgeBaseIndexRoute = KnowledgeBaseIndexRouteImport.update({
+  id: "/knowledge-base/",
+  path: "/knowledge-base/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/index.lazy").then((d) => d.Route),
+)
 const InstructorCopilotIndexRoute = InstructorCopilotIndexRouteImport.update({
   id: "/instructor-copilot/",
   path: "/instructor-copilot/",
@@ -520,6 +532,20 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const KnowledgeBasePublishRoute = KnowledgeBasePublishRouteImport.update({
+  id: "/knowledge-base/publish",
+  path: "/knowledge-base/publish",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/publish.lazy").then((d) => d.Route),
+)
+const KnowledgeBaseKbIdRoute = KnowledgeBaseKbIdRouteImport.update({
+  id: "/knowledge-base/$kbId",
+  path: "/knowledge-base/$kbId",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/$kbId.lazy").then((d) => d.Route),
+)
 const EngagementEnginesEngineIdRoute =
   EngagementEnginesEngineIdRouteImport.update({
     id: "/engagement-engines/$engineId",
@@ -1292,6 +1318,21 @@ const LoginOauthRedirectRoute = LoginOauthRedirectRouteImport.update({
   path: "/login/oauth/redirect",
   getParentRoute: () => rootRouteImport,
 } as any)
+const KnowledgeBasePaperKbIdRoute = KnowledgeBasePaperKbIdRouteImport.update({
+  id: "/knowledge-base/paper/$kbId",
+  path: "/knowledge-base/paper/$kbId",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/knowledge-base/paper/$kbId.lazy").then((d) => d.Route),
+)
+const KnowledgeBaseLibraryKbIdRoute =
+  KnowledgeBaseLibraryKbIdRouteImport.update({
+    id: "/knowledge-base/library/$kbId",
+    path: "/knowledge-base/library/$kbId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/knowledge-base/library/$kbId.lazy").then((d) => d.Route),
+  )
 const AutomationChatbotFlowsFlowIdRoute =
   AutomationChatbotFlowsFlowIdRouteImport.update({
     id: "/automation/chatbot-flows/$flowId",
@@ -1775,6 +1816,8 @@ export interface FileRoutesByFullPath {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1795,6 +1838,7 @@ export interface FileRoutesByFullPath {
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
+  "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
@@ -1817,6 +1861,8 @@ export interface FileRoutesByFullPath {
   "/vim/": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
+  "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -1975,6 +2021,8 @@ export interface FileRoutesByTo {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1995,6 +2043,7 @@ export interface FileRoutesByTo {
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/institute-pulse": typeof InstitutePulseIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
+  "/knowledge-base": typeof KnowledgeBaseIndexRoute
   "/learner-insights": typeof LearnerInsightsIndexRoute
   "/login": typeof LoginIndexRoute
   "/manage-bookings": typeof ManageBookingsIndexRoute
@@ -2017,6 +2066,8 @@ export interface FileRoutesByTo {
   "/vim": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
+  "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -2177,6 +2228,8 @@ export interface FileRoutesById {
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
+  "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
+  "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2197,6 +2250,7 @@ export interface FileRoutesById {
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
+  "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
@@ -2219,6 +2273,8 @@ export interface FileRoutesById {
   "/vim/": typeof VimIndexRoute
   "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
+  "/knowledge-base/library/$kbId": typeof KnowledgeBaseLibraryKbIdRoute
+  "/knowledge-base/paper/$kbId": typeof KnowledgeBasePaperKbIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -2380,6 +2436,8 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2400,6 +2458,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
+    | "/knowledge-base/"
     | "/learner-insights/"
     | "/login/"
     | "/manage-bookings/"
@@ -2422,6 +2481,8 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
+    | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
@@ -2580,6 +2641,8 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2600,6 +2663,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai"
     | "/institute-pulse"
     | "/instructor-copilot"
+    | "/knowledge-base"
     | "/learner-insights"
     | "/login"
     | "/manage-bookings"
@@ -2622,6 +2686,8 @@ export interface FileRouteTypes {
     | "/vim"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
+    | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
@@ -2781,6 +2847,8 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/counsellors/$userId"
     | "/engagement-engines/$engineId"
+    | "/knowledge-base/$kbId"
+    | "/knowledge-base/publish"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2801,6 +2869,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
+    | "/knowledge-base/"
     | "/learner-insights/"
     | "/login/"
     | "/manage-bookings/"
@@ -2823,6 +2892,8 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
+    | "/knowledge-base/library/$kbId"
+    | "/knowledge-base/paper/$kbId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
@@ -2983,6 +3054,8 @@ export interface RootRouteChildren {
   PricingLazyRoute: typeof PricingLazyRoute
   CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
   EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
+  KnowledgeBaseKbIdRoute: typeof KnowledgeBaseKbIdRoute
+  KnowledgeBasePublishRoute: typeof KnowledgeBasePublishRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -3003,6 +3076,7 @@ export interface RootRouteChildren {
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
+  KnowledgeBaseIndexRoute: typeof KnowledgeBaseIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   ManageBookingsIndexRoute: typeof ManageBookingsIndexRoute
   ManageContactsIndexRoute: typeof ManageContactsIndexRoute
@@ -3024,6 +3098,8 @@ export interface RootRouteChildren {
   VimIndexRoute: typeof VimIndexRoute
   AudienceManagerOnboardingFlowIdRoute: typeof AudienceManagerOnboardingFlowIdRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
+  KnowledgeBaseLibraryKbIdRoute: typeof KnowledgeBaseLibraryKbIdRoute
+  KnowledgeBasePaperKbIdRoute: typeof KnowledgeBasePaperKbIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   ManagePagesEditorTagNameRoute: typeof ManagePagesEditorTagNameRoute
@@ -3371,6 +3447,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof LearnerInsightsIndexRouteImport
       parentRoute: typeof LearnerInsightsLazyRoute
     }
+    "/knowledge-base/": {
+      id: "/knowledge-base/"
+      path: "/knowledge-base"
+      fullPath: "/knowledge-base/"
+      preLoaderRoute: typeof KnowledgeBaseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/instructor-copilot/": {
       id: "/instructor-copilot/"
       path: "/instructor-copilot"
@@ -3509,6 +3592,20 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/knowledge-base/publish": {
+      id: "/knowledge-base/publish"
+      path: "/knowledge-base/publish"
+      fullPath: "/knowledge-base/publish"
+      preLoaderRoute: typeof KnowledgeBasePublishRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/knowledge-base/$kbId": {
+      id: "/knowledge-base/$kbId"
+      path: "/knowledge-base/$kbId"
+      fullPath: "/knowledge-base/$kbId"
+      preLoaderRoute: typeof KnowledgeBaseKbIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/engagement-engines/$engineId": {
@@ -4176,6 +4273,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof LoginOauthRedirectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/knowledge-base/paper/$kbId": {
+      id: "/knowledge-base/paper/$kbId"
+      path: "/knowledge-base/paper/$kbId"
+      fullPath: "/knowledge-base/paper/$kbId"
+      preLoaderRoute: typeof KnowledgeBasePaperKbIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/knowledge-base/library/$kbId": {
+      id: "/knowledge-base/library/$kbId"
+      path: "/knowledge-base/library/$kbId"
+      fullPath: "/knowledge-base/library/$kbId"
+      preLoaderRoute: typeof KnowledgeBaseLibraryKbIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/automation/chatbot-flows/$flowId": {
       id: "/automation/chatbot-flows/$flowId"
       path: "/automation/chatbot-flows/$flowId"
@@ -4593,6 +4704,8 @@ const rootRouteChildren: RootRouteChildren = {
   PricingLazyRoute: PricingLazyRoute,
   CounsellorsUserIdRoute: CounsellorsUserIdRoute,
   EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
+  KnowledgeBaseKbIdRoute: KnowledgeBaseKbIdRoute,
+  KnowledgeBasePublishRoute: KnowledgeBasePublishRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4613,6 +4726,7 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstitutePulseIndexRoute: InstitutePulseIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
+  KnowledgeBaseIndexRoute: KnowledgeBaseIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   ManageBookingsIndexRoute: ManageBookingsIndexRoute,
   ManageContactsIndexRoute: ManageContactsIndexRoute,
@@ -4634,6 +4748,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimIndexRoute: VimIndexRoute,
   AudienceManagerOnboardingFlowIdRoute: AudienceManagerOnboardingFlowIdRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
+  KnowledgeBaseLibraryKbIdRoute: KnowledgeBaseLibraryKbIdRoute,
+  KnowledgeBasePaperKbIdRoute: KnowledgeBasePaperKbIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManageCustomTeamsSubOrgsSubOrgSlugRoute:
     ManageCustomTeamsSubOrgsSubOrgSlugRoute,

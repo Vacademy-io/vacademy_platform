@@ -895,7 +895,13 @@ public class DoubtsManager {
     }
 
     public ResponseEntity<AllDoubtsResponse> getAllDoubts(CustomUserDetails userDetails, DoubtsRequestFilter filter, int pageNo, int pageSize) {
+        // Newest doubt first unless the caller asked for something else. An unsorted page leaves the
+        // row order up to Postgres, which both puts stale doubts on top of the inbox and lets rows
+        // repeat/disappear across pages.
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
+        if (sortColumns.isUnsorted()) {
+            sortColumns = Sort.by(Sort.Direction.DESC, "raised_time");
+        }
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
 
         String viewerUserId = resolveViewerUserId(userDetails);

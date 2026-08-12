@@ -103,6 +103,12 @@ export const sessionFormSchema = z
         bbbMuteOnStart: z.boolean().optional(),
         bbbWebcamsOnlyForModerator: z.boolean().optional(),
         bbbGuestPolicy: z.enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY']).optional(),
+        // Lock settings — restrict students only; the host keeps full access
+        bbbDisablePrivateChat: z.boolean().optional(),
+        bbbDisablePublicChat: z.boolean().optional(),
+        bbbDisableSharedNotes: z.boolean().optional(),
+        bbbHideUserList: z.boolean().optional(),
+        bbbEndWhenNoModerator: z.boolean().optional(),
         // Zoom meeting configuration (only used when sessionPlatform = 'zoom' and an
         // account is selected). When no account is chosen, Zoom falls back to the
         // manual defaultLink paste just like YouTube/Meet/Other.

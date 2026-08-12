@@ -3,7 +3,7 @@ import { uploadQuestionPaperFormSchema } from '../-utils/upload-question-paper-f
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { QuestionPaperTemplate } from './QuestionPaperTemplate';
-import { Dispatch, SetStateAction, useEffect } from 'react';
+import { Dispatch, ReactNode, SetStateAction, useEffect } from 'react';
 import { getLevelNameById, getSubjectNameById } from '../-utils/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
@@ -17,6 +17,8 @@ export const ViewQuestionPaper = ({
     currentQuestionIndex,
     setCurrentQuestionIndex,
     examType,
+    buttonText,
+    triggerVariant,
 }: {
     questionPaperId: string | undefined;
     title: string | undefined;
@@ -27,6 +29,8 @@ export const ViewQuestionPaper = ({
     currentQuestionIndex: number;
     setCurrentQuestionIndex: Dispatch<SetStateAction<number>>;
     examType?: string;
+    buttonText?: ReactNode;
+    triggerVariant?: 'plain' | 'secondary';
 }) => {
     const { instituteDetails } = useInstituteDetailsStore();
 
@@ -76,11 +80,12 @@ export const ViewQuestionPaper = ({
                     questionPaperId={questionPaperId}
                     isViewMode={true}
                     refetchData={refetchData}
-                    buttonText={isAssessment ? 'View' : 'View Question Paper'}
+                    buttonText={buttonText ?? (isAssessment ? 'View' : 'View Question Paper')}
                     isAssessment={isAssessment}
                     currentQuestionIndex={currentQuestionIndex}
                     setCurrentQuestionIndex={setCurrentQuestionIndex}
                     examType={examType}
+                    triggerVariant={triggerVariant}
                 />
             </form>
         </FormProvider>

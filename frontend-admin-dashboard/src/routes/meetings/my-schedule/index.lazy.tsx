@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import {
     addDays,
     addWeeks,
     endOfMonth,
     endOfWeek,
+    format,
     startOfMonth,
     startOfWeek,
 } from 'date-fns';
-import { Browsers, CalendarBlank, ListBullets, Plus } from '@phosphor-icons/react';
+import { ArrowRight, Browsers, CalendarBlank, ListBullets, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { useMyCalendar } from '../-hooks/use-meetings';
-import { toIsoWithOffset } from '../-utils/meetings-utils';
+import { parseUtc, toIsoWithOffset } from '../-utils/meetings-utils';
 import { MeetingsList } from '../-components/meetings-list';
 import { MeetingsCalendar } from '../-components/meetings-calendar';
 import { WeekNavigator, weekBoundsFor } from '../-components/week-navigator';
@@ -61,6 +62,29 @@ function MySchedulePage() {
         isLoading,
         error,
     } = useMyCalendar(instituteId, toIsoWithOffset(windowStart), toIsoWithOffset(windowEnd));
+
+    // 60-day lookahead so an empty week can still point at the next meeting
+    // instead of dead-ending. Window is frozen on mount to keep the query key stable.
+    const [lookaheadWindow] = useState(() => ({
+        start: toIsoWithOffset(new Date()),
+        end: toIsoWithOffset(addDays(new Date(), 60)),
+    }));
+    const lookahead = useMyCalendar(instituteId, lookaheadWindow.start, lookaheadWindow.end);
+    const nextUpcoming = useMemo(() => {
+        const now = Date.now();
+        return (lookahead.data ?? [])
+            .filter(
+                (b) =>
+                    b.status !== 'CANCELLED' &&
+                    b.status !== 'RESCHEDULED' &&
+                    parseUtc(b.scheduled_start_utc).getTime() >= now
+            )
+            .sort(
+                (a, b) =>
+                    parseUtc(a.scheduled_start_utc).getTime() -
+                    parseUtc(b.scheduled_start_utc).getTime()
+            )[0];
+    }, [lookahead.data]);
 
     const [createOpen, setCreateOpen] = useState(false);
     const [managerOpen, setManagerOpen] = useState(false);
@@ -133,6 +157,33 @@ function MySchedulePage() {
                         error={error}
                         emptyTitle="No meetings this week"
                         emptyDescription="Schedule a meeting or share your booking link to fill your calendar."
+                        emptyExtra={
+                            nextUpcoming ? (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setWeekAnchor(parseUtc(nextUpcoming.scheduled_start_utc))
+                                    }
+                                    className="mt-2 flex items-center gap-2 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-caption text-primary-700 transition-colors hover:bg-primary-100"
+                                >
+                                    <span>
+                                        Next meeting:{' '}
+                                        <span className="font-semibold">
+                                            {format(
+                                                parseUtc(nextUpcoming.scheduled_start_utc),
+                                                'EEE, d MMM · h:mm a'
+                                            )}
+                                        </span>
+                                        {nextUpcoming.invitee_name
+                                            ? ` — ${nextUpcoming.invitee_name}`
+                                            : ''}
+                                    </span>
+                                    <span className="flex items-center gap-1 font-medium">
+                                        Go to that week <ArrowRight size={14} />
+                                    </span>
+                                </button>
+                            ) : undefined
+                        }
                     />
                 </>
             ) : (

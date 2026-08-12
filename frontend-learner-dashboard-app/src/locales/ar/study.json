@@ -50,7 +50,17 @@
         "noOptions": "لا توجد خيارات متاحة",
         "unavailable": "غير متاح",
         "unnamedLevel": "{{level}} بدون اسم",
+        "unnamedSession": "{{session}} بدون اسم",
         "unnamedInstructor": "{{instructor}} بدون اسم"
+    },
+    "catalogFilterWizard": {
+        "title": "اختر {{term}}",
+        "description": "اختر خيارًا واحدًا أو أكثر أدناه — سنعرض الدورات المطابقة.",
+        "stepOf": "الخطوة {{current}} من {{total}}",
+        "next": "التالي",
+        "back": "السابق",
+        "showCourses": "عرض الدورات",
+        "skip": "تخطي، عرض جميع الدورات"
     },
     "pagination": {
         "ariaLabel": "ترقيم الصفحات",

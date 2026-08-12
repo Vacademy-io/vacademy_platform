@@ -94,8 +94,8 @@ export function CredentialsForm({
       // When usernameStrategy is "email" and we have OAuth data, use OAuth name as full name
       const finalData = {
         ...data,
-        fullName: settings.usernameStrategy === "email" && initialData.fullName 
-          ? initialData.fullName 
+        fullName: isOAuth && settings.usernameStrategy === "email" && initialData.fullName
+          ? initialData.fullName
           : data.fullName
       };
       

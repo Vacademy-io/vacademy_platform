@@ -57,7 +57,7 @@ public class LearnerAssessmentAttemptStartManager {
     QuestionAssessmentSectionMappingRepository questionAssessmentSectionMappingRepository;
 
     @Autowired
-    vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
+    vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
 
     @Autowired
     vacademy.io.assessment_service.features.translation.service.TranslationService translationService;
@@ -185,19 +185,8 @@ public class LearnerAssessmentAttemptStartManager {
         StudentAttempt saved = studentAttemptRepository.save(studentAttempt);
 
         // Trigger ASSESSMENT_START workflow
-        try {
-            Map<String, Object> contextData = new HashMap<>();
-            contextData.put("assessmentId", assessment.getId());
-            contextData.put("userId", assessmentUserRegistration.getUserId());
-            contextData.put("attemptId", saved.getId());
-            contextData.put("attemptNumber", saved.getAttemptNumber());
-            workflowTriggerClient.triggerEvent("ASSESSMENT_START",
-                    assessment.getId(),
-                    assessmentUserRegistration.getInstituteId(),
-                    contextData);
-        } catch (Exception e) {
-            // Don't fail attempt creation if workflow trigger fails
-        }
+        assessmentWorkflowEventPublisher.publishAssessmentStart(saved, assessment,
+                assessmentUserRegistration.getInstituteId());
 
         return saved;
     }

@@ -10,6 +10,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { QuestionType, QUESTION_TYPES } from '@/constants/dummy-data';
 import { getInstituteId } from '@/constants/helper';
+import { renderLatexDelimiters } from '@/lib/latex-delimiters';
 // function defined locally below to avoid circular dependency
 // import { formatTimeStudyLibraryInSeconds } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-helper/helper';
 
@@ -64,7 +65,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -84,7 +85,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -104,7 +105,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -124,7 +125,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -144,7 +145,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -206,7 +207,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                 text: {
                     id: null, // Assuming no direct mapping for text ID
                     type: 'HTML', // Assuming the content is HTML
-                    content: question.questionName.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                    content: question.questionName,
                 },
                 media_id: null, // Assuming no direct mapping for media_id
                 created_at: null,
@@ -254,7 +255,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -274,7 +275,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -294,7 +295,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -314,7 +315,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -334,7 +335,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                     text: {
                         id: null, // Assuming no direct mapping for option text ID
                         type: 'HTML', // Assuming option content is HTML
-                        content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                        content: opt?.name,
                     },
                     media_id: null, // Assuming no direct mapping for option media ID
                     option_order: null,
@@ -396,7 +397,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                 text: {
                     id: null, // Assuming no direct mapping for text ID
                     type: 'HTML', // Assuming the content is HTML
-                    content: question.questionName.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                    content: question.questionName,
                 },
                 media_id: null, // Assuming no direct mapping for media_id
                 created_at: null,
@@ -425,27 +426,6 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
     };
 }
 
-function stripHtmlTags(str: string) {
-    return str.replace(/<[^>]*>/g, '').trim();
-}
-
-function cleanQuestionData(question: MyQuestion) {
-    return {
-        ...question,
-        questionName: stripHtmlTags(question.questionName || ''),
-        singleChoiceOptions:
-            question.singleChoiceOptions?.map((option) => ({
-                ...option,
-                name: stripHtmlTags(option.name || ''),
-            })) || [],
-        multipleChoiceOptions:
-            question.multipleChoiceOptions?.map((option) => ({
-                ...option,
-                name: stripHtmlTags(option.name || ''),
-            })) || [],
-    };
-}
-
 export function convertQuestionsDataToResponse(questions: MyQuestion[], key: string) {
     const convertedQuestions = questions?.map((question) => {
         const options =
@@ -457,7 +437,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
                       text: {
                           id: null, // Assuming no mapping for text ID
                           type: 'HTML',
-                          content: opt?.name?.replace(/<\/?p>/g, ''),
+                          content: opt?.name,
                       },
                       media_id: null,
                       option_order: null,
@@ -476,7 +456,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
                       text: {
                           id: null,
                           type: 'HTML',
-                          content: opt?.name?.replace(/<\/?p>/g, ''),
+                          content: opt?.name,
                       },
                       media_id: null,
                       option_order: null,
@@ -510,7 +490,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             text: {
                 id: null,
                 type: 'HTML',
-                content: question.questionName.replace(/<\/?p>/g, ''),
+                content: question.questionName,
             },
             media_id: null,
             created_at: null,
@@ -539,12 +519,8 @@ export function compareQuestions(
     oldData: MyQuestionPaperFormInterface,
     newData: MyQuestionPaperFormInterface
 ) {
-    const oldQuestionsMap = new Map(
-        oldData.questions?.map((q) => [q.questionId, cleanQuestionData(q)])
-    );
-    const newQuestionsMap = new Map(
-        newData.questions?.map((q) => [q.questionId, cleanQuestionData(q)])
-    );
+    const oldQuestionsMap = new Map(oldData.questions?.map((q) => [q.questionId, q]));
+    const newQuestionsMap = new Map(newData.questions?.map((q) => [q.questionId, q]));
 
     let added_questions = [];
     let deleted_questions = [];
@@ -635,7 +611,9 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             if (item.question_type === 'ONE_WORD') {
                 subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer;
             } else if (item.question_type === 'LONG_ANSWER') {
-                subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
+                subjectiveAnswerText = renderLatexDelimiters(
+                    JSON.parse(item.auto_evaluation_json)?.data?.answer?.content
+                );
             }
         }
         let codingConfig;
@@ -649,9 +627,12 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         const baseQuestion: MyQuestion = {
             id: item.id || '',
             questionId: item.id || item.preview_id || undefined,
-            questionName: item.text?.content || item.text_data?.content || '',
+            questionName:
+                renderLatexDelimiters(item.text?.content || item.text_data?.content) || '',
             explanation:
-                item.explanation_text?.content || item.explanation_text_data?.content || '',
+                renderLatexDelimiters(
+                    item.explanation_text?.content || item.explanation_text_data?.content
+                ) || '',
             questionType: item.question_type,
             questionMark: '',
             questionPenalty: '',
@@ -691,7 +672,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             validAnswers: [],
             decimals,
             numericType,
-            parentRichTextContent: item.parent_rich_text?.content || null,
+            parentRichTextContent: renderLatexDelimiters(item.parent_rich_text?.content) || null,
             subjectiveAnswerText,
             status: item.status,
             canSkip: item.can_skip,
@@ -702,31 +683,31 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
         if (item.question_type === 'MCQS') {
             baseQuestion.singleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'MCQM') {
             baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQS') {
             baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQM') {
             baseQuestion.cmultipleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'TRUE_FALSE') {
             baseQuestion.trueFalseOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: option.text?.content || '',
+                name: renderLatexDelimiters(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'NUMERIC') {
@@ -754,7 +735,9 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
         if (item.question_type === 'ONE_WORD') {
             subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer;
         } else if (item.question_type === 'LONG_ANSWER') {
-            subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
+            subjectiveAnswerText = renderLatexDelimiters(
+                JSON.parse(item.auto_evaluation_json)?.data?.answer?.content
+            );
         }
     }
     let codingConfig;
@@ -768,8 +751,11 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     const baseQuestion: MyQuestion = {
         id: item.id || '',
         questionId: item.id || item.preview_id || undefined,
-        questionName: item.text?.content || item.text_data?.content || '',
-        explanation: item.explanation_text?.content || item.explanation_text_data?.content || '',
+        questionName: renderLatexDelimiters(item.text?.content || item.text_data?.content) || '',
+        explanation:
+            renderLatexDelimiters(
+                item.explanation_text?.content || item.explanation_text_data?.content
+            ) || '',
         questionType: item.question_type,
         questionMark: '',
         questionPenalty: '',
@@ -809,7 +795,7 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
         validAnswers: [],
         decimals,
         numericType,
-        parentRichTextContent: item.parent_rich_text?.content || null,
+        parentRichTextContent: renderLatexDelimiters(item.parent_rich_text?.content) || null,
         subjectiveAnswerText,
         codingConfig,
     };
@@ -817,31 +803,31 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
     if (item.question_type === 'MCQS') {
         baseQuestion.singleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'MCQM') {
         baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'CMCQS') {
         baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'CMCQM') {
         baseQuestion.cmultipleChoiceOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'TRUE_FALSE') {
         baseQuestion.trueFalseOptions = item.options.map((option) => ({
             id: option.id ? option.id : '',
-            name: option.text?.content || '',
+            name: renderLatexDelimiters(option.text?.content) || '',
             isSelected: correctOptionIds.includes(option.id || option.preview_id),
         }));
     } else if (item.question_type === 'NUMERIC') {
@@ -973,7 +959,7 @@ export function getEvaluationJSON(
             return JSON.stringify({
                 type: 'ONE_WORD',
                 data: {
-                    answer: subjectiveAnswerText?.replace(/<\/?p>/g, ''),
+                    answer: subjectiveAnswerText,
                 },
             });
         case 'LONG_ANSWER':
@@ -983,7 +969,7 @@ export function getEvaluationJSON(
                     answer: {
                         id: null,
                         type: 'HTML',
-                        content: subjectiveAnswerText?.replace(/<\/?p>/g, ''),
+                        content: subjectiveAnswerText,
                     },
                 },
             });

@@ -640,8 +640,8 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                     />
                     <Separator />
                     <SettingRow
-                        title="Mute participants on join"
-                        description="Learners join muted by default."
+                        title="Mute participants when they join"
+                        description="Everyone except the host joins muted."
                         checked={settings.defaultBbbMuteOnStart}
                         onChange={(v) => togglePrimitive('defaultBbbMuteOnStart', v)}
                     />
@@ -677,12 +677,47 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                             <SelectContent>
                                 <SelectItem value="ALWAYS_ACCEPT">Always accept</SelectItem>
                                 <SelectItem value="ASK_MODERATOR">
-                                    Ask moderator to approve
+                                    Ask host to approve
                                 </SelectItem>
                                 <SelectItem value="ALWAYS_DENY">Always deny guests</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't private message each other"
+                        description="Blocks private chat between participants. The host can still message anyone."
+                        checked={settings.defaultBbbDisablePrivateChat}
+                        onChange={(v) => togglePrimitive('defaultBbbDisablePrivateChat', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't send messages in class chat"
+                        description="Participants can read the class chat but not type in it. The host can still send messages."
+                        checked={settings.defaultBbbDisablePublicChat}
+                        onChange={(v) => togglePrimitive('defaultBbbDisablePublicChat', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't edit shared notes"
+                        description="Participants can view the shared notes but not change them."
+                        checked={settings.defaultBbbDisableSharedNotes}
+                        onChange={(v) => togglePrimitive('defaultBbbDisableSharedNotes', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't see who else is in the class"
+                        description="Hides the participant list from everyone except the host."
+                        checked={settings.defaultBbbHideUserList}
+                        onChange={(v) => togglePrimitive('defaultBbbHideUserList', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="End class automatically after the host leaves"
+                        description="The class ends about 10 minutes after the last host leaves, so it never runs unattended."
+                        checked={settings.defaultBbbEndWhenNoModerator}
+                        onChange={(v) => togglePrimitive('defaultBbbEndWhenNoModerator', v)}
+                    />
                 </CardContent>
             </Card>
 

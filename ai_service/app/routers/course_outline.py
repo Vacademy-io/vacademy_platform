@@ -99,6 +99,26 @@ async def stream_course_outline(
                 ),
             )
 
+    # A locked library must fail HERE, with a price, rather than deep inside
+    # generation where the only honest option left is to build the course
+    # ungrounded and say nothing.
+    if payload.kb_grounding:
+        from ..services.kb.repository import KbRepository
+
+        repo = KbRepository(db)
+        kb = repo.get_kb(payload.kb_grounding.knowledge_base_id, institute_id)
+        if not kb:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+        if not repo.is_usable(kb, institute_id):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "message": f"Unlock '{kb['name']}' to build courses from it",
+                    "knowledge_base_id": kb["id"],
+                    "reason": "LIBRARY_LOCKED",
+                },
+            )
+
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     from ..services.ai_models_service import AIModelsService
     default_model = AIModelsService(db).get_models_for_use_case("outline").default_model.model_id
@@ -114,6 +134,7 @@ async def stream_course_outline(
         generation_options=payload.generation_options,
         user_id=user_id,  # Extracted from query parameter for waterfall key resolution
         reference_document_file_ids=payload.reference_document_file_ids,
+        kb_grounding=payload.kb_grounding,
         # NOTE: Keys are NOT accepted from frontend - resolved automatically from DB (user → institute) or env
     )
 

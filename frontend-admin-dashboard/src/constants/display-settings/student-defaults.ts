@@ -167,10 +167,6 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         allowBatchStream: true,
         allowAppOverlays: true,
     },
-    certificates: {
-        enabled: true,
-        generationThresholdPercent: 80,
-    },
     liveClasses: {
         showPastSessions: false,
         showRecordings: false,

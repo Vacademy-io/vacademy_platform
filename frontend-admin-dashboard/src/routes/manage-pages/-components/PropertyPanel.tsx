@@ -4,8 +4,11 @@ import { componentTemplates } from '../-utils/component-templates';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     Plus,
     Trash as Trash2,
@@ -19,8 +22,10 @@ import {
     Clipboard,
     ClipboardText as ClipboardPaste,
     Anchor,
+    Sparkle,
 } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
@@ -57,6 +62,8 @@ export const PropertyPanel = () => {
         pasteComponent,
         clipboard,
     } = useEditorStore();
+    // Declared before the early returns below — hooks cannot live behind a branch.
+    const [variantsOpen, setVariantsOpen] = useState(false);
 
     if (!config) return null;
 
@@ -159,6 +166,15 @@ export const PropertyPanel = () => {
                             <Button
                                 variant="ghost"
                                 size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-primary-500"
+                                onClick={() => setVariantsOpen(true)}
+                                title="Try another version of this section (AI)"
+                            >
+                                <Sparkle className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
                                 disabled={isFirst || isNested}
                                 onClick={moveUp}
@@ -198,6 +214,24 @@ export const PropertyPanel = () => {
                         </div>
                     </div>
                 </div>
+
+                <AiSectionVariantsDialog
+                    open={variantsOpen}
+                    onOpenChange={setVariantsOpen}
+                    component={component}
+                    page={{ id: pageId, components: pageComponents }}
+                    globalSettings={config.globalSettings as Record<string, any>}
+                    onApply={(next) =>
+                        // A whole-component swap: updateComponent top-level
+                        // spreads, so style must be sent explicitly or the old
+                        // one survives under the new props. Undo covers it.
+                        updateComponent(pageId, component!.id, {
+                            type: next.type,
+                            props: next.props,
+                            style: next.style,
+                        })
+                    }
+                />
 
                 <div className="flex items-center justify-between">
                     <Label htmlFor="enabled-switch">Enabled</Label>
@@ -935,6 +969,67 @@ const GlobalSettingsEditor = ({
                                     updateField('leadCollection.inviteLink', e.target.value)
                                 }
                                 placeholder="Optional invite link"
+                            />
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Course Finder */}
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+                <h4 className="font-medium text-gray-700">Course Finder Wizard</h4>
+                <p className="text-caption text-gray-500">
+                    Asks visitors to pick filters step by step the first time they open this
+                    page, then shows only the matching courses. Options are pulled live from
+                    this page&apos;s own course grid — nothing extra to configure.
+                </p>
+                <div className="flex items-center justify-between">
+                    <Label>Enable Course Finder</Label>
+                    <Switch
+                        checked={gs.courseFinder?.enabled || false}
+                        onCheckedChange={(c) => updateField('courseFinder.enabled', c)}
+                    />
+                </div>
+                {gs.courseFinder?.enabled && (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Steps to ask</Label>
+                            <div className="flex flex-col gap-2">
+                                {(
+                                    [
+                                        { key: 'level', term: [ContentTerms.Level, SystemTerms.Level] },
+                                        { key: 'session', term: [ContentTerms.Session, SystemTerms.Session] },
+                                        { key: 'tag', term: [ContentTerms.PopularTag, SystemTerms.PopularTag] },
+                                    ] as const
+                                ).map(({ key, term }) => {
+                                    const steps: string[] = gs.courseFinder?.steps || [];
+                                    const checked = steps.includes(key);
+                                    return (
+                                        <label key={key} className="flex items-center gap-2 text-sm text-gray-700">
+                                            <Checkbox
+                                                checked={checked}
+                                                onCheckedChange={() => {
+                                                    const next = checked
+                                                        ? steps.filter((s) => s !== key)
+                                                        : [...steps, key];
+                                                    updateField('courseFinder.steps', next);
+                                                }}
+                                            />
+                                            {getTerminology(term[0], term[1])}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-2xs text-gray-400">
+                                Asked in this fixed order — skipping any step left unchecked, or
+                                any step this page&apos;s courses have no options for.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs">Require completion (no skip)</Label>
+                            <Switch
+                                checked={gs.courseFinder?.mandatory || false}
+                                onCheckedChange={(c) => updateField('courseFinder.mandatory', c)}
                             />
                         </div>
                     </>
@@ -4977,11 +5072,28 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">Style</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel'].map((s) => (
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s.replace('-', ' ')}</button>
                     ))}
                 </div>
+                {props.style === 'photo' && (
+                    <div className="mt-1 space-y-1">
+                        <p className="text-caption text-gray-400">
+                            Photo = the image fills the card with the text over it. Cards with no image
+                            fall back to a tinted card, so a rail can mix photos and colour blocks. Give
+                            each card a Link to get a button.
+                        </p>
+                        <label className="flex items-center gap-2 text-caption text-gray-600">
+                            <input
+                                type="checkbox"
+                                checked={props.layout === 'carousel'}
+                                onChange={(e) => updateProp('layout', e.target.checked ? 'carousel' : undefined)}
+                            />
+                            Swipeable row instead of a grid
+                        </label>
+                    </div>
+                )}
                 {props.style === 'panel' && (
                     <p className="mt-1 text-caption text-gray-400">
                         Panel = tinted-header division cards. Per card, set a Badge and a Header

@@ -46,7 +46,17 @@
         "noOptions": "कोई विकल्प उपलब्ध नहीं",
         "unavailable": "अनुपलब्ध",
         "unnamedLevel": "बिना नाम का {{level}}",
+        "unnamedSession": "बिना नाम का {{session}}",
         "unnamedInstructor": "बिना नाम का {{instructor}}"
+    },
+    "catalogFilterWizard": {
+        "title": "अपना {{term}} चुनें",
+        "description": "नीचे से एक या अधिक विकल्प चुनें — हम मेल खाने वाले कोर्स दिखाएँगे।",
+        "stepOf": "चरण {{current}} / {{total}}",
+        "next": "अगला",
+        "back": "पीछे",
+        "showCourses": "कोर्स दिखाएँ",
+        "skip": "छोड़ें, सभी कोर्स देखें"
     },
     "pagination": {
         "ariaLabel": "पृष्ठ क्रमांकन",

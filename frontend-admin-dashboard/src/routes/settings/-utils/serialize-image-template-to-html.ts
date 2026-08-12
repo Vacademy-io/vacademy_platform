@@ -27,6 +27,10 @@ const FIELD_NAME_TO_TOKEN: Record<string, string> = {
     date_of_completion: '{{DATE_OF_COMPLETION}}',
     issue_date: '{{DATE_OF_COMPLETION}}',
     certificate_id: '{{CERTIFICATE_ID}}',
+    // Scannable forms of the certificate number. The backend substitutes a PNG
+    // data URI for each, so these are image fields, not text.
+    certificate_qr: '{{CERTIFICATE_QR}}',
+    certificate_barcode: '{{CERTIFICATE_BARCODE}}',
     theme_color: '{{INSTITUTE_THEME_COLOR}}',
 };
 
@@ -110,7 +114,15 @@ export function serializeImageTemplateToHtml(
     const widthMm = (template.width / PX_PER_MM).toFixed(2);
     const heightMm = (template.height / PX_PER_MM).toFixed(2);
 
-    const imageFieldNames = new Set(['institute_logo', 'signature']);
+    const imageFieldNames = new Set([
+        'institute_logo',
+        'signature',
+        // Emitted as <img src="{{CERTIFICATE_QR}}"> — the backend replaces the
+        // token with a base64 PNG. Rendering these as text would print a raw
+        // data URI across the certificate.
+        'certificate_qr',
+        'certificate_barcode',
+    ]);
     const customImagesById = new Map((customImages || []).map((c) => [c.id, c.dataUrl]));
 
     const fieldHtml = fields

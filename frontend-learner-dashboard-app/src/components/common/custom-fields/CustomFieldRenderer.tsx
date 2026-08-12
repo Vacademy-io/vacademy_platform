@@ -162,275 +162,288 @@ export const CustomFieldRenderer = ({
     }
   };
 
-  switch (normalizedType) {
-    case FieldRenderType.TEXT:
-      return (
-        <MyInput
-          inputType="text"
-          inputPlaceholder={placeholder || `Enter ${name}`}
-          input={value || ""}
-          onChangeFunction={(e) => handleChange(e.target.value)}
-          size="large"
-          className="w-full"
-          disabled={disabled}
-          required={required}
-        />
-      );
+  // The control itself. Wrapped below so help text renders once for every type
+  // instead of being repeated in each branch.
+  const renderControl = () => {
+    switch (normalizedType) {
+      case FieldRenderType.TEXT:
+        return (
+          <MyInput
+            inputType="text"
+            inputPlaceholder={placeholder || `Enter ${name}`}
+            input={value || ""}
+            onChangeFunction={(e) => handleChange(e.target.value)}
+            size="large"
+            className="w-full"
+            disabled={disabled}
+            required={required}
+          />
+        );
 
-    case FieldRenderType.NUMBER:
-      return (
-        <MyInput
-          inputType="number"
-          inputPlaceholder={placeholder || `Enter ${name}`}
-          input={value || ""}
-          onChangeFunction={(e) => handleChange(e.target.value)}
-          size="large"
-          className="w-full"
-          disabled={disabled}
-          required={required}
-        />
-      );
+      case FieldRenderType.NUMBER:
+        return (
+          <MyInput
+            inputType="number"
+            inputPlaceholder={placeholder || `Enter ${name}`}
+            input={value || ""}
+            onChangeFunction={(e) => handleChange(e.target.value)}
+            size="large"
+            className="w-full"
+            disabled={disabled}
+            required={required}
+          />
+        );
 
-    case FieldRenderType.EMAIL:
-      return (
-        <MyInput
-          inputType="email"
-          inputPlaceholder={placeholder || `Enter ${name}`}
-          input={value || ""}
-          onChangeFunction={(e) => handleChange(e.target.value)}
-          size="large"
-          className="w-full"
-          disabled={disabled}
-          required={required}
-        />
-      );
+      case FieldRenderType.EMAIL:
+        return (
+          <MyInput
+            inputType="email"
+            inputPlaceholder={placeholder || `Enter ${name}`}
+            input={value || ""}
+            onChangeFunction={(e) => handleChange(e.target.value)}
+            size="large"
+            className="w-full"
+            disabled={disabled}
+            required={required}
+          />
+        );
 
-    case FieldRenderType.URL:
-      return (
-        <MyInput
-          inputType="url"
-          inputPlaceholder={placeholder || `Enter ${name}`}
-          input={value || ""}
-          onChangeFunction={(e) => handleChange(e.target.value)}
-          size="large"
-          className="w-full"
-          disabled={disabled}
-          required={required}
-        />
-      );
+      case FieldRenderType.URL:
+        return (
+          <MyInput
+            inputType="url"
+            inputPlaceholder={placeholder || `Enter ${name}`}
+            input={value || ""}
+            onChangeFunction={(e) => handleChange(e.target.value)}
+            size="large"
+            className="w-full"
+            disabled={disabled}
+            required={required}
+          />
+        );
 
-    case FieldRenderType.PHONE: {
-      const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
-      return (
-        <PhoneInput
-          country={defaultCountry}
-          preferredCountries={preferredCountries}
-          value={value || ""}
-          onChange={(val) => {
-            const formatted = val.startsWith("+") ? val : `+${val}`;
-            handleChange(formatted);
-          }}
-          enableSearch={true}
-          disabled={disabled}
-          placeholder={placeholder || `Enter ${name}`}
-          inputStyle={{ width: "100%" }}
-          containerStyle={{ width: "100%" }}
-        />
-      );
-    }
+      case FieldRenderType.PHONE: {
+        const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
+        return (
+          <PhoneInput
+            country={defaultCountry}
+            preferredCountries={preferredCountries}
+            value={value || ""}
+            onChange={(val) => {
+              const formatted = val.startsWith("+") ? val : `+${val}`;
+              handleChange(formatted);
+            }}
+            enableSearch={true}
+            disabled={disabled}
+            placeholder={placeholder || `Enter ${name}`}
+            inputStyle={{ width: "100%" }}
+            containerStyle={{ width: "100%" }}
+          />
+        );
+      }
 
-    case FieldRenderType.DATE:
-      // Using native date input because the learner app's Calendar component
-      // is a react-date-range *range* picker (mode="range" only), not a
-      // single-date picker. The native <input type="date"> gives a good UX
-      // on all modern browsers and avoids the component mismatch crash.
-      return (
-        <input
-          type="date"
-          value={value || ""}
-          onChange={(e) => handleChange(e.target.value)}
-          disabled={disabled}
-          required={required}
-          placeholder={placeholder || "Pick a date"}
-          className="flex w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      );
+      case FieldRenderType.DATE:
+        // Using native date input because the learner app's Calendar component
+        // is a react-date-range *range* picker (mode="range" only), not a
+        // single-date picker. The native <input type="date"> gives a good UX
+        // on all modern browsers and avoids the component mismatch crash.
+        return (
+          <input
+            type="date"
+            value={value || ""}
+            onChange={(e) => handleChange(e.target.value)}
+            disabled={disabled}
+            required={required}
+            placeholder={placeholder || "Pick a date"}
+            className="flex w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        );
 
-    case FieldRenderType.TEXTAREA:
-      return (
-        <Textarea
-          placeholder={placeholder || `Enter ${name}`}
-          value={value || ""}
-          onChange={(e) => handleChange(e.target.value)}
-          disabled={disabled}
-          required={required}
-          rows={3}
-          className="min-h-16 w-full"
-        />
-      );
+      case FieldRenderType.TEXTAREA:
+        return (
+          <Textarea
+            placeholder={placeholder || `Enter ${name}`}
+            value={value || ""}
+            onChange={(e) => handleChange(e.target.value)}
+            disabled={disabled}
+            required={required}
+            rows={3}
+            className="min-h-16 w-full"
+          />
+        );
 
-    case FieldRenderType.CHECKBOX: {
-      // Optional section heading + long body (e.g. Terms & Conditions) shown
-      // above the checkbox. The heading stays pinned above; the body scrolls.
-      // `whitespace-pre-line` preserves the admin's line breaks.
-      const heading = parsedConfig?.heading;
-      const description = parsedConfig?.description;
-      return (
-        <div className="flex flex-col gap-2">
-          {heading && (
-            <h3 className="text-base font-semibold text-neutral-800">{heading}</h3>
-          )}
-          {description && (
-            <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
-              {description}
+      case FieldRenderType.CHECKBOX: {
+        // Optional section heading + long body (e.g. Terms & Conditions) shown
+        // above the checkbox. The heading stays pinned above; the body scrolls.
+        // `whitespace-pre-line` preserves the admin's line breaks.
+        const heading = parsedConfig?.heading;
+        const description = parsedConfig?.description;
+        return (
+          <div className="flex flex-col gap-2">
+            {heading && (
+              <h3 className="text-base font-semibold text-neutral-800">{heading}</h3>
+            )}
+            {description && (
+              <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+                {description}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={value === "true"}
+                onCheckedChange={(checked) =>
+                  handleChange(checked === true ? "true" : "false")
+                }
+                disabled={disabled}
+              />
+              <Label className="text-sm">
+                {name}
+                {required && <span className="text-danger-600"> *</span>}
+              </Label>
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={value === "true"}
-              onCheckedChange={(checked) =>
-                handleChange(checked === true ? "true" : "false")
-              }
-              disabled={disabled}
-            />
-            <Label className="text-sm">
-              {name}
-              {required && <span className="text-danger-600"> *</span>}
-            </Label>
           </div>
-        </div>
-      );
-    }
+        );
+      }
 
-    case FieldRenderType.DROPDOWN:
-      return (
-        <Select
-          value={value || ""}
-          onValueChange={handleChange}
-          disabled={disabled}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder={placeholder || `Select ${name}`} />
-          </SelectTrigger>
-          <SelectContent>
-            {(resolvedOptions || []).map((opt, idx) => (
-              <SelectItem key={opt._id ?? idx} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      );
-
-    case FieldRenderType.RADIO:
-      // Wrapped in a div so that FormControl's Slot doesn't merge its
-      // id / aria-* props directly onto the Radix RadioGroup root, which
-      // breaks internal ID management and makes items unclickable.
-      return (
-        <div>
-          <RadioGroup
+      case FieldRenderType.DROPDOWN:
+        return (
+          <Select
             value={value || ""}
             onValueChange={handleChange}
             disabled={disabled}
-            className="flex flex-col gap-2"
           >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={placeholder || `Select ${name}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {(resolvedOptions || []).map((opt, idx) => (
+                <SelectItem key={opt._id ?? idx} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+
+      case FieldRenderType.RADIO:
+        // Wrapped in a div so that FormControl's Slot doesn't merge its
+        // id / aria-* props directly onto the Radix RadioGroup root, which
+        // breaks internal ID management and makes items unclickable.
+        return (
+          <div>
+            <RadioGroup
+              value={value || ""}
+              onValueChange={handleChange}
+              disabled={disabled}
+              className="flex flex-col gap-2"
+            >
+              {(resolvedOptions || []).map((opt, idx) => (
+                <div key={opt._id ?? idx} className="flex items-center space-x-2">
+                  <RadioGroupItem value={opt.value} id={`${name}-${idx}`} />
+                  <Label htmlFor={`${name}-${idx}`}>{opt.label}</Label>
+                </div>
+              ))}
+            </RadioGroup>
+          </div>
+        );
+
+      case FieldRenderType.MULTI_SELECT: {
+        // Multi-select checkboxes: value is a JSON array like ["Option1","Option3"]
+        let selected: string[] = [];
+        try {
+          selected = value ? JSON.parse(value) : [];
+        } catch {
+          selected = value ? [value] : [];
+        }
+        const toggleOption = (optValue: string) => {
+          const next = selected.includes(optValue)
+            ? selected.filter((s) => s !== optValue)
+            : [...selected, optValue];
+          handleChange(JSON.stringify(next));
+        };
+        return (
+          <div className="flex flex-col gap-2">
             {(resolvedOptions || []).map((opt, idx) => (
               <div key={opt._id ?? idx} className="flex items-center space-x-2">
-                <RadioGroupItem value={opt.value} id={`${name}-${idx}`} />
-                <Label htmlFor={`${name}-${idx}`}>{opt.label}</Label>
+                <Checkbox
+                  checked={selected.includes(opt.value)}
+                  onCheckedChange={() => toggleOption(opt.value)}
+                  disabled={disabled}
+                  id={`${name}-ms-${idx}`}
+                />
+                <Label htmlFor={`${name}-ms-${idx}`}>{opt.label}</Label>
               </div>
             ))}
-          </RadioGroup>
-        </div>
-      );
-
-    case FieldRenderType.MULTI_SELECT: {
-      // Multi-select checkboxes: value is a JSON array like ["Option1","Option3"]
-      let selected: string[] = [];
-      try {
-        selected = value ? JSON.parse(value) : [];
-      } catch {
-        selected = value ? [value] : [];
+          </div>
+        );
       }
-      const toggleOption = (optValue: string) => {
-        const next = selected.includes(optValue)
-          ? selected.filter((s) => s !== optValue)
-          : [...selected, optValue];
-        handleChange(JSON.stringify(next));
-      };
-      return (
-        <div className="flex flex-col gap-2">
-          {(resolvedOptions || []).map((opt, idx) => (
-            <div key={opt._id ?? idx} className="flex items-center space-x-2">
-              <Checkbox
-                checked={selected.includes(opt.value)}
-                onCheckedChange={() => toggleOption(opt.value)}
-                disabled={disabled}
-                id={`${name}-ms-${idx}`}
-              />
-              <Label htmlFor={`${name}-ms-${idx}`}>{opt.label}</Label>
-            </div>
-          ))}
-        </div>
-      );
-    }
 
-    case FieldRenderType.FILE: {
-      const acceptAttr = isUnrestrictedFileTypes(allowedFileTypes)
-        ? undefined
-        : allowedFileTypes!.map((t) => `.${t}`).join(",");
-      const isValidUrl =
-        value && (value.startsWith("http://") || value.startsWith("https://"));
-      return (
-        <div className="flex flex-col gap-2">
-          <input
-            type="file"
-            accept={acceptAttr}
-            disabled={disabled || isUploading}
-            onChange={handleFileChange}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:me-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+      case FieldRenderType.FILE: {
+        const acceptAttr = isUnrestrictedFileTypes(allowedFileTypes)
+          ? undefined
+          : allowedFileTypes!.map((t) => `.${t}`).join(",");
+        const isValidUrl =
+          value && (value.startsWith("http://") || value.startsWith("https://"));
+        return (
+          <div className="flex flex-col gap-2">
+            <input
+              type="file"
+              accept={acceptAttr}
+              disabled={disabled || isUploading}
+              onChange={handleFileChange}
+              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:me-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            {isUploading && (
+              <div className="flex items-center gap-2 text-sm text-neutral-600">
+                <SpinnerGap className="size-4 animate-spin" />
+                Uploading...
+              </div>
+            )}
+            {!isUploading && uploadedFileName && (
+              <div className="text-xs text-success-600">Uploaded: {uploadedFileName}</div>
+            )}
+            {!isUploading && !uploadedFileName && isValidUrl && (
+              <a
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary-500 underline"
+              >
+                View current file
+              </a>
+            )}
+            {!isUnrestrictedFileTypes(allowedFileTypes) && (
+              <p className="text-xs text-neutral-500">
+                Allowed: {allowedFileTypes!.join(", ")}
+                {maxSizeMB && ` · Max ${maxSizeMB}MB`}
+              </p>
+            )}
+          </div>
+        );
+      }
+
+      default:
+        return (
+          <MyInput
+            inputType="text"
+            inputPlaceholder={placeholder || `Enter ${name}`}
+            input={value || ""}
+            onChangeFunction={(e) => handleChange(e.target.value)}
+            size="large"
+            className="w-full"
+            disabled={disabled}
+            required={required}
           />
-          {isUploading && (
-            <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <SpinnerGap className="size-4 animate-spin" />
-              Uploading...
-            </div>
-          )}
-          {!isUploading && uploadedFileName && (
-            <div className="text-xs text-success-600">Uploaded: {uploadedFileName}</div>
-          )}
-          {!isUploading && !uploadedFileName && isValidUrl && (
-            <a
-              href={value}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary-500 underline"
-            >
-              View current file
-            </a>
-          )}
-          {!isUnrestrictedFileTypes(allowedFileTypes) && (
-            <p className="text-xs text-neutral-500">
-              Allowed: {allowedFileTypes!.join(", ")}
-              {maxSizeMB && ` · Max ${maxSizeMB}MB`}
-            </p>
-          )}
-        </div>
-      );
+        );
     }
+  };
 
-    default:
-      return (
-        <MyInput
-          inputType="text"
-          inputPlaceholder={placeholder || `Enter ${name}`}
-          input={value || ""}
-          onChangeFunction={(e) => handleChange(e.target.value)}
-          size="large"
-          className="w-full"
-          disabled={disabled}
-          required={required}
-        />
-      );
-  }
+  const helpText = parsedConfig?.helpText?.trim();
+  if (!helpText) return renderControl();
+  return (
+    <div className="flex flex-col gap-1">
+      {renderControl()}
+      <p className="text-caption text-neutral-500">{helpText}</p>
+    </div>
+  );
 };

@@ -176,6 +176,15 @@ export const useDomainRouting = () => {
             customValue: overrides.coursePlural,
           });
         }
+        if (overrides?.level) {
+          seed.push({ key: "Level", customValue: overrides.level });
+        }
+        if (overrides?.session) {
+          seed.push({ key: "Session", customValue: overrides.session });
+        }
+        if (overrides?.popularTag) {
+          seed.push({ key: "PopularTag", customValue: overrides.popularTag });
+        }
         if (seed.length > 0) {
           localStorage.setItem(NAMING_SETTINGS_KEY, JSON.stringify(seed));
         }
@@ -457,6 +466,10 @@ export const useDomainRouting = () => {
         "/un",
         // Public shareable leaderboard (course + institute) — don't redirect away.
         "/leaderboard",
+        // Public certificate verification — where a scanned certificate QR
+        // lands. Whoever scans it is almost never logged in, so bouncing them
+        // to the courses page would break verification entirely.
+        "/verify",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
@@ -512,6 +525,10 @@ export const useDomainRouting = () => {
         "/un",
         // Public shareable leaderboard (course + institute) — don't redirect away.
         "/leaderboard",
+        // Public certificate verification — where a scanned certificate QR
+        // lands. Whoever scans it is almost never logged in, so bouncing them
+        // to the courses page would break verification entirely.
+        "/verify",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)

@@ -131,6 +131,7 @@ export const convertCustomFields = (customFields: CustomFields): ConvertedCustom
             comma_separated_options: field.options
                 ? field.options.map((opt) => opt.value).join(',')
                 : '', // Join options for dropdowns
+            ...(typeof field.order === 'number' ? { order_field: field.order } : {}),
         };
     });
     return convertedFields;

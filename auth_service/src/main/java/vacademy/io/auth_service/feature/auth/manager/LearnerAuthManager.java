@@ -34,6 +34,8 @@ import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPo
 import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.institute.InstituteChoice;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
@@ -77,6 +79,9 @@ public class LearnerAuthManager {
 
         @Autowired
         RestTemplate restTemplate;
+
+        @Autowired
+        OriginInstituteResolver originInstituteResolver;
 
         @Autowired
         AuthService authService;
@@ -203,6 +208,29 @@ public class LearnerAuthManager {
                         // Response might be null, handle gracefully
                         String responseInstituteId = (response != null) ? response.getBody() : null;
                         log.debug("add-learner response body instituteId={}", responseInstituteId);
+
+                        // No package-session enrollment means this signup would otherwise be
+                        // invisible to the institute admin (the learner list requires an
+                        // enrollment row). Surface it as a lead instead. Best-effort: a
+                        // failure here must never break signup.
+                        if (StringUtils.hasText(instituteId) && user != null) {
+                                try {
+                                        Map<String, String> leadBody = Map.of(
+                                                        "userId", user.getId(),
+                                                        "instituteId", instituteId,
+                                                        "name", user.getFullName() != null ? user.getFullName() : "",
+                                                        "email", user.getEmail() != null ? user.getEmail() : "",
+                                                        "mobile", user.getMobileNumber() != null
+                                                                        ? user.getMobileNumber()
+                                                                        : "");
+                                        internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(),
+                                                        adminCoreServiceBaseUrl, AuthConstants.SELF_SIGNUP_LEAD_PATH,
+                                                        leadBody);
+                                } catch (Exception e) {
+                                        log.warn("Self-signup lead capture failed (non-blocking) for userId={}: {}",
+                                                        user.getId(), e.getMessage());
+                                }
+                        }
                 }
 
                 // Verify email if data is available
@@ -258,11 +286,10 @@ public class LearnerAuthManager {
         }
 
         public void sendWelcomeMailToUser(User user) {
-                String instituteId = null;
+                // Drives both the sender address and the branding below, so an arbitrary role
+                // would welcome a learner in the wrong institute's name.
+                String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
                 InstituteInfoDTO instituteInfoDTO = null;
-                if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-                        instituteId = user.getRoles().iterator().next().getInstituteId();
-                }
                 String instituteName = "Vacademy"; // Default fallback
                 String theme = "#E67E22";
                 String learnerLoginUrl = "https://dash.vacademy.io";
@@ -402,7 +429,12 @@ public class LearnerAuthManager {
         public String requestOtp(AuthRequestDto authRequestDTO) {
                 Optional<User> user = null;
 
-                // Determine the user identifier strategy for the institute
+                // Determine the user identifier strategy for the institute.
+                // Deliberately the CALLER-SUPPLIED institute, never the host-resolved fallback used
+                // for the mail below: this selects the lookup query, and an institute configured as
+                // PHONE resolves to findUserByEmailWithPhoneNotNull. Letting the fallback reach here
+                // would move portals that currently answer as EMAIL (because the caller sent no
+                // institute) onto the PHONE path and lock out users with no mobile number on file.
                 String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
 
                 if (authRequestDTO.getClientName() != null
@@ -435,7 +467,8 @@ public class LearnerAuthManager {
                 if (user.isEmpty())
                         throw new UsernameNotFoundException("User not found!");
 
-                notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()), authRequestDTO.getInstituteId());
+                notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()),
+                                resolveInstituteIdForMail(authRequestDTO));
                 return "OTP sent to " + authRequestDTO.getEmail();
         }
 
@@ -522,6 +555,23 @@ public class LearnerAuthManager {
                                 })
                                 .orElseThrow(() -> new ExpiredTokenException(
                                                 "Refresh token is expired. Please log in again."));
+        }
+
+        /**
+         * The institute whose sender address and branding the OTP mail should carry: the one the
+         * caller supplied, or — when they supplied none — whichever institute owns the host the
+         * request came from. See {@link OriginInstituteResolver} for why the fallback exists and
+         * why it can only ever return null on failure.
+         *
+         * <p>Scoped to the mail on purpose. The fallback is a good enough guess to brand an email
+         * correctly and NOT good enough to change who can log in, so it is resolved here at the
+         * point of sending rather than where the authentication path would see it.
+         */
+        private String resolveInstituteIdForMail(AuthRequestDto authRequestDTO) {
+                if (StringUtils.hasText(authRequestDTO.getInstituteId())) {
+                        return authRequestDTO.getInstituteId();
+                }
+                return originInstituteResolver.resolveInstituteId();
         }
 
         private EmailOTPRequest makeOtp(String email) {

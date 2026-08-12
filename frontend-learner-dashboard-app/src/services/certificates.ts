@@ -1,7 +1,51 @@
 import { getInstituteIdSync } from "@/components/common/helper";
-import { GENERATE_CERTIFICATE } from "@/constants/urls";
+import { CERTIFICATE_CONFIG, GENERATE_CERTIFICATE } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import LocalStorageUtils from "@/utils/localstorage";
+
+export type CertificateConfig = {
+    enabled: boolean;
+    thresholdPercent: number;
+};
+
+// Fail closed. If the config can't be fetched we must not attempt issuance:
+// treating an error as "enabled" would resurrect the old bug where certificates
+// were generated for institutes that had switched them off.
+const DISABLED_CONFIG: CertificateConfig = { enabled: false, thresholdPercent: 80 };
+
+/**
+ * Certificate config for one batch, resolved server-side from Certificate
+ * Settings (course override falling back to the institute default).
+ *
+ * Replaces reading `STUDENT_DISPLAY_SETTINGS.certificates`, which held a second
+ * copy of these two values on a different settings page and was the only one the
+ * learner app honoured — so the client and server could disagree about whether a
+ * certificate was due.
+ */
+export async function getCertificateConfig(
+    packageSessionId: string,
+): Promise<CertificateConfig> {
+    try {
+        const instituteId = await getInstituteIdSync();
+        if (!instituteId || !packageSessionId) return DISABLED_CONFIG;
+
+        const response = await authenticatedAxiosInstance({
+            method: "GET",
+            url: CERTIFICATE_CONFIG,
+            params: { instituteId, packageSessionId },
+        });
+        const data = response?.data ?? {};
+        return {
+            enabled: data.enabled === true,
+            thresholdPercent:
+                typeof data.threshold_percent === "number"
+                    ? data.threshold_percent
+                    : DISABLED_CONFIG.thresholdPercent,
+        };
+    } catch {
+        return DISABLED_CONFIG;
+    }
+}
 
 type GenerateCertificateRequest = {
     user_id: string;

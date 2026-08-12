@@ -1,5 +1,30 @@
 {
   "version": 1,
   "include": ["/*"],
-  "exclude": ["/assets/*"]
+  "exclude": [
+    "/badge-library/*",
+    "/email-editor/*",
+    "/favicon.ico",
+    "/robots.txt",
+    "/styles.css",
+    "/firebase-messaging-sw.js",
+    "/Cascadia.woff2",
+    "/Virgil.woff2",
+    "/fa-solid-900.woff2",
+    "/Urbanist.png",
+    "/caveman.gif",
+    "/cross.svg",
+    "/evaluation.jpg",
+    "/hero-mockup.png",
+    "/holistic-login.svg",
+    "/holistic-logo.svg",
+    "/img.png",
+    "/liveclass.svg",
+    "/tick.png",
+    "/tick.svg",
+    "/vacademy-logo.svg",
+    "/vimotion-favicon.svg",
+    "/vsmart-logo.png",
+    "/yoga.png"
+  ]
 }

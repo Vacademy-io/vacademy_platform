@@ -51,6 +51,13 @@ class AiTaskType(str, Enum):
     TRANSLATE_SLIDE = "TRANSLATE_SLIDE"
     TRANSLATE_QUESTION = "TRANSLATE_QUESTION"
     TRANSLATE_STRINGS = "TRANSLATE_STRINGS"
+    # Knowledge Base ingestion (V435). Long-running by nature: a 300-page
+    # scanned book means hundreds of OCR round-trips plus embedding and the
+    # summary tree, so this can never run inside a request.
+    KB_INGEST_SOURCE = "KB_INGEST_SOURCE"
+    # Whole-paper generation from a knowledge-base blueprint. Async because a
+    # 60-question paper is ~10 batched LLM calls — minutes, not seconds.
+    KB_PAPER_GENERATE = "KB_PAPER_GENERATE"
 
 
 class AiTaskInputType(str, Enum):

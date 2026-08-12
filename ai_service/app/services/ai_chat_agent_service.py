@@ -646,28 +646,35 @@ class AiChatAgentService:
                 institute_rules = inst_settings.format_rules_for_prompt(ai_settings)
                 temperature = inst_settings.get_temperature(ai_settings)
 
-                # Auto-search Knowledge Base
+                # Auto-search the institute's knowledge base.
+                #
+                # Reads kb_chunk (V435) rather than content_embeddings, so anything
+                # an admin adds to the "Institute Info" knowledge base — pasted
+                # notes, an uploaded fee-policy PDF, a scraped notices page —
+                # becomes answerable here, not just the legacy typed items.
+                #
+                # Scoped to purpose='institute_info' ON PURPOSE. This assistant is
+                # student/lead-facing, and letting a fee question retrieve out of a
+                # Class 9 Science textbook would be worse than finding nothing.
+                # Broadening it to teaching corpora is a product decision, not a
+                # tidy-up — it changes what this bot will answer.
                 kb_context = ""
                 try:
-                    cached_resolver = _CachedKeyResolver(keys)
-                    embedding_service = EmbeddingService(cached_resolver)
-                    rag_service = RAGService(db, embedding_service)
-                    kb_results = await rag_service.search(
-                        query=latest_msg_content,
+                    from .kb.retrieval import KbRetrievalService
+
+                    kb_items = await KbRetrievalService(db).search_institute(
                         institute_id=institute_id,
+                        query=latest_msg_content,
                         top_k=3,
                         similarity_threshold=0.35,
+                        purposes=["institute_info"],
                     )
-                    kb_items = [
-                        r
-                        for r in kb_results
-                        if r.get("source_type") == "knowledge_base"
-                    ]
                     if kb_items:
                         kb_snippets = []
                         for item in kb_items:
-                            title = item.get("metadata", {}).get("title", "")
-                            category = item.get("metadata", {}).get("category", "")
+                            title = item.get("source_title") or ""
+                            meta = item.get("metadata") or {}
+                            category = str(meta.get("category") or "general")
                             text = item.get("content_text", "")
                             header = (
                                 f"[{category.upper()}] {title}"

@@ -118,6 +118,11 @@ export interface Schedule {
         mute_on_start?: boolean;
         webcams_only_for_moderator?: boolean;
         guest_policy?: string;
+        disable_private_chat?: boolean;
+        disable_public_chat?: boolean;
+        disable_shared_notes?: boolean;
+        hide_user_list?: boolean;
+        end_when_no_moderator?: boolean;
     } | null;
     feedback_config?: {
         enabled?: boolean;

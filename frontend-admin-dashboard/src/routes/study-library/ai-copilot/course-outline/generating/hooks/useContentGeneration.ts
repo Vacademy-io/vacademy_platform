@@ -75,6 +75,22 @@ export const useContentGeneration = (
             console.warn('Failed to parse courseReferenceDocIds:', e);
         }
 
+        // Knowledge base this course is grounded in, persisted at outline time.
+        // Without it the content pass falls back to model knowledge and the
+        // slides quietly stop matching the institute's material.
+        let kbGrounding:
+            | { knowledge_base_id: string; node_ids: string[]; mode: string }
+            | undefined;
+        try {
+            const stored = sessionStorage.getItem('courseKbGrounding');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed?.knowledge_base_id) kbGrounding = parsed;
+            }
+        } catch (e) {
+            console.warn('Failed to parse courseKbGrounding:', e);
+        }
+
         setIsGeneratingContent(true);
         setContentGenerationProgress('Starting content generation...');
 
@@ -97,7 +113,9 @@ export const useContentGeneration = (
             );
 
             if (contentTodos.length === 0) {
-                toast.error('No content todos found to generate. Please check your course outline.');
+                toast.error(
+                    'No content todos found to generate. Please check your course outline.'
+                );
                 setIsGeneratingContent(false);
                 return;
             }
@@ -447,7 +465,9 @@ export const useContentGeneration = (
                                     : update.contentData?.html ??
                                       update.contentData?.content ??
                                       update.contentData?.text ??
-                                      (update.contentData ? JSON.stringify(update.contentData) : '');
+                                      (update.contentData
+                                          ? JSON.stringify(update.contentData)
+                                          : '');
 
                             // Check if the ENTIRE content is wrapped in ```html...```
                             const trimmed = rawContent.trim();
@@ -577,19 +597,25 @@ export const useContentGeneration = (
                                     `⚠️ [${update.path}] AI_VIDEO_CODE event received but no contentData yet`
                                 );
                             }
-                        } else if (update.slideType === 'AI_SLIDES' || update.slideType === 'AI_STORYBOOK') {
+                        } else if (
+                            update.slideType === 'AI_SLIDES' ||
+                            update.slideType === 'AI_STORYBOOK'
+                        ) {
                             console.log(
                                 `🔵 [${update.path}] Processing ${update.slideType} data, status: ${update.status}`
                             );
                             // AI_SLIDES and AI_STORYBOOK use the same pipeline as AI_VIDEO
                             if (update.contentData) {
                                 content = JSON.stringify(update.contentData);
-                                console.log(`✅ [${update.path}] ${update.slideType} data stored:`, {
-                                    videoId: update.contentData.videoId,
-                                    timelineUrl: update.contentData.timelineUrl,
-                                    status: update.contentData.status || update.status,
-                                    progress: update.contentData.progress,
-                                });
+                                console.log(
+                                    `✅ [${update.path}] ${update.slideType} data stored:`,
+                                    {
+                                        videoId: update.contentData.videoId,
+                                        timelineUrl: update.contentData.timelineUrl,
+                                        status: update.contentData.status || update.status,
+                                        progress: update.contentData.progress,
+                                    }
+                                );
                             } else {
                                 content = JSON.stringify({
                                     status: update.status || 'GENERATING',
@@ -716,7 +742,7 @@ export const useContentGeneration = (
                                         aiVideoData: aiVideoData ?? parsed[slideIndex].aiVideoData,
                                     };
 
-                                  localStorage.setItem('generatedSlides', JSON.stringify(parsed)); 
+                                    localStorage.setItem('generatedSlides', JSON.stringify(parsed));
                                     console.log(
                                         `✅ [${update.path}] Updated localStorage for slide: ${mappedSlide!.id}`
                                     );
@@ -791,7 +817,11 @@ export const useContentGeneration = (
                                     let newProgress = slide.progress;
 
                                     // For AI_VIDEO, AI_SLIDES, AI_STORYBOOK: process all events and update status/progress
-                                    if (update.slideType === 'AI_VIDEO' || update.slideType === 'AI_SLIDES' || update.slideType === 'AI_STORYBOOK') {
+                                    if (
+                                        update.slideType === 'AI_VIDEO' ||
+                                        update.slideType === 'AI_SLIDES' ||
+                                        update.slideType === 'AI_STORYBOOK'
+                                    ) {
                                         if (update.contentData) {
                                             // Store the contentData (includes videoId, timelineUrl, etc.)
                                             aiVideoData = update.contentData;
@@ -1005,7 +1035,12 @@ export const useContentGeneration = (
                     if (typeof error === 'string') {
                         const lowerError = error.toLowerCase();
 
-                        if (lowerError.includes('openrouter') || lowerError.includes('api key') || lowerError.includes('credits') || lowerError.includes('quota')) {
+                        if (
+                            lowerError.includes('openrouter') ||
+                            lowerError.includes('api key') ||
+                            lowerError.includes('credits') ||
+                            lowerError.includes('quota')
+                        ) {
                             // Backend SSE error messages - show as-is
                             userFriendlyMessage = error;
                         } else if (lowerError.includes('402')) {
@@ -1045,7 +1080,8 @@ export const useContentGeneration = (
                 language,
                 undefined, // generationRunId — minted inside generateContent
                 videoSettings,
-                referenceDocumentFileIds
+                referenceDocumentFileIds,
+                kbGrounding
             );
 
             // Mark content generation as complete (fallback)

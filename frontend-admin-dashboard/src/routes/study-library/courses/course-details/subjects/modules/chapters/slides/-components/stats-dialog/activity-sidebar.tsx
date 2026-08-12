@@ -1,6 +1,6 @@
 import { MyPagination } from '@/components/design-system/pagination';
 import { usePaginationState } from '@/hooks/pagination';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { StudentSearchBox } from '@/components/common/student-search-box';
 import { ActivityLogDialog } from '@/components/common/student-slide-tracking/activity-log-dialog';
@@ -35,6 +35,8 @@ export const ActivityStatsSidebar = ({
     };
     const [isDownloading, setIsDownloading] = useState(false);
     const [searchInput, setSearchInput] = useState('');
+    // What the API is actually filtered by. Kept separate from searchInput so typing is debounced.
+    const [appliedSearch, setAppliedSearch] = useState('');
 
     const handleDownload = async () => {
         if (!slideId) return;
@@ -76,8 +78,20 @@ export const ActivityStatsSidebar = ({
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,
-        initialPageSize: 4,
+        initialPageSize: 10,
     });
+
+    // A search always restarts from the first page — the old page number belongs to the unfiltered list.
+    const applySearch = (value: string) => {
+        setAppliedSearch(value.trim());
+        handlePageChange(0);
+    };
+
+    useEffect(() => {
+        const timer = setTimeout(() => applySearch(searchInput), 300);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchInput]);
 
     const {
         data: activityStats,
@@ -89,6 +103,7 @@ export const ActivityStatsSidebar = ({
             page,
             size: pageSize,
             packageSessionId,
+            search: appliedSearch,
         }),
         enabled: open && !!slideId,
     });
@@ -163,12 +178,7 @@ export const ActivityStatsSidebar = ({
         }));
     }, [activityStats]);
 
-    const filteredStudents: StudentRow[] = useMemo(() => {
-        const q = searchInput.trim().toLowerCase();
-        if (!q) return students;
-        return students.filter((s: StudentRow) => s.full_name.toLowerCase().includes(q));
-    }, [students, searchInput]);
-
+    // No client-side filtering: the API already returns only the matches, across every page.
     const totalParticipants = activityStats?.totalElements ?? 0;
     const avgTimeSeconds = students.length
         ? Math.round(
@@ -263,7 +273,7 @@ export const ActivityStatsSidebar = ({
                                     On This Page
                                 </p>
                                 <p className="text-sm font-semibold text-neutral-900">
-                                    {filteredStudents.length}
+                                    {students.length}
                                 </p>
                             </div>
                         </div>
@@ -273,10 +283,14 @@ export const ActivityStatsSidebar = ({
                     <div className="border-b border-neutral-200 bg-white px-6 py-3">
                         <StudentSearchBox
                             searchInput={searchInput}
-                            searchFilter={''}
+                            searchFilter={appliedSearch}
                             onSearchChange={handleSearchChange}
-                            onSearchEnter={() => {}}
-                            onClearSearch={() => setSearchInput('')}
+                            onSearchEnter={() => applySearch(searchInput)}
+                            onClearSearch={() => {
+                                setSearchInput('');
+                                applySearch('');
+                            }}
+                            placeholder="Search by name, email or phone..."
                         />
                     </div>
                 </DialogHeader>
@@ -286,7 +300,7 @@ export const ActivityStatsSidebar = ({
                     <div className="flex-1 overflow-y-auto px-4 py-4">
                         {isLoading ? (
                             <div className="space-y-3">
-                                {Array.from({ length: 4 }).map((_, idx) => (
+                                {Array.from({ length: 6 }).map((_, idx) => (
                                     <div
                                         key={idx}
                                         className="h-16 animate-pulse rounded-lg border border-neutral-200 bg-white"
@@ -297,7 +311,7 @@ export const ActivityStatsSidebar = ({
                             <div className="flex h-32 items-center justify-center text-sm text-red-500">
                                 Failed to load activity data
                             </div>
-                        ) : filteredStudents.length === 0 ? (
+                        ) : students.length === 0 ? (
                             <div className="flex h-48 flex-col items-center justify-center gap-2 text-neutral-500">
                                 <Users size={32} className="text-neutral-300" />
                                 <p className="text-sm font-medium">
@@ -311,7 +325,7 @@ export const ActivityStatsSidebar = ({
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {filteredStudents.map((student: StudentRow) => (
+                                {students.map((student: StudentRow) => (
                                     <button
                                         key={student.id}
                                         onClick={() =>

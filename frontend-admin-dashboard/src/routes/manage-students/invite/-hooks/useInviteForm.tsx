@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { inviteFormSchema, InviteForm, defaultFormValues } from '../-schema/InviteFormSchema';
 import { DropdownOption } from '../-components/create-invite/AddCustomFieldDialog';
+import type { CustomFieldConfig } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { getCachedInstituteBranding } from '@/services/domain-routing';
 
 export const useInviteForm = (initialValues?: InviteForm) => {
@@ -65,7 +66,13 @@ export const useInviteForm = (initialValues?: InviteForm) => {
                 name,
                 oldKey,
                 isRequired: true,
-                options,
+                // This form's schema keys options by numeric id (unlike the string
+                // ids used elsewhere) — re-index by position at the boundary.
+                options: options?.map((opt, idx) => ({
+                    id: idx,
+                    value: opt.value,
+                    disabled: opt.disabled ?? false,
+                })),
                 status: 'ACTIVE' as const,
             },
         ];
@@ -73,6 +80,41 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         // Update the form state with the new array
         setValue('custom_fields', updatedFields);
     };
+
+    // Index-based: useFieldArray replaces each row's `id` with its own generated
+    // key, so the schema's numeric id isn't reliably readable from the rendered
+    // rows. The array index is unambiguous.
+    const patchFieldAt = (index: number, patch: Record<string, unknown>) => {
+        const customFields = getValues('custom_fields');
+        const updatedFields = customFields?.map((field, idx) =>
+            idx === index ? { ...field, ...patch } : field
+        );
+        setValue('custom_fields', updatedFields);
+    };
+
+    /**
+     * Applies an edit made in the (prefilled) custom-field dialog. Type, label, options
+     * and required all come back together, so they are written in one patch.
+     */
+    const handleEditFieldAt = (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) =>
+        patchFieldAt(index, {
+            type,
+            name,
+            isRequired: config?.isRequired ?? true,
+            // The dialog only returns options for choice types, so switching away from
+            // one clears them instead of leaving stale values to reappear.
+            options: options?.map((opt, idx) => ({
+                id: idx,
+                value: opt.value,
+                disabled: false,
+            })),
+        });
 
     const handleDeleteOpenField = (id: number) => {
         const customFields = getValues('custom_fields');
@@ -102,6 +144,7 @@ export const useInviteForm = (initialValues?: InviteForm) => {
         toggleIsRequired,
         handleAddOpenFieldValues,
         handleDeleteOpenField,
+        handleEditFieldAt,
         handleCopyClick,
         copySuccess,
     };

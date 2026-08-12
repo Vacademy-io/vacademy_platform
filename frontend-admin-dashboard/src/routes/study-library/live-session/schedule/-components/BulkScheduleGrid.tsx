@@ -25,9 +25,12 @@ import {
     ChatTeardrop,
     Record,
     DotsSixVertical,
-    TrashSimple,
-} from '@phosphor-icons/react';
+    TrashSimple, PencilSimple } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
@@ -238,6 +241,7 @@ const isRowReady = (
 // array identity on every render while the study-library query is in flight.
 const EMPTY_COURSES: RowBatchPickerProps['courses'] = [];
 
+
 export function BulkScheduleGrid() {
     const navigate = useNavigate();
     const { setBulkSessionIds, setStep1Data } = useLiveSessionStore();
@@ -276,6 +280,7 @@ export function BulkScheduleGrid() {
         [SubjectFilterData]
     );
     const [submitting, setSubmitting] = useState(false);
+    const [editingRegFieldIndex, setEditingRegFieldIndex] = useState<number | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [resultDialog, setResultDialog] = useState<{
         open: boolean;
@@ -335,6 +340,11 @@ export function BulkScheduleGrid() {
                 webcamsOnlyForModerator:
                     liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
                 guestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+                disablePrivateChat: liveSessionSettings.defaultBbbDisablePrivateChat ?? false,
+                disablePublicChat: liveSessionSettings.defaultBbbDisablePublicChat ?? false,
+                disableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
+                hideUserList: liveSessionSettings.defaultBbbHideUserList ?? false,
+                endWhenNoModerator: liveSessionSettings.defaultBbbEndWhenNoModerator ?? false,
                 defaultPlatform: initialPlatform,
                 defaultDescription: '',
             },
@@ -794,6 +804,39 @@ export function BulkScheduleGrid() {
         ) {
             form.setValue('sharedOptions.guestPolicy', bbbGuestDefault);
         }
+        const snapBbbLockBool = (
+            name:
+                | 'sharedOptions.disablePrivateChat'
+                | 'sharedOptions.disablePublicChat'
+                | 'sharedOptions.disableSharedNotes'
+                | 'sharedOptions.hideUserList'
+                | 'sharedOptions.endWhenNoModerator',
+            def: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== def) {
+                form.setValue(name, def);
+            }
+        };
+        snapBbbLockBool(
+            'sharedOptions.disablePrivateChat',
+            liveSessionSettings.defaultBbbDisablePrivateChat ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.disablePublicChat',
+            liveSessionSettings.defaultBbbDisablePublicChat ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.disableSharedNotes',
+            liveSessionSettings.defaultBbbDisableSharedNotes ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.hideUserList',
+            liveSessionSettings.defaultBbbHideUserList ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.endWhenNoModerator',
+            liveSessionSettings.defaultBbbEndWhenNoModerator ?? false
+        );
     }, [
         liveSessionSettings.feedbackEnabled,
         liveSessionSettings.defaultFeedbackEnabled,
@@ -808,6 +851,11 @@ export function BulkScheduleGrid() {
         liveSessionSettings.defaultBbbMuteOnStart,
         liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
         liveSessionSettings.defaultBbbGuestPolicy,
+        liveSessionSettings.defaultBbbDisablePrivateChat,
+        liveSessionSettings.defaultBbbDisablePublicChat,
+        liveSessionSettings.defaultBbbDisableSharedNotes,
+        liveSessionSettings.defaultBbbHideUserList,
+        liveSessionSettings.defaultBbbEndWhenNoModerator,
         form,
     ]);
 
@@ -968,6 +1016,11 @@ export function BulkScheduleGrid() {
                         ? shared.webcamsOnlyForModerator
                         : undefined,
                     bbbGuestPolicy: isBbb ? shared.guestPolicy : undefined,
+                    bbbDisablePrivateChat: isBbb ? shared.disablePrivateChat : undefined,
+                    bbbDisablePublicChat: isBbb ? shared.disablePublicChat : undefined,
+                    bbbDisableSharedNotes: isBbb ? shared.disableSharedNotes : undefined,
+                    bbbHideUserList: isBbb ? shared.hideUserList : undefined,
+                    bbbEndWhenNoModerator: isBbb ? shared.endWhenNoModerator : undefined,
                 };
                 const dto = transformFormToDTOStep1(
                     synthetic,
@@ -1703,7 +1756,7 @@ export function BulkScheduleGrid() {
                                     name="sharedOptions.muteOnStart"
                                     render={({ field }) => (
                                         <label className="flex items-center justify-between text-sm">
-                                            <span>Mute participants on join</span>
+                                            <span>Mute participants when they join</span>
                                             <Switch
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
@@ -1742,7 +1795,7 @@ export function BulkScheduleGrid() {
                                                         Always accept
                                                     </SelectItem>
                                                     <SelectItem value="ASK_MODERATOR">
-                                                        Ask moderator to approve
+                                                        Ask host to approve
                                                     </SelectItem>
                                                     <SelectItem value="ALWAYS_DENY">
                                                         Always deny guests
@@ -1754,6 +1807,80 @@ export function BulkScheduleGrid() {
                                 </div>
                             </div>
                         )}
+                        {/* Lock settings apply regardless of recording, so they sit
+                            outside the recordSession conditional above. */}
+                        <div className="mt-3 border-t border-neutral-200 pt-3">
+                            <div className="text-xs font-medium text-neutral-600">
+                                Participant restrictions — the host always keeps full access
+                            </div>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disablePrivateChat"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t private message each other</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disablePublicChat"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t send messages in class chat</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disableSharedNotes"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t edit shared notes</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.hideUserList"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t see who else is in the class</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.endWhenNoModerator"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>End class after the host leaves</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </SectionCard>
@@ -2012,6 +2139,7 @@ export function BulkScheduleGrid() {
                     description="Fields shown to learners on the public registration form, shared across every session created above. Drag to reorder."
                 >
                     <div className="flex flex-col gap-3">
+                        <FormFieldRowHeader />
                         <Sortable
                             value={regFields}
                             onMove={({ activeIndex, overIndex }) =>
@@ -2020,68 +2148,31 @@ export function BulkScheduleGrid() {
                         >
                             {regFields.map((regField, index) => (
                                 <SortableItem key={regField.id} value={regField.id} asChild>
-                                    <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
-                                        <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
-                                            {regField.isDefault ? (
-                                                <div className="flex w-full items-center gap-1 text-neutral-600">
-                                                    <span>{regField.label}</span>
-                                                    {form.watch(
-                                                        `fields.${index}.required`
-                                                    ) && (
-                                                        <span className="text-danger-600">
-                                                            *
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div className="flex w-full items-center gap-1">
-                                                    <Controller
-                                                        control={form.control}
-                                                        name={`fields.${index}.label`}
-                                                        render={({ field: f }) => (
-                                                            <input
-                                                                {...f}
-                                                                className="flex-1 border-none bg-transparent outline-none"
-                                                                placeholder="Enter label"
-                                                            />
-                                                        )}
-                                                    />
-                                                    {form.watch(
-                                                        `fields.${index}.required`
-                                                    ) && (
-                                                        <span className="text-danger-600">
-                                                            *
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {!regField.isDefault && (
-                                                <div
-                                                    className="mr-2 cursor-pointer rounded border-2 p-1 text-danger-400"
-                                                    onClick={() => removeRegField(index)}
-                                                >
-                                                    <TrashSimple />
-                                                </div>
-                                            )}
-                                            <SortableDragHandle className="cursor-grab border-none shadow-none">
-                                                <DotsSixVertical />
-                                            </SortableDragHandle>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <Controller
-                                                control={form.control}
-                                                name={`fields.${index}.required`}
-                                                render={({ field: f }) => (
-                                                    <label className="flex items-center gap-2">
-                                                        <span className="text-sm">Required</span>
-                                                        <Switch
-                                                            checked={f.value}
-                                                            onCheckedChange={f.onChange}
-                                                        />
-                                                    </label>
-                                                )}
-                                            />
-                                        </div>
+                                    <div>
+                                        <FormFieldRow
+                                            position={index + 1}
+                                            name={form.watch(`fields.${index}.label`) ?? ''}
+                                            type={form.watch(`fields.${index}.type`) ?? ''}
+                                            isRequired={
+                                                form.watch(`fields.${index}.required`) ?? false
+                                            }
+                                            locked={regField.isDefault}
+                                            isEditing={editingRegFieldIndex === index}
+                                            onToggleRequired={() =>
+                                                form.setValue(
+                                                    `fields.${index}.required`,
+                                                    !form.watch(`fields.${index}.required`),
+                                                    { shouldDirty: true }
+                                                )
+                                            }
+                                            onEdit={() => setEditingRegFieldIndex(index)}
+                                            onDelete={() => removeRegField(index)}
+                                            dragHandle={
+                                                <SortableDragHandle className="cursor-grab border-none shadow-none">
+                                                    <DotsSixVertical size={18} />
+                                                </SortableDragHandle>
+                                            }
+                                        />
                                     </div>
                                 </SortableItem>
                             ))}
@@ -2123,6 +2214,69 @@ export function BulkScheduleGrid() {
                                 }}
                                 existingFieldNames={regFields.map((f) => f.label)}
                             />
+                            {/* Editing reuses the add dialog, prefilled. Keyed per row so opening
+                                a different field re-runs the prefill. */}
+                            {editingRegFieldIndex !== null && regFields[editingRegFieldIndex] && (
+                                <SharedAddCustomFieldDialog
+                                    key={regFields[editingRegFieldIndex].id}
+                                    mode="edit"
+                                    open
+                                    onOpenChange={(isOpen) => {
+                                        if (!isOpen) setEditingRegFieldIndex(null);
+                                    }}
+                                    initialField={{
+                                        type: form.getValues(`fields.${editingRegFieldIndex}.type`),
+                                        name:
+                                            form.getValues(
+                                                `fields.${editingRegFieldIndex}.label`
+                                            ) ?? '',
+                                        options: (
+                                            form.getValues(
+                                                `fields.${editingRegFieldIndex}.options`
+                                            ) ?? []
+                                        ).map((o) => o.label),
+                                        isRequired: form.getValues(
+                                            `fields.${editingRegFieldIndex}.required`
+                                        ),
+                                    }}
+                                    onAddField={(type, name, _oldKey, options, config) => {
+                                        const idx = editingRegFieldIndex;
+                                        // Same normalization as the add path above.
+                                        const normalized = (type || 'text').toLowerCase();
+                                        const resolvedType =
+                                            normalized === 'textfield'
+                                                ? InputType.TEXT
+                                                : (normalized as InputType);
+                                        form.setValue(`fields.${idx}.label`, name, {
+                                            shouldDirty: true,
+                                        });
+                                        form.setValue(`fields.${idx}.type`, resolvedType, {
+                                            shouldDirty: true,
+                                        });
+                                        form.setValue(
+                                            `fields.${idx}.required`,
+                                            config?.isRequired ?? true,
+                                            { shouldDirty: true }
+                                        );
+                                        // The dialog only returns options for choice types, so
+                                        // switching away from one clears them.
+                                        form.setValue(
+                                            `fields.${idx}.options`,
+                                            options?.map((opt) => ({
+                                                name: opt.value,
+                                                label: opt.value,
+                                            })) ?? [],
+                                            { shouldDirty: true }
+                                        );
+                                        setEditingRegFieldIndex(null);
+                                    }}
+                                    // Its own name must stay available, or saving an unchanged
+                                    // label would be blocked as a duplicate.
+                                    existingFieldNames={regFields
+                                        .filter((_, i) => i !== editingRegFieldIndex)
+                                        .map((f) => f.label)}
+                                />
+                            )}
                             <MyButton
                                 buttonType="secondary"
                                 type="button"

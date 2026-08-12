@@ -24,7 +24,9 @@ const defaultFilters: DoubtFilter = {
     // Seed at store creation so the first inbox query is already institute-scoped — avoids the
     // mount-time fetch with a blank institute (which returns an empty page) + a second refetch.
     institute_id: getCurrentInstituteId() ?? '',
-    sort_columns: {},
+    // Newest query first. Without an explicit sort the backend pages an unordered result set, so the
+    // inbox showed the oldest doubts on top and rows could repeat/skip across pages.
+    sort_columns: { raised_time: 'DESC' },
 };
 
 export const useDoubtFilters = create<DoubtFilterStore>((set) => ({

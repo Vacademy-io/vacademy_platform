@@ -8,6 +8,8 @@ import {
     BellRinging,
     DeviceMobile,
     WhatsappLogo,
+    Alarm,
+    HandWaving,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -74,7 +76,12 @@ const PlaceholderHint = () => (
     </div>
 );
 
-/** Email or in-app/push channel: toggle + editable subject/title + body. */
+/**
+ * Email or in-app/push channel: just the toggle. The message itself uses the
+ * system default and stays hidden — an explicit "Customize" reveals the
+ * editors, and admins who already customized see them expanded with a
+ * one-click reset back to the default.
+ */
 const InlineTemplateBlock = ({
     icon,
     label,
@@ -86,11 +93,13 @@ const InlineTemplateBlock = ({
     onPrimaryChange,
     bodyValue,
     onBodyChange,
+    defaultPrimary,
+    defaultBody,
     idPrefix,
 }: {
     icon: React.ReactNode;
     label: string;
-    description: string;
+    description?: string;
     enabled: boolean;
     onToggle: (v: boolean) => void;
     primaryLabel: string;
@@ -98,48 +107,83 @@ const InlineTemplateBlock = ({
     onPrimaryChange: (v: string) => void;
     bodyValue: string;
     onBodyChange: (v: string) => void;
+    defaultPrimary: string;
+    defaultBody: string;
     idPrefix: string;
-}) => (
-    <div className="py-3">
-        <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-1 items-start gap-3">
-                <div className="mt-0.5 text-neutral-500">{icon}</div>
-                <div className="flex-1">
-                    <div className="text-sm font-medium text-neutral-800">{label}</div>
-                    <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+}) => {
+    const [customizing, setCustomizing] = useState(false);
+    const isDefault = primaryValue === defaultPrimary && bodyValue === defaultBody;
+    const showEditors = enabled && (customizing || !isDefault);
+
+    return (
+        <div className="py-3">
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-1 items-center gap-3">
+                    <div className="text-neutral-500">{icon}</div>
+                    <div className="flex-1">
+                        <div className="text-sm font-medium text-neutral-800">{label}</div>
+                        {description && (
+                            <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
+                        )}
+                    </div>
                 </div>
+                <Switch checked={enabled} onCheckedChange={onToggle} />
             </div>
-            <Switch checked={enabled} onCheckedChange={onToggle} />
+            {enabled && !showEditors && (
+                <div className="ml-9 mt-2 flex items-center gap-2">
+                    <span className="text-xs text-neutral-400">
+                        Uses the system default message.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setCustomizing(true)}
+                        className="text-xs font-medium text-primary-500 hover:text-primary-600"
+                    >
+                        Customize
+                    </button>
+                </div>
+            )}
+            {showEditors && (
+                <div className="ml-9 mt-3 space-y-2">
+                    <div>
+                        <Label htmlFor={`${idPrefix}-primary`} className="text-xs text-neutral-600">
+                            {primaryLabel}
+                        </Label>
+                        <Input
+                            id={`${idPrefix}-primary`}
+                            value={primaryValue}
+                            onChange={(e) => onPrimaryChange(e.target.value)}
+                            className="mt-1"
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor={`${idPrefix}-body`} className="text-xs text-neutral-600">
+                            Message
+                        </Label>
+                        <Textarea
+                            id={`${idPrefix}-body`}
+                            value={bodyValue}
+                            onChange={(e) => onBodyChange(e.target.value)}
+                            rows={3}
+                            className="mt-1"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onPrimaryChange(defaultPrimary);
+                            onBodyChange(defaultBody);
+                            setCustomizing(false);
+                        }}
+                        className="text-xs font-medium text-neutral-500 hover:text-neutral-700"
+                    >
+                        Reset to system default
+                    </button>
+                </div>
+            )}
         </div>
-        {enabled && (
-            <div className="ml-9 mt-3 space-y-2">
-                <div>
-                    <Label htmlFor={`${idPrefix}-primary`} className="text-xs text-neutral-600">
-                        {primaryLabel}
-                    </Label>
-                    <Input
-                        id={`${idPrefix}-primary`}
-                        value={primaryValue}
-                        onChange={(e) => onPrimaryChange(e.target.value)}
-                        className="mt-1"
-                    />
-                </div>
-                <div>
-                    <Label htmlFor={`${idPrefix}-body`} className="text-xs text-neutral-600">
-                        Message
-                    </Label>
-                    <Textarea
-                        id={`${idPrefix}-body`}
-                        value={bodyValue}
-                        onChange={(e) => onBodyChange(e.target.value)}
-                        rows={3}
-                        className="mt-1"
-                    />
-                </div>
-            </div>
-        )}
-    </div>
-);
+    );
+};
 
 /** WhatsApp channel: toggle + approved-template picker + optional variable mapping. */
 const WhatsappBlock = ({
@@ -176,8 +220,7 @@ const WhatsappBlock = ({
                     <div className="flex-1">
                         <div className="text-sm font-medium text-neutral-800">WhatsApp</div>
                         <div className="mt-0.5 text-xs text-neutral-500">
-                            Send via an approved WhatsApp template. Requires WhatsApp to be
-                            configured for the institute.
+                            Requires an approved Meta template.
                         </div>
                     </div>
                 </div>
@@ -269,6 +312,7 @@ const TriggerCard = ({
     description,
     idPrefix,
     trigger,
+    defaults,
     onChannelChange,
     waTemplates,
     waLoading,
@@ -279,6 +323,8 @@ const TriggerCard = ({
     description: string;
     idPrefix: string;
     trigger: MentorshipTriggerSettings;
+    /** System-default texts for this trigger — messages matching them stay collapsed. */
+    defaults: MentorshipTriggerSettings;
     onChannelChange: (
         channel: keyof MentorshipTriggerSettings,
         patch: Record<string, unknown>
@@ -300,7 +346,6 @@ const TriggerCard = ({
             <InlineTemplateBlock
                 icon={<EnvelopeSimple size={18} />}
                 label="Email"
-                description="Send an email notification."
                 enabled={trigger.email.enabled}
                 onToggle={(v) => onChannelChange('email', { enabled: v })}
                 primaryLabel="Subject"
@@ -308,13 +353,14 @@ const TriggerCard = ({
                 onPrimaryChange={(v) => onChannelChange('email', { subject: v })}
                 bodyValue={trigger.email.body}
                 onBodyChange={(v) => onChannelChange('email', { body: v })}
+                defaultPrimary={defaults.email.subject}
+                defaultBody={defaults.email.body}
                 idPrefix={`${idPrefix}-email`}
             />
             <Separator />
             <InlineTemplateBlock
                 icon={<BellRinging size={18} />}
                 label="In-app alert"
-                description="Show an alert in the notification bell."
                 enabled={trigger.system_alert.enabled}
                 onToggle={(v) => onChannelChange('system_alert', { enabled: v })}
                 primaryLabel="Title"
@@ -322,13 +368,14 @@ const TriggerCard = ({
                 onPrimaryChange={(v) => onChannelChange('system_alert', { title: v })}
                 bodyValue={trigger.system_alert.body}
                 onBodyChange={(v) => onChannelChange('system_alert', { body: v })}
+                defaultPrimary={defaults.system_alert.title}
+                defaultBody={defaults.system_alert.body}
                 idPrefix={`${idPrefix}-alert`}
             />
             <Separator />
             <InlineTemplateBlock
                 icon={<DeviceMobile size={18} />}
                 label="Push notification"
-                description="Send a push notification to mobile devices."
                 enabled={trigger.push.enabled}
                 onToggle={(v) => onChannelChange('push', { enabled: v })}
                 primaryLabel="Title"
@@ -336,6 +383,8 @@ const TriggerCard = ({
                 onPrimaryChange={(v) => onChannelChange('push', { title: v })}
                 bodyValue={trigger.push.body}
                 onBodyChange={(v) => onChannelChange('push', { body: v })}
+                defaultPrimary={defaults.push.title}
+                defaultBody={defaults.push.body}
                 idPrefix={`${idPrefix}-push`}
             />
             <Separator />
@@ -416,6 +465,18 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
     const setAssignmentFlag = (key: 'notify_student' | 'notify_mentor', v: boolean) =>
         setSettings((prev) => ({ ...prev, assignment: { ...prev.assignment, [key]: v } }));
 
+    const setReminderField = (key: 'enabled' | 'hours_before', v: boolean | number) =>
+        setSettings((prev) => ({
+            ...prev,
+            session_reminder: { ...prev.session_reminder, [key]: v },
+        }));
+
+    const setCheckinField = (key: 'enabled' | 'inactivity_days', v: boolean | number) =>
+        setSettings((prev) => ({
+            ...prev,
+            checkin_reminder: { ...prev.checkin_reminder, [key]: v },
+        }));
+
     const reset = () => setSettings(initial);
 
     const save = async () => {
@@ -454,9 +515,7 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                             Mentorship Settings
                         </h2>
                         <p className="text-sm text-neutral-500">
-                            For each mentorship trigger, choose which channels notify the learner and
-                            edit the message templates. Email, in-app alert and push are on by
-                            default; WhatsApp needs an approved template.
+                            Choose how learners are notified for each mentorship event.
                         </p>
                     </div>
                 )}
@@ -478,8 +537,9 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<UsersThree size={20} />}
                 title="Mentor Assigned"
-                description="When a mentor is assigned to a student (manually or via round-robin)."
+                description="When a mentor is assigned to a student."
                 idPrefix="assignment"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.assignment}
                 trigger={settings.assignment}
                 onChannelChange={(channel, patch) => updateChannel('assignment', channel, patch)}
                 waTemplates={waTemplates}
@@ -513,8 +573,9 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<CalendarPlus size={20} />}
                 title="Session Booked"
-                description="When a learner books a 1:1 session with their mentor. Email is off by default because the booking page sends its own confirmation."
+                description="When a learner books a 1:1 session."
                 idPrefix="booking"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.booking}
                 trigger={settings.booking}
                 onChannelChange={(channel, patch) => updateChannel('booking', channel, patch)}
                 waTemplates={waTemplates}
@@ -524,13 +585,121 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
             <TriggerCard
                 icon={<CalendarX size={20} />}
                 title="Session Cancelled"
-                description="When a mentorship session is cancelled."
+                description="When a session is cancelled."
                 idPrefix="cancellation"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.cancellation}
                 trigger={settings.cancellation}
                 onChannelChange={(channel, patch) => updateChannel('cancellation', channel, patch)}
                 waTemplates={waTemplates}
                 waLoading={waLoading}
             />
+
+            <TriggerCard
+                icon={<Alarm size={20} />}
+                title="Session Reminder"
+                description="Before an upcoming session."
+                idPrefix="session-reminder"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.session_reminder}
+                trigger={settings.session_reminder}
+                onChannelChange={(channel, patch) =>
+                    updateChannel('session_reminder', channel, patch)
+                }
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Send session reminders</span>
+                        <Switch
+                            checked={settings.session_reminder.enabled}
+                            onCheckedChange={(v) => setReminderField('enabled', v)}
+                        />
+                    </div>
+                    {settings.session_reminder.enabled && (
+                        <div className="flex items-center justify-between gap-4 py-2">
+                            <Label
+                                htmlFor="session-reminder-hours"
+                                className="text-sm font-normal text-neutral-700"
+                            >
+                                Hours before the session
+                            </Label>
+                            <Input
+                                id="session-reminder-hours"
+                                type="number"
+                                min={1}
+                                max={168}
+                                value={settings.session_reminder.hours_before}
+                                onChange={(e) =>
+                                    // Clamp to the backend's accepted range so the UI never
+                                    // shows a value the scheduler won't actually use.
+                                    setReminderField(
+                                        'hours_before',
+                                        Math.min(168, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
+                                }
+                                className="w-24"
+                            />
+                        </div>
+                    )}
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
+
+            <TriggerCard
+                icon={<HandWaving size={20} />}
+                title="Check-in Nudge"
+                description="When a learner hasn't met their mentor for a while."
+                idPrefix="checkin-reminder"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.checkin_reminder}
+                trigger={settings.checkin_reminder}
+                onChannelChange={(channel, patch) =>
+                    updateChannel('checkin_reminder', channel, patch)
+                }
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">Send check-in nudges</span>
+                        <Switch
+                            checked={settings.checkin_reminder.enabled}
+                            onCheckedChange={(v) => setCheckinField('enabled', v)}
+                        />
+                    </div>
+                    {settings.checkin_reminder.enabled && (
+                        <div className="flex items-center justify-between gap-4 py-2">
+                            <Label
+                                htmlFor="checkin-days"
+                                className="text-sm font-normal text-neutral-700"
+                            >
+                                Days without a session
+                            </Label>
+                            <Input
+                                id="checkin-days"
+                                type="number"
+                                min={1}
+                                max={365}
+                                value={settings.checkin_reminder.inactivity_days}
+                                onChange={(e) =>
+                                    // Clamp to the backend's accepted range (see intCfg 1..365).
+                                    setCheckinField(
+                                        'inactivity_days',
+                                        Math.min(365, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                                    )
+                                }
+                                className="w-24"
+                            />
+                        </div>
+                    )}
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
         </div>
     );
 }

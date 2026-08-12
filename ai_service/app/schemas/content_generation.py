@@ -61,6 +61,15 @@ class ContentGenerationRequest(BaseModel):
             "AI-generated stand-ins."
         ),
     )
+    kb_grounding: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Knowledge base grounding for this course, the same object the outline "
+            "received: {knowledge_base_id, node_ids, mode}. Each slide retrieves "
+            "the passages about its own topic instead of writing from model "
+            "knowledge, and carries the page it came from."
+        ),
+    )
 
 
 __all__ = ["ContentGenerationRequest"]

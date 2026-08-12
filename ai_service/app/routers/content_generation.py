@@ -124,6 +124,7 @@ async def generate_content_from_coursetree(
                     language=payload.language,
                     video_settings=payload.video_settings,
                     reference_document_file_ids=payload.reference_document_file_ids,
+                    kb_grounding=payload.kb_grounding,
                 ):
                     await queue.put(("data", ev))
             except PaymentRequiredError as exc:

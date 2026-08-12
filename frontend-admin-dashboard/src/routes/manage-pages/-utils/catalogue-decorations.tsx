@@ -22,7 +22,12 @@ import React from 'react';
 /* ─── Types (imported by the style engine for ComponentStyle) ──────────── */
 
 export interface OrnamentConfig {
-    preset: 'blob' | 'ring' | 'dots' | 'grid' | 'glow-orb';
+    /** `circle` is a CRISP filled disc — no blur, no gradient. Every other
+     *  preset is ambient by design (glow-orb is a soft radial, blob is a
+     *  blurred organic shape), which made the flat overlapping-pastel-circle
+     *  look common in family, pre-school and kids brands impossible to build:
+     *  a reference design using it came out as a faint glow instead. */
+    preset: 'blob' | 'ring' | 'dots' | 'grid' | 'glow-orb' | 'circle';
     /** CSS left/top of the ornament box, e.g. '72%' or '-40px'. */
     x?: string;
     y?: string;
@@ -77,6 +82,8 @@ function ornamentStyle(o: OrnamentConfig): React.CSSProperties {
     switch (o.preset) {
         case 'glow-orb':
             return { ...base, background: `radial-gradient(circle, ${color} 0%, transparent 70%)` };
+        case 'circle':
+            return { ...base, background: color, borderRadius: '50%' };
         case 'blob':
             return { ...base, background: color, borderRadius: '42% 58% 62% 38% / 45% 42% 58% 55%' };
         case 'ring':
@@ -211,6 +218,27 @@ export const ORNAMENT_PRESETS: OrnamentPreset[] = [
         id: 'grid-wash',
         label: 'Grid lines',
         ornaments: [{ preset: 'grid', x: '0', y: '0', size: '100%', opacity: 0.12, color: 'hsl(var(--primary-400))' }],
+    },
+    {
+        // Flat overlapping discs at high opacity — the warm, playful motif used
+        // by family / pre-school / kids brands. Unlike every preset above this
+        // one is meant to READ as shapes, not as atmosphere, so the opacities
+        // are deliberately high and no blur is applied.
+        id: 'circles-playful',
+        label: 'Circles · playful',
+        ornaments: [
+            { preset: 'circle', x: '-6%', y: '12%', size: '190px', opacity: 0.85, color: 'hsl(var(--primary-200))' },
+            { preset: 'circle', x: '78%', y: '-14%', size: '150px', opacity: 0.8, color: 'hsl(var(--primary-300))' },
+            { preset: 'circle', x: '88%', y: '58%', size: '230px', opacity: 0.7, color: 'hsl(var(--primary-100))' },
+        ],
+    },
+    {
+        id: 'circles-corner',
+        label: 'Circles · corner pair',
+        ornaments: [
+            { preset: 'circle', x: '82%', y: '-18%', size: '260px', opacity: 0.75, color: 'hsl(var(--primary-100))' },
+            { preset: 'circle', x: '72%', y: '30%', size: '120px', opacity: 0.85, color: 'hsl(var(--primary-300))' },
+        ],
     },
 ];
 

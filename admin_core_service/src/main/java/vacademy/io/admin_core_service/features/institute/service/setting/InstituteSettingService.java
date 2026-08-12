@@ -34,9 +34,18 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.naming.Nam
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.certificate.dto.ResolvedCertificateConfig;
 import vacademy.io.admin_core_service.features.certificate.entity.IssuedCertificate;
 import vacademy.io.admin_core_service.features.certificate.repository.IssuedCertificateRepository;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateCodeService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateNumberService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateSettingsResolver;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateVerificationService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.learner_operation.entity.LearnerOperation;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
+import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.utils.DateUtil;
@@ -62,15 +71,25 @@ public class InstituteSettingService {
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
     private final IssuedCertificateRepository issuedCertificateRepository;
+    private final CertificateSettingsResolver certificateSettingsResolver;
+    private final CertificateNumberService certificateNumberService;
+    private final CertificateCodeService certificateCodeService;
+    private final CertificateVerificationService certificateVerificationService;
+    private final LearnerOperationRepository learnerOperationRepository;
 
-    // Default minimum completion percentage for issuing a certificate when an
-    // institute has not configured one.
-    private static final int DEFAULT_AUTO_ISSUE_PERCENTAGE = 80;
+    // The default completion threshold now lives in
+    // CertificateSettingsResolver.DEFAULT_THRESHOLD_PERCENT, alongside the rest
+    // of the resolution logic.
 
     public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper,
             FileService fileService, MediaService mediaService, AuthService authService,
             InstituteCustomFiledService instituteCustomFiledService, SettingStrategyFactory settingStrategyFactory,
-            IssuedCertificateRepository issuedCertificateRepository) {
+            IssuedCertificateRepository issuedCertificateRepository,
+            CertificateSettingsResolver certificateSettingsResolver,
+            CertificateNumberService certificateNumberService,
+            CertificateCodeService certificateCodeService,
+            CertificateVerificationService certificateVerificationService,
+            LearnerOperationRepository learnerOperationRepository) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
@@ -78,6 +97,11 @@ public class InstituteSettingService {
         this.instituteCustomFiledService = instituteCustomFiledService;
         this.settingStrategyFactory = settingStrategyFactory;
         this.issuedCertificateRepository = issuedCertificateRepository;
+        this.certificateSettingsResolver = certificateSettingsResolver;
+        this.certificateNumberService = certificateNumberService;
+        this.certificateCodeService = certificateCodeService;
+        this.certificateVerificationService = certificateVerificationService;
+        this.learnerOperationRepository = learnerOperationRepository;
     }
 
     public void createNewNamingSetting(Institute institute, NameSettingRequest request) {
@@ -406,26 +430,204 @@ public class InstituteSettingService {
         if (instituteStudentMapping.get().getInstitute() == null)
             return Optional.empty();
 
-        String setting = instituteStudentMapping.get().getInstitute().getSetting();
+        StudentSessionInstituteGroupMapping mapping = instituteStudentMapping.get();
+        String setting = mapping.getInstitute().getSetting();
         if (!StringUtils.hasText(setting))
             return Optional.empty();
 
-        // Server-side threshold gate. The frontend computes percentage_completed
-        // and forwards it on the request; we re-validate against the institute's
-        // configured auto_issue_percentage so the gate isn't bypassable.
-        int autoIssuePercentage = getAutoIssuePercentage(setting, CertificateTypeEnum.COURSE_COMPLETION.name());
-        Integer reported = request != null ? request.getCompletionPercentage() : null;
-        if (reported == null || reported < autoIssuePercentage) {
+        // Resolve course override → institute default → disabled. All precedence
+        // lives in CertificateSettingsResolver so the issuance gate, the admin
+        // settings dialog and the learner config endpoint can never disagree.
+        ResolvedCertificateConfig config = certificateSettingsResolver.resolve(
+                mapping.getInstitute(), resolvePackageId(mapping), CertificateTypeEnum.COURSE_COMPLETION.name());
+
+        // Opt-in feature gate. Without this an institute that switched certificates
+        // off still issued them to every learner past the threshold, because the
+        // only enable check lived in the learner client.
+        if (!config.isEnabled()) {
             return Optional.empty();
         }
 
-        Map<String, String> placeHoldersValueMapping = extractPlaceholders(setting);
+        // Threshold gate against server-side progress. The request still carries a
+        // client-computed percentage, but it is only a fallback now: trusting it
+        // meant anyone who could call the endpoint could claim 100.
+        Integer completionPercentage = resolveCompletionPercentage(mapping, request);
+        if (completionPercentage == null || completionPercentage < config.getThresholdPercent()) {
+            return Optional.empty();
+        }
 
-        Optional<String> currentHtmlCertificateTemplate = getCurrentCertificateTemplate(setting,
-                CertificateTypeEnum.COURSE_COMPLETION.name());
-        return currentHtmlCertificateTemplate.flatMap(s -> createCertificateUrlFromTemplateAndLearnerData(s,
-                instituteStudentMapping.get(), placeHoldersValueMapping, request, setting));
+        Map<String, String> placeHoldersValueMapping = config.getPlaceHolders() != null
+                ? config.getPlaceHolders()
+                : extractPlaceholders(setting);
 
+        String template = StringUtils.hasText(config.getTemplateHtml())
+                ? config.getTemplateHtml()
+                : getCurrentCertificateTemplate(setting, CertificateTypeEnum.COURSE_COMPLETION.name()).orElse(null);
+        if (!StringUtils.hasText(template)) {
+            return Optional.empty();
+        }
+
+        return createCertificateUrlFromTemplateAndLearnerData(template, mapping,
+                placeHoldersValueMapping, request, setting, config, completionPercentage);
+    }
+
+    /**
+     * What the certificate QR should encode.
+     *
+     * <p>Defaults to the bare certificate number. An institute can instead
+     * configure a verification URL template containing {@code {{CERTIFICATE_ID}}}
+     * — e.g. {@code https://myschool.com/verify?c={{CERTIFICATE_ID}}} — and the
+     * QR will encode that, so a scan lands on a page proving the certificate is
+     * genuine.
+     *
+     * <p>Deliberately not defaulted to a platform URL: there is no public
+     * certificate-verification endpoint today, and a QR pointing at an
+     * authenticated route would just show a scanner a login wall.
+     */
+    private String resolveCertificateCodePayload(Institute institute, String certificateId,
+                                                 String verificationToken) {
+        if (!StringUtils.hasText(certificateId)) {
+            return null;
+        }
+        try {
+            String settingJson = institute != null ? institute.getSetting() : null;
+            if (StringUtils.hasText(settingJson)) {
+                JsonNode root = objectMapper.readTree(settingJson);
+                JsonNode entries = root.path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+                if (entries.isArray()) {
+                    for (JsonNode config : entries) {
+                        if (CertificateTypeEnum.COURSE_COMPLETION.name()
+                                .equals(config.path("key").asText(null))) {
+                            String template = config.path("qrVerificationUrlTemplate").asText(null);
+                            if (StringUtils.hasText(template)) {
+                                return template.trim().replace("{{CERTIFICATE_ID}}", certificateId);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read the QR verification URL template; encoding the number instead", e);
+        }
+
+        // No institute-specific template configured: point the QR at the
+        // platform verification page on the institute's own learner portal, so a
+        // white-labelled school sends its graduates to its own domain.
+        String platformVerifyUrl = certificateVerificationService
+                .buildVerificationUrl(institute, certificateId, verificationToken);
+        if (StringUtils.hasText(platformVerifyUrl)) {
+            return platformVerifyUrl;
+        }
+
+        // Last resort — no portal configured, or a legacy certificate with no
+        // token. Encoding the bare number at least identifies the certificate.
+        return certificateId;
+    }
+
+    /** Branding that the shipped default certificate template hardcoded until this fix. */
+    private static final String LEGACY_HARDCODED_WEBSITE = "WWW.CODECIRCLE.ORG";
+
+    /**
+     * Normalise an institute's website for display in the certificate footer:
+     * drop the scheme and any trailing slash, and uppercase it to match the
+     * template's typography. Returns "" when unset, which collapses the footer
+     * instead of printing a stray token.
+     */
+    static String formatWebsiteForDisplay(String websiteUrl) {
+        if (!StringUtils.hasText(websiteUrl)) {
+            return "";
+        }
+        String trimmed = websiteUrl.trim()
+                .replaceFirst("(?i)^https?://", "")
+                .replaceFirst("/+$", "");
+        return trimmed.toUpperCase();
+    }
+
+    /**
+     * Strip the legacy hardcoded domain from a saved template.
+     *
+     * <p>No website is shown by default. The whole footer element is removed
+     * rather than blanked, so the certificate doesn't render a stray rule or gap
+     * where another company's name used to be. An institute that wants its own
+     * website back can place {@code {{INSTITUTE_WEBSITE}}} in the template
+     * editor, which still substitutes.
+     */
+    static String scrubHardcodedDefaultBranding(String html) {
+        if (html == null || !html.toUpperCase().contains(LEGACY_HARDCODED_WEBSITE)) {
+            return html;
+        }
+        // Drop the containing footer-link block, falling back to blanking just
+        // the text if the markup doesn't match.
+        String withoutBlock = html.replaceAll(
+                "(?is)<div class=\"footer-link\">.*?</div>", "");
+        if (!withoutBlock.toUpperCase().contains(LEGACY_HARDCODED_WEBSITE)) {
+            return withoutBlock;
+        }
+        return html.replaceAll("(?i)" + java.util.regex.Pattern.quote(LEGACY_HARDCODED_WEBSITE), "");
+    }
+
+    /**
+     * The certificate already issued to this learner for this batch, if any.
+     *
+     * <p>A re-render reuses both its number and its original issuance date. The
+     * number matters so regenerating doesn't mint duplicates; the date matters
+     * because the audit row is keyed on the number, so {@code save()} updates it
+     * in place — stamping {@code new Date()} would silently rewrite when the
+     * learner earned the certificate.
+     *
+     * <p>Best-effort: on any failure we allocate a fresh number rather than
+     * blocking the certificate.
+     */
+    private Optional<IssuedCertificate> resolveExistingCertificate(StudentSessionInstituteGroupMapping mapping) {
+        try {
+            String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
+            if (!StringUtils.hasText(packageSessionId)) {
+                return Optional.empty();
+            }
+            return issuedCertificateRepository
+                    .findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(mapping.getUserId(), packageSessionId)
+                    .filter(c -> StringUtils.hasText(c.getCertificateId()));
+        } catch (Exception e) {
+            log.warn("Could not look up the existing certificate for user {}; allocating a new number",
+                    mapping != null ? mapping.getUserId() : "?", e);
+            return Optional.empty();
+        }
+    }
+
+    /** The owning course id, used to look up the per-course certificate override. */
+    private String resolvePackageId(StudentSessionInstituteGroupMapping mapping) {
+        return Optional.ofNullable(mapping.getPackageSession())
+                .map(ps -> ps.getPackageEntity())
+                .map(PackageEntity::getId)
+                .orElse(null);
+    }
+
+    /**
+     * Authoritative completion percentage for this learner in this batch, read
+     * from the same {@code learner_operation} rollup the course dashboard reports.
+     * Falls back to the client-supplied value only when no rollup row exists yet.
+     */
+    private Integer resolveCompletionPercentage(StudentSessionInstituteGroupMapping mapping,
+                                                CertificationGenerationRequest request) {
+        String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
+        if (StringUtils.hasText(packageSessionId)) {
+            try {
+                Optional<LearnerOperation> row = learnerOperationRepository
+                        .findByUserIdAndSourceAndSourceIdAndOperation(
+                                mapping.getUserId(),
+                                LearnerOperationSourceEnum.PACKAGE_SESSION.name(),
+                                packageSessionId,
+                                LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name());
+                if (row.isPresent() && StringUtils.hasText(row.get().getValue())) {
+                    return (int) Math.floor(Double.parseDouble(row.get().getValue().trim()));
+                }
+            } catch (Exception e) {
+                log.warn("Could not read server-side completion for user {} in {}; falling back to request value",
+                        mapping.getUserId(), packageSessionId, e);
+            }
+        }
+        return request != null ? request.getCompletionPercentage() : null;
     }
 
     /**
@@ -462,7 +664,7 @@ public class InstituteSettingService {
             }
             // Generate once and write to *both* `id` (PK) and `certificate_id`
             // (self-documenting column) so the two stay 1:1.
-            String backfilledCertId = generateUniqueCertificateId(mapping.getInstitute());
+            String backfilledCertId = certificateNumberService.generate(mapping.getInstitute(), null, null);
             IssuedCertificate audit = IssuedCertificate.builder()
                     .id(backfilledCertId)
                     .certificateId(backfilledCertId)
@@ -484,39 +686,66 @@ public class InstituteSettingService {
         }
     }
 
-    private String generateUniqueCertificateId(Institute institute) {
-        String prefix = "XX";
-        if (institute != null && StringUtils.hasText(institute.getInstituteName())) {
-            String letters = institute.getInstituteName().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
-            if (letters.length() >= 2) prefix = letters.substring(0, 2);
-            else if (letters.length() == 1) prefix = letters + "X";
-        }
-        int year = Calendar.getInstance().get(Calendar.YEAR);
-        Random random = new Random();
-        // 4 digits gives 10k slots/year/institute; if collisions exhaust retries
-        // we widen to 6 digits as a last resort to guarantee progress.
-        for (int attempt = 0; attempt < 50; attempt++) {
-            int n = random.nextInt(10000);
-            String candidate = String.format("%s-%04d-%d", prefix, n, year);
-            if (!issuedCertificateRepository.existsById(candidate)) {
-                return candidate;
-            }
-        }
-        long n = (long) (Math.random() * 1_000_000L);
-        return String.format("%s-%06d-%d", prefix, n, year);
-    }
 
     /**
      * Appends a fixed bottom-right badge displaying the certificate id to the
      * rendered HTML. Uses {@code position: fixed} so OpenHTML2PDF repeats it on
      * every page if the certificate spans multiple pages.
      */
-    private String appendCertificateIdBadge(String html, String certificateId) {
+    /**
+     * Which code the institute wants stamped on the badge: {@code QR} (default)
+     * or {@code BARCODE}. Unreadable settings fall back to QR rather than
+     * dropping the code.
+     */
+    private String resolveBadgeCodeType(String settingJson) {
+        try {
+            if (!StringUtils.hasText(settingJson)) return "QR";
+            JsonNode entries = objectMapper.readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (JsonNode config : entries) {
+                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
+                        String type = config.path("badgeCodeType").asText(null);
+                        return StringUtils.hasText(type) ? type : "QR";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read the certificate badge code type; defaulting to QR", e);
+        }
+        return "QR";
+    }
+
+    /**
+     * Stamp the certificate number bottom-right, with a scannable code beside it.
+     *
+     * <p>The code is rendered here rather than only as a draggable template
+     * field, so every issued certificate carries one whether or not the admin
+     * placed it — a printed certificate with no machine-readable form cannot be
+     * verified without someone typing the number by hand.
+     *
+     * <p>{@code codeDataUri} is a PNG data URI; it is empty when generation
+     * failed, in which case the badge degrades to the number alone rather than
+     * rendering a broken image.
+     */
+    private String appendCertificateIdBadge(String html, String certificateId, String codeDataUri,
+                                            boolean isBarcode) {
+        // A 1D barcode needs a wide, short box; a QR needs a square one. Sizing
+        // both the same squashes the barcode until it stops scanning.
+        String codeStyle = isBarcode
+                ? "width:34mm;height:11mm;display:block;"
+                : "width:16mm;height:16mm;display:block;";
+        String codeImg = StringUtils.hasText(codeDataUri)
+                ? "<img src=\"" + codeDataUri + "\" alt=\"\" style=\"" + codeStyle + "\" />"
+                : "";
         String badge = "<div style=\"position:fixed;bottom:8mm;right:10mm;"
                 + "font-family:Arial,sans-serif;font-size:10px;color:#444;"
                 + "background:rgba(255,255,255,0.85);padding:3px 8px;"
-                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;\">"
-                + "Certificate ID: " + certificateId + "</div>";
+                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;"
+                + "text-align:center;\">"
+                + codeImg
+                + "<span style=\"display:block;margin-top:2px;\">" + certificateId + "</span>"
+                + "</div>";
         int closing = html.lastIndexOf("</body>");
         if (closing >= 0) {
             return html.substring(0, closing) + badge + html.substring(closing);
@@ -525,30 +754,12 @@ public class InstituteSettingService {
         return html + badge;
     }
 
-    /**
-     * Reads auto_issue_percentage from the certificate setting JSON for the given
-     * key. Falls back to DEFAULT_AUTO_ISSUE_PERCENTAGE if missing or unparseable
-     * — keeps existing institutes that haven't saved this field functioning.
-     */
-    private int getAutoIssuePercentage(String settingJson, String key) {
-        try {
-            JsonNode root = objectMapper.readTree(settingJson);
-            JsonNode certificateSettings = root.path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
-            if (certificateSettings.isArray()) {
-                for (JsonNode certificateConfig : certificateSettings) {
-                    if (key.equals(certificateConfig.path("key").asText(null))) {
-                        JsonNode pct = certificateConfig.path("autoIssuePercentage");
-                        if (!pct.isMissingNode() && !pct.isNull() && pct.isInt()) {
-                            return pct.asInt();
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-            // fall through to default
-        }
-        return DEFAULT_AUTO_ISSUE_PERCENTAGE;
-    }
+    // isCertificateIssuanceEnabled() and getAutoIssuePercentage() used to live
+    // here. Both moved into CertificateSettingsResolver so enablement and the
+    // threshold resolve in exactly one place (course override -> institute ->
+    // disabled). They are deliberately not left behind as unused helpers: a
+    // dead gate that still looks live is what caused certificates to keep
+    // issuing after the switch was turned off.
 
     /**
      * Reads aspect_ratio (and optional custom dimensions) from certificate
@@ -588,7 +799,7 @@ public class InstituteSettingService {
             String template,
             StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,
             Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request,
-            String settingJson) {
+            String settingJson, ResolvedCertificateConfig config, Integer completionPercentage) {
 
         // Your mapping (placeholder key -> actual value)
         Map<String, String> placeHolderMapping = new HashMap<>();
@@ -625,12 +836,33 @@ public class InstituteSettingService {
                         .map(PackageEntity::getPackageName)
                         .orElse("");
 
-        // Generate the certificate id up front so it can be embedded in the HTML
-        // *and* persisted to the audit table with the same value. Format is
-        // {INSTITUTE_PREFIX}-{4-DIGIT}-{YEAR} (e.g. "IS-0123-2026"); uniqueness
-        // is enforced by checking the audit table before commit.
-        String certificateId = generateUniqueCertificateId(
-                studentSessionInstituteGroupMapping.getInstitute());
+        // Certificate number, resolved up front so the same value is embedded in
+        // the HTML and persisted to the audit table.
+        //
+        // A re-render REUSES the learner's existing number rather than minting a
+        // new one. Without this, every regenerate — the learner's Refresh button,
+        // or the admin action — produced a fresh number, a fresh audit row and a
+        // fresh email; one learner ended up with three certificates carrying three
+        // different ids. Reusing the number also means the audit `save` below
+        // updates that row (the number is the PK) instead of inserting a duplicate.
+        Optional<IssuedCertificate> alreadyIssued =
+                resolveExistingCertificate(studentSessionInstituteGroupMapping);
+        String certificateId = alreadyIssued
+                .map(IssuedCertificate::getCertificateId)
+                .orElseGet(() -> certificateNumberService.generate(
+                        studentSessionInstituteGroupMapping.getInstitute(),
+                        config != null ? config.getNumbering() : null,
+                        config != null ? config.getCourseCode() : null));
+        // Keep the original issuance date on a re-render — see resolveExistingCertificate.
+        final Date originalIssuedAt = alreadyIssued.map(IssuedCertificate::getIssuedAt).orElse(null);
+
+        // Verification token: reused on a re-render so a certificate already in
+        // circulation keeps working, minted fresh otherwise. Rotating it would
+        // silently break every QR already printed or emailed.
+        final String verificationToken = alreadyIssued
+                .map(IssuedCertificate::getVerificationToken)
+                .filter(StringUtils::hasText)
+                .orElseGet(certificateVerificationService::newVerificationToken);
 
         placeHolderMapping.put("1",
                 studentSessionInstituteGroupMapping.getPackageSession().getSession().getSessionName());
@@ -669,6 +901,13 @@ public class InstituteSettingService {
                         .map(s -> s.getSessionName()).orElse(""));
         namedPlaceholders.put("{{INSTITUTE_NAME}}",
                 studentSessionInstituteGroupMapping.getInstitute().getInstituteName());
+        // The institute's own website, shown in the certificate footer. The
+        // shipped default template used to hardcode one customer's domain
+        // (WWW.CODECIRCLE.ORG), so every institute issued certificates footed
+        // with someone else's branding. Empty when unset, which collapses the
+        // footer rather than printing a stray token.
+        namedPlaceholders.put("{{INSTITUTE_WEBSITE}}",
+                formatWebsiteForDisplay(studentSessionInstituteGroupMapping.getInstitute().getWebsiteUrl()));
         namedPlaceholders.put("{{STUDENT_NAME}}", learnerName);
         namedPlaceholders.put("{{COMPLETION_PERCENTAGE}}",
                 request != null && request.getCompletionPercentage() != null
@@ -698,6 +937,15 @@ public class InstituteSettingService {
         // legacy pass is short-circuited.
         namedPlaceholders.put("{{INSTITUTE_LOGO}}",
                 Optional.ofNullable(instituteImageUrl).orElse(""));
+        // Scannable forms of the certificate number, embedded as PNG data URIs so
+        // the renderer never has to fetch them. Both are img-src tokens: a
+        // template uses them as <img src="{{CERTIFICATE_QR}}">.
+        String codePayload = resolveCertificateCodePayload(
+                studentSessionInstituteGroupMapping.getInstitute(), certificateId, verificationToken);
+        namedPlaceholders.put("{{CERTIFICATE_QR}}",
+                Optional.ofNullable(certificateCodeService.generateQrDataUri(codePayload)).orElse(""));
+        namedPlaceholders.put("{{CERTIFICATE_BARCODE}}",
+                Optional.ofNullable(certificateCodeService.generateBarcodeDataUri(certificateId)).orElse(""));
         // Institute theme color, used for borders / accents in the certificate.
         // Falls back to the historical default border color so older templates
         // that hardcoded {{INSTITUTE_THEME_COLOR}} still render sanely.
@@ -782,10 +1030,45 @@ public class InstituteSettingService {
         filledTemplate = filledTemplate.replace("{{DATE_OF_COMPLETION}}", safeDate);
         filledTemplate = filledTemplate.replace("{{ISSUE_DATE}}", safeDate);
 
-        // Always show the certificate id at the bottom-right of the rendered
-        // page, regardless of whether the admin placed {{CERTIFICATE_ID}} in
-        // the template.
-        filledTemplate = appendCertificateIdBadge(filledTemplate, certificateId);
+        String safeWebsite = formatWebsiteForDisplay(
+                studentSessionInstituteGroupMapping.getInstitute() != null
+                        ? studentSessionInstituteGroupMapping.getInstitute().getWebsiteUrl()
+                        : null);
+        filledTemplate = filledTemplate.replace("{{INSTITUTE_WEBSITE}}", safeWebsite);
+
+        // Codes are img-src tokens, so an unsubstituted one would leave a broken
+        // image on the PDF rather than visible text. Blank them unconditionally.
+        filledTemplate = filledTemplate.replace("{{CERTIFICATE_QR}}",
+                Optional.ofNullable(namedPlaceholders.get("{{CERTIFICATE_QR}}")).orElse(""));
+        filledTemplate = filledTemplate.replace("{{CERTIFICATE_BARCODE}}",
+                Optional.ofNullable(namedPlaceholders.get("{{CERTIFICATE_BARCODE}}")).orElse(""));
+
+        // Strip the branding that the shipped default template used to hardcode.
+        // 502 of 527 institutes already have "WWW.CODECIRCLE.ORG" — one customer's
+        // domain — baked into their *saved* template, so fixing the constant alone
+        // would only help institutes created from here on. Removing it at render
+        // time repairs every existing institute without rewriting their settings
+        // blob. No website is shown by default; admins can add {{INSTITUTE_WEBSITE}}
+        // from the template editor if they want theirs.
+        filledTemplate = scrubHardcodedDefaultBranding(filledTemplate);
+
+        // Always show the certificate id bottom-right with a scannable code
+        // beside it, regardless of whether the admin placed {{CERTIFICATE_ID}}
+        // or a code field in the template. The institute chooses QR or barcode;
+        // both are already generated for the token pass, so this reuses one
+        // rather than encoding again.
+        //
+        // If the admin positioned a code field themselves — anywhere on the
+        // canvas, at any size — that placement wins and the badge falls back to
+        // the number alone. Stamping a second code bottom-right would otherwise
+        // put two on the same certificate.
+        boolean templatePlacesOwnCode = template.contains("{{CERTIFICATE_QR}}")
+                || template.contains("{{CERTIFICATE_BARCODE}}");
+        boolean useBarcode = "BARCODE".equalsIgnoreCase(resolveBadgeCodeType(settingJson));
+        String badgeCode = templatePlacesOwnCode
+                ? null
+                : namedPlaceholders.get(useBarcode ? "{{CERTIFICATE_BARCODE}}" : "{{CERTIFICATE_QR}}");
+        filledTemplate = appendCertificateIdBadge(filledTemplate, certificateId, badgeCode, useBarcode);
 
         // Render the PDF using the institute-configured page size if present.
         final String renderedHtml = filledTemplate;
@@ -795,7 +1078,9 @@ public class InstituteSettingService {
 
         // Persist the audit row with the rendered HTML snapshot. Failures here
         // are logged but do not block delivery — the learner still gets the PDF.
-        final Integer auditPercentage = request != null ? request.getCompletionPercentage() : null;
+        final Integer auditPercentage = completionPercentage != null
+                ? completionPercentage
+                : (request != null ? request.getCompletionPercentage() : null);
         uploaded.ifPresent(file -> {
             try {
                 IssuedCertificate audit = IssuedCertificate.builder()
@@ -813,7 +1098,9 @@ public class InstituteSettingService {
                                 ? studentSessionInstituteGroupMapping.getPackageSession().getId() : null)
                         .courseName(courseName)
                         .completionPercentage(auditPercentage)
-                        .issuedAt(new Date())
+                        // Re-render keeps the date the learner actually earned it.
+                        .issuedAt(originalIssuedAt != null ? originalIssuedAt : new Date())
+                        .verificationToken(verificationToken)
                         .fileId(file.getId())
                         .templateHtmlSnapshot(renderedHtml)
                         .build();

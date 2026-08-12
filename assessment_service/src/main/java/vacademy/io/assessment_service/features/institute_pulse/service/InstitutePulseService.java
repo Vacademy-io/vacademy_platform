@@ -30,6 +30,15 @@ public class InstitutePulseService {
     @Value("${institute-pulse.assessment.stalled-seconds:120}")
     private long stalledSeconds;
 
+    /**
+     * MANUAL (pen-and-paper) assessments only: silence is not a risk while the learner is off
+     * writing on paper. It becomes one when less than this many seconds remain on their personal
+     * clock and they still haven't reconnected to upload the answer sheet. 1500s = 25 minutes,
+     * chosen so support has time to phone the learner before the attempt auto-ends.
+     */
+    @Value("${institute-pulse.assessment.manual-return-window-seconds:1500}")
+    private long manualReturnSeconds;
+
     /** Less than this left before start_time + max_time => auto-submit is imminent. */
     @Value("${institute-pulse.assessment.auto-submit-seconds:300}")
     private long autoSubmitSeconds;
@@ -164,7 +173,7 @@ public class InstitutePulseService {
 
     private List<InstitutePulseSummaryResponse.AttemptRisk> buildRisks(String instituteId, String batch) {
         List<AttemptRiskProjection> rows = repository.getAttemptRisks(
-                instituteId, batch, stalledSeconds, autoSubmitSeconds, riskLimit);
+                instituteId, batch, stalledSeconds, autoSubmitSeconds, manualReturnSeconds, riskLimit);
 
         List<InstitutePulseSummaryResponse.AttemptRisk> risks = new ArrayList<>(rows.size());
         for (AttemptRiskProjection r : rows) {

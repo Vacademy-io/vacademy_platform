@@ -57,11 +57,22 @@ public class MentorController {
         return ResponseEntity.ok(mentorService.update(id, instituteId, req));
     }
 
+    /**
+     * Mentor list. With {@code pageNo}/{@code pageSize} present the response is a
+     * Spring {@code Page} (content/total_pages/...); without them the legacy full
+     * array is returned so older clients keep working.
+     */
     @GetMapping("/mentors")
-    public ResponseEntity<List<MentorDTO>> listMentors(
+    public ResponseEntity<?> listMentors(
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.requireAdminAccess(user, instituteId);
+        if (pageNo != null || pageSize != null) {
+            return ResponseEntity.ok(mentorService.listPaged(instituteId,
+                    pageNo == null ? 0 : pageNo, pageSize == null ? 20 : pageSize));
+        }
         return ResponseEntity.ok(mentorService.list(instituteId));
     }
 

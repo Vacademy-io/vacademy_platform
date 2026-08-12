@@ -174,6 +174,16 @@ export interface LiveSessionSettings {
     defaultBbbWebcamsOnlyForModerator: boolean;
     /** Default guest admission policy. */
     defaultBbbGuestPolicy: LiveSessionGuestPolicy;
+    /** Default "disable private chat for students" toggle (host is unaffected). */
+    defaultBbbDisablePrivateChat: boolean;
+    /** Default "disable public chat for students" toggle (host is unaffected). */
+    defaultBbbDisablePublicChat: boolean;
+    /** Default "disable shared notes for students" toggle (host is unaffected). */
+    defaultBbbDisableSharedNotes: boolean;
+    /** Default "hide participant list from students" toggle (host is unaffected). */
+    defaultBbbHideUserList: boolean;
+    /** Default "end class when host leaves" toggle. */
+    defaultBbbEndWhenNoModerator: boolean;
     /**
      * Defaults for the "Notifications" block (channels + triggers) applied to
      * new live classes in both single-class step 2 and the bulk grid. Admins
@@ -271,6 +281,11 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultBbbMuteOnStart: true,
     defaultBbbWebcamsOnlyForModerator: false,
     defaultBbbGuestPolicy: 'ALWAYS_ACCEPT',
+    defaultBbbDisablePrivateChat: false,
+    defaultBbbDisablePublicChat: false,
+    defaultBbbDisableSharedNotes: false,
+    defaultBbbHideUserList: false,
+    defaultBbbEndWhenNoModerator: false,
     defaultNotifyByEmail: false,
     defaultNotifyByWhatsapp: false,
     defaultNotifyByPush: false,

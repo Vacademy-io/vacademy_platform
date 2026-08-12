@@ -5,6 +5,7 @@ import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { REQUEST_OTP, LOGIN_OTP } from '@/constants/urls';
+import { getCachedInstituteBranding } from '@/services/domain-routing';
 import { useEffect, useRef, useState } from 'react';
 
 // Track root instance to prevent duplicate calls
@@ -68,10 +69,13 @@ function VerifyEmailWithOtpModal({ resolve }: { resolve: (verifiedEmail: string 
 
         try {
             setLoading(true);
+            // The endpoint reads `email`, not `to` — AuthRequestDto has no `to` field and ignores
+            // unknown properties, so the previous payload bound a null email and the request could
+            // only fail. institute_id picks the sender address and branding for the OTP mail.
+            const instituteId = getCachedInstituteBranding()?.instituteId;
             await axios.post(REQUEST_OTP, {
-                to: localEmail,
-                name: 'Vacademy user!!!',
-                service: 'auth-service',
+                email: localEmail,
+                ...(instituteId && { institute_id: instituteId }),
             });
             toast.success('OTP sent to email');
             setStep('otp');

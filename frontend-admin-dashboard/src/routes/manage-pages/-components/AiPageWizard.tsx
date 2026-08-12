@@ -53,6 +53,18 @@ const DIRECTIONS = [
 
 type Step = 'chat' | 'brief' | 'assets' | 'confirm' | 'review';
 
+/** Dialog width per step — these steps hold very different things, and a single
+ *  width made two of them cramped: the chat carries a conversation plus a row of
+ *  screenshot thumbnails, and review renders a preview of the whole generated
+ *  page, both of which were squeezed into 36rem. */
+const STEP_WIDTH: Record<Step, string> = {
+    chat: 'max-w-5xl',
+    brief: 'max-w-2xl',
+    assets: 'max-w-3xl',
+    confirm: 'max-w-2xl',
+    review: 'max-w-5xl',
+};
+
 export const AiPageWizard = ({
     open,
     onOpenChange,
@@ -307,7 +319,7 @@ export const AiPageWizard = ({
             {/* overflow-x-hidden: DialogContent is a grid; a wide child (the
                 scaled preview's marquee) would otherwise expand the implicit
                 column and shove the footer buttons off-screen. */}
-            <DialogContent className={step === 'chat' ? 'max-w-4xl overflow-x-hidden' : 'max-w-xl overflow-x-hidden'}>
+            <DialogContent className={`${STEP_WIDTH[step]} overflow-x-hidden`}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />

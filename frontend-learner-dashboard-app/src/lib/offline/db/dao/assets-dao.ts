@@ -122,6 +122,19 @@ export const assetsDao = {
         );
     },
 
+    async deleteByFileAndSlide(
+        db: OfflineDbConnection,
+        userId: string,
+        fileId: string,
+        slideId: string
+    ): Promise<void> {
+        await db.run("DELETE FROM assets WHERE user_id = ? AND file_id = ? AND slide_id = ?", [
+            userId,
+            fileId,
+            slideId,
+        ]);
+    },
+
     async deleteBySlide(db: OfflineDbConnection, userId: string, slideId: string): Promise<void> {
         await db.run("DELETE FROM assets WHERE user_id = ? AND slide_id = ?", [userId, slideId]);
     },

@@ -62,6 +62,8 @@ export interface OfflineManifestSettings {
 
 export interface OfflineManifest {
   package_session_id: string;
+  /** Course name, so the UI can name which course changed. Older cached manifests won't have it. */
+  course_name?: string | null;
   manifest_version: number;
   settings: OfflineManifestSettings;
   subjects: OfflineManifestSubject[];
@@ -91,9 +93,12 @@ export async function fetchDownloadUrls(
   const results: OfflineDownloadUrl[] = [];
   for (let i = 0; i < fileIds.length; i += BATCH) {
     const batch = fileIds.slice(i, i + BATCH);
+    // Body keys MUST be snake_case: OfflineDownloadUrlsRequest is annotated
+    // @JsonNaming(SnakeCaseStrategy), so camelCase keys silently deserialize
+    // to nulls and the endpoint rejects with "packageSessionId is required".
     const response = await authenticatedAxiosInstance.post<OfflineDownloadUrl[]>(
       OFFLINE_DOWNLOAD_URLS_URL,
-      { deviceId: deviceId ?? null, packageSessionId, fileIds: batch }
+      { device_id: deviceId ?? null, package_session_id: packageSessionId, file_ids: batch }
     );
     results.push(...response.data);
   }
@@ -120,6 +125,16 @@ export async function persistManifest(
   return row;
 }
 
+/**
+ * Parsed manifests keyed by their raw JSON, so re-parsing is skipped when the
+ * stored tree hasn't changed. Every download control on the course page reads
+ * the manifest to decide whether to render, and a chapter of 15 slides now
+ * mounts 16 of them — without this, one expand re-parsed the whole course tree
+ * 16 times. Keying on the JSON text means a rewritten manifest can never hit a
+ * stale entry.
+ */
+const parsedManifests = new Map<string, OfflineManifest>();
+
 /** Loads and JSON-parses a previously persisted manifest, or null if never fetched. */
 export async function loadPersistedManifest(
   userId: string,
@@ -128,7 +143,77 @@ export async function loadPersistedManifest(
   const db = await getOfflineDb();
   const row = await manifestsDao.get(db, userId, packageSessionId);
   if (!row) return null;
-  return JSON.parse(row.tree_json) as OfflineManifest;
+  const cached = parsedManifests.get(row.tree_json);
+  if (cached) return cached;
+  const parsed = JSON.parse(row.tree_json) as OfflineManifest;
+  // One entry per course is all that is ever re-read; drop the previous
+  // version's tree so this can't grow with every manifest bump.
+  parsedManifests.clear();
+  parsedManifests.set(row.tree_json, parsed);
+  return parsed;
+}
+
+/** In-flight ensureManifest calls, keyed by `${userId}:${packageSessionId}`. */
+const inFlightManifests = new Map<string, Promise<OfflineManifest | null>>();
+
+/** package_session_ids already re-validated this session (see ensureManifest). */
+const revalidated = new Set<string>();
+
+const hasDownloadableSlides = (manifest: OfflineManifest): boolean =>
+  (manifest.subjects ?? []).some((s) =>
+    (s.modules ?? []).some((m) =>
+      (m.chapters ?? []).some((c) => (c.slides ?? []).some((sl) => sl.downloadable))
+    )
+  );
+
+/**
+ * Returns the persisted manifest, fetching and persisting it once if this device
+ * has never seen this course.
+ *
+ * The download button only renders when it can prove a node has admin-allowed
+ * content, which it reads from the manifest — but the manifest used to be fetched
+ * only when the learner TAPPED download. On a fresh install that deadlocked: no
+ * manifest meant no button, and no button meant nothing ever fetched the manifest.
+ *
+ * Concurrent callers share one request: a course page renders a download control
+ * per chapter, and each would otherwise fire its own identical fetch.
+ */
+export async function ensureManifest(
+  userId: string,
+  packageSessionId: string
+): Promise<OfflineManifest | null> {
+  const existing = await loadPersistedManifest(userId, packageSessionId);
+  // A cached manifest with nothing downloadable is usually one fetched while the
+  // institute had offline access switched OFF (the server marks every slide
+  // non-downloadable then). Trusting it forever means re-enabling offline never
+  // restores the download buttons — the learner is stuck on a snapshot taken
+  // during the outage. Re-validate once per session; it self-heals and costs one
+  // request for a manifest that was useless anyway.
+  if (existing && !hasDownloadableSlides(existing) && !revalidated.has(packageSessionId)) {
+    revalidated.add(packageSessionId);
+  } else if (existing) {
+    return existing;
+  }
+
+  const key = `${userId}:${packageSessionId}`;
+  const pending = inFlightManifests.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    try {
+      const fetched = await fetchManifest(packageSessionId);
+      await persistManifest(userId, null, fetched);
+      return await loadPersistedManifest(userId, packageSessionId);
+    } catch {
+      // Offline or server error — keep whatever we had rather than losing it;
+      // callers treat null as "not known yet".
+      return existing ?? null;
+    } finally {
+      inFlightManifests.delete(key);
+    }
+  })();
+  inFlightManifests.set(key, request);
+  return request;
 }
 
 /** Every slide across the manifest tree, flattened (order preserved depth-first). */

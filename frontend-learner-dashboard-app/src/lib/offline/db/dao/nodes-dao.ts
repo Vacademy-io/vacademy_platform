@@ -11,6 +11,22 @@ export const nodesDao = {
         return rows[0] ?? null;
     },
 
+    /** How many of the given node ids are DOWNLOADED — one query, not N reads. */
+    async countDownloaded(
+        db: OfflineDbConnection,
+        userId: string,
+        nodeIds: string[]
+    ): Promise<number> {
+        if (nodeIds.length === 0) return 0;
+        const placeholders = nodeIds.map(() => "?").join(", ");
+        const rows = await db.query<{ c: number }>(
+            `SELECT COUNT(*) AS c FROM nodes
+             WHERE user_id = ? AND status = 'DOWNLOADED' AND node_id IN (${placeholders})`,
+            [userId, ...nodeIds]
+        );
+        return Number(rows[0]?.c ?? 0);
+    },
+
     async listByPackageSession(
         db: OfflineDbConnection,
         userId: string,
@@ -20,6 +36,20 @@ export const nodesDao = {
             "SELECT * FROM nodes WHERE user_id = ? AND package_session_id = ?",
             [userId, packageSessionId]
         );
+    },
+
+    /** Re-parents a node (used to attach pre-COURSE subject rows to the course root). */
+    async setParent(
+        db: OfflineDbConnection,
+        userId: string,
+        nodeId: string,
+        parentId: string | null
+    ): Promise<void> {
+        await db.run("UPDATE nodes SET parent_id = ? WHERE user_id = ? AND node_id = ?", [
+            parentId,
+            userId,
+            nodeId,
+        ]);
     },
 
     async listChildren(

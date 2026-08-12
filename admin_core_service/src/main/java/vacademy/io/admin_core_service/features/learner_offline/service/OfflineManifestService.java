@@ -190,6 +190,9 @@ public class OfflineManifestService {
 
         OfflineManifestDTO manifest = new OfflineManifestDTO();
         manifest.setPackageSessionId(packageSessionId);
+        manifest.setCourseName(packageSession.getPackageEntity() != null
+                ? packageSession.getPackageEntity().getPackageName()
+                : null);
         manifest.setManifestVersion(Math.max(1, offlineManifestVersionService.getVersion(packageSessionId)));
         var settingsPojo = offlineSettingService.get(instituteId);
         manifest.setSettings(new OfflineManifestSettingsDTO(settingsPojo.getRevalidationDays(), settingsPojo.getMaxDevices()));

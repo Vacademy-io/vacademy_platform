@@ -255,18 +255,22 @@ const RootComponent = () => {
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
   const [offlineUserId, setOfflineUserId] = useState<string | null>(null);
 
-  // Resolve the logged-in learner's userId once so the offline subsystem
+  // Resolve the logged-in learner's userId so the offline subsystem
   // (download manager resume + event flusher, see useOfflineInit) can be
-  // partitioned per-user. No-ops on plain web / when logged out.
+  // partitioned per-user. Re-resolved on every navigation, not just mount:
+  // on a fresh install the shell mounts on the LOGIN screen (no token yet),
+  // and without a re-check after login the offline subsystem would stay
+  // dormant until the next full app restart. Identical ids are a no-op.
+  const offlinePathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     let cancelled = false;
     getUserId().then((id) => {
-      if (!cancelled) setOfflineUserId(id);
+      if (!cancelled) setOfflineUserId((prev) => (prev === id ? prev : id));
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [offlinePathname]);
   useOfflineInit(offlineUserId);
 
   // Dismiss the index.html boot splash once the app has actually mounted.

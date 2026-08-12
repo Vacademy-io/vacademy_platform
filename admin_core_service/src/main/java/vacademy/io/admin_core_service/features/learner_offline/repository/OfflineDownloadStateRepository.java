@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.learner_offline.entity.OfflineDownloadState;
+import vacademy.io.admin_core_service.features.learner_offline.repository.projection.OfflineLearnerDownloadProjection;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -52,6 +53,42 @@ public interface OfflineDownloadStateRepository extends JpaRepository<OfflineDow
     @Query("SELECT COUNT(DISTINCT s.deviceId) FROM OfflineDownloadState s "
             + "WHERE s.packageSessionId = :packageSessionId AND s.status = 'DOWNLOADED'")
     long countActiveDevices(@Param("packageSessionId") String packageSessionId);
+
+    /**
+     * Every learner-device pair currently holding content from this batch, with
+     * the identity + lease columns the admin Downloads tab lists.
+     *
+     * DISTINCT ON picks one student row per user: a learner enrolled in more
+     * than one institute has several, and joining them all would repeat the
+     * same device once per enrollment.
+     */
+    @Query(value = """
+            SELECT s.user_id           AS userId,
+                   st.full_name        AS fullName,
+                   st.username         AS username,
+                   st.email            AS email,
+                   d.id                AS deviceId,
+                   d.device_name       AS deviceName,
+                   d.platform          AS platform,
+                   d.status            AS deviceStatus,
+                   d.last_checkin_at   AS lastCheckinAt,
+                   d.lease_expires_at  AS leaseExpiresAt,
+                   COUNT(DISTINCT s.slide_id) AS downloadedSlides,
+                   MIN(s.updated_at)   AS firstDownloadedAt,
+                   MAX(s.updated_at)   AS lastDownloadedAt
+            FROM offline_download_state s
+            JOIN offline_device d ON d.id = s.device_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (user_id) user_id, full_name, username, email
+                FROM student ORDER BY user_id, created_at DESC
+            ) st ON st.user_id = s.user_id
+            WHERE s.package_session_id = :packageSessionId AND s.status = 'DOWNLOADED'
+            GROUP BY s.user_id, st.full_name, st.username, st.email, d.id, d.device_name,
+                     d.platform, d.status, d.last_checkin_at, d.lease_expires_at
+            ORDER BY MAX(s.updated_at) DESC
+            """, nativeQuery = true)
+    List<OfflineLearnerDownloadProjection> findLearnerDownloads(
+            @Param("packageSessionId") String packageSessionId);
 
     @Query("SELECT s.slideId, COUNT(DISTINCT s.deviceId) FROM OfflineDownloadState s "
             + "WHERE s.packageSessionId = :packageSessionId AND s.status = 'DOWNLOADED' GROUP BY s.slideId")

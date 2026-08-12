@@ -20,6 +20,7 @@ import { sideBarStateType } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
 import {
   HamBurgerSidebarItemsData,
+  stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
   getTerminologyPlural,
@@ -65,6 +66,7 @@ import type {
   SidebarItemsType,
   subItemsType,
 } from "../../../../types/layout-container-types";
+import { useOfflineAvailable } from "@/hooks/offline/use-offline-availability";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useIsIOS } from "@/hooks/useIsIOS";
 import { Capacitor } from "@capacitor/core";
@@ -126,6 +128,8 @@ export const MySidebar = ({
   };
 
   const { permissions } = useStudentPermissions();
+  // Native-only AND admin-enabled; see use-offline-availability.
+  const offlineAvailable = useOfflineAvailable();
   const isIOS = useIsIOS();
   const [configuredTabs, setConfiguredTabs] = useState<
     StudentSidebarTabConfig[]
@@ -586,10 +590,15 @@ export const MySidebar = ({
           {sidebarComponent
             ? sidebarComponent
             : (() => {
-              const items =
+              const baseItems =
                 sideBarState === sideBarStateType.HAMBURGER
                   ? filteredHamburgerItems
                   : filteredSidebarItems;
+              // Hide every offline entry unless the platform supports it AND
+              // the institute has offline access switched on. `null` = still
+              // unknown, so hide until we're sure rather than flashing it in.
+              const items =
+                offlineAvailable === true ? baseItems : stripOfflineEntries(baseItems);
 
               return items.map((obj, key) => (
                 <div

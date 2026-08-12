@@ -593,6 +593,7 @@ export const OFFLINE_ACCESS_RULES = `${BASE_URL}/admin-core-service/admin/offlin
 export const OFFLINE_ACCESS_EFFECTIVE = `${BASE_URL}/admin-core-service/admin/offline-access/v1/effective`;
 export const OFFLINE_ADMIN_DEVICES = `${BASE_URL}/admin-core-service/admin/offline/v1/devices`;
 export const OFFLINE_ADMIN_TELEMETRY_DOWNLOADS = `${BASE_URL}/admin-core-service/admin/offline/v1/telemetry/downloads`;
+export const OFFLINE_ADMIN_TELEMETRY_LEARNERS = `${BASE_URL}/admin-core-service/admin/offline/v1/telemetry/learners`;
 export const OFFLINE_ADMIN_DISCREPANCIES = `${BASE_URL}/admin-core-service/admin/offline/v1/discrepancies`;
 
 // Teacher Course Approval Workflow URLs
@@ -1175,7 +1176,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
 // Header / footer / theme — the settings shared by every page.
-export const AI_PAGE_BUILDER_SITE_CHROME = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
+export const AI_PAGE_BUILDER_SITE_CHROME = () =>
+    `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;

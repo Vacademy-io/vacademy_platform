@@ -19,7 +19,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useResolvedPackageSessionId } from "@/hooks/study-library/useResolvedPackageSessionId";
 import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 import { toast } from "sonner";
-import { trackOrQueue } from "@/lib/offline/events/track-or-queue";
+import { trackOrQueue, isNetworkError } from "@/lib/offline/events/track-or-queue";
 
 interface Option {
     id: string;
@@ -258,20 +258,43 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 return { offlineQueued: true as const };
             }
 
-            return authenticatedAxiosInstance.post(
-                SUBMIT_QUESTION_SLIDE_ANSWERS,
-                payload,
-                {
-                    params: {
-                        slideId,
-                        chapterId: chapterId || "",
-                        packageSessionId: packageSessionId || "",
-                        moduleId: moduleId || "",
-                        subjectId: subjectId || "",
+            try {
+                return await authenticatedAxiosInstance.post(
+                    SUBMIT_QUESTION_SLIDE_ANSWERS,
+                    payload,
+                    {
+                        params: {
+                            slideId,
+                            chapterId: chapterId || "",
+                            packageSessionId: packageSessionId || "",
+                            moduleId: moduleId || "",
+                            subjectId: subjectId || "",
+                            userId,
+                        },
+                    }
+                );
+            } catch (error) {
+                // Online-detection can lag reality (airplane mode mid-flight,
+                // captive portals). A network-failed submit must never lose
+                // the learner's answer — force it into the offline queue.
+                if (isNetworkError(error)) {
+                    await trackOrQueue({
                         userId,
-                    },
+                        eventType: "QUESTION",
+                        context: {
+                            slideId,
+                            chapterId: chapterId || "",
+                            moduleId: moduleId || "",
+                            subjectId: subjectId || "",
+                            packageSessionId: packageSessionId || "",
+                        },
+                        payload,
+                        force: true,
+                    });
+                    return { offlineQueued: true as const };
                 }
-            );
+                throw error;
+            }
         },
         onSuccess: (result) => {
             if (result && "offlineQueued" in result && result.offlineQueued) {
@@ -646,19 +669,32 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 submissionValue = "";
             }
 
-            // Submit to API
-            await submitQuestionMutation.mutateAsync({
+            // Submit to API (or durably queue it when offline)
+            const submitResult = await submitQuestionMutation.mutateAsync({
                 selectedOptions: optionsToSubmit,
                 questionName: questionData.text_data.content,
             });
+            const queuedOffline =
+                (submitResult as { offlineQueued?: boolean } | undefined)
+                    ?.offlineQueued === true;
 
             // Call the onSubmit function passed from parent
             await onSubmit(slideId, submissionValue);
 
             // Reconcile progress UI (chapter/module/course %) after the
             // async completion cascade lands. chapterId is from the route.
-            if (chapterId) {
+            //
+            // Skipped for an offline-queued answer: this invalidates the
+            // per-slide query, and offline that refetch resolves to nothing,
+            // which remounts this component and wipes both the learner's typed
+            // answer and the "Submitted" state — the answer was safely queued,
+            // but the screen made it look like the submit never happened. The
+            // server progress is reconciled by the sync flusher instead.
+            if (chapterId && !queuedOffline) {
                 void refreshProgressAfterSubmit(queryClient, chapterId);
+            }
+            if (queuedOffline) {
+                toast.success("Answer saved — it will sync when you're back online");
             }
 
             // Keep the learner's answer on screen (do NOT clear it) and reveal

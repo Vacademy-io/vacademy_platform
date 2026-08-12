@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryConnection } from "../sqljs-connection";
-import { runMigrations, MIGRATIONS } from "../migrations";
+import { runMigrations, MIGRATIONS, LATEST_VERSION } from "../migrations";
 import { noticesDao } from "./notices-dao";
 
 describe("migrations — batch 2 (offline_notices) applies cleanly over batch 1", () => {
@@ -16,9 +16,12 @@ describe("migrations — batch 2 (offline_notices) applies cleanly over batch 1"
       ["u1", "d1", "r1", 0]
     );
 
-    await runMigrations(db); // applies batch 2 on top
+    await runMigrations(db); // applies every later batch on top
 
-    expect(await db.getVersion()).toBe(2);
+    // Assert the latest version rather than a literal: this test is about a
+    // batch-1 DB upgrading cleanly and keeping its data, not about how many
+    // batches exist — hardcoding the count broke on the next migration added.
+    expect(await db.getVersion()).toBe(LATEST_VERSION);
     const deviceRows = await db.query("SELECT * FROM device_state WHERE user_id = ?", ["u1"]);
     expect(deviceRows).toHaveLength(1); // batch 1 data untouched
 

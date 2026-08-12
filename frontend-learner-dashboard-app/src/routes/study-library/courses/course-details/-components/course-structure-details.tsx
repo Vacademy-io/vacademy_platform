@@ -37,6 +37,7 @@ import {
   fetchModulesWithChaptersPublic,
 } from "@/services/study-library/getModulesWithChapters";
 import { SubjectType } from "@/stores/study-library/use-study-library-store";
+import { DownloadNodeButton } from "@/components/common/offline/download-node-button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSlidesByChapterId,
@@ -1244,6 +1245,15 @@ export const CourseStructureDetails = ({
               {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
               Structure
             </span>
+            {/* Whole-course download. Its node is the package session itself,
+                so it rolls up from the subjects below and reaches DOWNLOADED
+                only once every savable slide in the course is stored. */}
+            <DownloadNodeButton
+              nodeId={packageSessionId ?? ""}
+              nodeType="COURSE"
+              packageSessionId={packageSessionId}
+              compact
+            />
           </div>
           <div className="flex items-center gap-2 ms-auto w-full md:w-auto">
             <div className="hidden md:flex items-center gap-2">
@@ -1393,6 +1403,15 @@ export const CourseStructureDetails = ({
                             </>
                           );
                         })()}
+                        {/* Download the whole subject. The structure page offered offline
+                            controls only at chapter and slide level, so "save this subject"
+                            meant tapping every chapter inside it. */}
+                        <DownloadNodeButton
+                          nodeId={subject.id}
+                          nodeType="SUBJECT"
+                          packageSessionId={packageSessionId}
+                          compact
+                        />
                       </div>
                     </div>
                   </CollapsibleTrigger>
@@ -1456,6 +1475,14 @@ export const CourseStructureDetails = ({
                                     {renderCompletionBadge(
                                       calculateModuleProgress(mod),
                                     )}
+                                    {/* Download the whole module — same reasoning as the subject
+                                        control above. */}
+                                    <DownloadNodeButton
+                                      nodeId={mod.module.id}
+                                      nodeType="MODULE"
+                                      packageSessionId={packageSessionId}
+                                      compact
+                                    />
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -1596,6 +1623,15 @@ export const CourseStructureDetails = ({
                                                   )
                                                 );
                                               })()}
+                                              {/* Offline download for the whole chapter (plan B7). Renders
+                                                  nothing on unsupported platforms; stops propagation itself
+                                                  so it never toggles the collapsible. */}
+                                              <DownloadNodeButton
+                                                nodeId={ch.id}
+                                                nodeType="CHAPTER"
+                                                packageSessionId={packageSessionId}
+                                                compact
+                                              />
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -1748,6 +1784,16 @@ export const CourseStructureDetails = ({
                                                             hideEmpty: true,
                                                           },
                                                         )}
+                                                        {/* Offline download for this single slide, mirroring the chapter
+                                                            control above. Renders nothing on unsupported platforms or when
+                                                            the admin hasn't allowed this slide offline; stops propagation
+                                                            itself so tapping it never navigates into the slide. */}
+                                                        <DownloadNodeButton
+                                                          nodeId={slide.id}
+                                                          nodeType="SLIDE"
+                                                          packageSessionId={packageSessionId}
+                                                          compact
+                                                        />
                                                       </span>
                                                     </div>
                                                   );
@@ -1840,6 +1886,14 @@ export const CourseStructureDetails = ({
                               </>
                             );
                           })()}
+                          {/* Download the whole module — same reasoning as the subject
+                              control. */}
+                          <DownloadNodeButton
+                            nodeId={mod.module.id}
+                            nodeType="MODULE"
+                            packageSessionId={packageSessionId}
+                            compact
+                          />
                         </div>
                       </div>
                     </CollapsibleTrigger>
@@ -1934,6 +1988,12 @@ export const CourseStructureDetails = ({
                                         )
                                       );
                                     })()}
+                                    <DownloadNodeButton
+                                      nodeId={ch.id}
+                                      nodeType="CHAPTER"
+                                      packageSessionId={packageSessionId}
+                                      compact
+                                    />
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -2030,6 +2090,16 @@ export const CourseStructureDetails = ({
                                             slide.percentage_completed || 0,
                                             { size: 14, hideEmpty: true },
                                           )}
+                                          {/* Offline download for this single slide, mirroring the chapter
+                                              control above. Renders nothing on unsupported platforms or when
+                                              the admin hasn't allowed this slide offline; stops propagation
+                                              itself so tapping it never navigates into the slide. */}
+                                          <DownloadNodeButton
+                                            nodeId={slide.id}
+                                            nodeType="SLIDE"
+                                            packageSessionId={packageSessionId}
+                                            compact
+                                          />
                                         </span>
                                       </div>
                                     ));
@@ -2160,6 +2230,12 @@ export const CourseStructureDetails = ({
                                         </span>
                                       )}
                                     {renderCompletionBadge(progress)}
+                                    <DownloadNodeButton
+                                      nodeId={ch.id}
+                                      nodeType="CHAPTER"
+                                      packageSessionId={packageSessionId}
+                                      compact
+                                    />
                                   </>
                                 );
                               })()}
@@ -2257,6 +2333,16 @@ export const CourseStructureDetails = ({
                                         hideEmpty: true,
                                       },
                                     )}
+                                    {/* Offline download for this single slide, mirroring the chapter
+                                        control above. Renders nothing on unsupported platforms or when
+                                        the admin hasn't allowed this slide offline; stops propagation
+                                        itself so tapping it never navigates into the slide. */}
+                                    <DownloadNodeButton
+                                      nodeId={slide.id}
+                                      nodeType="SLIDE"
+                                      packageSessionId={packageSessionId}
+                                      compact
+                                    />
                                   </span>
                                 </div>
                               ));
@@ -2324,6 +2410,15 @@ export const CourseStructureDetails = ({
                             </>
                           );
                         })()}
+                        {/* Download the whole subject. The structure page offered offline
+                            controls only at chapter and slide level, so "save this subject"
+                            meant tapping every chapter inside it. */}
+                        <DownloadNodeButton
+                          nodeId={subject.id}
+                          nodeType="SUBJECT"
+                          packageSessionId={packageSessionId}
+                          compact
+                        />
                       </div>
                     </div>
                   </CollapsibleTrigger>
@@ -2369,6 +2464,14 @@ export const CourseStructureDetails = ({
                                     {renderCompletionBadge(
                                       calculateModuleProgress(mod),
                                     )}
+                                    {/* Download the whole module — same reasoning as the subject
+                                        control above. */}
+                                    <DownloadNodeButton
+                                      nodeId={mod.module.id}
+                                      nodeType="MODULE"
+                                      packageSessionId={packageSessionId}
+                                      compact
+                                    />
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -2451,6 +2554,15 @@ export const CourseStructureDetails = ({
                                                   )
                                                 );
                                               })()}
+                                              {/* Offline download for the whole chapter (plan B7). Renders
+                                                  nothing on unsupported platforms; stops propagation itself
+                                                  so it never toggles the collapsible. */}
+                                              <DownloadNodeButton
+                                                nodeId={ch.id}
+                                                nodeType="CHAPTER"
+                                                packageSessionId={packageSessionId}
+                                                compact
+                                              />
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -2532,6 +2644,16 @@ export const CourseStructureDetails = ({
                                                           hideEmpty: true,
                                                         },
                                                       )}
+                                                      {/* Offline download for this single slide, mirroring the chapter
+                                                          control above. Renders nothing on unsupported platforms or when
+                                                          the admin hasn't allowed this slide offline; stops propagation
+                                                          itself so tapping it never navigates into the slide. */}
+                                                      <DownloadNodeButton
+                                                        nodeId={slide.id}
+                                                        nodeType="SLIDE"
+                                                        packageSessionId={packageSessionId}
+                                                        compact
+                                                      />
                                                     </span>
                                                   </div>
                                                 ),
@@ -2564,6 +2686,14 @@ export const CourseStructureDetails = ({
             <span className="text-lg font-semibold text-neutral-800">
               Content Structure
             </span>
+            {/* Whole-course download, matching the Outline tab's header
+                control so both views offer the same reach. */}
+            <DownloadNodeButton
+              nodeId={packageSessionId ?? ""}
+              nodeType="COURSE"
+              packageSessionId={packageSessionId}
+              compact
+            />
           </div>
         </div>
 
@@ -2722,6 +2852,17 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {/* Download the whole subject. This tab drills down
+                        subject -> module -> chapter -> slide as cards, so each
+                        level needs its own control; without it the only way to
+                        save a subject was to open every chapter in it. */}
+                    <div className="flex items-center gap-1.5">
+                      <DownloadNodeButton
+                        nodeId={subject.id}
+                        nodeType="SUBJECT"
+                        packageSessionId={packageSessionId}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -2789,6 +2930,15 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {/* Download the whole module — same reasoning as the
+                        subject card. */}
+                    <div className="flex items-center gap-1.5">
+                      <DownloadNodeButton
+                        nodeId={m.module.id}
+                        nodeType="MODULE"
+                        packageSessionId={packageSessionId}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -2884,9 +3034,16 @@ export const CourseStructureDetails = ({
                               {idx + 1}
                             </p>
                           )}
-                          {isChapterLocked && (
-                            <LockedBadge size="sm" unlockMessage="" />
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {isChapterLocked && (
+                              <LockedBadge size="sm" unlockMessage="" />
+                            )}
+                            <DownloadNodeButton
+                              nodeId={ch.id}
+                              nodeType="CHAPTER"
+                              packageSessionId={packageSessionId}
+                            />
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -2988,6 +3145,15 @@ export const CourseStructureDetails = ({
                               </Badge>
 
                               {isSlideLocked && <LockedBadge size="sm" />}
+                              {/* Offline download for this slide. The card-style
+                                  drill-down renders slides here rather than as
+                                  rows, so it needs its own control — the chapter
+                                  card above already has one. */}
+                              <DownloadNodeButton
+                                nodeId={sl.id}
+                                nodeType="SLIDE"
+                                packageSessionId={packageSessionId}
+                              />
                             </div>
                           </div>
                         </CardContent>

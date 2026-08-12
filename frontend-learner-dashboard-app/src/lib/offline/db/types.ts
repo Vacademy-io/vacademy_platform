@@ -1,6 +1,7 @@
 /** Row types for the offline DB (plan §B2). Mirrors schema.sql exactly. */
 
-export type OfflineNodeType = "SUBJECT" | "MODULE" | "CHAPTER" | "SLIDE";
+/** COURSE is the whole package session — its node_id IS the package_session_id. */
+export type OfflineNodeType = "COURSE" | "SUBJECT" | "MODULE" | "CHAPTER" | "SLIDE";
 
 export type NodeDownloadStatus =
     | "NOT_DOWNLOADED"
@@ -76,7 +77,9 @@ export type OfflineNoticeKind =
     | "OFFLINE_DISABLED"
     | "DEVICE_REVOKED"
     | "LEASE_EXPIRED"
-    | "UPDATE_AVAILABLE";
+    | "UPDATE_AVAILABLE"
+    /** Offline work the server kept rejecting until it ran out of retries. */
+    | "SYNC_FAILED";
 
 export interface NoticeRow {
     id: string;

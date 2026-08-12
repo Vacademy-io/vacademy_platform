@@ -10,12 +10,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineDiscrepancyReviewRequest;
 import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineDownloadTelemetryDTO;
+import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineLearnerDownloadDTO;
 import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineSyncDiscrepancyDTO;
 import vacademy.io.admin_core_service.features.learner_offline.entity.OfflineSyncDiscrepancy;
 import vacademy.io.admin_core_service.features.learner_offline.repository.OfflineSyncDiscrepancyRepository;
 import vacademy.io.admin_core_service.features.learner_offline.service.OfflineDownloadStateService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+
+import java.util.List;
 
 /** Admin discrepancy review + download telemetry (offline plan, Parts A4/A5). */
 @RestController
@@ -56,6 +59,14 @@ public class AdminOfflineTelemetryController {
         row.setStatus(request != null && request.getStatus() != null ? request.getStatus() : "REVIEWED");
         offlineSyncDiscrepancyRepository.save(row);
         return ResponseEntity.ok("Discrepancy updated");
+    }
+
+    /** Admin Downloads tab: who downloaded this batch, on which device. */
+    @GetMapping("/telemetry/learners")
+    public ResponseEntity<List<OfflineLearnerDownloadDTO>> learnerDownloads(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("packageSessionId") String packageSessionId) {
+        return ResponseEntity.ok(offlineDownloadStateService.getLearnerDownloads(packageSessionId));
     }
 
     @GetMapping("/telemetry/downloads")

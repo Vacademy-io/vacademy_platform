@@ -15,6 +15,7 @@ import { Capacitor } from "@capacitor/core";
 import { getOfflineDb, type OfflineDbConnection } from "../db/connection";
 import { eventQueueDao } from "../db/dao/event-queue-dao";
 import { deviceStateDao } from "../db/dao/device-state-dao";
+import { noticesDao } from "../db/dao/notices-dao";
 import type { EventQueueRow } from "../db/types";
 import type { OfflineEventContext } from "./event-queue";
 
@@ -166,6 +167,22 @@ class EventFlusher {
         "FAILED_PERMANENT",
         "max sync attempts exceeded"
       );
+      // Giving up silently means a learner's offline answers just disappear with
+      // no signal to them or to support. Surface it on the Downloads screen
+      // instead — this is the last point where we still know it happened.
+      try {
+        await noticesDao.insert(
+          db,
+          userId,
+          "SYNC_FAILED",
+          null,
+          `${exhausted.length} offline ${
+            exhausted.length === 1 ? "update" : "updates"
+          } couldn't be synced. Please contact support if your progress looks wrong.`
+        );
+      } catch {
+        // A notice is best-effort — never let it break the flush loop.
+      }
     }
     if (ready.length === 0) return pending.length === BATCH_SIZE;
 

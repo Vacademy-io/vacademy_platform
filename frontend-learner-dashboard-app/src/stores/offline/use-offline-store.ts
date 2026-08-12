@@ -5,6 +5,7 @@
  */
 
 import { create } from "zustand";
+import { Preferences } from "@capacitor/preferences";
 import { getOfflineDb } from "@/lib/offline/db/connection";
 import { assetsDao } from "@/lib/offline/db/dao/assets-dao";
 import { deviceStateDao } from "@/lib/offline/db/dao/device-state-dao";
@@ -46,8 +47,13 @@ interface OfflineStoreState {
     setRevokedDialogOpen: (open: boolean) => void;
     /** Rebuild the read model from SQLite for the given user. */
     hydrate: (userId: string) => Promise<void>;
+    /** Restores the persisted Wi-Fi-only preference. */
+    loadWifiOnly: () => Promise<void>;
     reset: () => void;
 }
+
+/** Preferences key backing the Wi-Fi-only download setting. */
+const WIFI_ONLY_KEY = "offline.wifiOnly";
 
 const initialState = {
     hydratedForUserId: null,
@@ -66,7 +72,25 @@ export const useOfflineStore = create<OfflineStoreState>((set) => ({
     setNodeStatus: (nodeId, status) =>
         set((state) => ({ nodeStatuses: { ...state.nodeStatuses, [nodeId]: status } })),
 
-    setWifiOnly: (wifiOnly) => set({ wifiOnly }),
+    setWifiOnly: (wifiOnly) => {
+        set({ wifiOnly });
+        // Persist: this store is plain (no persist middleware), so without this
+        // the setting silently snapped back to Wi-Fi-only on every full page
+        // load. A learner on mobile data would turn it off, navigate, and find
+        // their downloads mysteriously waiting again.
+        void Preferences.set({ key: WIFI_ONLY_KEY, value: wifiOnly ? "1" : "0" }).catch(() => {});
+    },
+
+    /** Restores the persisted Wi-Fi-only preference. Call once at offline init. */
+    loadWifiOnly: async () => {
+        try {
+            const { value } = await Preferences.get({ key: WIFI_ONLY_KEY });
+            if (value === "0" || value === "1") set({ wifiOnly: value === "1" });
+        } catch {
+            // keep the safe default (Wi-Fi only ON)
+        }
+    },
+
     setOfflineMode: (isOfflineMode) => set({ isOfflineMode }),
     setLeaseState: (leaseState) => set({ leaseState }),
     setRevokedDialogOpen: (revokedDialogOpen) => set({ revokedDialogOpen }),

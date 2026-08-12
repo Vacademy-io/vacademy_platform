@@ -10,6 +10,12 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class OfflineManifestDTO {
     private String packageSessionId;
+    /**
+     * Human-readable course name, so the learner app can say WHICH course changed.
+     * Without it the Downloads screen could only manage "New content is available
+     * for this course", which is meaningless when several courses are downloaded.
+     */
+    private String courseName;
     private long manifestVersion;
     private OfflineManifestSettingsDTO settings;
     private List<OfflineManifestSubjectDTO> subjects;

@@ -74,6 +74,22 @@ export const MIGRATIONS: MigrationBatch[] = [
         ON offline_notices (user_id, seen)`,
     ],
   },
+  // Batch 3: the key/value table metaDao has always assumed. It stores the
+  // per-course route context (`offline.route.<packageSessionId>`) that the
+  // Downloads screen needs to deep-link into a chapter, because courseId /
+  // levelId are not part of the manifest. Without it every "Open" on the
+  // Downloads screen failed with "no such table: schema_meta", and the write
+  // in download-node-button's enqueue path silently no-opped.
+  {
+    version: 3,
+    label: "add_schema_meta",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS schema_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.reduce(

@@ -17,6 +17,7 @@ import { deviceStateDao } from "../db/dao/device-state-dao";
 import { manifestsDao } from "../db/dao/manifests-dao";
 import { nodesDao } from "../db/dao/nodes-dao";
 import { noticesDao } from "../db/dao/notices-dao";
+import { loadPersistedManifest } from "@/services/offline/manifest-service";
 import { registerDevice, type RegisterResult } from "@/services/offline/device-service";
 import { downloadManager } from "../download/download-manager";
 import { destroyOfflineKey } from "../crypto/keys";
@@ -140,26 +141,44 @@ export async function performCheckIn(userId: string): Promise<void> {
   });
 
   for (const revocation of response.revocations ?? []) {
+    // Read the course name BEFORE purging — the purge deletes the manifest this
+    // comes from, and "this course" is meaningless on the Downloads screen,
+    // which lists every course at once.
+    const revoked = await loadPersistedManifest(userId, revocation.package_session_id);
+    const courseName = revoked?.course_name?.trim() || null;
     await downloadManager.purgePackageSession(userId, revocation.package_session_id);
     await noticesDao.insert(
       db,
       userId,
       revocation.reason,
       revocation.package_session_id,
-      revocationMessage(revocation.reason)
+      revocationMessage(revocation.reason, courseName)
     );
   }
 
   for (const update of response.manifest_updates ?? []) {
     await manifestsDao.setUpdateAvailable(db, userId, update.package_session_id, true);
+    // Mark every node the learner actually holds, at any depth — not just roots.
+    // Restricting this to `parent_id === null` meant the flag landed on the
+    // subject, while the chapter/module the learner downloaded (and the
+    // Downloads screen lists) stayed DOWNLOADED. The result was a "New content
+    // is available" notice with no Update button anywhere the learner could
+    // reach it. Tapping any of these runs applyManifestUpdate, which diffs the
+    // new manifest and re-downloads only what genuinely changed, so the extra
+    // breadth here costs nothing beyond the badge.
     const nodes = await nodesDao.listByPackageSession(db, userId, update.package_session_id);
     for (const node of nodes) {
-      if (node.parent_id === null && (node.status === "DOWNLOADED" || node.status === "PARTIAL")) {
+      if (node.status === "DOWNLOADED" || node.status === "PARTIAL") {
         await nodesDao.setStatus(db, userId, node.node_id, "UPDATE_AVAILABLE");
         useOfflineStore.getState().setNodeStatus(node.node_id, "UPDATE_AVAILABLE");
       }
     }
-    await noticesDao.insert(db, userId, "UPDATE_AVAILABLE", update.package_session_id, "New content is available for this course.");
+    // Deliberately NO notice card here. Notices only ever render on the
+    // Downloads screen, which is the same screen that now shows the named
+    // course banner and a per-item "Update available" badge + button — so the
+    // card was pure duplication, and its "Open Downloads to update it" copy
+    // was telling the learner to go where they already were. The manifest flag
+    // and node statuses set above are what drive the UI.
   }
 
   await syncLeaseStateToStore(userId, await deviceStateDao.get(db, userId));
@@ -175,26 +194,57 @@ export async function performCheckIn(userId: string): Promise<void> {
  * `setOnDeviceRevoked`, see useOfflineCheckin.ts) — so both converge on one
  * purge implementation.
  */
-export async function handleDeviceRevoked(userId: string): Promise<void> {
+export async function handleDeviceRevoked(
+  userId: string,
+  options?: { selfInitiated?: boolean }
+): Promise<void> {
   const db = await getOfflineDb();
   await downloadManager.purgeAllForUser(userId);
   await destroyOfflineKey(userId);
   await deviceStateDao.setRevoked(db, userId, true);
-  await noticesDao.insert(db, userId, "DEVICE_REVOKED", null, "This device's offline access was revoked by your institute.");
-  useOfflineStore.getState().setRevokedDialogOpen(true);
+  // A learner who just tapped "Remove" on their own device shouldn't be told
+  // their institute did it, nor be shown the alarming revoked modal.
+  await noticesDao.insert(
+    db,
+    userId,
+    "DEVICE_REVOKED",
+    null,
+    options?.selfInitiated
+      ? "You removed this device from offline access. Downloaded content was deleted."
+      : "This device's offline access was revoked by your institute."
+  );
+  if (!options?.selfInitiated) {
+    useOfflineStore.getState().setRevokedDialogOpen(true);
+  }
   await syncLeaseStateToStore(userId, await deviceStateDao.get(db, userId));
   await useOfflineStore.getState().hydrate(userId);
   void eventFlusher.flush(userId);
 }
 
-function revocationMessage(reason: "DEVICE_REVOKED" | "UNENROLLED" | "OFFLINE_DISABLED"): string {
+/**
+ * Names the course when we know it. "this course" reads as nonsense on the
+ * Downloads screen, which is a global list — the learner has no way to tell
+ * which course the notice is about. OFFLINE_DISABLED is also an institute-wide
+ * switch, so its copy must not imply a single course was singled out.
+ */
+function revocationMessage(
+  reason: "DEVICE_REVOKED" | "UNENROLLED" | "OFFLINE_DISABLED",
+  courseName: string | null
+): string {
+  const course = courseName ? `"${courseName}"` : null;
   switch (reason) {
     case "UNENROLLED":
-      return "You're no longer enrolled in this course — offline content was removed.";
+      return course
+        ? `You're no longer enrolled in ${course} — its offline content was removed.`
+        : "You're no longer enrolled — that course's offline content was removed.";
     case "OFFLINE_DISABLED":
-      return "Your institute turned off offline access for this course.";
+      return course
+        ? `Your institute turned off offline downloads, so ${course} was removed from this device.`
+        : "Your institute turned off offline downloads, so saved content was removed from this device.";
     case "DEVICE_REVOKED":
     default:
-      return "Offline access to this course was removed by your institute.";
+      return course
+        ? `Offline access was removed by your institute, so ${course} was removed from this device.`
+        : "Offline access was removed by your institute, so saved content was removed from this device.";
   }
 }

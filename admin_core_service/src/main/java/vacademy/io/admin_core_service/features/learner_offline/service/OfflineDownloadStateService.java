@@ -3,10 +3,12 @@ package vacademy.io.admin_core_service.features.learner_offline.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineDownloadTelemetryDTO;
+import vacademy.io.admin_core_service.features.learner_offline.dto.OfflineLearnerDownloadDTO;
 import vacademy.io.admin_core_service.features.learner_offline.repository.OfflineDownloadStateRepository;
 
 import java.sql.Timestamp;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,5 +40,25 @@ public class OfflineDownloadStateService {
             perSlide.put((String) row[0], ((Number) row[1]).longValue());
         }
         return new OfflineDownloadTelemetryDTO(learners, devices, perSlide);
+    }
+
+    /** Who is holding this batch offline, one row per learner-device pair. */
+    public List<OfflineLearnerDownloadDTO> getLearnerDownloads(String packageSessionId) {
+        return offlineDownloadStateRepository.findLearnerDownloads(packageSessionId).stream()
+                .map(row -> new OfflineLearnerDownloadDTO(
+                        row.getUserId(),
+                        row.getFullName(),
+                        row.getUsername(),
+                        row.getEmail(),
+                        row.getDeviceId(),
+                        row.getDeviceName(),
+                        row.getPlatform(),
+                        row.getDeviceStatus(),
+                        row.getLastCheckinAt(),
+                        row.getLeaseExpiresAt(),
+                        row.getDownloadedSlides(),
+                        row.getFirstDownloadedAt(),
+                        row.getLastDownloadedAt()))
+                .toList();
     }
 }

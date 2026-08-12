@@ -90,11 +90,18 @@ async function toAppSlide(
         // fall back to the (unencrypted-in-memory) manifest copy already on `base`
       }
     }
-    if (slide.slide_type?.toUpperCase() === "QUIZ") {
+    const slideType = slide.slide_type?.toUpperCase();
+    if (slideType === "DOCUMENT") {
+      // DOC/HTML documents keep their content inline (only PDFs are a binary
+      // asset), so the payload IS the document. Without this the viewer got a
+      // slide with no document_slide at all and rendered a blank page over
+      // content that was sitting decrypted-able on disk.
+      base.document_slide = payload as Slide["document_slide"];
+    } else if (slideType === "QUIZ") {
       base.quiz_slide = payload as Slide["quiz_slide"];
-    } else if (slide.slide_type?.toUpperCase() === "QUESTION") {
+    } else if (slideType === "QUESTION") {
       base.question_slide = payload as Slide["question_slide"];
-    } else if (slide.slide_type?.toUpperCase() === "ASSIGNMENT") {
+    } else if (slideType === "ASSIGNMENT") {
       base.assignment_slide = payload as Slide["assignment_slide"];
     }
   }

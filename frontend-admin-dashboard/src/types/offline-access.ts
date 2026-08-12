@@ -99,6 +99,24 @@ export interface OfflineDownloadTelemetryDTO {
     per_slide_counts?: Record<string, number>;
 }
 
+/** One learner-device pair holding this batch offline (admin Downloads tab). */
+export interface OfflineLearnerDownloadDTO {
+    user_id: string;
+    full_name?: string | null;
+    username?: string | null;
+    email?: string | null;
+    /** offline_device.id — the id the revoke endpoint takes. */
+    device_id: string;
+    device_name?: string | null;
+    platform?: string | null;
+    device_status: 'ACTIVE' | 'REVOKED';
+    last_checkin_at?: string | null;
+    lease_expires_at?: string | null;
+    downloaded_slides: number;
+    first_downloaded_at?: string | null;
+    last_downloaded_at?: string | null;
+}
+
 export interface OfflineSyncDiscrepancyDTO {
     id: string;
     client_event_id: string;

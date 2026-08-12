@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useOfflineAvailable } from "@/hooks/offline/use-offline-availability";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useParentPortalSwitch } from "@/hooks/use-parent-portal-switch";
@@ -21,6 +22,7 @@ import { Student } from "@/types/user/user-detail";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 import {
   HamBurgerSidebarItemsData,
+  stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
 } from "../sidebar/utils";
@@ -51,6 +53,7 @@ export const UserMenu = ({ className }: { className?: string }) => {
     undefined,
   );
   const [filteredItems, setFilteredItems] = useState(HamBurgerSidebarItemsData);
+  const offlineAvailable = useOfflineAvailable();
 
   // Institute-wide feature toggle (ONBOARDING_SETTING, same one the admin
   // dashboard's sidebar entry gates on) — the menu item exists for every
@@ -137,13 +140,18 @@ export const UserMenu = ({ className }: { className?: string }) => {
 
   // Account navigation items, minus the destructive ones which get their
   // own grouping below the separator.
-  const navItems = filteredItems.filter(
+  // Offline is native-only AND admin-gated, so its entry must disappear here
+  // too — this dropdown renders the same list as the hamburger sheet, and
+  // filtering only the sidebar left the item reachable from the top navbar.
+  const accountItems =
+    offlineAvailable === true ? filteredItems : stripOfflineEntries(filteredItems);
+  const navItems = accountItems.filter(
     (item) =>
       item.to !== "/logout" &&
       item.to !== "/delete-user" &&
       (item.id !== "onboarding" || onboardingEnabled === true),
   );
-  const deleteAccountItem = filteredItems.find(
+  const deleteAccountItem = accountItems.find(
     (item) => item.to === "/delete-user",
   );
 

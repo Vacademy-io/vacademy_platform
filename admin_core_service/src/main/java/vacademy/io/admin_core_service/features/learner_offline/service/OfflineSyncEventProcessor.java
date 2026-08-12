@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_offline.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +47,22 @@ public class OfflineSyncEventProcessor {
     private final QuestionSlideActivityLogService questionSlideActivityLogService;
     private final QuizSlideActivityLogService quizSlideActivityLogService;
     private final AssignmentSlideActivityLogService assignmentSlideActivityLogService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * Unknown properties must NOT fail an offline event.
+     *
+     * The online tracking controllers deserialize the very same payloads through Spring Boot's
+     * auto-configured mapper, which disables FAIL_ON_UNKNOWN_PROPERTIES; a hand-rolled
+     * {@code new ObjectMapper()} keeps Jackson's default (fail), so payloads the live endpoint
+     * accepts were rejected here. That is how every queued QUESTION event died on the extra
+     * {@code question_name} field the learner app sends — the answer was captured offline,
+     * retried forever, and never landed.
+     *
+     * It also matters for version skew: a queued event can be days old, or written by a newer
+     * app build than the server. Tolerating extra fields keeps an outdated payload syncable
+     * instead of permanently stuck.
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public OfflineSyncEventResultDTO process(OfflineSyncEventRequestDTO event, String deviceId,

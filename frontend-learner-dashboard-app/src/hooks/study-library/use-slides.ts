@@ -267,13 +267,28 @@ async function fetchSlidesOnline(chapterId: string) {
 
 async function tryHydrateOffline(chapterId: string): Promise<Slide[] | null> {
   try {
-    const [{ getUserId }, { getPackageSessionId }, { hydrateOfflineSlides }] = await Promise.all([
-      import("@/constants/getUserId"),
-      import("@/utils/study-library/get-list-from-stores/getPackageSessionId"),
-      import("@/lib/offline/hydrate-slides"),
-    ]);
-    const [userId, packageSessionId] = await Promise.all([getUserId(), getPackageSessionId()]);
-    if (!userId || !packageSessionId) return null;
+    const [{ getUserId }, { getPackageSessionId }, { hydrateOfflineSlides }, { getOfflineDb }, { nodesDao }] =
+      await Promise.all([
+        import("@/constants/getUserId"),
+        import("@/utils/study-library/get-list-from-stores/getPackageSessionId"),
+        import("@/lib/offline/hydrate-slides"),
+        import("@/lib/offline/db/connection"),
+        import("@/lib/offline/db/dao/nodes-dao"),
+      ]);
+    const userId = await getUserId();
+    if (!userId) return null;
+
+    // Resolve the batch from the chapter the learner actually opened. This used
+    // to come from Preferences' StudentDetails, which holds only the learner's
+    // PRIMARY batch — so for anyone enrolled in more than one, opening a
+    // downloaded chapter from a different course looked up the wrong manifest,
+    // found nothing, and the viewer rendered "No content" over content sitting
+    // on disk. The chapter's node row carries its own package_session_id.
+    const db = await getOfflineDb();
+    const chapterNode = await nodesDao.get(db, userId, chapterId);
+    const packageSessionId = chapterNode?.package_session_id ?? (await getPackageSessionId());
+    if (!packageSessionId) return null;
+
     return await hydrateOfflineSlides(userId, packageSessionId, chapterId);
   } catch {
     return null;

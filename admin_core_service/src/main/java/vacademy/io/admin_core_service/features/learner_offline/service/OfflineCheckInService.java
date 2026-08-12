@@ -114,21 +114,41 @@ public class OfflineCheckInService {
      * check-in operates at course granularity).
      */
     private boolean isOfflineAllowedForCourse(String instituteId, String packageSessionId) {
-        boolean instituteEnabled = offlineSettingService.isEnabled(instituteId);
+        // Institute kill-switch is absolute.
+        if (!offlineSettingService.isEnabled(instituteId)) {
+            return false;
+        }
 
         PackageSession packageSession = packageSessionRepository.findById(packageSessionId).orElse(null);
         String packageId = packageSession != null && packageSession.getPackageEntity() != null
                 ? packageSession.getPackageEntity().getId() : null;
-        boolean courseDefault = offlineAccessRuleService.getCourseDefault(packageId);
+
+        List<OfflineAccessRule> rules = offlineAccessRuleRepository.findAllForPackageSession(packageSessionId,
+                packageId);
 
         Map<String, Boolean> ruleMap = new HashMap<>();
-        for (OfflineAccessRule rule : offlineAccessRuleRepository.findAllForPackageSession(packageSessionId, packageId)) {
+        for (OfflineAccessRule rule : rules) {
             ruleMap.put(rule.getSourceType().name() + ":" + rule.getSourceId(), rule.getAllow());
         }
-        Boolean packageAllow = ruleMap.get("PACKAGE:" + packageId);
-        Boolean packageSessionAllow = ruleMap.get("PACKAGE_SESSION:" + packageSessionId);
 
-        return OfflineAccessResolver.resolve(java.util.Arrays.asList(packageAllow, packageSessionAllow),
-                courseDefault, instituteEnabled);
+        // An explicit Block at course/batch level blocks the whole course.
+        if (Boolean.FALSE.equals(ruleMap.get("PACKAGE:" + packageId))
+                || Boolean.FALSE.equals(ruleMap.get("PACKAGE_SESSION:" + packageSessionId))) {
+            return false;
+        }
+
+        // CRITICAL: this check decides whether the learner's downloads get
+        // PURGED, so it must not be stricter than what the manifest allows.
+        // Permission is frequently granted deeper than the course (e.g. a
+        // single chapter Allowed while the course default is off) — treating
+        // this as a course-only decision wrongly purged legitimately
+        // downloaded content. Any explicit Allow anywhere in this batch keeps
+        // the course alive; per-node enforcement still happens in the manifest.
+        boolean anyExplicitAllow = rules.stream().anyMatch(r -> Boolean.TRUE.equals(r.getAllow()));
+        if (anyExplicitAllow) {
+            return true;
+        }
+
+        return offlineAccessRuleService.getCourseDefault(packageId);
     }
 }

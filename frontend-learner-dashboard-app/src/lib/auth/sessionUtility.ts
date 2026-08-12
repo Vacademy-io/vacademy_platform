@@ -2,6 +2,7 @@ import axios, { type AxiosResponse } from "axios";
 import { Preferences as Storage } from "@capacitor/preferences";
 import { jwtDecode } from "jwt-decode";
 import { REFRESH_TOKEN_URL, TERMINATE_CURRENT_SESSION } from "@/constants/urls";
+import { resetOfflineAvailabilityCache } from "@/hooks/offline/use-offline-availability";
 import { UnauthorizedResponse } from "@/constants/auth/unauthorizeresponse";
 import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
@@ -288,6 +289,11 @@ const clearBrowserCaches = (): void => {
 // a shared device. Only the institute id (used for branding / course comparison
 // after logout) and non-sensitive UI preferences (theme) are preserved.
 const removeTokensAndLogout = async (): Promise<void> => {
+  // The offline availability answer is institute-scoped and cached for the
+  // session; a different learner (or institute) logging in on this device must
+  // re-resolve it rather than inherit the previous one.
+  resetOfflineAvailabilityCache();
+
   // Capture the institute id so we can restore it after the wipe.
   let preservedInstituteId: string | null = null;
   try {

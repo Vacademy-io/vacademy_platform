@@ -10,7 +10,7 @@ import { QuizSlideActivityLogPayload } from "@/types/quiz-slide-activity-log";
 import { getUserId } from "@/constants/getUserId";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
-import { trackOrQueue } from "@/lib/offline/events/track-or-queue";
+import { trackOrQueue, isNetworkError } from "@/lib/offline/events/track-or-queue";
 import QuizReview from "./QuizReview";
 import { useGetQuizSlideActivityLogs } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -744,18 +744,32 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         }),
       };
 
-      const offlineQueued = await trackOrQueue({
+      let offlineQueued = await trackOrQueue({
         userId,
         eventType: "QUIZ",
         context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
         payload,
       });
       if (!offlineQueued) {
-        await submitQuizMutation.mutateAsync({
-          slideId, chapterId, moduleId, subjectId,
-          packageSessionId, userId,
-          requestPayload: payload,
-        });
+        try {
+          await submitQuizMutation.mutateAsync({
+            slideId, chapterId, moduleId, subjectId,
+            packageSessionId, userId,
+            requestPayload: payload,
+          });
+        } catch (error) {
+          // Never lose an attempt to flaky connectivity: a network-failed
+          // submit is force-queued for background sync instead of thrown.
+          if (!isNetworkError(error)) throw error;
+          await trackOrQueue({
+            userId,
+            eventType: "QUIZ",
+            context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
+            payload,
+            force: true,
+          });
+          offlineQueued = true;
+        }
       }
 
       toast.success(
@@ -776,7 +790,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         );
       });
 
-      void refreshProgressAfterSubmit(chapterId);
+      // Offline, this refetch resolves to nothing and resets the quiz UI on top
+      // of an answer that was already safely queued. The flusher reconciles
+      // server-side progress once connectivity returns.
+      if (!offlineQueued) {
+        void refreshProgressAfterSubmit(chapterId);
+      }
 
       const card = computeScore(finalAnswers);
       setScoreCard(card);
@@ -891,23 +910,36 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           new_activity: payload.new_activity,
         });
         console.debug("Full payload:", payload);
-        const offlineQueued = await trackOrQueue({
+        let offlineQueued = await trackOrQueue({
           userId,
           eventType: "QUIZ",
           context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
           payload,
         });
         if (!offlineQueued) {
-          const response = await submitQuizMutation.mutateAsync({
-            slideId,
-            chapterId,
-            moduleId,
-            subjectId,
-            packageSessionId: packageSessionId,
-            userId,
-            requestPayload: payload,
-          });
-          console.log("✅ [QuizViewer] API response:", response?.data ?? response);
+          try {
+            const response = await submitQuizMutation.mutateAsync({
+              slideId,
+              chapterId,
+              moduleId,
+              subjectId,
+              packageSessionId: packageSessionId,
+              userId,
+              requestPayload: payload,
+            });
+            console.log("✅ [QuizViewer] API response:", response?.data ?? response);
+          } catch (error) {
+            // Force-queue on network failure — the attempt must survive.
+            if (!isNetworkError(error)) throw error;
+            await trackOrQueue({
+              userId,
+              eventType: "QUIZ",
+              context: { slideId, chapterId, moduleId, subjectId, packageSessionId },
+              payload,
+              force: true,
+            });
+            offlineQueued = true;
+          }
         }
         console.groupEnd();
         console.log("Quiz submitted successfully");
@@ -933,7 +965,10 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         });
 
         // ✅ STEP 3: Refresh every progress-bearing cache (slides + module rollup + course %)
-        void refreshProgressAfterSubmit(chapterId);
+        // Skipped when the attempt was queued offline — see the note above.
+        if (!offlineQueued) {
+          void refreshProgressAfterSubmit(chapterId);
+        }
         if (celebrateOnQuizComplete) {
           try {
             // Confetti: multi-wave, spread across screen with streamers and bursts

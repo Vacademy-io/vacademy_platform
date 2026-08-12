@@ -8,6 +8,7 @@ import { eventQueueDao } from "./event-queue-dao";
 import { manifestsDao } from "./manifests-dao";
 import { nodesDao } from "./nodes-dao";
 import { slidePayloadsDao } from "./slide-payloads-dao";
+import { metaDao, routeContextKey } from "./meta-dao";
 import type { AssetRow, EventQueueRow, NodeRow } from "../types";
 
 let db: OfflineDbConnection;
@@ -174,5 +175,25 @@ describe("per-user isolation (shared-device edge case)", () => {
         await nodesDao.upsert(db, { ...nodeRow("userB", "c1"), status: "NOT_DOWNLOADED" });
         expect((await nodesDao.get(db, "userA", "c1"))?.status).toBe("QUEUED");
         expect((await nodesDao.get(db, "userB", "c1"))?.status).toBe("NOT_DOWNLOADED");
+    });
+});
+
+describe("metaDao", () => {
+    // Regression: metaDao reads/writes `schema_meta`, but no migration ever created
+    // that table. Every "Open" on the Downloads screen failed with
+    // "no such table: schema_meta", and the route-context write behind the
+    // download button silently no-opped because its caller swallows errors.
+    it("round-trips a key and overwrites on conflict", async () => {
+        expect(await metaDao.get(db, "missing.key")).toBeNull();
+
+        const key = routeContextKey("ps1");
+        await metaDao.set(db, key, JSON.stringify({ courseId: "c1", levelId: "l1" }));
+        expect(JSON.parse((await metaDao.get(db, key))!)).toEqual({
+            courseId: "c1",
+            levelId: "l1",
+        });
+
+        await metaDao.set(db, key, JSON.stringify({ courseId: "c2" }));
+        expect(JSON.parse((await metaDao.get(db, key))!)).toEqual({ courseId: "c2" });
     });
 });

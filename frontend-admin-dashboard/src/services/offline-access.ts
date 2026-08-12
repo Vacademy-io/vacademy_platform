@@ -7,6 +7,7 @@ import {
     OFFLINE_ADMIN_DEVICES,
     OFFLINE_ADMIN_DISCREPANCIES,
     OFFLINE_ADMIN_TELEMETRY_DOWNLOADS,
+    OFFLINE_ADMIN_TELEMETRY_LEARNERS,
     PACKAGE_SETTING_DATA,
     PACKAGE_SETTING_SAVE,
 } from '@/constants/urls';
@@ -15,6 +16,7 @@ import {
     type OfflineAccessSettingsData,
     type OfflineDeviceDTO,
     type OfflineDownloadTelemetryDTO,
+    type OfflineLearnerDownloadDTO,
     type OfflineManifestDTO,
     type OfflineRuleDTO,
     type OfflineRuleUpsertDTO,
@@ -129,6 +131,17 @@ export const getOfflineDownloadTelemetry = async (
         { params: { packageSessionId } }
     );
     return response.data;
+};
+
+/** Learners (per device) holding this batch offline. */
+export const getOfflineLearnerDownloads = async (
+    packageSessionId: string
+): Promise<OfflineLearnerDownloadDTO[]> => {
+    const response = await authenticatedAxiosInstance.get<OfflineLearnerDownloadDTO[]>(
+        OFFLINE_ADMIN_TELEMETRY_LEARNERS,
+        { params: { packageSessionId } }
+    );
+    return response.data ?? [];
 };
 
 export interface DiscrepancyPage {

@@ -59,8 +59,22 @@ public class OfflineAssetExtractor {
                 if (d == null || !StringUtils.hasText(d.getPublishedData())) {
                     return notDownloadable();
                 }
-                assets.add(new OfflineAssetRefDTO(d.getPublishedData(), "DOCUMENT", null, null, null));
-                return new Extraction(true, assets, null);
+                // published_data is a media file id ONLY for PDF documents.
+                // DOC/HTML (and PPT_ANIM etc.) store inline content there —
+                // emitting it as an asset creates a phantom "file" the client
+                // can never download, wedging the whole node in DOWNLOADING.
+                // Those types ship as inline payload with no binary assets.
+                if ("PDF".equalsIgnoreCase(d.getType())) {
+                    assets.add(new OfflineAssetRefDTO(d.getPublishedData(), "DOCUMENT", null, null, null));
+                    // PDF content IS the binary asset — no inline payload needed.
+                    return new Extraction(true, assets, null);
+                }
+                // DOC/HTML (and PPT_ANIM etc.) keep their content inline in
+                // published_data, so the slide DTO itself is the payload. Passing
+                // null here shipped a slide that was downloadable:true with
+                // neither an asset nor a payload — nothing to store, so the node
+                // "downloaded" 0 bytes and rendered empty offline.
+                return new Extraction(true, assets, d);
             }
             case "AUDIO": {
                 AudioSlideDTO a = slide.getAudioSlide();

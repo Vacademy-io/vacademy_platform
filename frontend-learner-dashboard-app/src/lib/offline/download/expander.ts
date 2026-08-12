@@ -21,6 +21,17 @@
 import type { OfflineDbConnection } from "../db/connection";
 import { nodesDao } from "../db/dao/nodes-dao";
 import { assetsDao } from "../db/dao/assets-dao";
+
+/**
+ * A media_service file id is a short opaque token (UUID-style). Inline slide
+ * content (HTML bodies, JSON) must never be mistaken for one — reject
+ * anything with whitespace/angle brackets or implausible length.
+ */
+export function isPlausibleFileId(fileId: string | null | undefined): boolean {
+  if (!fileId) return false;
+  if (fileId.length < 4 || fileId.length > 128) return false;
+  return !/[\s<>{}"]/.test(fileId);
+}
 import { slidePayloadsDao } from "../db/dao/slide-payloads-dao";
 import type {
   AssetDownloadStatus,
@@ -31,7 +42,13 @@ import type {
 } from "../db/types";
 import { getOrCreateOfflineKey } from "../crypto/keys";
 import { encryptJsonPayload } from "../crypto/decrypt";
-import type { OfflineManifest, OfflineManifestSlide } from "@/services/offline/manifest-service";
+import type {
+  OfflineManifest,
+  OfflineManifestChapter,
+  OfflineManifestModule,
+  OfflineManifestSlide,
+  OfflineManifestSubject,
+} from "@/services/offline/manifest-service";
 
 export type ExpandableNodeType = OfflineNodeType;
 
@@ -82,6 +99,10 @@ export function slidesInSubtree(
   if (!nodeId || !nodeType) return all;
 
   switch (nodeType) {
+    // The whole course: node_id is the package session, so there is nothing to
+    // filter on — every slide in the manifest belongs to it.
+    case "COURSE":
+      return all;
     case "SLIDE":
       return all.filter((ctx) => ctx.slide.slide_id === nodeId);
     case "CHAPTER":
@@ -101,12 +122,16 @@ export function slidesInSubtree(
  * should be. Pure function — used by the expander for initial state and by
  * the download manager to recompute ancestors after each completion.
  */
-export function rollupNodeStatus(
-  childStatuses: NodeDownloadStatus[],
-  hasOnlineOnlyDescendant: boolean
-): NodeDownloadStatus {
+export function rollupNodeStatus(childStatuses: NodeDownloadStatus[]): NodeDownloadStatus {
+  // Nothing saved is NOT_DOWNLOADED, even when the subtree contains online-only
+  // content. PARTIAL has to mean "some of this is on your device" — reporting it
+  // for an untouched node made never-downloaded chapters look partly saved, and
+  // left subjects listed on the Downloads screen after "Clear all downloads"
+  // (which treats PARTIAL as on-device), so the empty state never appeared.
+  // The "can never be 100%" nuance still applies once something IS downloaded,
+  // via the allDownloaded branch below.
   if (childStatuses.length === 0) {
-    return hasOnlineOnlyDescendant ? "PARTIAL" : "NOT_DOWNLOADED";
+    return "NOT_DOWNLOADED";
   }
   if (childStatuses.some((s) => s === "ERROR")) return "ERROR";
   if (childStatuses.some((s) => s === "DOWNLOADING")) return "DOWNLOADING";
@@ -117,9 +142,15 @@ export function rollupNodeStatus(
   const anyRemoved = childStatuses.some((s) => s === "REMOVED_BY_ADMIN");
   const anyUpdateAvailable = childStatuses.some((s) => s === "UPDATE_AVAILABLE");
 
-  if (allDownloaded) return hasOnlineOnlyDescendant ? "PARTIAL" : "DOWNLOADED";
+  // Every child that CAN be saved is saved. Online-only slides get no node row
+  // at all (see the module header), so there is nothing left for the learner to
+  // download here — reporting PARTIAL showed a half-filled tick on a chapter
+  // that was as complete as it could ever be, with no way to act on it. PARTIAL
+  // is now strictly "some of this is still missing", which is what the download
+  // control keys off.
+  if (allDownloaded) return "DOWNLOADED";
   if (allNotDownloaded && !anyRemoved) {
-    return hasOnlineOnlyDescendant ? "PARTIAL" : "NOT_DOWNLOADED";
+    return "NOT_DOWNLOADED"; // see the note above — nothing saved is never PARTIAL
   }
   if (anyUpdateAvailable) return "UPDATE_AVAILABLE";
   // Mixed (some downloaded, some not, and/or some removed-by-admin).
@@ -143,15 +174,42 @@ export function computeSlideStatus(
   return allPending ? "QUEUED" : "DOWNLOADING";
 }
 
+/**
+ * Statuses that mean "this device already holds, or is actively getting, this
+ * content". Re-walking the manifest tree must never overwrite them with the
+ * default NOT_DOWNLOADED.
+ *
+ * UPDATE_AVAILABLE and PARTIAL were missing here, and that broke the update
+ * flow outright: applyManifestUpdate calls expandNode -> ensureNodeTree over
+ * the WHOLE tree, so every node the check-in had just badged UPDATE_AVAILABLE
+ * was reset to NOT_DOWNLOADED before the "clear the badge" pass could restore
+ * it. The learner tapped Update and watched their downloaded chapter turn back
+ * into an undownloaded one, even though the payloads were still on disk.
+ * QUEUED matters for the same reason — losing it strands queued work.
+ */
+const PRESERVED_NODE_STATUSES = new Set<NodeDownloadStatus>([
+  "DOWNLOADED",
+  "DOWNLOADING",
+  "QUEUED",
+  "PARTIAL",
+  "UPDATE_AVAILABLE",
+]);
+
 async function upsertNodeIfAbsentOrNonTerminal(
   db: OfflineDbConnection,
   userId: string,
   row: NodeRow
 ): Promise<void> {
   const existing = await nodesDao.get(db, userId, row.node_id);
-  if (existing && (existing.status === "DOWNLOADED" || existing.status === "DOWNLOADING")) {
+  if (existing && PRESERVED_NODE_STATUSES.has(existing.status)) {
     // Don't downgrade content the user already has / is actively fetching
     // just because it's being re-discovered while ensuring the tree exists.
+    // The parent link is still repaired: subjects predating the COURSE root
+    // were stored with parent_id null, and leaving them detached would hide
+    // already-downloaded subjects from the course's rollup.
+    if (existing.parent_id !== row.parent_id) {
+      await nodesDao.setParent(db, userId, row.node_id, row.parent_id);
+    }
     return;
   }
   await nodesDao.upsert(db, row);
@@ -168,18 +226,50 @@ export async function ensureNodeTree(
   userId: string,
   manifest: OfflineManifest
 ): Promise<void> {
+  // A container earns a node row only if something beneath it can actually be
+  // saved. Online-only slides already get none; without the same rule for their
+  // containers, a fully-restricted chapter sat in every ancestor's rollup as a
+  // child that could never reach DOWNLOADED, so its module/subject/course were
+  // stuck reporting PARTIAL forever.
+  const savable = (slidesList: OfflineManifestSlide[]) =>
+    slidesList.some((slide) => slide.downloadable);
+  const chapterSavable = (chapter: OfflineManifestChapter) => savable(chapter.slides ?? []);
+  const moduleSavable = (mod: OfflineManifestModule) =>
+    (mod.chapters ?? []).some(chapterSavable);
+  const subjectSavable = (subject: OfflineManifestSubject) =>
+    (subject.modules ?? []).some(moduleSavable);
+
+  if (!(manifest.subjects ?? []).some(subjectSavable)) {
+    // Nothing in this course is downloadable — leave no tree behind at all.
+    return;
+  }
+
+  // Course root, so "download everything in this course" is a node like any
+  // other and rolls up from its subjects.
+  await upsertNodeIfAbsentOrNonTerminal(db, userId, {
+    user_id: userId,
+    node_id: manifest.package_session_id,
+    node_type: "COURSE",
+    package_session_id: manifest.package_session_id,
+    parent_id: null,
+    status: "NOT_DOWNLOADED",
+    bytes_total: 0,
+    bytes_done: 0,
+  });
   for (const subject of manifest.subjects ?? []) {
+    if (!subjectSavable(subject)) continue;
     await upsertNodeIfAbsentOrNonTerminal(db, userId, {
       user_id: userId,
       node_id: subject.subject_id,
       node_type: "SUBJECT",
       package_session_id: manifest.package_session_id,
-      parent_id: null,
+      parent_id: manifest.package_session_id,
       status: "NOT_DOWNLOADED",
       bytes_total: 0,
       bytes_done: 0,
     });
     for (const mod of subject.modules ?? []) {
+      if (!moduleSavable(mod)) continue;
       await upsertNodeIfAbsentOrNonTerminal(db, userId, {
         user_id: userId,
         node_id: mod.module_id,
@@ -191,6 +281,7 @@ export async function ensureNodeTree(
         bytes_done: 0,
       });
       for (const chapter of mod.chapters ?? []) {
+        if (!chapterSavable(chapter)) continue;
         await upsertNodeIfAbsentOrNonTerminal(db, userId, {
           user_id: userId,
           node_id: chapter.chapter_id,
@@ -257,6 +348,13 @@ export async function expandNode(
     const { slide, chapterId } = ctx;
 
     // Slide node: QUEUED unless it's already fully DOWNLOADED (idempotent re-enqueue).
+    // Defensive: only sane media file ids become download jobs. A malformed
+    // manifest (e.g. inline HTML leaking into file_id) must never enqueue an
+    // undownloadable phantom asset — that wedges the node in DOWNLOADING
+    // forever (spec §4.2 "phantom downloading state").
+    const validAssets = (slide.assets ?? []).filter((a) => isPlausibleFileId(a.file_id));
+    const droppedAssets = (slide.assets ?? []).length - validAssets.length;
+
     const existingSlideNode = await nodesDao.get(db, userId, slide.slide_id);
     if (existingSlideNode?.status !== "DOWNLOADED") {
       await nodesDao.upsert(db, {
@@ -266,12 +364,28 @@ export async function expandNode(
         package_session_id: manifest.package_session_id,
         parent_id: chapterId,
         status: "QUEUED",
-        bytes_total: (slide.assets ?? []).reduce((sum, a) => sum + (a.size_bytes ?? 0), 0),
+        bytes_total: validAssets.reduce((sum, a) => sum + (a.size_bytes ?? 0), 0),
         bytes_done: existingSlideNode?.bytes_done ?? 0,
       });
     }
 
-    for (const asset of slide.assets ?? []) {
+    if (droppedAssets > 0) {
+      console.warn(
+        `[offline-expander] dropped ${droppedAssets} malformed asset ref(s) on slide ${slide.slide_id}`
+      );
+    }
+
+    // The manifest is the source of truth for a slide's assets. Purge any local
+    // row it no longer lists — a leftover from an older (or buggier) manifest
+    // can never be downloaded, so it would keep its slide QUEUED forever.
+    const wantedFileIds = new Set(validAssets.map((a) => a.file_id));
+    for (const row of await assetsDao.listBySlide(db, userId, slide.slide_id)) {
+      if (!wantedFileIds.has(row.file_id)) {
+        await assetsDao.deleteByFileAndSlide(db, userId, row.file_id, slide.slide_id);
+      }
+    }
+
+    for (const asset of validAssets) {
       assetCount++;
       totalBytes += asset.size_bytes ?? 0;
       const existingAsset = await assetsDao.get(db, userId, asset.file_id, slide.slide_id);
@@ -309,17 +423,29 @@ export async function expandNode(
       }
     }
 
-    // If the slide has no assets AND no payload (nothing to fetch), it's
-    // trivially complete the moment it's queued.
-    if ((slide.assets ?? []).length === 0 && (slide.inline_payload === null || slide.inline_payload === undefined)) {
-      await nodesDao.setStatus(db, userId, slide.slide_id, "DOWNLOADED");
+    // If the slide has no (valid) assets AND no payload — or its payload is
+    // already stored and every remaining asset was malformed — it's complete
+    // the moment it's queued.
+    if (validAssets.length === 0) {
+      const hasPayload = slide.inline_payload !== null && slide.inline_payload !== undefined;
+      const payloadStored = hasPayload
+        ? (await slidePayloadsDao.get(db, userId, slide.slide_id)) !== null
+        : true;
+      if (payloadStored) {
+        await nodesDao.setStatus(db, userId, slide.slide_id, "DOWNLOADED");
+      }
     }
   }
 
   // Roll target + ancestor container nodes up to QUEUED (download-manager
   // will refine to DOWNLOADING/DOWNLOADED/PARTIAL as jobs complete).
   const containerIds = new Set<string>();
-  for (const ctx of slides) {
+  // Only containers that actually have work queued. Building this from every
+  // slide in the subtree marked chapters whose slides are all online-only as
+  // QUEUED — nothing would ever download for them, so nothing ever recomputed
+  // them, and the QUEUED chapter wedged its module, subject and course on a
+  // permanent spinner.
+  for (const ctx of downloadable) {
     containerIds.add(ctx.chapterId);
     containerIds.add(ctx.moduleId);
     containerIds.add(ctx.subjectId);

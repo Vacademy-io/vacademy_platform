@@ -12,6 +12,7 @@ import {
   UserCircle,
   UserCircleMinus,
   ClipboardText,
+  DownloadSimple,
 } from "@phosphor-icons/react";
 import i18next from "i18next";
 import {
@@ -226,6 +227,25 @@ const naivePluralize = (word: string): string => {
   return `${word}s`;
 };
 
+
+/**
+ * Removes every offline/Downloads entry from a sidebar list.
+ *
+ * Offline is native-only AND admin-gated, so the nav entry must disappear on
+ * web and whenever the institute has the feature switched off — otherwise the
+ * learner is offered a Downloads screen that can never hold anything. Applied
+ * at the single render choke point in mySidebar so it catches both the
+ * top-level item and the study-library sub-item.
+ */
+export const stripOfflineEntries = (items: SidebarItemsType[]): SidebarItemsType[] =>
+  items
+    .filter((item) => item.to !== "/downloads")
+    .map((item) =>
+      item.subItems
+        ? { ...item, subItems: item.subItems.filter((s) => s.subItemLink !== "/downloads") }
+        : item
+    );
+
 export const SidebarItemsData: SidebarItemsType[] = [
   {
     icon: House,
@@ -252,6 +272,10 @@ export const SidebarItemsData: SidebarItemsType[] = [
           SystemTerms.LiveSession
         ),
         subItemLink: "/study-library/live-class",
+      },
+      {
+        subItem: "Downloads",
+        subItemLink: "/downloads",
       },
     ],
   },
@@ -317,6 +341,12 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     id: "my-files",
     title: "My Files",
     to: "/my-files",
+  },
+  {
+    icon: DownloadSimple,
+    id: "offline-downloads",
+    title: "Downloads",
+    to: "/downloads",
   },
   { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
   { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/profile/onboarding" },

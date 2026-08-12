@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { Network } from "@/utils/network-plugin";
 
 // Refresh every React Query cache that feeds a progress UI after a slide submit.
 //
@@ -66,6 +67,18 @@ export const refreshProgressAfterSubmit = async (
   queryClient: QueryClient,
   chapterId: string
 ): Promise<void> => {
+  // Offline, there is no cascade to reconcile against and the refetch resolves
+  // to nothing — which remounts the slide component and wipes the learner's
+  // just-submitted answer along with its "Submitted" state, making a safely
+  // queued submit look like it never happened. The offline event flusher
+  // reconciles server progress when connectivity returns, so skip entirely.
+  try {
+    const status = await Network.getStatus();
+    if (!status.connected) return;
+  } catch {
+    // Can't determine connectivity — proceed as before.
+  }
+
   // First wave: awaited, includes the per-slide cache.
   await new Promise((resolve) => setTimeout(resolve, FIRST_WAVE_MS));
   await invalidateProgress(queryClient, chapterId, true);

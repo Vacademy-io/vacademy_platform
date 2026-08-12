@@ -766,6 +766,13 @@ class GeneratePageRequest(BaseModel):
     # Audit the composed page for visible defects and spend one extra model call
     # repairing them. Off only for callers that want the raw composition.
     self_check: bool = True
+    # The site's EXISTING theme. Send it when adding a page to a site that
+    # already has a look: the composer then designs INTO that palette — picking
+    # section tints and card styles that sit on it — instead of proposing a
+    # fresh theme the admin has to remember not to apply. Without this there was
+    # no way to say "same theme as my other pages" for a single page; only
+    # multi-page site generation pinned a shared theme, and it did so internally.
+    global_settings: Optional[Dict[str, Any]] = None
 
 
 class GeneratePageResponse(BaseModel):
@@ -2128,8 +2135,12 @@ async def generate_page(
         )
 
     catalog = _load_catalog()
+    # Clamped to theme/fonts/motion: the caller's globalSettings also carries
+    # tracking ids, lead-capture config and payment settings, none of which
+    # belong in a prompt or in a response the editor merges back.
+    pinned = _coerce_global_settings(body.global_settings) if body.global_settings else None
     page, global_settings, warnings, model_used, run_id = await _compose_one_page(
-        body, catalog, db, institute_id, actor_user_id
+        body, catalog, db, institute_id, actor_user_id, fixed_global=pinned
     )
     return GeneratePageResponse(
         page=page, global_settings=global_settings, run_id=run_id, model=model_used, warnings=warnings

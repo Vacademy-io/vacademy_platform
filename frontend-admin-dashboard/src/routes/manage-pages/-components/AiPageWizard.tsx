@@ -95,6 +95,10 @@ export const AiPageWizard = ({
     // The brief step was reached from the assistant rather than typed by hand,
     // so its fields are a proposal to review — chiefly the page type.
     const [fromAssistant, setFromAssistant] = useState(false);
+    // Adding a page to a site that already has a look should match it. Default
+    // ON whenever a theme exists, because "a new page, same theme" is the common
+    // case and the alternative silently restyles every existing page.
+    const [keepTheme, setKeepTheme] = useState(true);
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     // Every generation lands as a variant tab; the admin flips between them
     // and accepts the one they like (regens never overwrite earlier drafts).
@@ -143,6 +147,13 @@ export const AiPageWizard = ({
             }));
     }, [instituteDetails]);
 
+    /** Only the look — never tracking ids, lead-capture or payment config. */
+    const siteTheme = useMemo(() => {
+        const gs = (config?.globalSettings ?? {}) as Record<string, any>;
+        if (!gs.theme && !gs.fonts) return undefined;
+        return { theme: gs.theme, fonts: gs.fonts, motion: gs.motion };
+    }, [config?.globalSettings]);
+
     const terminology = useMemo(
         () => ({
             course: getTerminology(ContentTerms.Course, SystemTerms.Course),
@@ -168,6 +179,7 @@ export const AiPageWizard = ({
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
                 inspiration_image_urls: inspiration,
+                global_settings: keepTheme ? siteTheme : undefined,
                 source_url: sourceUrl.trim() || undefined,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
@@ -400,6 +412,19 @@ export const AiPageWizard = ({
                                     : 'Add a brief to continue — your logo, photos and inspiration screenshots come next.'}
                             </p>
                         </div>
+                        {siteTheme && (
+                            <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                                <div>
+                                    <Label className="text-xs">Match my current site theme</Label>
+                                    <p className="text-caption text-gray-400">
+                                        Keeps the colours and fonts your other pages already use. Turn off
+                                        only if you want this page to propose its own — that would restyle
+                                        the whole site when you accept it.
+                                    </p>
+                                </div>
+                                <Switch checked={keepTheme} onCheckedChange={setKeepTheme} />
+                            </div>
+                        )}
                         <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
                             <div>
                                 <Label className="text-xs">Use my real {terminology.course.toLowerCase()} data</Label>

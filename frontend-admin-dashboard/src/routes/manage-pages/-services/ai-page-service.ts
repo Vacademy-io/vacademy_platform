@@ -41,6 +41,10 @@ export interface GeneratePagePayload {
     /** Pin one of the composer's design languages instead of letting it choose —
      *  the mechanism behind "same brief, a different direction". */
     design_language?: DesignLanguageId;
+    /** The site's existing theme/fonts/motion. Send it to add a page that
+     *  matches the rest of the site — the composer designs into this palette
+     *  and returns it unchanged instead of proposing a new one. */
+    global_settings?: Record<string, any>;
     auto_images?: boolean;
     run_id?: string;
 }

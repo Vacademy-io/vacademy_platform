@@ -5,6 +5,7 @@ import {
     ArrowLeft,
     Books,
     Exam,
+    GraduationCap,
     ListNumbers,
     Plus,
     Spinner,
@@ -325,6 +326,21 @@ function KnowledgeBaseDetailPage() {
                                         >
                                             <Exam className="mr-1 size-4" />
                                             Create question paper
+                                        </MyButton>
+                                    )}
+                                    {readySources.length > 0 && (
+                                        <MyButton
+                                            buttonType="secondary"
+                                            scale="medium"
+                                            onClick={() =>
+                                                navigate({
+                                                    to: '/study-library/ai-copilot',
+                                                    search: { kb: kbId },
+                                                })
+                                            }
+                                        >
+                                            <GraduationCap className="mr-1 size-4" />
+                                            Create course
                                         </MyButton>
                                     )}
                                     {writable && (

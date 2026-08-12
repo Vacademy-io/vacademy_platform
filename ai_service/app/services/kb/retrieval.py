@@ -97,6 +97,17 @@ class KbRetrievalService:
         if not embedding:
             logger.warning("KB search: query embedding failed for kb=%s", kb_id)
             return []
+        # A zero-norm vector makes pgvector's cosine distance NaN, and Postgres
+        # sorts NaN ABOVE every number — so `similarity > threshold` admits every
+        # chunk in the corpus and each one comes back looking like a confident
+        # match. Refusing here is the difference between "no answer" and an
+        # answer cited to arbitrary pages.
+        if not any(embedding):
+            logger.warning(
+                "KB search: degenerate (all-zero) query embedding for kb=%s — "
+                "refusing rather than matching everything", kb_id,
+            )
+            return []
 
         hits = self.repo.search_chunks(
             kb_id=kb_id,
@@ -136,7 +147,9 @@ class KbRetrievalService:
         cross-ranked, which is the correct failure mode.
         """
         embedding = await self._embed_query(query, institute_id)
-        if not embedding:
+        # Same NaN trap as search(): a zero-norm vector would match every chunk
+        # across every knowledge base the institute owns.
+        if not embedding or not any(embedding):
             return []
         spec = self.repo.get_default_embedding_model()
         return self.repo.search_institute_wide(

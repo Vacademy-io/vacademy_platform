@@ -224,7 +224,12 @@ function RouteComponent() {
     const [courseDepth, setCourseDepth] = useState<number>(3);
     // Material the institute already owns. When set, the outline follows its
     // topic tree and each slide is written from the pages about its subject.
-    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(null);
+    const { kb: kbFromLink } = Route.useSearch();
+    // Arriving from a knowledge base page: start already grounded in it, so
+    // the teacher does not have to find the same material again.
+    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(
+        kbFromLink ? { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' } : null
+    );
     // Chapter/slide counts start at '5', so "still empty?" can never detect an
     // untouched control. Track the teacher's own choice explicitly instead.
     const structureChosenByUser = useRef(false);

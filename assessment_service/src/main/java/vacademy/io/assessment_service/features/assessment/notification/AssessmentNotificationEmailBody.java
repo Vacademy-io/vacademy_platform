@@ -2,15 +2,6 @@ package vacademy.io.assessment_service.features.assessment.notification;
 
 public class AssessmentNotificationEmailBody {
 
-    /**
-     * Body for the assessment-report email. The report travels as a PDF attachment —
-     * {@code AssessmentReportNotificationService} supplies only {@code learner_name}, so any
-     * other placeholder here ships to the learner literally. This template used to carry a
-     * "Download Report" button pointing at {@code href="{{report_link}}"} and a support link
-     * at {@code href="{{support_link}}"}; neither was ever populated, and there is no report
-     * URL to populate the first one with. Both are gone — do not reintroduce a placeholder
-     * without wiring a value for it in the sender.
-     */
     public static String getAssessmentReportBody() {
         return """
                 <!DOCTYPE html>
@@ -32,12 +23,14 @@ public class AssessmentNotificationEmailBody {
                                 <p style="font-size: 18px; font-weight: bold;">Dear {{learner_name}},</p>
                                 <p>We are pleased to share your assessment report. Your performance and feedback are detailed in the attached document.</p>
                                 <p>For any questions, feel free to reach out. We appreciate your dedication to learning! 🚀</p>
-                                <div style="text-align: center; margin-top: 20px; padding: 12px 24px; background: #fdf2ec; border-radius: 6px; font-size: 16px; font-weight: bold; color: #e06623;">📎 Your report is attached to this email as report.pdf</div>
+                                <div style="text-align: center; margin-top: 20px;">
+                                    <a href="{{report_link}}" style="background: #e06623; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">📥 Download Report</a>
+                                </div>
                             </td>
                         </tr>
                         <tr>
                             <td style="background: #f8f8f8; padding: 15px; text-align: center; font-size: 14px; color: #666; border-radius: 0 0 12px 12px;">
-                                <p>Need help? Just reply to this email.</p>
+                                <p>Need help? <a href="{{support_link}}" style="color: #e06623; text-decoration: none; font-weight: bold;">Contact Support</a></p>
                             </td>
                         </tr>
                     </table>

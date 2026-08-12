@@ -30,8 +30,14 @@ import {
 } from '../-services/ai-page-service';
 import { Component, Page } from '../-types/editor-types';
 
+// MUST cover every archetype the composer knows (_ARCHETYPE_RULES in
+// page_builder.py). 'courses' was missing: the intake assistant returns it, but
+// with no chip for it the brief step renders with nothing selected and the
+// admin has to pick something else — silently swapping the archetype that
+// guarantees every offering gets its own block for one that does not.
 const PAGE_TYPES = [
     { key: 'homepage', label: 'Homepage' },
+    { key: 'courses', label: 'All courses' },
     { key: 'course-landing', label: 'Course landing' },
     { key: 'about', label: 'About us' },
     { key: 'admissions', label: 'Admissions' },

@@ -155,6 +155,8 @@ export interface CallDiagnostics {
         maxReplyRestarts?: number | null;
         /** Sentences dropped because the bot had already said them this call. */
         repeatsSuppressed?: number | null;
+        /** Opening clauses dropped because they only parroted the caller's answer back. */
+        echoesTrimmed?: number | null;
         /** Operator/voicemail lines filtered out of the agent's context. */
         carrierAnnouncements?: number | null;
         nudges?: number | null;
@@ -165,6 +167,14 @@ export interface CallDiagnostics {
         /** The discarded caller answers, verbatim (bounded to 20 by the bot). */
         answersDeletedSamples?: string[] | null;
         answersDeletedSrc?: 'measured' | null;
+        /**
+         * Lost the same way, but a part-word scrap ("वो।") rather than an answer —
+         * rules v3 stopped counting these as `answersDeleted`, because one of them
+         * turned a healthy call AMBER and claimed an answer had gone missing.
+         * Evidence only: it fires no fault. Absent on rows written before v3.
+         */
+        fragmentsLost?: number | null;
+        fragmentsLostSamples?: string[] | null;
     } | null;
     latency?: {
         llmTtfbP50?: number | null;

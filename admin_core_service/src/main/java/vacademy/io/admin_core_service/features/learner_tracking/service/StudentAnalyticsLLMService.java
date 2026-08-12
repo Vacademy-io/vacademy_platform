@@ -36,12 +36,17 @@ public class StudentAnalyticsLLMService {
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
         /**
-         * Hard ceiling on generated tokens. The insight JSON this service asks for fits
-         * comfortably; before this cap was added the job routinely emitted ~10K
-         * completion tokens per activity log, and output costs 5-10x input on every
-         * model in the chain.
+         * Hard ceiling on generated tokens.
+         *
+         * Sized from what the insight schema actually needs: successful completions
+         * measured in prod ran 6,338-10,754 tokens per activity log (sonnet-4.5 6,338,
+         * minimax-m3 9,478, gemini-2.5-pro 10,754). An earlier 2,000 cap truncated the
+         * JSON mid-object, so parseResponse threw "Unexpected end-of-input", the chain
+         * fell through to the fallback model, and BOTH models were billed for every log
+         * while nothing completed. Keep meaningful headroom above the observed maximum -
+         * a truncated response costs full price and yields nothing.
          */
-        private static final int MAX_COMPLETION_TOKENS = 2000;
+        private static final int MAX_COMPLETION_TOKENS = 12000;
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;

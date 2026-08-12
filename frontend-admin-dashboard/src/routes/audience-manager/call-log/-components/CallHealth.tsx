@@ -510,10 +510,14 @@ function DeletedAnswers({ d }: { d: CallDiagnostics }) {
                 </p>
             ) : (
                 <div className="flex flex-col gap-2">
+                    {/* "or the transcript or the report" was wrong: the bot derives
+                        these very samples FROM the transcript it posts, so a discarded
+                        answer is always in both. What it never reached is the MODEL,
+                        which is why nothing in the call could respond to it. */}
                     <p className="text-sm text-neutral-700">
                         <span className="font-semibold text-danger-600">{deleted}</span> answer
-                        {deleted === 1 ? '' : 's'} never reached the agent, the transcript or the
-                        report.
+                        {deleted === 1 ? '' : 's'} reached the transcript but never the agent, so
+                        nothing in the call could respond to {deleted === 1 ? 'it' : 'them'}.
                     </p>
                     {samples.length > 0 && (
                         <ul className="flex flex-col gap-1">
@@ -529,7 +533,36 @@ function DeletedAnswers({ d }: { d: CallDiagnostics }) {
                     )}
                 </div>
             )}
+            <LostFragments turn={turn} />
         </section>
+    );
+}
+
+/**
+ * Sub-word scraps lost the same way as a discarded answer, shown SEPARATELY and
+ * without a fault colour. Until rules v3 these were counted as discarded answers:
+ * a live call went AMBER on one lost final whose entire text was "वो।", and the
+ * panel told the founder an ANSWER had been lost, which sent them looking for an
+ * answer nobody ever gave. Hidden entirely would be the other failure — a
+ * measured loss must stay on the page — so it is reported as what it is.
+ */
+function LostFragments({ turn }: { turn: NonNullable<CallDiagnostics['turnTaking']> }) {
+    const lost = turn.fragmentsLost;
+    if (lost == null || lost === 0) return null;
+    const samples = turn.fragmentsLostSamples ?? [];
+    return (
+        <div className="flex flex-col gap-1 border-t border-neutral-100 pt-2">
+            <p className="text-xs text-neutral-500">
+                Also lost: {lost} part-word scrap{lost === 1 ? '' : 's'} too small to have
+                carried an answer (a syllable of something the caller broke off). Not counted
+                as a discarded answer.
+            </p>
+            {samples.length > 0 && (
+                <p className="text-xs text-neutral-600">
+                    {samples.map((s) => `“${s}”`).join(' · ')}
+                </p>
+            )}
+        </div>
     );
 }
 

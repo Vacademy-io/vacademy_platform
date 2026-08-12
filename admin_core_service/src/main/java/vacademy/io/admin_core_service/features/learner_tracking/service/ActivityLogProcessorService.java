@@ -36,12 +36,30 @@ public class ActivityLogProcessorService {
         private final StudentAnalyticsLLMService studentAnalyticsLLMService;
         private final ObjectMapper objectMapper;
         private final CreditClient creditClient;
+        private final ActivityLogQueueClaimService activityLogQueueClaimService;
 
         private static final int BATCH_SIZE = 10;
         private static final int ENTRIES_PER_RUN = 20;
         private static final String STATUS_RAW = "raw";
         private static final String STATUS_PROCESSED = "processed";
         private static final String STATUS_FAILED = "failed";
+
+        /** In-flight status held while a replica works a claimed log. */
+        private static final String STATUS_PROCESSING = "processing";
+
+        /**
+         * How many times a single log may be attempted before it is left alone. Without a
+         * bound, the scheduler's `status IN ('raw','failed')` selection resurrected
+         * permanently-broken logs every hour indefinitely.
+         */
+        private static final int MAX_PROCESSING_ATTEMPTS = 3;
+
+        /**
+         * A claim older than this is assumed to belong to a replica that died mid-batch and
+         * is handed back. Comfortably longer than the worst-case batch: BATCH_SIZE logs x
+         * the LLM response timeout.
+         */
+        private static final int STALE_CLAIM_MINUTES = 30;
 
         /**
          * Terminal-for-now status for logs belonging to an institute with no credit. They
@@ -78,12 +96,21 @@ public class ActivityLogProcessorService {
                 log.info("[LLM-Analytics-Scheduler] ===== SCHEDULER RUN STARTED at {} =====", startTime);
 
                 try {
-                        List<ActivityLogProcessingProjection> rawLogs = activityLogRepository
-                                        .findProcessingDataByStatusWithLimit(
-                                                        Arrays.asList(STATUS_RAW, STATUS_FAILED), ENTRIES_PER_RUN);
+                        // Hand back anything a dead replica left in flight before claiming more.
+                        activityLogQueueClaimService.releaseStaleClaims(STALE_CLAIM_MINUTES);
+
+                        // Claim rather than select: this job runs on all four admin-core replicas,
+                        // and an unclaimed select had every replica calling the LLM on the same
+                        // oldest-20 logs - a 4x multiplier on spend for identical work.
+                        List<ActivityLogProcessingProjection> rawLogs = activityLogQueueClaimService.claimBatch(
+                                        Arrays.asList(STATUS_RAW, STATUS_FAILED),
+                                        MAX_PROCESSING_ATTEMPTS,
+                                        ENTRIES_PER_RUN,
+                                        STATUS_PROCESSING);
 
                         if (rawLogs.isEmpty()) {
-                                log.info("[LLM-Analytics-Scheduler] No raw activity logs to process");
+                                log.info("[LLM-Analytics-Scheduler] No activity logs claimed - queue empty "
+                                                + "or another replica took them");
                                 return;
                         }
 
@@ -148,6 +175,9 @@ public class ActivityLogProcessorService {
                 if (activityLog.getRawJson() == null || activityLog.getRawJson().isEmpty()) {
                         log.warn("[LLM-Analytics-Processing] Activity log {} has no raw JSON, skipping",
                                         activityLog.getId());
+                        // It is claimed at this point - resolve it rather than leaving it in flight
+                        // for the stale-claim reaper to pick up half an hour later.
+                        markAsFailed(activityLog.getId(), "No raw JSON to analyse");
                         return;
                 }
 

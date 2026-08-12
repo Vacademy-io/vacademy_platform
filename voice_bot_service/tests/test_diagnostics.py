@@ -500,3 +500,73 @@ def test_silence_notes_are_bounded():
 
 def test_a_clean_call_reports_no_silences_key_value():
     assert dg.to_payload(dg.CallDiagnostics())["silences"] is None
+
+
+# ── a lost SCRAP is not a lost ANSWER (founder, live call c7bf5ff5) ──────────
+# The panel went AMBER and said "1 answer never reached the agent, the transcript
+# or the report". The whole verbatim was "वो।" — one syllable of an utterance the
+# caller broke off. Two things were wrong: it was not an answer, and it WAS in
+# the transcript and the report (heard is derived from outcome.transcript).
+#
+# It was also structural, not luck: _norm_answer keeps only alphanumerics and
+# Devanagari vowel signs are not alphanumeric, so "वो।" is the single char "व" —
+# under _CONTAIN_MIN_CHARS, where pass 2 is off. Below that floor a final could
+# NEVER be matched, so it was certain to be reported as a deleted answer.
+
+def test_a_sub_word_scrap_is_reported_but_fires_no_fault():
+    lost = dg.split_lost(["वो।"], [])
+    assert lost.answers == 0, "a syllable is not a discarded answer"
+    assert lost.fragments == 1 and lost.fragment_samples == ["वो।"]
+
+    d = dg.CallDiagnostics(user_turns=6, bot_turns=6)
+    d.answers_deleted, d.answers_deleted_samples = lost.answers, lost.answer_samples
+    d.fragments_lost, d.fragments_lost_samples = lost.fragments, lost.fragment_samples
+    v = dg.verdict(d)
+    assert dg.ANSWER_DELETED not in v["faults"], v["faults"]
+    assert v["health"] == dg.GREEN
+    # Measured and still on the page — hiding it would be the other failure.
+    assert dg.to_payload(d)["turnTaking"]["fragmentsLost"] == 1
+
+
+def test_a_lost_consent_or_refusal_still_counts_however_short():
+    """"absorb but never lose" exists because consent said mid-pitch is the whole
+    call. These are one char after normalization and must NOT be carved out."""
+    for word in ("हाँ।", "नहीं।", "ok", "no", "जी"):
+        assert dg.split_lost([word], []).answers == 1, word
+
+
+def test_a_lost_number_counts_even_as_one_word():
+    # "94" is the answer to "kitne marks aaye the?" — the case the founder cared
+    # about most; it must never fall into the scrap bucket.
+    assert dg.split_lost(["94"], []).answers == 1
+    assert dg.split_lost(["तिरानवे"], []).answers == 1
+
+
+def test_a_lost_question_counts_even_as_one_word():
+    lost = dg.split_lost(["kya?"], [])
+    assert lost.answers == 1 and lost.fragments == 0
+
+
+def test_a_phrase_is_never_a_scrap():
+    """Two words is a phrase. "इसमें ब" may be cut off, but it was going
+    somewhere and the model never got the chance to find out where."""
+    assert dg.split_lost(["इसमें ब"], []).answers == 1
+
+
+def test_real_answers_and_scraps_are_split_not_merged():
+    lost = dg.split_lost(["IGCSE", "वो।", "Monday.", "तो।"], [])
+    assert lost.answers == 2 and lost.answer_samples == ["IGCSE", "Monday."]
+    assert lost.fragments == 2 and lost.fragment_samples == ["वो।", "तो।"]
+
+
+def test_reconcile_answers_is_the_answers_view_of_split_lost():
+    n, samples = dg.reconcile_answers(["IGCSE", "वो।"], [])
+    assert (n, samples) == (1, ["IGCSE"])
+
+
+def test_the_scrap_floor_is_not_the_containment_floor():
+    """Regression on my own fix: the first version reused _CONTAIN_MIN_CHARS (4)
+    and would have reclassified real one-word answers as scraps. Devanagari vowel
+    signs are dropped by _norm_answer, so genuine answers normalize SHORT."""
+    for answer in ("SSC.", "DPS", "आठवीं", "पाँच", "CBSE"):
+        assert dg.split_lost([answer], []).answers == 1, answer

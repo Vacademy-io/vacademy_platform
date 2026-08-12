@@ -246,6 +246,7 @@ author can know:
 | **Script rule** | Hindi in Devanagari, English business words in Latin (Sarvam docs: romanized Hindi degrades TTS). Rumik agents additionally get "English-origin words in English letters" because Rumik reads `लाइव क्लासेस` as "लव असेस" |
 | **Plain-phone-Hindi register** | 20+ concrete swaps (`performance` not `प्रदर्शन`, `enquiry` not `पूछताछ`) after 198 uses of literary vocabulary across two days of calls |
 | **Plain-speech rules** | no markdown (a call once read its own bullet list aloud), numbers as words, phone numbers digit by digit |
+| **No echo-confirm** | never repeat the caller's answer back ("okay, so you got ninety-four") — a call confirmed every single answer, which is the clearest AI tell there is. Two exceptions only: a phone number and a booked day/time get read back once. **Second line of defence only** — the load-bearing fix is `NoRepeatGate._trim_echo` (§7.3a), because prompt-only attempts at this class have been measured to do nothing |
 | **Time-aware greeting** | uses the RIGHT-NOW line — a call went out in the evening saying "good morning" |
 | **One-step-at-a-time / listen / goal-drive / close-concretely** | the model used to answer its own questions, plough past what the caller said, and close on a vague "okay" |
 | **Name sanity** | never "Mr. ___" with a non-name — a call once addressed someone as "Ms. Robotics STEM Programs for Schools" |
@@ -408,7 +409,8 @@ transport.input()          Plivo <Stream>, 8 kHz μ-law
   → aggregators.user()     owns VAD + turn strategies + idle clock (1.4)
   → llm
   → SentinelGate           strips <<END_CALL>> / <<TRANSFER>>, drives stop/handoff
-  → NoRepeatGate           suppresses a sentence the bot already said this call
+  → NoRepeatGate           suppresses a sentence already said this call, and trims
+                           an opener that only parrots the caller (§7.3a)
   → tts
   → DuckGate               instant barge-in hold
   → transport.output()
@@ -457,6 +459,40 @@ the same opening four times in eleven seconds in a self-feeding loop.
 
 Related knobs: `DUCK_NO_WORDS_RESUME_SECS=2.0`, `DUCK_MAX_HOLD_SECS=12.0`,
 `BACKCHANNEL_CARRY_SECS=3.0`, `BACKCHANNEL_EXTRA` (per-deployment word list).
+
+### 7.3a Never say it twice — and never say it back (`NoRepeatGate`)
+
+Two trims between the LLM and the TTS, both in code rather than the prompt for the
+same measured reason: **four prompt-level attempts at this class of repetition were
+each measured over 3+ live conversations and moved nothing** — style rules
+(1.7 → 1.7 repeats, and they broke script and gender), no-echo rules with
+GALAT/SAHI examples (3.0 → 3.0), deleting the scripted acknowledgement lines the
+model was parroting (2.7 → 2.7), swapping the model (1.0 → 0.3, reverted for
+latency). At ~10 K characters the prompt is saturated; "what have I already said"
+is state, and state belongs in code.
+
+| Trim | What it drops | Key state |
+|---|---|---|
+| **No-repeat** | a sentence already spoken this call (fuzzy, 0.80) or a question whose *topic* was already asked (`question_topic` — paraphrases score ~0.6 and sailed through similarity alone) | `_spoken`, `_asked` |
+| **No-echo** (`_trim_echo` → `turntake.strip_echo_opener`) | a leading **clause** that only restates what the caller just answered | the caller's last turn + the bot's own last question |
+
+Echo-trimming is **clause**-level, not sentence-level, because the parroting and
+the real next question share one sentence — *"ओके, सुबोध अभी आठवीं क्लास में है, तो
+लास्ट exam में कितने marks आए थे?"* — so dropping the sentence would drop the
+question with it. What survives is whatever the bot **added**: the caller's marks
+go, *"बहुत बढ़िया स्कोर है"* stays.
+
+A clause is parroting when ≥60% of its content words (function words and
+acknowledgments removed) already appear in the caller's answer or the bot's own
+question — i.e. it introduces nothing. It refuses to touch: a clause containing a
+question, a clause with 2+ digit groups (the **required** phone/date read-back),
+anything at all when the caller was **asking** rather than answering (reflecting a
+question back is wanted behaviour), the last remaining clause, or a tail too thin
+to stand alone. Counted as `diagnostics.turnTaking.echoesTrimmed`; kill switch
+`NO_ECHO_ENABLED=false`.
+
+> A high `echoesTrimmed` is not a bug report — it is the model reaching for the
+> restatement anyway, which is the evidence that the trim has to live in code.
 
 ### 7.4 Sentinels (no dependency on provider tool-calling)
 
@@ -709,7 +745,7 @@ Fault codes (closed, append-only; `RULES_VERSION` bumps when thresholds change):
 | `REPLY_LOOP` | ≥3 consecutive near-identical bot turns (fuzzy, 0.82 similarity) | The agent kept restarting the same reply |
 | `TTS_WEDGE` | stalls ≥2 / cap hit / stall + silent generation | Voice synthesis stalled |
 | `REPLY_UNPLAYED` | a generated reply never reached the caller | A reply was never played |
-| `ANSWER_DELETED` | caller finals that never reached the LLM context | Caller answers were discarded |
+| `ANSWER_DELETED` | caller finals that never reached the LLM context **and carried something** — see the scrap carve-out below | Caller answers were discarded |
 | `DEAD_AIR` | worst gap ≥6 s (RED) / ≥3.5 s (AMBER) — **only in a real conversation** | Long silence |
 | `FALSE_REASK` | re-asked for something already heard | — |
 | `LIKELY_MACHINE` | bounded 0–1 heuristic ≥0.7 | Probably an answering machine (**inferred, never changes disposition**) |
@@ -723,11 +759,35 @@ cause), `latency` (LLM/STT TTFB, dead-air p95/max), `setup` (greet path/delay, s
 `machine` (score, markers, first/longest user turn), `infra` (STT reconnects, unheard
 utterances, crash, transfer state).
 
-`reconcile_answers()` is the ground truth behind `ANSWER_DELETED`: it diffs the finals the
+`split_lost()` is the ground truth behind `ANSWER_DELETED`: it diffs the finals the
 `TranscriptCollector` saw (it sits *before* the aggregator) against what actually reached the
 LLM context. The 2026-07 forensics found **179 deleted caller utterances across 40% of
 calls** — including literal answers ("IGCSE", "Symbiosis", "Monday") that nothing ever
-re-asked for.
+re-asked for. (`reconcile_answers()` is still there as the answers-only view of it.)
+
+**What it never reached is the MODEL** — a discarded answer *is* in the transcript and the
+report, because `heard` is derived from `outcome.transcript`, which `report.py` posts verbatim.
+The panel used to claim "never reached the agent, the transcript or the report", which was
+wrong in two of the three.
+
+**The sub-word scrap carve-out (`RULES_VERSION` 3, 2026-08-12).** Every unmatched final used
+to count as a discarded answer, and one live call went AMBER on a single lost final whose
+entire text was `"वो।"` — one syllable of an utterance the caller broke off. That was
+structural, not luck: `_norm_answer` keeps only alphanumerics and Devanagari vowel signs are
+not alphanumeric, so `"वो।"` is the single character `"व"`, below `_CONTAIN_MIN_CHARS` where
+pass 2 is off. **Below that floor a final could never be matched, so the guard against a false
+*match* had become a guaranteed false *fault*.** Now `_lost_carries_meaning` splits the losses:
+
+| Bucket | What lands here | Fires |
+|---|---|---|
+| `answersDeleted` | a phrase (2+ words), a digit (`"94"`), consent or refusal (`"हाँ"`, `"नहीं"` — "absorb but never lose" exists for exactly these), a question, or any single word over one character | `ANSWER_DELETED` |
+| `fragmentsLost` | a one-character scrap and nothing else | nothing — **evidence only**, like `LIKELY_MACHINE` |
+
+The floor is **one** character, deliberately not the containment floor of four: genuine
+one-word answers normalize short too (`"SSC"` 3, `"DPS"` 3, `"आठवीं"` 3, `"पाँच"` 2), and the
+first version of this fix reused 4 and was caught by the existing multiset test doing exactly
+that. Scraps stay in the payload and on the page — a measured loss must never be hidden — just
+not as a fault, and not called an answer.
 
 ### 11.4 Where a human sees all this
 
@@ -795,6 +855,7 @@ V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role`
 **Call shape**: `GREET_DELAY_SECS=0.8`, `IDLE_TIMEOUT_SECS=8.0`, `MAX_NUDGES=2`,
 `END_GRACE_SECS=2.0`, `MAX_DEAF_STREAK=2`, `MACHINE_GREETING_WINDOW_SECS=22`,
 `FILLER_PROBABILITY=0.10`, `FILLER_PHRASES=Hmm…`, `NO_REPEAT_ENABLED=true`,
+`NO_ECHO_ENABLED=true` (§7.3a — drop an opener that only parrots the caller's answer),
 `REPLY_INFLIGHT_GRACE_SECS=6.0`, `REPORT_REQUIRE_CONVERSATION=true`,
 `REPORT_SPOOL_MAX_AGE_SECS=1200`.
 
@@ -831,6 +892,8 @@ V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role`
 | **Bot talks over the caller** | VAD deaf on the phone leg | `VAD_MIN_VOLUME` (must be ~0.35), `turnTaking.bargeIns = 0` with long user turns |
 | **Bot repeats the same opening** | reply cut then regenerated in a loop | `REPLY_LOOP`, `maxReplyRestarts`; check absorb list for the word the caller used |
 | **"It never heard my answer"** | aggregator deleted the turn | `ANSWER_DELETED` + `answersDeletedSamples` |
+| **Bot confirms every answer back ("okay, you got ninety-four")** | the model reaches for a restatement opener on every turn; the prompt rule alone does not hold it | `turnTaking.echoesTrimmed` — if it is climbing the trim is working; if it is 0 and the parroting is audible, check `NO_ECHO_ENABLED` and whether the authored agent script *itself* contains echo lines (a registry prompt ≥600 chars is authoritative, §3.3) |
+| **Panel says an answer was discarded but the transcript looks complete** | a one-character scrap, not an answer — fixed in `RULES_VERSION` 3 (§11.3). On a row stored under v2 read `answersDeletedSamples`: a single syllable is the tell | `rulesVersion` on the row; `turnTaking.fragmentsLost` on v3+ rows |
 | **Wrong voice / wrong gender Hindi** | cross-vendor or wrong-cased voice id fell back to another engine | agent's `voice` vs `TtsVoiceCatalog.forModel`; `diagnostics.tts.vendor` vs configured `tts_model` |
 | **Every call `Incomplete`** | analysis LLM unreachable/misrouted (provider mismatch) | `report._llm_target`; bot log `analysis failed` |
 | **Lead outcome never applied** | report never delivered | bot log `report spooled…`; `_report_spool/*.json`, `.dead` files |

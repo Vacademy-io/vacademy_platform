@@ -6,7 +6,8 @@ The word-list decisions are the product behavior the founder signed off
 The asymmetry under test: when unsure, INTERRUPT — wrongly stopping the bot
 costs a moment; wrongly steamrolling the caller costs the call.
 """
-from app.turntake import mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement, suppresses_opening
+from app.turntake import (mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement,
+                          suppresses_opening, strip_echo_opener, caller_asked_a_question)
 from app.callstate import (
     CallState, WatchdogConfig, watchdog_decide, apply_decision,
     NONE, DUCK_RESUME, CAP_FAREWELL, ARM_STOP, ORPHAN_ASK, NUDGE,
@@ -225,3 +226,92 @@ def test_a_caller_who_really_takes_over_still_suppresses_it():
               "main abhi busy hoon baad mein call karein",
               "haan ji main parent bol raha hoon"):
         assert suppresses_opening(t), t
+
+
+# ── parroting the caller's answer back (founder, 2026-08-12) ─────────────────
+# "Every time the person answers, the AI again says okay. It asked how many
+# marks, the person said ninety-four, and it comes back 'okay, you got
+# ninety-four'. There is no need to reconfirm every time. It looks like an AI."
+#
+# Every LIVE row below is a real turn from call c7bf5ff5 — the parroting is at
+# CLAUSE level and shares its sentence with the real question, which is why a
+# sentence-level gate could never have fixed it.
+
+def _trim(sentence, caller, question=""):
+    return strip_echo_opener(sentence, caller, question)
+
+
+def test_the_parroted_opener_is_dropped_and_the_question_survives():
+    out = _trim(
+        "ओके, सुबोध अभी आठवीं क्लास में है, तो श्रेयाश जी सुबोध के लास्ट एनुअल एक्ज़ाम में "
+        "कितने मार्क्स आए थे?",
+        "सुबोध अभी आठवीं में है।", "सुबोध अभी कौन से क्लास में है?")
+    assert "आठवीं क्लास में है" not in out, "still restating the answer"
+    assert out.endswith("कितने मार्क्स आए थे?"), out
+
+
+def test_what_the_bot_ADDED_survives_the_trim():
+    """The caller's own words go; the bot's reaction to them stays. A counsellor
+    really does say "that's a great score" — they just don't read the number
+    back first."""
+    out = _trim("सुबोध के लास्ट बहुत अच्छे, तिरानवे प्रतिशत मार्क्स, बहुत बढ़िया स्कोर है।",
+                "तिरानवे प्रतिशत।",
+                "सुबोध के लास्ट एनुअल एक्ज़ाम में कितने मार्क्स आए थे?")
+    assert "तिरानवे" not in out, "the marks were read back again"
+    assert "बढ़िया स्कोर" in out, "the human reaction must not be swallowed"
+
+
+def test_the_ack_only_opener_goes_but_real_content_after_it_stays():
+    out = _trim("जी हाँ, सुबोध आठवीं में है तो उसके लिए Insight program सही रहेगा।",
+                "सुबोध अभी आठवीं में है।", "कौन से क्लास में है?")
+    assert not out.startswith("जी हाँ")
+    assert "Insight program" in out, "the pitch is not a repetition"
+
+
+def test_a_real_answer_to_a_question_is_never_trimmed():
+    """The clause reuses the caller's word ("fees") but says something new. Only
+    a clause that introduces NOTHING is parroting."""
+    s = ("Fees teen cheezon par depend karti hai, subah ki class performance, "
+         "program aur scholarship.")
+    assert _trim(s, "fees kitni hai", "kya aap fees ke baare mein jaanna chahenge?") == s
+
+
+def test_reflecting_a_QUESTION_back_is_left_alone():
+    """The prompt asks for this and it is good practice — it is reflecting an
+    ANSWER that the founder flagged. Sarvam does not reliably punctuate, so the
+    caller's interrogative has to carry the decision."""
+    s = "अच्छा, आप timing को लेकर पूछ रहे हैं, तो classes शाम को होती हैं।"
+    assert _trim(s, "timing क्या है?", "") == s
+    assert _trim(s, "timing kya hai", "") == s, "no '?' from the STT must still count"
+
+
+def test_a_required_read_back_is_never_trimmed():
+    """CLOSE CONCRETELY makes reading a number back digit by digit mandatory —
+    the one echo we DO want. Two digit groups in a clause is the guard."""
+    s = "आपका number nau do teen chaar, paanch chhe saat aath nau shunya, सही है?"
+    assert _trim(s, "nau do teen chaar paanch chhe saat aath nau shunya", "") == s
+
+
+def test_a_single_clause_reply_is_untouched():
+    """Nothing to trim without a clause boundary, and a reply must never vanish."""
+    for s in ("तिरानवे प्रतिशत बहुत अच्छा है।", "आठवीं क्लास।"):
+        assert _trim(s, "तिरानवे प्रतिशत।", "कितने मार्क्स आए थे?") == s
+
+
+def test_the_trim_never_leaves_a_stub_behind():
+    """If all that survives is two words, the parroting was the reply — say it
+    rather than emit something that cannot stand on its own."""
+    s = "सुबोध आठवीं में है, अच्छा है।"
+    assert _trim(s, "सुबोध आठवीं में है।", "") == s
+
+
+def test_no_caller_turn_means_nothing_to_parrot():
+    s = "ओके, तो main aapko details bhej deti hoon."
+    assert _trim(s, "") == s
+
+
+def test_caller_asked_a_question_reads_cues_not_just_punctuation():
+    for q in ("fees kitni hai", "क्या ये online है", "how much is it", "timing क्या है?"):
+        assert caller_asked_a_question(q), q
+    for a in ("सुबोध अभी आठवीं में है।", "तिरानवे प्रतिशत।", "हाँ।", ""):
+        assert not caller_asked_a_question(a), a

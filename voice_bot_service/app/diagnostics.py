@@ -24,11 +24,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import difflib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 # Bump when a threshold or a fault definition changes. Stored with every call so
 # health can be re-derived across history without re-collecting anything.
-RULES_VERSION = 2
+# v3 (2026-08-12): a lost sub-floor scrap ("वो।") is no longer an ANSWER_DELETED
+# — see _lost_carries_meaning.
+RULES_VERSION = 3
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -84,6 +86,9 @@ _RANK = {GREEN: 0, AMBER: 1, RED: 2}
 _MAX_SAMPLES = 200          # bounded reservoirs
 _MAX_UNFILLED_KEYS = 12
 _MAX_DELETED_ANSWERS = 20
+# Scraps are evidence, not the story — a handful is enough to recognise the shape
+# ("all one-syllable") and the blob has a 4 KB budget to keep.
+_MAX_LOST_FRAGMENTS = 5
 
 
 def _p(values: List[float], pct: float) -> Optional[float]:
@@ -126,6 +131,13 @@ class CallDiagnostics:
     # None = NOT MEASURED (never 0-by-default — see module docstring).
     answers_deleted: Optional[int] = None
     answers_deleted_samples: List[str] = field(default_factory=list)
+    # Caller finals lost the same way but too small to have carried an answer
+    # ("वो।" — see _lost_carries_meaning). Reported, because they ARE a measured
+    # loss, but deliberately NOT a fault: evidence-only, like LIKELY_MACHINE.
+    # There is no measured count at which these mean something, and inventing a
+    # threshold would just replace one false fault with another.
+    fragments_lost: Optional[int] = None
+    fragments_lost_samples: List[str] = field(default_factory=list)
     # Ducking (instant barge-in hold). ducks = holds begun; absorbs = holds that
     # turned out to be backchannels and resumed mid-sentence; timeout_resumes =
     # voiced-but-wordless holds the watchdog released.
@@ -138,6 +150,11 @@ class CallDiagnostics:
     carrier_announcements: int = 0
     # Sentences dropped because the bot had already said them this call.
     repeats_suppressed: int = 0
+    # Opening clauses dropped because they only parroted the caller's own answer
+    # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
+    # model reaching for the restatement on every turn despite the prompt rule —
+    # which is the whole reason the trim lives in code.
+    echoes_trimmed: int = 0
     # (seconds, what the bot was doing) for every silence over 2.5s. Travels with
     # the REPORT, which survives the container restarts that keep destroying the
     # logs before a dead-air call can be diagnosed.
@@ -248,6 +265,79 @@ def _norm_answer(text: str) -> str:
 # shrinks to just 4 consonant chars ("नहजन").
 _CONTAIN_MIN_CHARS = 4
 
+# ── what a LOST final actually cost the call ─────────────────────────────────
+# Every unmatched final used to be reported as a "discarded caller answer". That
+# over-claims at the short end, and the founder caught it on a live call
+# (2026-08-12): the panel went AMBER on ONE lost final whose verbatim text was
+# "वो।" — one syllable, no answer in it, dropped when the reply it landed on top
+# of was cancelled. Reported to a human as "1 answer never reached the agent",
+# which sent them looking for a lost answer that was never spoken.
+#
+# It is STRUCTURAL, not bad luck. _norm_answer keeps only alphanumerics and
+# Devanagari combining vowels are not alphanumeric, so "वो।" normalizes to the
+# single char "व" — below _CONTAIN_MIN_CHARS, which turns pass 2 off. Below that
+# floor a final can never be matched, so the guard that exists to prevent a false
+# MATCH had become a guaranteed false FAULT: any sub-floor scrap the aggregator
+# dropped was certain to be counted as a deleted answer.
+#
+# What must still count, and does: a lost "हाँ" or "नहीं" is consent or refusal
+# and changes the call — "absorb but never lose" exists for exactly that — and so
+# does anything with a digit in it ("94"). So the carve-out is the narrowest
+# thing that fixes the observed case: a SINGLE word, no digit, not consent, not
+# refusal, and under the containment floor.
+_CONSENT_OR_REFUSAL = frozenset({
+    # affirmation
+    "हाँ", "हां", "हा", "जी", "हाँजी", "हांजी", "सही", "बिल्कुल", "बिलकुल", "ओके",
+    "haan", "haa", "han", "ha", "hn", "ji", "jee", "jii", "sahi", "bilkul",
+    "ok", "okay", "okey", "kk", "yes", "yeah", "yah", "ya", "yup", "yep",
+    "right", "correct", "sure",
+    # refusal — an objection lost mid-pitch is the expensive one
+    "नहीं", "नही", "ना", "मत", "नो", "nahi", "nahin", "nhi", "na", "no", "not",
+    "mat", "stop", "never",
+})
+_FRAG_STRIP = "।॥.,!…\"'`~()[]{}:;-–—"
+
+# ONE alphanumeric char after normalization — a single syllable, nothing more.
+#
+# _CONTAIN_MIN_CHARS (4) is emphatically NOT the number to reuse here, and the
+# existing multiset test caught it: "SSC." normalizes to 3 and is a real answer.
+# So do "DPS" (3), "आठवीं" (3 — Devanagari vowel signs are dropped) and "पाँच"
+# (2). Everything genuine clears 2; the scraps that made this fault lie do not
+# ("वो" 1, "तो" 1, "ब" 1). The floor is set at the observed case and no wider.
+_SCRAP_MAX_CHARS = 1
+
+
+def _lost_carries_meaning(text: str) -> bool:
+    """PURE. Was this unmatched caller final worth calling a DISCARDED ANSWER?
+
+    True for anything that could have changed the call: a phrase, a digit,
+    consent, a refusal, a question, or a single word of more than one syllable.
+    False only for a one-character scrap — a syllable of an utterance the caller
+    abandoned, which we can neither match nor act on.
+    """
+    raw = (text or "").strip()
+    if "?" in raw or "？" in raw:
+        return True
+    words = [w for w in (s.strip(_FRAG_STRIP).casefold() for s in raw.split()) if w]
+    if not words:
+        return False
+    if len(words) > 1:
+        return True                          # two words is a phrase, not a scrap
+    word = words[0]
+    if any(ch.isdigit() for ch in word):
+        return True
+    if word in _CONSENT_OR_REFUSAL:
+        return True
+    return len(_norm_answer(word)) > _SCRAP_MAX_CHARS
+
+
+class Lost(NamedTuple):
+    """What the reconciliation found, split by whether losing it cost anything."""
+    answers: int
+    answer_samples: List[str]
+    fragments: int
+    fragment_samples: List[str]
+
 
 def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82) -> int:
     """PURE. Longest run of consecutive bot turns that said the SAME thing.
@@ -289,19 +379,24 @@ def max_reply_restarts(transcript: List[Dict[str, Any]], threshold: float = 0.82
     return best
 
 
-def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
-    """PURE. Which caller answers never reached the model?
+def split_lost(heard: List[str], delivered: List[str]) -> Lost:
+    """PURE. Which caller finals never reached the model, and did it matter?
 
     ``heard``    = finals TranscriptCollector recorded (it sits BEFORE
                    aggregators.user() in the pipeline, so it sees words the
                    aggregator later deletes).
     ``delivered`` = user messages actually present in the LLM context.
 
-    Returns (count, samples). This is the ground truth for the biggest finding
+    Returns a ``Lost``: the losses that carried something (ANSWER_DELETED's
+    input) and the sub-floor scraps that did not (evidence only — see
+    _lost_carries_meaning). This is the ground truth for the biggest finding
     of the 2026-07 forensics: pipecat's aggregator DELETES caller utterances
     (min_words + the emulated-VAD path) — 179 of them across 40% of calls,
     including the literal answers IGCSE, Symbiosis, Monday. They never reach the
-    model, the transcript, or the report, and nothing re-asks for them.
+    MODEL, so nothing can answer them and nothing re-asks for them. (They DO
+    reach the transcript and the report: ``heard`` is derived from
+    outcome.transcript, which report.py posts verbatim — so UI copy claiming
+    otherwise is wrong.)
 
     Two passes:
     1. Multiset exact match, so a genuine repeat ("SSC." twice) is not miscounted.
@@ -349,7 +444,18 @@ def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
                 missing.append(h)
         else:
             missing.append(h)
-    return len(missing), missing[:_MAX_DELETED_ANSWERS]
+    answers = [h for h in missing if _lost_carries_meaning(h)]
+    scraps = [h for h in missing if not _lost_carries_meaning(h)]
+    return Lost(len(answers), answers[:_MAX_DELETED_ANSWERS],
+                len(scraps), scraps[:_MAX_LOST_FRAGMENTS])
+
+
+def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
+    """PURE. (count, samples) of caller ANSWERS that never reached the model —
+    i.e. ANSWER_DELETED's input. Thin view over split_lost for callers that do
+    not care about the sub-floor scraps."""
+    lost = split_lost(heard, delivered)
+    return lost.answers, lost.answer_samples
 
 
 def machine_score(d: CallDiagnostics) -> float:
@@ -536,6 +642,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "duckTimeoutResumes": d.duck_timeout_resumes,
                 "carrierAnnouncements": d.carrier_announcements,
                 "repeatsSuppressed": d.repeats_suppressed,
+                "echoesTrimmed": d.echoes_trimmed,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
@@ -545,6 +652,10 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "answersDeleted": d.answers_deleted,
                 "answersDeletedSamples": d.answers_deleted_samples or None,
                 "answersDeletedSrc": "measured" if d.answers_deleted is not None else None,
+                # Same measured loss, too small to have been an answer. Present so
+                # the loss is never hidden, but it fires no fault (RULES_VERSION 3).
+                "fragmentsLost": d.fragments_lost,
+                "fragmentsLostSamples": d.fragments_lost_samples or None,
             },
             "silences": d.silences or None,
             "latency": {

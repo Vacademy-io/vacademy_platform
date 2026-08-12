@@ -8,8 +8,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.InetAddress;
@@ -139,6 +141,28 @@ public class PlatformHealthCheckService {
         this.restTemplate = builder
                 .setConnectTimeout(Duration.ofSeconds(5))
                 .setReadTimeout(Duration.ofSeconds(10))
+                // A non-2xx IS the answer for a health probe, not an error condition.
+                // RestTemplate's DefaultResponseErrorHandler throws on 4xx/5xx, which
+                // meant probe()'s non-2xx branch was unreachable dead code and every
+                // failure fell into the catch block instead. The alert still fired, but
+                // `details` carried the raw exception text — for a 503 that is nginx's
+                // error HTML ("503 Service Unavailable: \"<html><head><title>...") pasted
+                // into a WhatsApp message. Suppressing the throw lets the status code be
+                // read normally so the page says a clean "HTTP 503".
+                //
+                // NOTE: this handler also applies to the Meta send below, which therefore
+                // checks its response status explicitly rather than relying on a throw.
+                .errorHandler(new ResponseErrorHandler() {
+                    @Override
+                    public boolean hasError(ClientHttpResponse response) {
+                        return false;
+                    }
+
+                    @Override
+                    public void handleError(ClientHttpResponse response) {
+                        // no-op: the caller inspects the status code
+                    }
+                })
                 .build();
     }
 
@@ -428,7 +452,18 @@ public class PlatformHealthCheckService {
                 String url = META_API + "/" + waPhoneNumberId + "/messages";
                 ResponseEntity<String> response = restTemplate.exchange(
                         url, HttpMethod.POST, new HttpEntity<>(payload, headers), String.class);
-                log.info("[PlatformHealth] WhatsApp sent to {}: {}", phone, truncate(response.getBody(), 120));
+                // MUST check explicitly. The no-op error handler configured in the
+                // constructor means Meta returning 400 (bad template params, message too
+                // long, number not on WhatsApp) no longer throws — without this check a
+                // rejected page would be logged as "WhatsApp sent", which is the single
+                // most dangerous line this class could produce: it would report a
+                // healthy alerting channel that silently delivers nothing.
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    log.info("[PlatformHealth] WhatsApp sent to {}: {}", phone, truncate(response.getBody(), 120));
+                } else {
+                    log.error("[PlatformHealth] WhatsApp to {} REJECTED by Meta: HTTP {} {}",
+                            phone, response.getStatusCode().value(), truncate(response.getBody(), 300));
+                }
             } catch (Exception e) {
                 // One bad number must not stop the rest of the list being paged.
                 log.error("[PlatformHealth] WhatsApp to {} failed: {}", phone, e.getMessage());

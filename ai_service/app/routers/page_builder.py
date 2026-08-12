@@ -1051,7 +1051,10 @@ _PREMIUM_DOCTRINE = [
     "unless the language explicitly calls for a single family; (2) when the institute's real brand colour or a reference "
     "design's accent colour is known, set theme.primaryColor to that exact hex — the 9 presets are starting points, and a "
     "page in the brand's own colour is immediately more convincing than a page in ours. Motion: calm or balanced.",
-    "On a LANDING page, open with a heroSection that FILLS THE FOLD: put it on a section shell (style.layout.width 'wide') "
+    "A heroSection on a section shell MUST use style.layout.width 'full', on every page type. The hero paints its own "
+    "surface and already centres its content, so any narrower shell clips that surface into an inset card with gutters "
+    "down both sides. Constrain other sections, never this one.",
+    "On a LANDING page, open with a heroSection that FILLS THE FOLD: put it on a section shell (style.layout.width 'full') "
     "with minHeight '80vh' + contentAlign 'center'. The chosen language decides the treatment — whether it is split with an "
     "image, centered, or full-bleed; whether an eyebrow badge and statChips belong (they suit bold-modern, they cheapen "
     "editorial-serif and swiss-minimal); and how many CTAs. Always give the headline something SPECIFIC to say. "
@@ -1531,6 +1534,21 @@ def sanitize_component(
     # section would render as an inset card with page-color gutters. Copy it
     # up so the full-bleed canvas owns the color (field bug, Edzumo hero).
     style = cleaned.get("style")
+    # A hero's shell must be FULL-BLEED. heroSection paints its own opaque
+    # surface (.catalogue-hero-surface: background-color + mesh gradients) and
+    # already centres its content at max-w-7xl, so a shell width constraint adds
+    # nothing except clipping that surface to the content column — the hero then
+    # renders as an inset card with page-coloured gutters down both sides (field
+    # bug, The 7Cs /courses, where the model emitted width 'default'). Same
+    # family as the backgroundColor promotion below.
+    if (
+        ctype == "heroSection"
+        and isinstance(style, dict)
+        and isinstance(style.get("layout"), dict)
+        and style["layout"].get("width") not in (None, "full")
+    ):
+        style["layout"]["width"] = "full"
+        warnings.append("Widened the hero to full-bleed (a constrained hero renders as an inset card)")
     if isinstance(style, dict) and isinstance(style.get("layout"), dict):
         prop_bg = cleaned_props.get("backgroundColor")
         if (

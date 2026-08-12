@@ -337,7 +337,7 @@ const EnrollByInvite = ({
   const [autopayConsent, setAutopayConsent] = useState(false);
   // A recurring order is bound to one authorization method, so the learner must
   // choose before the order is created — it can't be picked inside Checkout.
-  const [mandateMethod, setMandateMethod] = useState<"card" | "upi">("card");
+  const [mandateMethod, setMandateMethod] = useState<"card" | "upi">("upi");
   const authAmount = autopayConfig?.AUTH_AMOUNT ?? 1;
 
   // Per-field config for the billing-contact form. The admin writes this under
@@ -2636,38 +2636,16 @@ const EnrollByInvite = ({
           <>
           {isAutopay && autopayConfig?.TRIAL_DAYS ? (
             <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 p-4 text-center text-sm font-medium text-primary-600">
-              Start your ₹{authAmount} trial and activate your{" "}
-              {autopayConfig.TRIAL_DAYS}-day free trial, cancel anytime within{" "}
-              {autopayConfig.TRIAL_DAYS} days.
+              Activate your {autopayConfig.TRIAL_DAYS}-day free trial with ₹
+              {authAmount}, cancel anytime within {autopayConfig.TRIAL_DAYS} days.
             </div>
           ) : null}
-          <ReviewStep
-            courseData={{
-              course: courseData.course,
-              courseBanner: courseData.courseBanner,
-            }}
-            selectedPayment={enrollmentData.selectedPayment}
-            paymentType={paymentType}
-            package_session_id={
-              inviteData?.package_session_to_payment_options[0]
-                ?.package_session_id
-            }
-            setReferRequest={updateReferRequest}
-            refCode={ref || ""}
-            onUnappliedCodeChange={setHasUnappliedReferral}
-            onReferralApplied={handleReferralApplied}
-            instituteId={instituteId}
-            enrollInviteId={inviteData?.id || ""}
-            userEmail={
-              enrollmentData.registrationData?.email?.value as
-                | string
-                | undefined
-            }
-            onCouponChange={handleCouponChange}
-            initialCouponCode={appliedCouponCode}
-          />
+          {/* For autopay invites the mandate-method choice and the consent come
+              BEFORE the plan review: Next stays disabled until consent is ticked,
+              and on mobile the consent must be visible without scrolling past a
+              long plan review first. */}
           {isAutopay && (propVendor || getPaymentVendor(inviteData)) === "RAZORPAY" && (
-            <div className="mt-4 rounded-xl border border-gray-200 p-4">
+            <div className="rounded-xl border border-gray-200 p-4">
               <p className="text-sm font-medium text-gray-700">
                 How would you like to set up auto-renewal?
               </p>
@@ -2704,7 +2682,7 @@ const EnrollByInvite = ({
             </div>
           )}
           {isAutopay && (
-            <label className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">
+            <label className="mt-4 flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50 p-4 text-sm text-gray-700">
               <input
                 type="checkbox"
                 className="mt-1 size-4"
@@ -2747,6 +2725,33 @@ const EnrollByInvite = ({
               </span>
             </label>
           )}
+          <div className={isAutopay ? "mt-4" : undefined}>
+            <ReviewStep
+              courseData={{
+                course: courseData.course,
+                courseBanner: courseData.courseBanner,
+              }}
+              selectedPayment={enrollmentData.selectedPayment}
+              paymentType={paymentType}
+              package_session_id={
+                inviteData?.package_session_to_payment_options[0]
+                  ?.package_session_id
+              }
+              setReferRequest={updateReferRequest}
+              refCode={ref || ""}
+              onUnappliedCodeChange={setHasUnappliedReferral}
+              onReferralApplied={handleReferralApplied}
+              instituteId={instituteId}
+              enrollInviteId={inviteData?.id || ""}
+              userEmail={
+                enrollmentData.registrationData?.email?.value as
+                  | string
+                  | undefined
+              }
+              onCouponChange={handleCouponChange}
+              initialCouponCode={appliedCouponCode}
+            />
+          </div>
           </>
         );
       case 3: {
@@ -3375,6 +3380,7 @@ const EnrollByInvite = ({
                   onPrevious={handlePrevious}
                   onNext={handleNext}
                   onSubmitEnrollment={handleSubmitEnrollment}
+                  autopayConsentPending={isAutopay && !autopayConsent}
                   loading={loading || cpoEnrolling}
                   paymentType={paymentType}
                   donationAmountValid={donationAmountValid}

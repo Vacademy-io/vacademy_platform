@@ -977,7 +977,9 @@ def _inspiration_block(inspiration: Any) -> str:
         lines.append(
             "- STRUCTURE: build the page in the SAME ORDER as `sections`, mapping each role onto the "
             "closest component in the vocabulary (hero→heroSection, logos→logoCloud, features→featureGrid, "
-            "stats→statsHighlights, steps→stepsProcess, courses→courseCatalog, testimonials→"
+            "stats→statsHighlights, steps→stepsProcess, courses→featureGrid with style 'photo' when the "
+            "reference shows PICTURE cards (add layout 'carousel' for a swipeable row) or courseCatalog "
+            "when it shows a plain live grid, testimonials→"
             "testimonialSection, faq→tabsAccordion, cta→ctaBanner, directory/table→detailBlocks or "
             "htmlBlock, gallery→imageGallery, team→teamSection, pricing→pricingTable, contact→contactForm "
             "or leadForm). Honour each entry's `layout`. Drop a section only when this institute has no "

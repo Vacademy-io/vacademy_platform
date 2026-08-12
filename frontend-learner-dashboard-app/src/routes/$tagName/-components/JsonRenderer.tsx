@@ -1291,6 +1291,7 @@ const TextBlockRenderer: React.FC<any> = ({ content = '', maxWidth = '800px', al
 
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
+  layout,
 }) => {
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
@@ -1410,6 +1411,112 @@ const FeatureGridRenderer: React.FC<any> = ({
             })}
           </div>
         </div>
+      </section>
+    );
+  }
+
+  // "photo" — the offering-card shape: the image IS the card, with the copy
+  // over a scrim and an optional CTA. Cards with no image fall back to a tinted
+  // card carrying the same title/description/CTA, because the designs this
+  // exists for deliberately alternate photo cards with plain colour cards in
+  // one rail. Pair with layout 'carousel' for a swipeable row.
+  if (style === 'photo') {
+    const rail = layout === 'carousel';
+    const cards = features.map((f: any, i: number) => {
+      const chips: string[] = (f.chips || []).filter(Boolean);
+      const cta = f.link?.text && f.link?.url ? f.link : null;
+      return (
+        <div
+          key={i}
+          data-stagger-item
+          style={{ ['--stagger-i' as any]: i }}
+          className={`relative isolate flex min-h-80 flex-col justify-end overflow-hidden rounded-catalogue-xl text-start ${
+            rail ? 'w-72 shrink-0 snap-start sm:w-80' : ''
+          } ${f.image ? '' : 'bg-catalogue-bg-subtle p-6'}`}
+        >
+          {f.image && (
+            <>
+              <img
+                src={f.image}
+                alt={f.title || ''}
+                loading="lazy"
+                className="absolute inset-0 -z-10 size-full object-cover"
+              />
+              {/* Scrim: overlaid copy has to stay legible over an arbitrary
+                  photo, and no theme token can guarantee that. */}
+              <div
+                className="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 via-black/30 to-transparent" // design-lint-ignore: legibility scrim over user photography
+                aria-hidden="true"
+              />
+            </>
+          )}
+          <div className={f.image ? 'p-6' : ''}>
+            {chips.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {chips.map((c: string, j: number) => (
+                  <span
+                    key={j}
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      f.image
+                        ? 'bg-white/20 text-white' // design-lint-ignore: chip over photography
+                        : 'bg-primary-50 text-primary-500 ring-1 ring-primary-100'
+                    }`}
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+            <h4
+              className={`text-xl font-semibold tracking-tight ${
+                f.image ? 'text-white' : 'text-catalogue-text-primary' // design-lint-ignore: over scrim
+              }`}
+            >
+              {f.title}
+            </h4>
+            {f.description && (
+              <p
+                className={`mt-1.5 text-sm leading-relaxed ${
+                  f.image ? 'text-white/90' : 'text-catalogue-text-muted' // design-lint-ignore: over scrim
+                }`}
+              >
+                {f.description}
+              </p>
+            )}
+            {cta && (
+              <CatalogueLink
+                to={cta.url}
+                className="catalogue-btn catalogue-btn-primary mt-4 inline-flex w-fit"
+              >
+                {cta.text}
+              </CatalogueLink>
+            )}
+          </div>
+        </div>
+      );
+    });
+    return (
+      <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+        <div className="catalogue-shell">
+          {headerText && <h2 className={`mb-2 catalogue-h2 ${isLeft ? '' : 'text-center'} ${txt.heading}`}>{headerText}</h2>}
+          {subheading && <p className={`catalogue-lead mb-8 ${isLeft ? '' : 'catalogue-measure text-center'} ${txt.muted}`}>{subheading}</p>}
+        </div>
+        {rail ? (
+          // Full-bleed rail: the shell would clip the edge-to-edge scroll, and
+          // scroll-padding (baked into catalogue-carousel-bleed) is what keeps
+          // snap alignment honest against the gutter.
+          <div className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto pb-2">
+            {cards}
+          </div>
+        ) : (
+          <div className="catalogue-shell">
+            <div
+              className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}
+            >
+              {cards}
+            </div>
+          </div>
+        )}
       </section>
     );
   }

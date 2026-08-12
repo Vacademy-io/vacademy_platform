@@ -104,13 +104,19 @@ const CAPABILITIES = {
         'right: {image, alt, imageCollage[]} — with NO image, use layout centered, because the split grid ' +
         'collapses to a single column and a half-empty fold looks broken.',
     featureGrid:
-        'style: cards | tinted | glass | gradient-border | panel | bordered | minimal | plain. columns: 2|3|4. ' +
+        'style: cards | tinted | glass | gradient-border | panel | bordered | minimal | plain | PHOTO. columns: 2|3|4. ' +
         'iconSize: small|medium|large. ' +
         'features[] take MUCH more than an icon and text: {iconName (icon library), icon (emoji — avoid), ' +
         'image (a real illustration or photo for this feature — use it whenever the design shows pictures ' +
         'rather than icons), title, description, chips[] (a small label above the title), bullets[] (a list ' +
         'inside the card body), badge, link {text,url}, headerVariant: tint|solid, headerColor}. ' +
-        'style "panel" + one feature with headerVariant "solid" is the comparison/pillars pattern.',
+        'style "panel" + one feature with headerVariant "solid" is the comparison/pillars pattern. ' +
+        'style "photo" is the OFFERING-CARD pattern: each feature\'s image fills its card with the title, ' +
+        'description and link-as-button laid over it, and any feature WITHOUT an image falls back to a ' +
+        'tinted colour card carrying the same content — so one section can alternate photo cards and ' +
+        'colour cards the way course/programme rails usually do. Add layout: "carousel" to make it one ' +
+        'swipeable full-bleed row instead of a grid. Reach for photo+carousel whenever the reference ' +
+        'shows a row of picture cards rather than an icon grid.',
     testimonialSection:
         'layout: grid-scroll (default) | carousel (one quote at a time with prev/next arrows). ' +
         'testimonials[]: {name, role, quote (or text/feedback), avatar (image URL), rating (1-5), highlight}. ' +

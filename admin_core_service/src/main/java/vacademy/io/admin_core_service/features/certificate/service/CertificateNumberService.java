@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.certificate.repository.CertificateNumberSequenceRepository;
+import vacademy.io.admin_core_service.features.certificate.repository.CertificateNumberSequenceDao;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class CertificateNumberService {
 
-    private final CertificateNumberSequenceRepository sequenceRepository;
+    private final CertificateNumberSequenceDao sequenceDao;
 
     /**
      * Default shape: first three letters of the institute name, the year, then a
@@ -60,7 +60,7 @@ public class CertificateNumberService {
         if (!StringUtils.hasText(instituteId)) {
             throw new IllegalArgumentException("Cannot allocate a certificate number without an institute id");
         }
-        long sequence = sequenceRepository.allocateNext(instituteId, year);
+        long sequence = sequenceDao.allocateNext(instituteId, year);
         return format(numbering, resolvePrefix(institute, numbering), courseCode, sequence, year);
     }
 

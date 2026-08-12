@@ -63,4 +63,10 @@ public class CertificateSettingDto {
     // a verification page instead. There is no platform-provided public
     // verification endpoint, so this is opt-in per institute.
     private String qrVerificationUrlTemplate;
+
+    // Which machine-readable code is stamped alongside the certificate number
+    // on every issued certificate: "QR" or "BARCODE". Null/unrecognised means
+    // QR — it carries more data, survives partial damage, and any phone camera
+    // reads it without a dedicated scanner.
+    private String badgeCodeType;
 }

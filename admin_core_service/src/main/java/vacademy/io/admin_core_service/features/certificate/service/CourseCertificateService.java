@@ -166,7 +166,7 @@ public class CourseCertificateService {
                 ? mediaService.getFilePublicUrlById(certificate.getFileId())
                 : null;
 
-        notificationService.notifyCertificateIssued(
+        boolean sent = notificationService.notifyCertificateIssued(
                 institute,
                 certificate.getUserId(),
                 studentName,
@@ -176,6 +176,15 @@ public class CourseCertificateService {
                 // not match the number printed on the PDF.
                 certificate.getCertificateId(),
                 url);
+
+        // Resend is an explicit admin action, so its outcome has to be truthful.
+        // The notifier swallows failures internally (correct for the issuance
+        // path, where a failed email must not block delivery), which meant this
+        // endpoint returned 200 even when the learner had no email on file.
+        if (!sent) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "Could not send the certificate email — check the learner has an email address on file");
+        }
     }
 
     // ----------------------------------------------------------------- helpers

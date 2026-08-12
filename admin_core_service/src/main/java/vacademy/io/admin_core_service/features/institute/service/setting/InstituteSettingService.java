@@ -675,12 +675,60 @@ public class InstituteSettingService {
      * rendered HTML. Uses {@code position: fixed} so OpenHTML2PDF repeats it on
      * every page if the certificate spans multiple pages.
      */
-    private String appendCertificateIdBadge(String html, String certificateId) {
+    /**
+     * Which code the institute wants stamped on the badge: {@code QR} (default)
+     * or {@code BARCODE}. Unreadable settings fall back to QR rather than
+     * dropping the code.
+     */
+    private String resolveBadgeCodeType(String settingJson) {
+        try {
+            if (!StringUtils.hasText(settingJson)) return "QR";
+            JsonNode entries = objectMapper.readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (JsonNode config : entries) {
+                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
+                        String type = config.path("badgeCodeType").asText(null);
+                        return StringUtils.hasText(type) ? type : "QR";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read the certificate badge code type; defaulting to QR", e);
+        }
+        return "QR";
+    }
+
+    /**
+     * Stamp the certificate number bottom-right, with a scannable code beside it.
+     *
+     * <p>The code is rendered here rather than only as a draggable template
+     * field, so every issued certificate carries one whether or not the admin
+     * placed it — a printed certificate with no machine-readable form cannot be
+     * verified without someone typing the number by hand.
+     *
+     * <p>{@code codeDataUri} is a PNG data URI; it is empty when generation
+     * failed, in which case the badge degrades to the number alone rather than
+     * rendering a broken image.
+     */
+    private String appendCertificateIdBadge(String html, String certificateId, String codeDataUri,
+                                            boolean isBarcode) {
+        // A 1D barcode needs a wide, short box; a QR needs a square one. Sizing
+        // both the same squashes the barcode until it stops scanning.
+        String codeStyle = isBarcode
+                ? "width:34mm;height:11mm;display:block;"
+                : "width:16mm;height:16mm;display:block;";
+        String codeImg = StringUtils.hasText(codeDataUri)
+                ? "<img src=\"" + codeDataUri + "\" alt=\"\" style=\"" + codeStyle + "\" />"
+                : "";
         String badge = "<div style=\"position:fixed;bottom:8mm;right:10mm;"
                 + "font-family:Arial,sans-serif;font-size:10px;color:#444;"
                 + "background:rgba(255,255,255,0.85);padding:3px 8px;"
-                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;\">"
-                + "Certificate ID: " + certificateId + "</div>";
+                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;"
+                + "text-align:center;\">"
+                + codeImg
+                + "<span style=\"display:block;margin-top:2px;\">" + certificateId + "</span>"
+                + "</div>";
         int closing = html.lastIndexOf("</body>");
         if (closing >= 0) {
             return html.substring(0, closing) + badge + html.substring(closing);
@@ -979,10 +1027,23 @@ public class InstituteSettingService {
         // from the template editor if they want theirs.
         filledTemplate = scrubHardcodedDefaultBranding(filledTemplate);
 
-        // Always show the certificate id at the bottom-right of the rendered
-        // page, regardless of whether the admin placed {{CERTIFICATE_ID}} in
-        // the template.
-        filledTemplate = appendCertificateIdBadge(filledTemplate, certificateId);
+        // Always show the certificate id bottom-right with a scannable code
+        // beside it, regardless of whether the admin placed {{CERTIFICATE_ID}}
+        // or a code field in the template. The institute chooses QR or barcode;
+        // both are already generated for the token pass, so this reuses one
+        // rather than encoding again.
+        //
+        // If the admin positioned a code field themselves — anywhere on the
+        // canvas, at any size — that placement wins and the badge falls back to
+        // the number alone. Stamping a second code bottom-right would otherwise
+        // put two on the same certificate.
+        boolean templatePlacesOwnCode = template.contains("{{CERTIFICATE_QR}}")
+                || template.contains("{{CERTIFICATE_BARCODE}}");
+        boolean useBarcode = "BARCODE".equalsIgnoreCase(resolveBadgeCodeType(settingJson));
+        String badgeCode = templatePlacesOwnCode
+                ? null
+                : namedPlaceholders.get(useBarcode ? "{{CERTIFICATE_BARCODE}}" : "{{CERTIFICATE_QR}}");
+        filledTemplate = appendCertificateIdBadge(filledTemplate, certificateId, badgeCode, useBarcode);
 
         // Render the PDF using the institute-configured page size if present.
         final String renderedHtml = filledTemplate;

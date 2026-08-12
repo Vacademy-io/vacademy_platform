@@ -340,6 +340,11 @@ function buildConfirmationDTO(opts: ConfirmationOpts): WorkflowBuilderDTO {
                     templateVars: {
                         parentName: 'Full Name',
                         fullName: 'Full Name',
+                        // Canonical spelling — the default template scaffold and most
+                        // hand-written templates use {{name}}. notification-service
+                        // aliases it too, but mapping it here keeps the config tab's
+                        // template/variable drift check quiet.
+                        name: 'Full Name',
                         email: 'Email',
                         mobileNumber: 'Phone Number',
                         instituteName: 'instituteName',

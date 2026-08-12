@@ -410,6 +410,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 templateVars: {
                     parentName: 'Full Name',     // resolves from customFields["Full Name"]
                     fullName: 'Full Name',       // alias, in case template uses {{fullName}}
+                    name: 'Full Name',           // canonical spelling — the default scaffold uses {{name}}
                     email: 'Email',              // resolves from customFields["Email"]
                     mobileNumber: 'Phone Number',// resolves from customFields["Phone Number"]
                     instituteName: 'instituteName', // resolves from context

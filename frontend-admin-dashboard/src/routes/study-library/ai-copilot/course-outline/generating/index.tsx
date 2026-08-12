@@ -119,7 +119,10 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TagInput } from '@/components/ui/tag-input';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     DropdownMenu,
@@ -715,7 +718,8 @@ export function RouteComponent() {
                 // Append reference URLs so the AI can use them as context
                 const refUrls = courseConfig.references?.urls?.filter((u: string) => u);
                 if (refUrls && refUrls.length > 0) {
-                    userPrompt += '\n\nYou can use the following reference URLs for context:\n' +
+                    userPrompt +=
+                        '\n\nYou can use the following reference URLs for context:\n' +
                         refUrls.map((u: string) => `- ${u}`).join('\n');
                 }
 
@@ -785,6 +789,18 @@ export function RouteComponent() {
                     );
                 } else {
                     sessionStorage.removeItem('courseReferenceDocIds');
+                }
+
+                // Knowledge-base grounding must reach BOTH passes: the outline
+                // uses the topic tree, the content pass retrieves per slide.
+                if (courseConfig.kbGrounding?.knowledge_base_id) {
+                    payload.kb_grounding = courseConfig.kbGrounding;
+                    sessionStorage.setItem(
+                        'courseKbGrounding',
+                        JSON.stringify(courseConfig.kbGrounding)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseKbGrounding');
                 }
 
                 if (numChapters) {
@@ -896,7 +912,10 @@ export function RouteComponent() {
 
                                 // Check for error events from SSE stream
                                 if (jsonData.type === 'ERROR') {
-                                    throw new Error(jsonData.message || `Server error (code: ${jsonData.code || 'unknown'})`);
+                                    throw new Error(
+                                        jsonData.message ||
+                                            `Server error (code: ${jsonData.code || 'unknown'})`
+                                    );
                                 }
 
                                 console.log('=== API Response Received ===');
@@ -950,9 +969,7 @@ export function RouteComponent() {
 
                                 // Pre-expand all sessions
                                 const allSessionIds = new Set(
-                                    generatedSlides.map(
-                                        (slide: SlideGeneration) => slide.sessionId
-                                    )
+                                    generatedSlides.map((slide: SlideGeneration) => slide.sessionId)
                                 );
                                 setExpandedSessions(allSessionIds);
 
@@ -968,10 +985,9 @@ export function RouteComponent() {
                                 console.error('Error:', e);
                                 console.error('Raw data:', data);
                                 setIsGenerating(false);
-                                toast.error(
-                                    `${e instanceof Error ? e.message : 'Unknown error'}`,
-                                    { duration: 8000 }
-                                );
+                                toast.error(`${e instanceof Error ? e.message : 'Unknown error'}`, {
+                                    duration: 8000,
+                                });
                             }
                         }
                     }
@@ -1294,7 +1310,7 @@ export function RouteComponent() {
                                 prev
                                     .filter((s) => s.sessionId === regeneratingSessionId)
                                     .indexOf(slide) +
-                                1
+                                    1
                             ) {
                                 return { ...slide, status: 'completed', progress: 100 };
                             } else {
@@ -1469,9 +1485,7 @@ export function RouteComponent() {
                 if (slide.slideType === 'solution') {
                     setCodeContent(slide.content || DEFAULT_SOLUTION_CODE);
                 } else {
-                    setCodeContent(
-                        slide.content || '// Start writing your code here'
-                    );
+                    setCodeContent(slide.content || '// Start writing your code here');
                 }
             } else if (slide.slideType === 'homework' || slide.slideType === 'assignment') {
                 setHomeworkQuestion('What is the main concept covered in this session?');
@@ -1804,11 +1818,13 @@ export function RouteComponent() {
                                         className="min-w-[180px]"
                                     >
                                         {isCreatingCourse ? (
-                                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                            <Loader2 className="mr-1 size-4 animate-spin" />
                                         ) : (
-                                            <CheckCircle className="h-4 w-4 mr-1" />
+                                            <CheckCircle className="mr-1 size-4" />
                                         )}
-                                        {isAdmin ? `Create ${getTerminology(ContentTerms.Course, SystemTerms.Course)}` : `Create Draft ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
+                                        {isAdmin
+                                            ? `Create ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`
+                                            : `Create Draft ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
                                     </MyButton>
                                 ) : (
                                     <MyButton
@@ -1832,7 +1848,8 @@ export function RouteComponent() {
 
                         <div>
                             <h1 className="mb-2 text-xl font-semibold text-neutral-900 sm:text-2xl lg:text-3xl">
-                                Step 1: Review Your {getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline
+                                Step 1: Review Your{' '}
+                                {getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline
                             </h1>
                             <p className="text-sm text-gray-600 sm:text-base">
                                 Review the course outline, topics, and objectives generated for your
@@ -1854,7 +1871,9 @@ export function RouteComponent() {
                             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900 sm:text-2xl">
                                     <Layers className="size-5 text-indigo-600 sm:size-6" />
-                                    {isContentGenerated ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content` : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline`}
+                                    {isContentGenerated
+                                        ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`
+                                        : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline`}
                                 </h2>
                                 <div className="flex gap-2">
                                     <MyButton
@@ -1885,14 +1904,14 @@ export function RouteComponent() {
                                 <SortableContext
                                     items={
                                         Array.isArray(sessionsWithProgress) &&
-                                            sessionsWithProgress.length > 0
+                                        sessionsWithProgress.length > 0
                                             ? sessionsWithProgress.map((s) => s.sessionId)
                                             : []
                                     }
                                     strategy={verticalListSortingStrategy}
                                 >
                                     {!Array.isArray(sessionsWithProgress) ||
-                                        sessionsWithProgress.length === 0 ? (
+                                    sessionsWithProgress.length === 0 ? (
                                         <div className="py-8 text-center text-neutral-500">
                                             <span>
                                                 No sessions available. Please try refreshing the
@@ -2102,7 +2121,7 @@ export function RouteComponent() {
                                                         handleEditMetadataField(
                                                             'description',
                                                             courseMetadata.description ||
-                                                            shortDescription
+                                                                shortDescription
                                                         );
                                                     }}
                                                     className="rounded p-1 text-xs text-indigo-600 hover:bg-indigo-50"
@@ -2184,12 +2203,16 @@ export function RouteComponent() {
                                                 ))
                                             ) : (
                                                 <>
-                                                    <SelectItem value="Beginner">Beginner</SelectItem>
+                                                    <SelectItem value="Beginner">
+                                                        Beginner
+                                                    </SelectItem>
                                                     <SelectItem value="Basic">Basic</SelectItem>
                                                     <SelectItem value="Intermediate">
                                                         Intermediate
                                                     </SelectItem>
-                                                    <SelectItem value="Advanced">Advanced</SelectItem>
+                                                    <SelectItem value="Advanced">
+                                                        Advanced
+                                                    </SelectItem>
                                                 </>
                                             )}
                                         </SelectContent>
@@ -2467,12 +2490,12 @@ export function RouteComponent() {
                                 </div>
                                 <div className="space-y-2">
                                     {courseMetadata?.courseMedia ||
-                                        courseMetadata?.mediaImageUrl ||
-                                        courseMetadata?.bannerImageUrl ||
-                                        courseMetadata?.previewImageUrl ? (
+                                    courseMetadata?.mediaImageUrl ||
+                                    courseMetadata?.bannerImageUrl ||
+                                    courseMetadata?.previewImageUrl ? (
                                         <div className="relative">
                                             {courseMetadata?.courseMedia &&
-                                                courseMetadata.courseMediaType === 'youtube' ? (
+                                            courseMetadata.courseMediaType === 'youtube' ? (
                                                 <div className="aspect-[16/9] w-full overflow-hidden rounded-lg">
                                                     <iframe
                                                         src={courseMetadata.courseMedia}
@@ -2482,7 +2505,7 @@ export function RouteComponent() {
                                                     />
                                                 </div>
                                             ) : courseMetadata?.courseMedia &&
-                                                courseMetadata.courseMediaType === 'video' ? (
+                                              courseMetadata.courseMediaType === 'video' ? (
                                                 <div className="aspect-[16/9] w-full overflow-hidden rounded-lg">
                                                     <video
                                                         src={courseMetadata.courseMedia}
@@ -2732,7 +2755,9 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: DOMPurify.sanitize(courseMetadata.why_learn_html),
+                                                __html: DOMPurify.sanitize(
+                                                    courseMetadata.why_learn_html
+                                                ),
                                             }}
                                         />
                                     )}
@@ -2801,7 +2826,9 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: DOMPurify.sanitize(courseMetadata.who_should_learn_html),
+                                                __html: DOMPurify.sanitize(
+                                                    courseMetadata.who_should_learn_html
+                                                ),
                                             }}
                                         />
                                     )}
@@ -2870,7 +2897,9 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: DOMPurify.sanitize(courseMetadata.about_the_course_html),
+                                                __html: DOMPurify.sanitize(
+                                                    courseMetadata.about_the_course_html
+                                                ),
                                             }}
                                         />
                                     )}
@@ -2902,189 +2931,190 @@ export function RouteComponent() {
                                         {/* Document Slide */}
                                         {(viewingSlide.slideType === 'objectives' ||
                                             viewingSlide.slideType === 'doc') && (
-                                                <div>
-                                                    <HtmlDocField
-                                                        value={documentContent}
-                                                        onChange={setDocumentContent}
-                                                        placeholder="Enter document content..."
-                                                        minHeight={500}
-                                                    />
-                                                </div>
-                                            )}
+                                            <div>
+                                                <HtmlDocField
+                                                    value={documentContent}
+                                                    onChange={setDocumentContent}
+                                                    placeholder="Enter document content..."
+                                                    minHeight={500}
+                                                />
+                                            </div>
+                                        )}
 
                                         {/* Video + Code Slide */}
                                         {(viewingSlide.slideType === 'topic' ||
                                             viewingSlide.slideType === 'video-code-editor' ||
                                             viewingSlide.slideType === 'video-jupyter' ||
                                             viewingSlide.slideType === 'video-scratch') && (
+                                            <div
+                                                ref={resizeContainerRef}
+                                                className="relative flex h-[600px] gap-0"
+                                            >
+                                                {/* Code Editor Section */}
                                                 <div
-                                                    ref={resizeContainerRef}
-                                                    className="relative flex h-[600px] gap-0"
+                                                    className="flex shrink-0 flex-col overflow-hidden rounded-l-lg border"
+                                                    style={{ width: `${codeEditorWidth}%` }}
                                                 >
-                                                    {/* Code Editor Section */}
-                                                    <div
-                                                        className="flex shrink-0 flex-col overflow-hidden rounded-l-lg border"
-                                                        style={{ width: `${codeEditorWidth}%` }}
-                                                    >
-                                                        {/* Code Editor Header */}
-                                                        <div className="flex items-center justify-between gap-4 border-b bg-white px-4 py-3">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                                                                    <Code className="size-4" />
-                                                                    <span>Code Editor</span>
-                                                                </div>
-                                                                <span
-                                                                    className={`rounded-full px-3 py-1 text-xs font-semibold ${isEditMode
+                                                    {/* Code Editor Header */}
+                                                    <div className="flex items-center justify-between gap-4 border-b bg-white px-4 py-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                                                                <Code className="size-4" />
+                                                                <span>Code Editor</span>
+                                                            </div>
+                                                            <span
+                                                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                                                    isEditMode
                                                                         ? 'bg-emerald-100 text-emerald-700'
                                                                         : 'bg-neutral-200 text-neutral-600'
-                                                                        }`}
+                                                                }`}
+                                                            >
+                                                                {isEditMode
+                                                                    ? 'Edit Mode'
+                                                                    : 'View Mode'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={handleRunCode}
+                                                                className="flex items-center gap-2 rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-700"
+                                                            >
+                                                                <Play className="size-4" />
+                                                                Run
+                                                            </button>
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <button className="flex items-center gap-2 rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium transition-colors hover:bg-neutral-50">
+                                                                        <Settings className="size-4" />
+                                                                        Settings
+                                                                        <ChevronDown className="size-3" />
+                                                                    </button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent
+                                                                    className="w-56 bg-white"
+                                                                    align="end"
                                                                 >
-                                                                    {isEditMode
-                                                                        ? 'Edit Mode'
-                                                                        : 'View Mode'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <button
-                                                                    onClick={handleRunCode}
-                                                                    className="flex items-center gap-2 rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-700"
-                                                                >
-                                                                    <Play className="size-4" />
-                                                                    Run
-                                                                </button>
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger asChild>
-                                                                        <button className="flex items-center gap-2 rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium transition-colors hover:bg-neutral-50">
-                                                                            <Settings className="size-4" />
-                                                                            Settings
-                                                                            <ChevronDown className="size-3" />
-                                                                        </button>
-                                                                    </DropdownMenuTrigger>
-                                                                    <DropdownMenuContent
-                                                                        className="w-56 bg-white"
-                                                                        align="end"
+                                                                    {/* View/Edit Mode */}
+                                                                    <DropdownMenuCheckboxItem
+                                                                        checked={isEditMode}
+                                                                        onCheckedChange={(
+                                                                            checked
+                                                                        ) =>
+                                                                            setIsEditMode(!!checked)
+                                                                        }
+                                                                        className="flex items-center justify-between"
                                                                     >
-                                                                        {/* View/Edit Mode */}
-                                                                        <DropdownMenuCheckboxItem
-                                                                            checked={isEditMode}
-                                                                            onCheckedChange={(
-                                                                                checked
-                                                                            ) =>
-                                                                                setIsEditMode(!!checked)
-                                                                            }
-                                                                            className="flex items-center justify-between"
-                                                                        >
-                                                                            <div className="flex items-center gap-2">
-                                                                                <Eye className="size-4" />
-                                                                                <span>
-                                                                                    View/Edit Mode
-                                                                                </span>
-                                                                            </div>
-                                                                            {isEditMode && (
-                                                                                <div className="flex items-center gap-1">
-                                                                                    <div className="flex h-5 w-9 items-center rounded-full bg-emerald-500 px-1">
-                                                                                        <div className="size-3.5 rounded-full bg-white shadow-sm" />
-                                                                                    </div>
-                                                                                    <Pencil className="size-3 text-neutral-600" />
-                                                                                </div>
-                                                                            )}
-                                                                        </DropdownMenuCheckboxItem>
-
-                                                                        <DropdownMenuSeparator />
-
-                                                                        {/* Switch Theme */}
-                                                                        <DropdownMenuItem
-                                                                            onClick={() =>
-                                                                                setIsDarkTheme(
-                                                                                    (prev) => !prev
-                                                                                )
-                                                                            }
-                                                                            className="flex items-center gap-2"
-                                                                        >
-                                                                            <Sun className="size-4" />
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Eye className="size-4" />
                                                                             <span>
-                                                                                {isDarkTheme
-                                                                                    ? 'Switch to Light Theme'
-                                                                                    : 'Switch to Dark Theme'}
+                                                                                View/Edit Mode
                                                                             </span>
-                                                                        </DropdownMenuItem>
+                                                                        </div>
+                                                                        {isEditMode && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <div className="flex h-5 w-9 items-center rounded-full bg-emerald-500 px-1">
+                                                                                    <div className="size-3.5 rounded-full bg-white shadow-sm" />
+                                                                                </div>
+                                                                                <Pencil className="size-3 text-neutral-600" />
+                                                                            </div>
+                                                                        )}
+                                                                    </DropdownMenuCheckboxItem>
 
-                                                                        <DropdownMenuSeparator />
+                                                                    <DropdownMenuSeparator />
 
-                                                                        {/* Copy Code */}
-                                                                        <DropdownMenuItem
-                                                                            onClick={handleCopyCode}
-                                                                            className="flex items-center gap-2"
-                                                                        >
-                                                                            <Copy className="size-4" />
-                                                                            <span>Copy Code</span>
-                                                                        </DropdownMenuItem>
+                                                                    {/* Switch Theme */}
+                                                                    <DropdownMenuItem
+                                                                        onClick={() =>
+                                                                            setIsDarkTheme(
+                                                                                (prev) => !prev
+                                                                            )
+                                                                        }
+                                                                        className="flex items-center gap-2"
+                                                                    >
+                                                                        <Sun className="size-4" />
+                                                                        <span>
+                                                                            {isDarkTheme
+                                                                                ? 'Switch to Light Theme'
+                                                                                : 'Switch to Dark Theme'}
+                                                                        </span>
+                                                                    </DropdownMenuItem>
 
-                                                                        {/* Download Code */}
-                                                                        <DropdownMenuItem
-                                                                            onClick={handleDownloadCode}
-                                                                            className="flex items-center gap-2"
-                                                                        >
-                                                                            <Download className="size-4" />
-                                                                            <span>Download Code</span>
-                                                                        </DropdownMenuItem>
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                            </div>
+                                                                    <DropdownMenuSeparator />
+
+                                                                    {/* Copy Code */}
+                                                                    <DropdownMenuItem
+                                                                        onClick={handleCopyCode}
+                                                                        className="flex items-center gap-2"
+                                                                    >
+                                                                        <Copy className="size-4" />
+                                                                        <span>Copy Code</span>
+                                                                    </DropdownMenuItem>
+
+                                                                    {/* Download Code */}
+                                                                    <DropdownMenuItem
+                                                                        onClick={handleDownloadCode}
+                                                                        className="flex items-center gap-2"
+                                                                    >
+                                                                        <Download className="size-4" />
+                                                                        <span>Download Code</span>
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
                                                         </div>
-                                                        <Editor
-                                                            height="calc(100% - 60px)"
-                                                            language="javascript"
-                                                            value={codeContent}
-                                                            onChange={(value) =>
-                                                                setCodeContent(value || '')
-                                                            }
-                                                            theme={isDarkTheme ? 'vs-dark' : 'light'}
-                                                            options={{
-                                                                minimap: { enabled: false },
-                                                                fontSize: 14,
-                                                                lineNumbers: 'on',
-                                                                scrollBeyondLastLine: false,
-                                                                automaticLayout: true,
-                                                                readOnly: !isEditMode,
-                                                            }}
-                                                        />
                                                     </div>
-
-                                                    {/* Resize Divider */}
-                                                    <div
-                                                        className="group relative w-1 shrink-0 cursor-col-resize bg-neutral-300 transition-colors hover:bg-indigo-500"
-                                                        onMouseDown={handleResizeStart}
-                                                        style={{
-                                                            cursor: isResizing
-                                                                ? 'col-resize'
-                                                                : 'col-resize',
+                                                    <Editor
+                                                        height="calc(100% - 60px)"
+                                                        language="javascript"
+                                                        value={codeContent}
+                                                        onChange={(value) =>
+                                                            setCodeContent(value || '')
+                                                        }
+                                                        theme={isDarkTheme ? 'vs-dark' : 'light'}
+                                                        options={{
+                                                            minimap: { enabled: false },
+                                                            fontSize: 14,
+                                                            lineNumbers: 'on',
+                                                            scrollBeyondLastLine: false,
+                                                            automaticLayout: true,
+                                                            readOnly: !isEditMode,
                                                         }}
-                                                    >
-                                                        <div className="absolute inset-y-0 left-1/2 flex w-8 -translate-x-1/2 items-center justify-center">
-                                                            <div className="h-12 w-1 rounded-full bg-neutral-400 transition-colors group-hover:bg-indigo-500" />
-                                                        </div>
-                                                    </div>
+                                                    />
+                                                </div>
 
-                                                    {/* Video Section */}
-                                                    <div
-                                                        className="flex shrink-0 items-center justify-center overflow-hidden rounded-r-lg border bg-black"
-                                                        style={{ width: `${100 - codeEditorWidth}%` }}
-                                                    >
-                                                        <div className="flex size-full items-center justify-center bg-black">
-                                                            <div className="px-6 text-center text-white">
-                                                                <Video className="mx-auto mb-2 size-16 opacity-50" />
-                                                                <p className="text-sm opacity-75">
-                                                                    Video Player
-                                                                </p>
-                                                                <p className="mt-2 text-xs opacity-50">
-                                                                    Video will be displayed here
-                                                                </p>
-                                                            </div>
+                                                {/* Resize Divider */}
+                                                <div
+                                                    className="group relative w-1 shrink-0 cursor-col-resize bg-neutral-300 transition-colors hover:bg-indigo-500"
+                                                    onMouseDown={handleResizeStart}
+                                                    style={{
+                                                        cursor: isResizing
+                                                            ? 'col-resize'
+                                                            : 'col-resize',
+                                                    }}
+                                                >
+                                                    <div className="absolute inset-y-0 left-1/2 flex w-8 -translate-x-1/2 items-center justify-center">
+                                                        <div className="h-12 w-1 rounded-full bg-neutral-400 transition-colors group-hover:bg-indigo-500" />
+                                                    </div>
+                                                </div>
+
+                                                {/* Video Section */}
+                                                <div
+                                                    className="flex shrink-0 items-center justify-center overflow-hidden rounded-r-lg border bg-black"
+                                                    style={{ width: `${100 - codeEditorWidth}%` }}
+                                                >
+                                                    <div className="flex size-full items-center justify-center bg-black">
+                                                        <div className="px-6 text-center text-white">
+                                                            <Video className="mx-auto mb-2 size-16 opacity-50" />
+                                                            <p className="text-sm opacity-75">
+                                                                Video Player
+                                                            </p>
+                                                            <p className="mt-2 text-xs opacity-50">
+                                                                Video will be displayed here
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            )}
+                                            </div>
+                                        )}
 
                                         {/* Quiz Slide */}
                                         {viewingSlide.slideType === 'quiz' && (
@@ -3123,7 +3153,7 @@ export function RouteComponent() {
                                                             disabled={
                                                                 quizQuestions.length === 0 ||
                                                                 currentQuizQuestionIndex ===
-                                                                quizQuestions.length - 1
+                                                                    quizQuestions.length - 1
                                                             }
                                                             className="flex size-9 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-600 transition-colors hover:border-emerald-400 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                                                             aria-label="Next question"
@@ -3137,7 +3167,7 @@ export function RouteComponent() {
                                                     <RadioGroup
                                                         value={
                                                             selectedQuizAnswers[
-                                                            currentQuizQuestionIndex
+                                                                currentQuizQuestionIndex
                                                             ] ?? ''
                                                         }
                                                         onValueChange={handleQuizAnswerChange}
@@ -3149,7 +3179,7 @@ export function RouteComponent() {
                                                                     optionIndex.toString();
                                                                 const selected =
                                                                     selectedQuizAnswers[
-                                                                    currentQuizQuestionIndex
+                                                                        currentQuizQuestionIndex
                                                                     ] === value;
                                                                 const isCorrect =
                                                                     currentQuizQuestion.correctAnswerIndex?.toString() ===
@@ -3194,112 +3224,116 @@ export function RouteComponent() {
                                         {/* Homework/Assignment Slide */}
                                         {(viewingSlide.slideType === 'homework' ||
                                             viewingSlide.slideType === 'assignment') && (
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <Label className="text-base font-semibold">
-                                                            Question:
-                                                        </Label>
-                                                        <Textarea
-                                                            value={homeworkQuestion}
-                                                            onChange={(e) =>
-                                                                setHomeworkQuestion(e.target.value)
-                                                            }
-                                                            placeholder="Enter assignment question..."
-                                                            className="mt-2 min-h-[100px]"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <div className="mb-2 flex items-center gap-4">
-                                                            <Label className="text-base font-semibold">
-                                                                Answer:
-                                                            </Label>
-                                                            <div className="flex gap-2">
-                                                                <button
-                                                                    onClick={() =>
-                                                                        setHomeworkAnswerType('text')
-                                                                    }
-                                                                    className={`rounded px-3 py-1 text-sm ${homeworkAnswerType === 'text'
-                                                                        ? 'bg-indigo-600 text-white'
-                                                                        : 'bg-neutral-100 text-neutral-700'
-                                                                        }`}
-                                                                >
-                                                                    Text
-                                                                </button>
-                                                                <button
-                                                                    onClick={() =>
-                                                                        setHomeworkAnswerType('code')
-                                                                    }
-                                                                    className={`rounded px-3 py-1 text-sm ${homeworkAnswerType === 'code'
-                                                                        ? 'bg-indigo-600 text-white'
-                                                                        : 'bg-neutral-100 text-neutral-700'
-                                                                        }`}
-                                                                >
-                                                                    Code Editor
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        {homeworkAnswerType === 'text' ? (
-                                                            <Textarea
-                                                                value={homeworkAnswer}
-                                                                onChange={(e) => setHomeworkAnswer(e.target.value)}
-                                                                className="resize-y font-mono text-caption"
-                                                                style={{ minHeight: 300 }}
-                                                            />
-                                                        ) : (
-                                                            <div className="overflow-hidden rounded-lg border">
-                                                                <Editor
-                                                                    height="300px"
-                                                                    language="javascript"
-                                                                    value={homeworkAnswer}
-                                                                    onChange={(value) =>
-                                                                        setHomeworkAnswer(value || '')
-                                                                    }
-                                                                    theme="light"
-                                                                    options={{
-                                                                        minimap: { enabled: false },
-                                                                        fontSize: 14,
-                                                                        lineNumbers: 'on',
-                                                                        scrollBeyondLastLine: false,
-                                                                        automaticLayout: true,
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <Label className="text-base font-semibold">
+                                                        Question:
+                                                    </Label>
+                                                    <Textarea
+                                                        value={homeworkQuestion}
+                                                        onChange={(e) =>
+                                                            setHomeworkQuestion(e.target.value)
+                                                        }
+                                                        placeholder="Enter assignment question..."
+                                                        className="mt-2 min-h-[100px]"
+                                                    />
                                                 </div>
-                                            )}
+                                                <div>
+                                                    <div className="mb-2 flex items-center gap-4">
+                                                        <Label className="text-base font-semibold">
+                                                            Answer:
+                                                        </Label>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() =>
+                                                                    setHomeworkAnswerType('text')
+                                                                }
+                                                                className={`rounded px-3 py-1 text-sm ${
+                                                                    homeworkAnswerType === 'text'
+                                                                        ? 'bg-indigo-600 text-white'
+                                                                        : 'bg-neutral-100 text-neutral-700'
+                                                                }`}
+                                                            >
+                                                                Text
+                                                            </button>
+                                                            <button
+                                                                onClick={() =>
+                                                                    setHomeworkAnswerType('code')
+                                                                }
+                                                                className={`rounded px-3 py-1 text-sm ${
+                                                                    homeworkAnswerType === 'code'
+                                                                        ? 'bg-indigo-600 text-white'
+                                                                        : 'bg-neutral-100 text-neutral-700'
+                                                                }`}
+                                                            >
+                                                                Code Editor
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {homeworkAnswerType === 'text' ? (
+                                                        <Textarea
+                                                            value={homeworkAnswer}
+                                                            onChange={(e) =>
+                                                                setHomeworkAnswer(e.target.value)
+                                                            }
+                                                            className="resize-y font-mono text-caption"
+                                                            style={{ minHeight: 300 }}
+                                                        />
+                                                    ) : (
+                                                        <div className="overflow-hidden rounded-lg border">
+                                                            <Editor
+                                                                height="300px"
+                                                                language="javascript"
+                                                                value={homeworkAnswer}
+                                                                onChange={(value) =>
+                                                                    setHomeworkAnswer(value || '')
+                                                                }
+                                                                theme="light"
+                                                                options={{
+                                                                    minimap: { enabled: false },
+                                                                    fontSize: 14,
+                                                                    lineNumbers: 'on',
+                                                                    scrollBeyondLastLine: false,
+                                                                    automaticLayout: true,
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Code Editor Slide */}
                                         {(viewingSlide.slideType === 'code-editor' ||
                                             viewingSlide.slideType === 'jupyter' ||
                                             viewingSlide.slideType === 'scratch' ||
                                             viewingSlide.slideType === 'solution') && (
-                                                <div className="overflow-hidden rounded-lg border">
-                                                    <div className="border-b bg-neutral-100 px-4 py-2">
-                                                        <span className="text-sm font-medium">
-                                                            {viewingSlide.slideType === 'solution'
-                                                                ? 'Solution Code'
-                                                                : 'Code Editor'}
-                                                        </span>
-                                                    </div>
-                                                    <Editor
-                                                        height="500px"
-                                                        language="javascript"
-                                                        value={codeContent}
-                                                        onChange={(value) =>
-                                                            setCodeContent(value || '')
-                                                        }
-                                                        theme="light"
-                                                        options={{
-                                                            minimap: { enabled: false },
-                                                            fontSize: 14,
-                                                            lineNumbers: 'on',
-                                                            scrollBeyondLastLine: false,
-                                                            automaticLayout: true,
-                                                        }}
-                                                    />
+                                            <div className="overflow-hidden rounded-lg border">
+                                                <div className="border-b bg-neutral-100 px-4 py-2">
+                                                    <span className="text-sm font-medium">
+                                                        {viewingSlide.slideType === 'solution'
+                                                            ? 'Solution Code'
+                                                            : 'Code Editor'}
+                                                    </span>
                                                 </div>
-                                            )}
+                                                <Editor
+                                                    height="500px"
+                                                    language="javascript"
+                                                    value={codeContent}
+                                                    onChange={(value) =>
+                                                        setCodeContent(value || '')
+                                                    }
+                                                    theme="light"
+                                                    options={{
+                                                        minimap: { enabled: false },
+                                                        fontSize: 14,
+                                                        lineNumbers: 'on',
+                                                        scrollBeyondLastLine: false,
+                                                        automaticLayout: true,
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Fixed Footer */}
@@ -3452,7 +3486,6 @@ export function RouteComponent() {
                         }
                         costPreview={isContentGenerated ? undefined : contentCostPreview}
                     />
-
 
                     <BackToLibraryDialog
                         open={backToLibraryDialogOpen}

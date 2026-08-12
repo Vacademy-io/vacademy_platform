@@ -270,6 +270,25 @@ def set_status(
     if status not in ("DRAFT", "PUBLISHED", "UNLISTED"):
         raise ValueError("status must be DRAFT, PUBLISHED or UNLISTED")
 
+    # Returning to DRAFT flips owner_type back to INSTITUTE, and is_usable only
+    # honours an entitlement on a PLATFORM row — so this would silently revoke
+    # access every buyer paid for. UNLISTED exists precisely for withdrawing a
+    # library, and keeps them working.
+    if status == "DRAFT":
+        paid = db.execute(
+            text(
+                "SELECT COUNT(*) FROM knowledge_base_entitlement "
+                "WHERE knowledge_base_id = :kb_id"
+            ),
+            {"kb_id": kb_id},
+        ).scalar()
+        if paid:
+            raise ValueError(
+                f"{paid} institute(s) have already unlocked this library. "
+                "Withdraw it instead — that hides it from the catalogue without "
+                "taking away access they paid for."
+            )
+
     # The publish decision is passed as its own boolean rather than comparing
     # :status inside the CASE. Binding one parameter to both a VARCHAR column
     # and a text comparison leaves Postgres unable to deduce a single type for

@@ -269,6 +269,13 @@ async def unlock(
     if listing["status"] != "PUBLISHED":
         raise HTTPException(400, "This library is not available")
 
+    # The catalogue already hides archived bases, but a direct link would still
+    # reach here — and charging for an archived corpus is a refund waiting to
+    # happen.
+    kb = KbRepository(db).get_kb(kb_id, resolved)
+    if not kb or kb["status"] != "ACTIVE":
+        raise HTTPException(400, "This library is not available")
+
     if kb_library.is_entitled(db, kb_id, resolved):
         # Already theirs. Answering 200 keeps a double-submit harmless.
         return {"unlocked": True, "credits_charged": 0, "already_owned": True}

@@ -308,6 +308,17 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # One-time, permanent unlock of a curated library (V445). Deliberately low:
+    # nothing in the catalogue can be sampled before purchase, so the first
+    # unlock is bought on faith. Keep in sync with the V445 seed and with
+    # computeToolCredits on the frontend.
+    "kb_library_unlock": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("50"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

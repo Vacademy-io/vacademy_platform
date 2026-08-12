@@ -55,6 +55,15 @@ class ContentGenerationService:
         # (each figure → its single best-matching slide) so the same figure is
         # not embedded on every slide. Set by the orchestrator per run.
         self._document_figures_by_path: dict = {}
+        # Per-slide passages retrieved from the institute's knowledge base,
+        # keyed by todo path. Empty when the course is not KB-grounded.
+        self._kb_grounding_by_path: dict = {}
+        # {path: [{source_title, page_start, ...}]} — kept so a teacher can
+        # verify any slide against the page it was written from.
+        self._kb_citations_by_path: dict = {}
+        # Slides the material could not support. Surfaced as a review list
+        # rather than silently filled with model knowledge.
+        self._kb_unsupported_paths: list = []
         
         logger.info("[ContentGenService] Creating VideoGenerationService...")
         try:
@@ -161,7 +170,7 @@ class ContentGenerationService:
         """
         try:
             logger.info(f"Generating document content for slide: {todo.path}")
-            
+
             title = todo.title or todo.name or ""
             title_lower = title.lower()
             is_homework_questions = "homework questions" in title_lower or "assignment -" in title_lower
@@ -1289,6 +1298,23 @@ class ContentGenerationService:
                 f"(Type: {todo.type}, Action: {todo.action_type})"
             )
             generated_content_by_path = generated_content_by_path or {}
+
+            # Ground EVERY slide type, not just documents. Every generator below
+            # reads `todo.prompt or <fallback>`, so appending here reaches videos,
+            # slide decks, storybooks and quizzes too — and quizzes are where it
+            # matters most, because questions drawn from the institute's own
+            # exercises are the thing teachers actually ask for.
+            kb_block = self._kb_grounding_by_path.get(todo.path)
+            # Idempotent: this mutates the Todo, and there are several dispatch
+            # paths (parallel phase, sequential homework→solution pairs). They
+            # are disjoint today, but appending 12k characters twice would be
+            # silent and expensive, so key off a marker rather than that invariant.
+            if kb_block and "===== COURSE MATERIAL" not in (todo.prompt or ""):
+                # Seed from the title when a todo carries no prompt, so grounding
+                # is never dropped just because the outline left it empty.
+                base = todo.prompt or (todo.title or todo.name or "")
+                todo.prompt = f"{base}{kb_block}"
+
             homework_content = None
             if todo.type == "DOCUMENT":
                 title_lower = (todo.title or todo.name or "").lower()

@@ -164,7 +164,7 @@ def _topic_label(repo: KbRepository, kb_id: str, node_ids: Optional[List[str]]) 
         picked_parents = [
             c["title"]
             for n in tree
-            for c in (n.get("children") or [])
+            for c in (n.get("subtopics") or [])
             if c["id"] in wanted and c.get("title")
         ]
     if not picked_parents:

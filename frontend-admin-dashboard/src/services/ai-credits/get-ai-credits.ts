@@ -107,7 +107,9 @@ export type ToolKey =
     // Question papers from a knowledge base (V441)
     | 'kb_paper_blueprint'
     | 'kb_paper_questions'
-    | 'kb_paper_regenerate';
+    | 'kb_paper_regenerate'
+    // One-time permanent unlock of a curated library (V445)
+    | 'kb_library_unlock';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

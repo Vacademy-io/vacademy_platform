@@ -5,6 +5,26 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class KbGrounding(BaseModel):
+    """Build a course from a knowledge base the institute already has.
+
+    Distinct from reference_document_file_ids, which uploads and converts a PDF
+    per generation and can only fit its opening pages into the prompt. A
+    knowledge base is already ingested, so the outline can use its full topic
+    tree and each slide can retrieve the passages about its OWN subject.
+    """
+
+    knowledge_base_id: str
+
+    # Topics/subtopics the teacher ticked. Empty means the whole knowledge base.
+    node_ids: List[str] = Field(default_factory=list)
+
+    # STRICT  — teach only what the material supports; slides it cannot support
+    #           are flagged rather than invented, so the gap is visible.
+    # BLENDED — fill gaps from general knowledge, marked as outside the material.
+    mode: Literal["STRICT", "BLENDED"] = "STRICT"
+
+
 class GenerationOptions(BaseModel):
     """
     Optional configuration for course outline generation.
@@ -68,6 +88,14 @@ class CourseUserPromptRequest(BaseModel):
             "can be embedded verbatim into slides/videos."
         ),
     )
+    kb_grounding: Optional[KbGrounding] = Field(
+        default=None,
+        description=(
+            "Build the course from a knowledge base instead of an uploaded PDF. "
+            "Takes precedence over reference_document_file_ids: the topic tree "
+            "gives the outline the WHOLE corpus rather than its first 60k chars."
+        ),
+    )
     # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
     # Keys are automatically resolved from database (user → institute) or environment variables
 
@@ -111,6 +139,10 @@ class CourseOutlineRequest(BaseModel):
     reference_document_file_ids: Optional[List[str]] = Field(
         default=None,
         description="Media fileIds of uploaded reference PDFs used to ground the outline.",
+    )
+    kb_grounding: Optional[KbGrounding] = Field(
+        default=None,
+        description="Knowledge base to build this course from.",
     )
 
 

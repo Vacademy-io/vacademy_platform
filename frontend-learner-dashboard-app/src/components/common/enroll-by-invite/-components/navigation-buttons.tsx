@@ -16,6 +16,9 @@ interface NavigationButtonsProps {
   isPaymentDataReady?: boolean; // For Stripe processor or Eway encrypted data
   hasUnappliedReferral?: boolean;
   hidePrimaryButton?: boolean; // For CASHFREE inline card - pay via form's Pay Now
+  // Autopay invites: the review step shows a mandate-consent checkbox; block Next
+  // until the learner ticks it.
+  autopayConsentPending?: boolean;
 }
 
 const NavigationButtons = ({
@@ -31,10 +34,14 @@ const NavigationButtons = ({
   isPaymentDataReady = false,
   hasUnappliedReferral = false,
   hidePrimaryButton = false,
+  autopayConsentPending = false,
 }: NavigationButtonsProps) => {
   const isNextDisabled = () => {
     if (loading) return true;
     if (hasUnappliedReferral) return true;
+
+    // Step 2: Review — autopay invites require ticking the mandate consent first.
+    if (currentStep === 2 && autopayConsentPending) return true;
 
     // Step 1: Payment selection
     if (currentStep === 1 && !selectedPayment) return true;

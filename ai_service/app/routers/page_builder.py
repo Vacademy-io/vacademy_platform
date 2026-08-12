@@ -183,7 +183,12 @@ def _load_catalog() -> Dict[str, Any]:
 _IMAGE_MODEL = os.getenv("PAGE_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
 _IMAGE_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 _IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
-_MAX_AUTO_IMAGES = 5  # cap auto-generated images per page (cost/latency bound)
+# Auto-generated images per page. Was 5, which quietly became the binding
+# constraint once featureGrid's per-feature image became discoverable to the
+# composer: a hero plus a three-illustration row exhausts it, so a photo-card
+# grid of a dozen programs falls back to icons. They are generated
+# concurrently, so the cost is linear but the latency is not.
+_MAX_AUTO_IMAGES = 14
 # Value sentinel the composer uses in an image field to request generation.
 _GEN_PREFIX = "gen:"
 
@@ -788,6 +793,12 @@ _FONT_STACKS: Dict[str, str] = {
     "Newsreader": "Newsreader, serif",
     "Lora": "Lora, serif",
     "DM Serif Display": '"DM Serif Display", serif',
+    # Rounded/friendly faces for family, pre-school and kids brands — without
+    # these every warm childcare reference was rebuilt in Nunito or Inter,
+    # close in weight and wrong in character.
+    "Rubik": "Rubik, sans-serif",
+    "Quicksand": "Quicksand, sans-serif",
+    "Baloo 2": '"Baloo 2", sans-serif',
 }
 
 # One compact, VALID exemplar page showing the premium vocabulary in-schema —
@@ -1380,8 +1391,11 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         parts.append(
             "## IMAGE GENERATION\nYou may request AI-generated images: set an image field to "
             '"gen:<a vivid, specific photography/illustration prompt>" and it will be generated and '
-            "filled in for you. Use it for the HERO right.image and 1–3 key section visuals (feature/"
-            "media images). Do NOT gen: logos of real brands or people. Keep total gen: fields ≤ 4. "
+            "filled in for you. Use it for the HERO right.image, for PER-FEATURE illustrations or "
+            "photos whenever the design shows pictures rather than icons, and for key section visuals. "
+            "Do NOT gen: logos of real brands or people. Keep total gen: fields ≤ 12, and write the "
+            "prompts so the set reads as ONE art direction rather than a dozen unrelated stock photos — "
+            "name the same medium, palette and mood in every one. "
             "Leave an image field empty ('') rather than gen: when a real provided image fits or none is needed."
         )
     if site_corpus:
@@ -1417,15 +1431,25 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         # marketing page, the directory archetype won and produced dense spec
         # tables with no hero, no social proof and no founder section. Later
         # and more forceful beats earlier and more polite.
-        has_reference_sections = isinstance(inspiration, dict) and bool(inspiration.get("sections"))
-        if has_reference_sections:
+        ref_sections = inspiration.get("sections") if isinstance(inspiration, dict) else None
+        ref_sections = ref_sections if isinstance(ref_sections, list) and ref_sections else []
+        if ref_sections:
             parts.append(
                 "## PAGE ARCHETYPE — SECONDARY to the REFERENCE DESIGN above\n"
                 "The admin supplied a reference design with its own section order, and it OUTRANKS this "
                 "archetype wherever the two disagree — including on whether the page opens with a hero, "
                 "and on how offerings are presented (photo cards vs dense blocks). Use the archetype only "
                 "for what the reference is silent about: which of the institute's real offerings must all "
-                "appear, how much detail each carries, and what must NOT appear.\n" + archetype_rule
+                "appear, how much detail each carries, and what must NOT appear.\n"
+                + (
+                    "CONCRETELY: the reference's first band IS a hero, so this page opens with a "
+                    "heroSection, and any rule below telling you to open with a compact page header is "
+                    "overridden. Keep the archetype's coverage requirement — every real offering still "
+                    "gets its own block further down.\n"
+                    if str((ref_sections[0] or {}).get("role", "")).lower() == "hero"
+                    else ""
+                )
+                + archetype_rule
             )
         else:
             parts.append(f"## PAGE ARCHETYPE — this governs the page's STRUCTURE\n{archetype_rule}")
@@ -2702,7 +2726,7 @@ _THEME_PRESETS = {"default", "ocean", "forest", "sunset", "midnight", "rose", "v
 _FONT_FAMILIES = {
     "Inter", "Roboto", "Open Sans", "Poppins", "Lato", "Montserrat", "Mulish", "Figtree",
     "Outfit", "Nunito", "Space Grotesk", "Playfair Display", "Fraunces", "Newsreader",
-    "Lora", "DM Serif Display",
+    "Lora", "DM Serif Display", "Rubik", "Quicksand", "Baloo 2",
 }
 _ATMOSPHERES = {"flat", "soft", "mesh", "aurora"}
 _INTENSITIES = {"subtle", "medium", "bold"}

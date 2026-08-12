@@ -157,8 +157,12 @@ export const formatDataFromStore = async (
 };
 
 export default function Page() {
-  const { loadState, saveState } = useAssessmentStore();
+  const { loadState, saveState, currentQuestion } = useAssessmentStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // The question area is the only scroller (see the h-dvh layout below), so it
+  // keeps its offset when the question swaps — the learner would land partway
+  // down the next question, often mid-options. Reset it on every change.
+  const questionScrollRef = useRef<HTMLElement>(null);
   const [playMode, setPlayMode] = useState<string>("");
   const [evaluationType, setEvaluationType] = useState<string>("");
   // Latches so we show the "save failed" toast exactly once per failure streak
@@ -334,14 +338,28 @@ export default function Page() {
     fetchPlayMode();
   }, []);
 
+  useEffect(() => {
+    // "auto" not "smooth": a visible scroll animation on every Next tap reads as
+    // lag on low-end devices, and the learner is already looking at the top.
+    questionScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [currentQuestion?.question_id]);
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="flex flex-col w-full bg-gray-50">
+    // A capped viewport height plus overflow-hidden is what makes the footer stay
+    // put: without it the column grows with the question, `flex-1` has nothing to
+    // flex against, and the whole document scrolls — taking the footer with it.
+    // Dynamic viewport units (h-dvh, not h-screen) so the Android browser chrome
+    // collapsing on scroll doesn't clip the footer off the bottom.
+    <div className="flex h-dvh flex-col w-full overflow-hidden bg-gray-50">
       <Navbar playMode={playMode} evaluationType={evaluationType} />
       <SectionTabs />
-      <div className="flex-1 overflow-hidden">
-        <main className="w-full h-full p-4 md:p-6 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <main
+          ref={questionScrollRef}
+          className="w-full h-full p-4 md:p-6 overflow-auto overscroll-contain"
+        >
           <QuestionDisplay />
         </main>
       </div>

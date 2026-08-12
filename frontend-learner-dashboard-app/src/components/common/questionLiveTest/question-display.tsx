@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { WarningCircle } from "@phosphor-icons/react";
+import { CaretRight, WarningCircle } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ import { OneWordInput } from "./otherQuestionTypes/OneWordInput";
 import { LongAnswerInput } from "./otherQuestionTypes/LongAnswerInput";
 import { CodingQuestionDisplay } from "./otherQuestionTypes/CodingQuestionDisplay";
 import { QuestionHtmlContent } from "./question-html-content";
+import { QuestionPassage } from "./question-passage";
 
 export function QuestionDisplay() {
   const {
@@ -121,7 +122,25 @@ export function QuestionDisplay() {
     );
   }
 
+  const hasPassage = Boolean(
+    currentQuestion.parent_rich_text?.content?.trim()
+  );
   const currentAnswer = answers[currentQuestion.question_id] || [];
+
+  // Quick-advance affordance: only offered once the question actually holds an
+  // answer, and never on the very last question of the last section (where the
+  // footer's next arrow is disabled too — there is nowhere to advance to).
+  const hasAnswered = currentAnswer.some(
+    (value) => value !== null && value !== undefined && String(value).trim() !== ""
+  );
+  const sectionQuestions =
+    assessment?.section_dtos?.[currentSection]?.question_preview_dto_list ?? [];
+  const indexInSection = sectionQuestions.findIndex(
+    (question) => question.question_id === currentQuestion.question_id
+  );
+  const isLastQuestionOfTest =
+    indexInSection === sectionQuestions.length - 1 &&
+    currentSection === (assessment?.section_dtos?.length ?? 1) - 1;
   const isMarkedForReview =
     questionStates[currentQuestion.question_id]?.isMarkedForReview;
   // const isDisabled =
@@ -207,6 +226,22 @@ export function QuestionDisplay() {
           </div>
           {<ExpandableParagraph />}
 
+          {/* Comprehension passage for this question (backend: parent_rich_text).
+              ExpandableParagraph above is a different thing — the assessment-wide
+              "about" text fetched once from about_id — so it never showed passages. */}
+          <QuestionPassage html={currentQuestion.parent_rich_text?.content} />
+
+          {/* After a large tinted passage block the question read as a caption,
+              so learners could not tell where the passage ended. Label it and
+              give it weight — only when a passage precedes it, since a standalone
+              question needs no such separator. */}
+          {hasPassage && (
+            <p className="mb-1 text-caption font-bold uppercase tracking-wide text-gray-500">
+              Question
+            </p>
+          )}
+          {/* Same weight as a question with no passage — the label above is what
+              separates it from the passage, not a heavier font. */}
           <QuestionHtmlContent
             html={currentQuestion.question.content}
             className="text-lg text-gray-800"
@@ -329,6 +364,18 @@ export function QuestionDisplay() {
             return <div className="">other question type was found</div>;
         }
       })()}
+
+      {/* Quick advance. Deliberately a button rather than auto-advancing on
+          selection: in a timed exam a stray tap would silently skip a question,
+          and the learner could not tell whether their answer registered. */}
+      {!isManualTest && hasAnswered && !isLastQuestionOfTest && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={moveToNextQuestion}>
+            Next
+            <CaretRight className="ml-1 size-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

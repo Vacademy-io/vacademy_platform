@@ -41,7 +41,18 @@ public class CommunityApplicationSecurityConfig {
             // Public plan builder (rate card + quote) - open for the pricing page
             "/community-service/public/v1/pricing/**",
             // BBB server health check & management
-            "/community-service/bbb/**" };
+            "/community-service/bbb/**",
+            // External uptime monitor for per-client deployments (Vet Education etc.).
+            //
+            // ONLY the read-only status view is open — it returns the cached result of
+            // the last scheduled run and neither probes nor mutates anything, so an
+            // external uptime checker or health dashboard can poll it freely.
+            //
+            // Deliberately NOT a /** wildcard: the POST /platform-health/check
+            // endpoints fall through to anyRequest().authenticated() below. Those
+            // trigger live probes and can send WhatsApp pages, so leaving them open
+            // would expose an unauthenticated button that messages three people.
+            "/community-service/platform-health/status" };
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;

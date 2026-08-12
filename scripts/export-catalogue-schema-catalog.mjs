@@ -82,6 +82,66 @@ const USAGE = {
         'block per offering, keeping every real name — never merge or summarise a list of offerings into a few ' +
         'generic buckets. It has no price/image/enrol fields by design, so it is safe on informational pages.',
 };
+// The FULL prop surface the renderers actually read, per component.
+//
+// `exampleProps` below is the editor's default template — one arrangement, not
+// the capability. Anything absent from it was invisible to the composer, so it
+// could only use what the design doctrine happened to spell out in prose. That
+// cost real output: asked to rebuild a reference whose feature row used large
+// illustrations and whose testimonials were a carousel with circular avatars,
+// the composer produced grey icons and no testimonials at all — both were
+// buildable, neither was discoverable.
+//
+// Values here are read off the learner renderers (JsonRenderer.tsx and
+// -components/components/*.tsx). Re-check against them when a renderer changes;
+// a value listed here that the renderer does not implement is worse than an
+// omission, because the composer will confidently emit it.
+const CAPABILITIES = {
+    heroSection:
+        'layout: split (image right) | centered | fullwidth (overlay text on a background image). ' +
+        'left: {title, subheading, description (HTML), tags[], button, buttons[{text,action,target,variant:primary|secondary}]}. ' +
+        'eyebrow: {text, style: badge|plain}. statChips[{value,label}] — proof numbers under the copy. ' +
+        'right: {image, alt, imageCollage[]} — with NO image, use layout centered, because the split grid ' +
+        'collapses to a single column and a half-empty fold looks broken.',
+    featureGrid:
+        'style: cards | tinted | glass | gradient-border | panel | bordered | minimal | plain. columns: 2|3|4. ' +
+        'iconSize: small|medium|large. ' +
+        'features[] take MUCH more than an icon and text: {iconName (icon library), icon (emoji — avoid), ' +
+        'image (a real illustration or photo for this feature — use it whenever the design shows pictures ' +
+        'rather than icons), title, description, chips[] (a small label above the title), bullets[] (a list ' +
+        'inside the card body), badge, link {text,url}, headerVariant: tint|solid, headerColor}. ' +
+        'style "panel" + one feature with headerVariant "solid" is the comparison/pillars pattern.',
+    testimonialSection:
+        'layout: grid-scroll (default) | carousel (one quote at a time with prev/next arrows). ' +
+        'testimonials[]: {name, role, quote (or text/feedback), avatar (image URL), rating (1-5), highlight}. ' +
+        'Use carousel when the reference shows a single large quote with navigation.',
+    stepsProcess:
+        'variant: timeline-cards | alternating (plain numbered steps look dated). nodeStyle: icon|dot. ' +
+        'connectorStyle: line|dashed|dots|none. steps[]: {number, title, description, icon/iconName, chips[], meta, state}.',
+    logoCloud:
+        'layout: grid (static partner wall) | marquee (a moving ticker). display: logo|label-pill. ' +
+        'marqueeSpeed: slow|medium|fast. logos[]: {image, alt, label, url} — label-only entries make it an ' +
+        'announcement ticker with no images needed.',
+    sectionHeading:
+        'align: left|center. size: sm|md|lg|xl. highlight: {text, style: underline | mark | gradient} — the ' +
+        'style is applied to the first occurrence of `text` inside `title`, so `text` MUST be a substring of it.',
+    mediaShowcase:
+        'layout: grid | carousel | slider. media[]: {type: image|video, url, caption, heading, backgroundImage}. ' +
+        'Use it for a swipeable row of photos or videos; it carries no per-item button, so for cards that need ' +
+        'a CTA use featureGrid with per-feature image + link.',
+    marquee:
+        'A continuously scrolling strip of short claims. items[]: {icon (emoji is correct here), text, image, label}. ' +
+        'speed: slow|medium|fast. direction: left|right. pauseOnHover. Emoji icons are the intended style for ' +
+        'this component only.',
+    tabsAccordion:
+        'variant: boxed | split. items[]: {title, content (HTML), icon, meta, slot}. The FAQ and ' +
+        '"what you get" workhorse.',
+    imageGallery: 'columns: 2|3|4. gap. showCaptions. images[]: {src, alt, caption}.',
+    ctaBanner:
+        'layout: centered | split. {heading, subheading, button {enabled,text,action,target,style: white|primary|outline}}. ' +
+        'The renderer reads exactly these keys — headerText/buttonText are ignored and produce an empty band.',
+};
+
 const DATA_BOUND = {
     leadForm:
         "Embeds an Audience campaign's LIVE registration form (fields defined in the CRM's Audience " +
@@ -120,6 +180,7 @@ for (const [key, tpl] of Object.entries(componentTemplates)) {
         type: tpl.type,
         templateKey: key,
         exampleProps: tpl.props,
+        ...(CAPABILITIES[tpl.type] ? { capabilities: CAPABILITIES[tpl.type] } : {}),
         ...(USAGE[tpl.type] ? { usage: USAGE[tpl.type] } : {}),
         ...(DATA_BOUND[tpl.type] ? { dataBound: DATA_BOUND[tpl.type] } : {}),
         ...(ESCAPE_HATCH_NOTES[tpl.type] ? { escapeHatch: ESCAPE_HATCH_NOTES[tpl.type] } : {}),

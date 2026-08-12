@@ -68,6 +68,9 @@ export const AiPageWizard = ({
     const [inspiration, setInspiration] = useState<string[]>([]);
     const [sourceUrl, setSourceUrl] = useState('');
     const [pendingInsp, setPendingInsp] = useState('');
+    // The brief step was reached from the assistant rather than typed by hand,
+    // so its fields are a proposal to review — chiefly the page type.
+    const [fromAssistant, setFromAssistant] = useState(false);
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     // Every generation lands as a variant tab; the admin flips between them
     // and accepts the one they like (regens never overwrite earlier drafts).
@@ -207,11 +210,18 @@ export const AiPageWizard = ({
         handleClose(false);
     };
 
-    // Chat intake hands its gathered brief + assets to the classic pipeline
-    // and jumps straight to the confirm (credits) step.
+    // Chat intake hands its gathered brief + assets to the classic pipeline.
+    // It lands on the BRIEF step, not straight on confirm: page type is the
+    // single most consequential choice in the whole flow (it selects the page
+    // archetype, which governs structure), and jumping past it meant the
+    // assistant's guess was applied invisibly — a directory archetype picked
+    // for a marketing page produced dense spec tables and no way to tell why.
+    // The same jump also skipped the assets step, so logo/photos could only
+    // ever be attached inside the chat.
     const acceptIntake = (r: IntakeResult) => {
         setBrief(r.brief);
         setPageType(r.pageType);
+        setFromAssistant(true);
         setWholeSite(r.wholeSite);
         if (r.images.length) {
             setImages((prev) => {
@@ -222,7 +232,7 @@ export const AiPageWizard = ({
         if (r.inspiration.length) {
             setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, 3));
         }
-        setStep('confirm');
+        setStep('brief');
     };
 
     const reset = () => {
@@ -233,6 +243,7 @@ export const AiPageWizard = ({
         setInspiration([]);
         setSourceUrl('');
         setPendingInsp('');
+        setFromAssistant(false);
         setDirectionIdx(-1);
         setVariants([]);
         setActiveVariant(0);
@@ -311,6 +322,12 @@ export const AiPageWizard = ({
 
                 {step === 'brief' && (
                     <div className="space-y-4">
+                        {fromAssistant && (
+                            <p className="rounded-lg border border-primary-100 bg-primary-50 p-2.5 text-caption text-primary-600">
+                                The assistant filled this in from your chat. Check the page type below — it
+                                decides how the page is structured — then edit anything before continuing.
+                            </p>
+                        )}
                         <div>
                             <Label className="text-xs">What kind of page?</Label>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -340,6 +357,14 @@ export const AiPageWizard = ({
                             />
                             <p className="mt-1 text-caption text-gray-400">
                                 Write in any language — the page copy will match it.
+                            </p>
+                            {/* The images step sits behind a Next button that is disabled until a
+                                brief exists, so uploading looked impossible from this route. Say
+                                where the uploads are, and why the button is greyed out. */}
+                            <p className="mt-1 text-caption text-gray-400">
+                                {brief.trim()
+                                    ? 'Next step: upload your logo, photos, and screenshots of sites you want this to look like.'
+                                    : 'Add a brief to continue — your logo, photos and inspiration screenshots come next.'}
                             </p>
                         </div>
                         <div className="flex items-center justify-between rounded border bg-gray-50 p-3">

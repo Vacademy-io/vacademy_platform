@@ -812,6 +812,22 @@ _PREMIUM_EXEMPLAR = json.dumps({
 
 # ─── Prompt ──────────────────────────────────────────────────────────────────
 
+# Shared by every prompt that lists the vocabulary. `exampleProps` is the
+# editor's default template for a component, and treating it as the component's
+# limit is the single biggest cause of flat output: the composer would emit grey
+# icons because the featureGrid example shows iconName, never learning that each
+# feature also takes a real image, bullets, a badge or a link.
+_VOCAB_HEADER = (
+    "## COMPONENT VOCABULARY\n"
+    "For each type: `exampleProps` is ONE valid arrangement (the editor's default), NOT the limit of "
+    "what the component can do. `capabilities`, where present, is the full prop surface the renderer "
+    "actually reads, with the allowed values — prefer it when choosing how to build a section. "
+    "`usage` says when to reach for the component; `dataBound` marks components that render LIVE "
+    "institute data and must not have content invented for them. Props outside these lists are "
+    "ignored by the renderer, so inventing one produces a section that silently renders without it.\n"
+)
+
+
 def _inspiration_block(inspiration: Any) -> str:
     """Render the reverse-engineered reference design as a STRUCTURAL constraint.
 
@@ -1275,7 +1291,7 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         # The site provides global header/footer — keep them out of the
         # vocabulary so prompt and sanitizer agree.
         vocab = [c for c in vocab if c.get("type") not in ("header", "footer")]
-    parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
+    parts.append(_VOCAB_HEADER + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
     parts.append(_design_language_block(req.design_language))
     parts.append("## DESIGN RULES\n- " + "\n- ".join(_PREMIUM_DOCTRINE))
@@ -1339,7 +1355,24 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
     # it every page_type came out shaped like a homepage.
     archetype_rule = _ARCHETYPE_RULES.get(page_type)
     if archetype_rule:
-        parts.append(f"## PAGE ARCHETYPE — this governs the page's STRUCTURE\n{archetype_rule}")
+        # Precedence, stated where it will be read. The REFERENCE DESIGN block
+        # claims to win, but the archetype block comes later and says it
+        # "governs the page's STRUCTURE" — so for a reference that was a warm
+        # marketing page, the directory archetype won and produced dense spec
+        # tables with no hero, no social proof and no founder section. Later
+        # and more forceful beats earlier and more polite.
+        has_reference_sections = isinstance(inspiration, dict) and bool(inspiration.get("sections"))
+        if has_reference_sections:
+            parts.append(
+                "## PAGE ARCHETYPE — SECONDARY to the REFERENCE DESIGN above\n"
+                "The admin supplied a reference design with its own section order, and it OUTRANKS this "
+                "archetype wherever the two disagree — including on whether the page opens with a hero, "
+                "and on how offerings are presented (photo cards vs dense blocks). Use the archetype only "
+                "for what the reference is silent about: which of the institute's real offerings must all "
+                "appear, how much detail each carries, and what must NOT appear.\n" + archetype_rule
+            )
+        else:
+            parts.append(f"## PAGE ARCHETYPE — this governs the page's STRUCTURE\n{archetype_rule}")
     if _is_info_only(req.brief):
         parts.append(_NO_COMMERCE_RULE)
     parts.append(
@@ -1676,7 +1709,7 @@ def _build_repair_prompt(page: Dict[str, Any], issues: List[Dict[str, Any]], cat
         "- Do not add images: you may only reference image URLs already present in the page.\n"
         "- If a defect genuinely cannot be fixed with the component vocabulary, leave it and say so "
         "in `reply`.",
-        "## COMPONENT VOCABULARY (types with example props)\n"
+        _VOCAB_HEADER
         + json.dumps([c for c in catalog["components"] if c.get("type") not in ("header", "footer")],
                      ensure_ascii=False),
         "## DEFECTS TO FIX\n" + "\n".join(
@@ -2014,7 +2047,7 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
     vocab = catalog["components"]
     if not req.allow_chrome:
         vocab = [c for c in vocab if c.get("type") not in ("header", "footer")]
-    parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
+    parts.append(_VOCAB_HEADER + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
 
     term_block = _terminology_block(req.terminology)
@@ -2406,7 +2439,7 @@ def _build_variants_prompt(
             "section, and never to header, footer or productPageOffer (an admin must bind that one "
             "to a product page by hand, so a generated one renders as nothing)."
         )
-    parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
+    parts.append(_VOCAB_HEADER + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
 
     if req.institute_name:

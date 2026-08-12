@@ -29,7 +29,7 @@ interface InitStudyLibraryProviderProps {
 export const InitStudyLibraryProvider = ({ children, courseId }: InitStudyLibraryProviderProps) => {
     const queryClient = useQueryClient();
 
-    const { studyLibraryData, isInitLoading } = useStudyLibraryStore();
+    const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
     // Trigger refetch manually on mount
     useEffect(() => {
@@ -41,9 +41,21 @@ export const InitStudyLibraryProvider = ({ children, courseId }: InitStudyLibrar
         }
     }, [queryClient, courseId]);
 
-    const { isLoading: queryLoading } = useQuery({
+    const { data, isLoading: queryLoading } = useQuery({
         ...useStudyLibraryQuery(courseId),
     });
+
+    // The store is the single source the course-details header reads from, but the
+    // query only writes to it from inside `queryFn`. With `staleTime` set to an
+    // hour, switching back to a course visited earlier in the session is served
+    // straight from the react-query cache — `queryFn` never runs, so the store
+    // would keep the previously viewed course and the page would render the wrong
+    // course name. Mirroring the query result here keeps cache hits in sync too.
+    useEffect(() => {
+        if (data) {
+            setStudyLibraryData(data);
+        }
+    }, [data, setStudyLibraryData]);
 
     // Only show full page loader on initial load, not on subsequent refreshes
     const showFullPageLoader = queryLoading && studyLibraryData == null;

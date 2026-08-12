@@ -1907,8 +1907,25 @@ const usePrefersReducedMotion = (): boolean => {
 /** When the admin authored explicit section padding, zero the rhythm vars so
  *  their value is authoritative instead of stacking on top of the renderer's
  *  .catalogue-section padding. */
-const authoredPaddingVars = (style?: { paddingTop?: string; paddingBottom?: string }) =>
-  style?.paddingTop || style?.paddingBottom
+/** Authored vertical padding replaces the section's own rhythm, so the two
+ *  don't stack into a 168px gap.
+ *
+ *  EXCEPT when the component paints its own band. `paintsOwnBand` means
+ *  props.backgroundColor is set and the wrapper is NOT the painted element —
+ *  the colour is on the inner `.catalogue-section`, while the authored padding
+ *  lands on this wrapper OUTSIDE it. Zeroing the vars there left the band with
+ *  no padding at all, so a 64px-padded coloured section rendered as a strip
+ *  hugging its own cards while the 64px sat invisibly outside the colour
+ *  (field bug, The 7Cs home page).
+ *
+ *  Keeping the defaults in that case means the band gets its normal rhythm and
+ *  the authored value adds outside it — marginally more total space than the
+ *  author asked for, which is the right way to be wrong here. */
+const authoredPaddingVars = (
+  style?: { paddingTop?: string; paddingBottom?: string },
+  paintsOwnBand?: boolean
+) =>
+  (style?.paddingTop || style?.paddingBottom) && !paintsOwnBand
     ? ({
         ['--catalogue-section-py' as string]: '0px',
         ['--catalogue-section-py-tight' as string]: '0px',
@@ -2053,7 +2070,13 @@ const ComponentStyleWrapper: React.FC<{
         // positioned when overlay/decoration children need an anchor.
         position: (componentStyle.position as React.CSSProperties['position']) ?? (hasOverlay || decor ? 'relative' : undefined),
         ...decorClip,
-        ...authoredPaddingVars(component.style),
+        // This branch has no section shell, so the colour (when the component
+        // sets one) is painted by the child, not by this wrapper — see
+        // authoredPaddingVars.
+        ...authoredPaddingVars(
+          component.style,
+          typeof component.props?.backgroundColor === 'string' && !!component.props.backgroundColor
+        ),
       }}
     >
       {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}

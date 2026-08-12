@@ -279,6 +279,117 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
     return issues
 
 
+def audit_reference_fidelity(
+    page: Dict[str, Any],
+    global_settings: Optional[Dict[str, Any]],
+    inspiration: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Did the page actually adopt the reference design it was given?
+
+    audit_component answers "is this broken". Nothing answered "does this look
+    like the thing the admin showed us", so the only detector was the admin
+    opening the page and saying no — which is exactly how the last three rounds
+    went. These checks are the mechanical part of that judgement: a sampled
+    colour that never made it into the theme, a section role in the blueprint
+    with no counterpart on the page, an `avoid` treatment used anyway. They are
+    not taste; each one is a specific instruction that was handed over and
+    dropped.
+    """
+    issues: List[Dict[str, Any]] = []
+    if not isinstance(inspiration, dict) or not inspiration:
+        return issues
+
+    theme = (global_settings or {}).get("theme") if isinstance(global_settings, dict) else {}
+    theme = theme if isinstance(theme, dict) else {}
+    palette = inspiration.get("palette") if isinstance(inspiration.get("palette"), dict) else {}
+
+    want_primary = str(palette.get("primary") or "").lower()
+    got_primary = str(theme.get("primaryColor") or "").lower()
+    if want_primary and got_primary and want_primary != got_primary:
+        issues.append(_issue(
+            "reference-colour-ignored", "warn",
+            f"The reference's brand colour is {want_primary} but the page uses {got_primary}.",
+            f"Set globalSettings.theme.primaryColor to \"{want_primary}\".",
+        ))
+
+    want_bg = str(palette.get("background") or "").lower()
+    if want_bg and want_bg not in ("#ffffff", "#fefefe") and not page.get("backgroundColor"):
+        issues.append(_issue(
+            "reference-canvas-ignored", "fix",
+            f"The reference sits on {want_bg}, but this page is on the default white canvas.",
+            f"Set page.backgroundColor to \"{want_bg}\".",
+        ))
+
+    # Section coverage. Roles the blueprint listed that have no plausible
+    # counterpart on the page — the failure that produced a directory with no
+    # social proof and no founder section from a reference that had both.
+    role_components: Dict[str, set] = {
+        "hero": {"heroSection"},
+        "logos": {"logoCloud", "marquee"},
+        "features": {"featureGrid", "detailBlocks", "tabsAccordion"},
+        "stats": {"statsHighlights", "trustChip"},
+        "steps": {"stepsProcess"},
+        "courses": {"courseCatalog", "featureGrid", "detailBlocks", "productPageOffer", "bookCatalogue"},
+        "testimonials": {"testimonialSection"},
+        "faq": {"tabsAccordion", "faqSection"},
+        "cta": {"ctaBanner", "leadForm", "contactForm", "newsletterSignup"},
+        "gallery": {"imageGallery", "mediaShowcase"},
+        "team": {"teamSection", "mediaShowcase"},
+        "pricing": {"pricingTable"},
+        "contact": {"contactForm", "leadForm", "mapEmbed"},
+        "about": {"textBlock", "mediaShowcase", "columnLayout", "detailBlocks"},
+        "video": {"videoEmbed", "mediaShowcase"},
+    }
+    present = {c.get("type") for c in _walk(page.get("components") or [])}
+    sections = inspiration.get("sections") if isinstance(inspiration.get("sections"), list) else []
+    missing: List[str] = []
+    for entry in sections:
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "").lower()
+        allowed = role_components.get(role)
+        if allowed and not (allowed & present) and role not in missing:
+            missing.append(role)
+    if missing:
+        # Advisory: the institute may simply have no content for a band (real
+        # testimonials cannot be invented, and should not be).
+        issues.append(_issue(
+            "reference-section-missing", "warn",
+            "The reference has " + ", ".join(missing) + " but the page has no equivalent section.",
+            "Add it if the brief supplies real content for it — never invent quotes, names or "
+            "statistics to fill one.",
+        ))
+
+    # Treatments the reference explicitly rules out.
+    avoid = inspiration.get("avoid") if isinstance(inspiration.get("avoid"), list) else []
+    avoid_text = " ".join(str(a).lower() for a in avoid)
+    if avoid_text:
+        used_gradient = any(
+            isinstance((c.get("style") or {}).get("backgroundLayers"), list)
+            and (c.get("style") or {}).get("backgroundLayers")
+            for c in _walk(page.get("components") or [])
+        )
+        if used_gradient and "gradient" in avoid_text:
+            issues.append(_issue(
+                "reference-avoid-violated", "warn",
+                "The reference avoids gradients, but a section uses a gradient background layer.",
+                "Replace style.backgroundLayers with a flat backgroundColor.",
+            ))
+        blurred = any(
+            o.get("preset") in ("glow-orb", "blob")
+            for c in _walk(page.get("components") or [])
+            for o in ((c.get("style") or {}).get("ornaments") or [])
+        )
+        if blurred and ("gradient" in avoid_text or "glow" in avoid_text or "shadow" in avoid_text):
+            issues.append(_issue(
+                "reference-avoid-violated", "warn",
+                "The reference avoids soft/blurred decoration, but the page uses glow-orb or blob ornaments.",
+                "Use the 'circles-playful' or 'circles-corner' ornament preset, or no ornament at all.",
+            ))
+
+    return issues
+
+
 def audit_page(
     page: Dict[str, Any],
     global_settings: Optional[Dict[str, Any]] = None,

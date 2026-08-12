@@ -39,7 +39,7 @@ from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.llm_json import generate_json
 from ..services.model_selection import resolve_models
-from ..services.page_audit import audit_component, audit_page
+from ..services.page_audit import audit_component, audit_page, audit_reference_fidelity
 from ..utils.json_extract import extract_and_sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -2025,6 +2025,9 @@ async def _compose_one_page(
                 info_only=_is_info_only(body.brief),
                 inspiration=inspiration or None,
             )
+            # Did it actually adopt the reference? Until now nothing asked, so
+            # the only detector was the admin looking at the published page.
+            issues += audit_reference_fidelity(page, global_settings, inspiration)
             fixable = [i for i in issues if i["severity"] == "fix"]
             if fixable:
                 logger.info("[page-builder] self-check found %d defect(s): %s",
@@ -2040,7 +2043,7 @@ async def _compose_one_page(
                     page_type=body.page_type or "homepage",
                     info_only=_is_info_only(body.brief),
                     inspiration=inspiration or None,
-                )
+                ) + audit_reference_fidelity(page, global_settings, inspiration)
             warnings.extend(f"{i['message']} {i['hint']}" for i in issues)
         except Exception as e:  # noqa: BLE001 — a page with defects beats no page
             logger.warning("[page-builder] self-check skipped: %s", e)

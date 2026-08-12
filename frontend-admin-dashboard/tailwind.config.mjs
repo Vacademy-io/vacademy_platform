@@ -41,6 +41,17 @@ module.exports = {
                 // previews). Named for the same reason as dialog-chat above.
                 'dialog-tall': 'min(88vh, 56rem)',
             },
+            width: {
+                // DialogContent's base class is `w-[400px] max-w-[90vw]` — a
+                // FIXED width. Passing max-w-* therefore does nothing: it raises
+                // a ceiling the dialog never reaches. These override the width
+                // itself (tailwind-merge replaces w-[400px]) and fold the
+                // small-screen guard into the same min(), so no second class is
+                // needed and nothing is left as an arbitrary value.
+                'dialog-md': 'min(92vw, 42rem)',
+                'dialog-lg': 'min(92vw, 48rem)',
+                'dialog-xl': 'min(94vw, 64rem)',
+            },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],
                 // Institute-configured font: index.tsx sets `--app-font-family` on

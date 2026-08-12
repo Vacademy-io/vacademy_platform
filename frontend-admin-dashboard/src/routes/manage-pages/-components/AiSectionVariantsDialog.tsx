@@ -92,7 +92,7 @@ export const AiSectionVariantsDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="flex max-h-dialog-tall max-w-5xl flex-col">
+            <DialogContent className="flex max-h-dialog-tall w-dialog-xl flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-5 text-primary-500" weight="fill" />

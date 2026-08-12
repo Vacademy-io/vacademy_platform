@@ -53,16 +53,22 @@ const DIRECTIONS = [
 
 type Step = 'chat' | 'brief' | 'assets' | 'confirm' | 'review';
 
-/** Dialog width per step — these steps hold very different things, and a single
- *  width made two of them cramped: the chat carries a conversation plus a row of
+/** Dialog width per step — these steps hold very different things, and one width
+ *  made two of them cramped: the chat carries a conversation plus a row of
  *  screenshot thumbnails, and review renders a preview of the whole generated
- *  page, both of which were squeezed into 36rem. */
+ *  page.
+ *
+ *  These are w-* not max-w-*: DialogContent's base class is `w-[400px]
+ *  max-w-[90vw]`, so a max-width only raises a ceiling the dialog never reaches
+ *  and every dialog in the app is 400px wide no matter what max-w it passes.
+ *  tailwind-merge replaces the w-[400px]; the vw guard is folded into each
+ *  token's min(). */
 const STEP_WIDTH: Record<Step, string> = {
-    chat: 'max-w-5xl',
-    brief: 'max-w-2xl',
-    assets: 'max-w-3xl',
-    confirm: 'max-w-2xl',
-    review: 'max-w-5xl',
+    chat: 'w-dialog-xl',
+    brief: 'w-dialog-md',
+    assets: 'w-dialog-lg',
+    confirm: 'w-dialog-md',
+    review: 'w-dialog-xl',
 };
 
 export const AiPageWizard = ({

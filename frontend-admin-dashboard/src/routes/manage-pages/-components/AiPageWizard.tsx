@@ -319,7 +319,9 @@ export const AiPageWizard = ({
             {/* overflow-x-hidden: DialogContent is a grid; a wide child (the
                 scaled preview's marquee) would otherwise expand the implicit
                 column and shove the footer buttons off-screen. */}
-            <DialogContent className={`${STEP_WIDTH[step]} overflow-x-hidden`}>
+            <DialogContent
+                className={`${STEP_WIDTH[step]} flex max-h-dialog-tall flex-col overflow-x-hidden`}
+            >
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />
@@ -327,6 +329,10 @@ export const AiPageWizard = ({
                     </DialogTitle>
                 </DialogHeader>
 
+                {/* Steps scroll INSIDE the dialog: the assets step can now hold six
+                    reference screenshots, and with no bound the footer was pushed off
+                    the bottom of the viewport with no way to reach Next. */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
                 {/* Kept mounted (hidden) off-step so the transcript survives
                     hopping to the form/assets steps and back. */}
                 <div className={step === 'chat' ? '' : 'hidden'}>
@@ -341,7 +347,10 @@ export const AiPageWizard = ({
                 {step === 'brief' && (
                     <div className="space-y-4">
                         {fromAssistant && (
-                            <p className="rounded-lg border border-primary-100 bg-primary-50 p-2.5 text-caption text-primary-600">
+                            /* text-primary-500, not 600: theme-provider only overrides --primary-50
+                               through --primary-500, so 600 keeps index.css's orange default and
+                               rendered orange-on-green for a green-branded institute. */
+                            <p className="rounded-lg border border-primary-200 bg-primary-50 p-2.5 text-caption text-primary-500">
                                 The assistant filled this in from your chat. Check the page type below — it
                                 decides how the page is structured — then edit anything before continuing.
                             </p>
@@ -718,6 +727,8 @@ export const AiPageWizard = ({
                         </p>
                     </div>
                 )}
+
+                </div>
 
                 <DialogFooter className="gap-2">
                     {step === 'chat' && (

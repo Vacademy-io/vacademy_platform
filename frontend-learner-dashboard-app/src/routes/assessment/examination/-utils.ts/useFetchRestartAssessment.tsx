@@ -3,6 +3,14 @@ import { useAssessmentStore } from "@/stores/assessment-store";
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { RESTART_ASSESSMENT } from '@/constants/urls';
 import { safeParse } from '@/lib/storage';
+import {
+  type CodingResponsePayload,
+  type ResponseData,
+  decodeAnswer,
+  decodeCodingAnswer,
+  encodeResponseData,
+  responseHasAnswer,
+} from '@/lib/assessment-response';
 
 interface StoredData {
   assessment?: {
@@ -18,6 +26,7 @@ interface StoredData {
   questionTimeSpent?: Record<string, number>;
   questionStates?: Record<string, { isMarkedForReview: boolean; isVisited: boolean }>;
   answers?: Record<string, string[]>;
+  codingAnswers?: Record<string, CodingResponsePayload>;
 }
 
 interface SectionDTO {
@@ -57,11 +66,9 @@ interface Question {
   timeTakenInSeconds: number;
   isMarkedForReview: boolean;
   isVisited: boolean;
-  responseData: {
-    type: string;
-    optionIds: string[];
-  };
+  responseData: ResponseData;
 }
+
 
 const formatStoredAssessmentData = (storedData: StoredData): FormattedData | null => {
   if (!storedData || !storedData.assessment) {
@@ -104,10 +111,14 @@ const formatStoredAssessmentData = (storedData: StoredData): FormattedData | nul
           storedData.questionStates?.[question.question_id]?.isMarkedForReview || false,
         isVisited:
           storedData.questionStates?.[question.question_id]?.isVisited || false,
-        responseData: {
-          type: question.question_type,
-          optionIds: storedData.answers?.[question.question_id] || [],
-        },
+        // Encode by question type. Previously every answer was written into
+        // `optionIds` regardless of type, so a LONG_ANSWER/ONE_WORD/NUMERIC
+        // answer went out in a field the restore path never reads back.
+        responseData: encodeResponseData(
+          question.question_type,
+          storedData.answers?.[question.question_id],
+          storedData.codingAnswers?.[question.question_id]
+        ),
       })) || [],
       };
     }) || [],
@@ -234,23 +245,39 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
       currentQuestion: preview_response.section_dtos[0].question_preview_dto_list[0],
       questionStates: Object.fromEntries(
         restoredSections.flatMap((section: Section) =>
-          (section.questions ?? []).map((question: Question) => [
-            question.questionId,
-            {
-              isAnswered: (question.responseData?.optionIds?.length ?? 0) > 0,
-              isVisited: question.isVisited,
-              isMarkedForReview: question.isMarkedForReview,
-              isDisabled: false, // Assuming default value
-            },
-          ])
+          (section.questions ?? []).map((question: Question) => {
+            const answered = responseHasAnswer(question.responseData);
+            return [
+              question.questionId,
+              {
+                // Derived from the decoded answer so it covers every question
+                // type, not just MCQ. Also treat "has an answer" as visited: a
+                // question the learner answered was obviously seen, and without
+                // this the navigator paints it "Not Visited" (getQuestionStatus
+                // checks isVisited before isAnswered) if that flag didn't persist.
+                isAnswered: answered,
+                isVisited: question.isVisited || answered,
+                isMarkedForReview: question.isMarkedForReview,
+                isDisabled: false, // Assuming default value
+              },
+            ];
+          })
         )
       ),
       answers: Object.fromEntries(
         restoredSections.flatMap((section: Section) =>
           (section.questions ?? []).map((question: Question) => [
             question.questionId,
-            question.responseData?.optionIds || [],
+            decodeAnswer(question.responseData),
           ])
+        )
+      ),
+      codingAnswers: Object.fromEntries(
+        restoredSections.flatMap((section: Section) =>
+          (section.questions ?? []).flatMap((question: Question) => {
+            const coding = decodeCodingAnswer(question.responseData);
+            return coding ? [[question.questionId, coding] as const] : [];
+          })
         )
       ),
       sectionTimers: Object.fromEntries(

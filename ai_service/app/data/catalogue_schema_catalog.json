@@ -896,12 +896,15 @@
         "showViewAll": true,
         "viewAllLabel": "See all",
         "ctaLabel": "Enrol now",
+        "showViewCourse": true,
+        "viewCourseLabel": "View course",
         "showImage": true,
         "showChips": true,
         "showDescription": true,
         "showValidity": true,
         "showPrice": true,
         "pageSize": 9,
+        "railMaxCards": 12,
         "showSearch": true,
         "scrollable": false,
         "scrollMaxHeight": 640
@@ -1031,6 +1034,58 @@
             "size": "100%",
             "opacity": 0.12,
             "color": "hsl(var(--primary-400))"
+          }
+        ]
+      },
+      {
+        "id": "circles-playful",
+        "label": "Circles · playful",
+        "ornaments": [
+          {
+            "preset": "circle",
+            "x": "-6%",
+            "y": "12%",
+            "size": "190px",
+            "opacity": 0.85,
+            "color": "hsl(var(--primary-200))"
+          },
+          {
+            "preset": "circle",
+            "x": "78%",
+            "y": "-14%",
+            "size": "150px",
+            "opacity": 0.8,
+            "color": "hsl(var(--primary-300))"
+          },
+          {
+            "preset": "circle",
+            "x": "88%",
+            "y": "58%",
+            "size": "230px",
+            "opacity": 0.7,
+            "color": "hsl(var(--primary-100))"
+          }
+        ]
+      },
+      {
+        "id": "circles-corner",
+        "label": "Circles · corner pair",
+        "ornaments": [
+          {
+            "preset": "circle",
+            "x": "82%",
+            "y": "-18%",
+            "size": "260px",
+            "opacity": 0.75,
+            "color": "hsl(var(--primary-100))"
+          },
+          {
+            "preset": "circle",
+            "x": "72%",
+            "y": "30%",
+            "size": "120px",
+            "opacity": 0.85,
+            "color": "hsl(var(--primary-300))"
           }
         ]
       }

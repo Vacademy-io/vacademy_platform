@@ -246,15 +246,20 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
                 cid,
             ))
 
-    # 7. Author-set colours that cannot be read.
+    # 7. Author-set colours that cannot be read. The threshold is WCAG AA for
+    #    normal text (4.5:1), not the large-text 3.0:1 this started at — these
+    #    components carry body copy, and a real generation shipped white on
+    #    #4a90e2 at 3.29:1, which cleared the old bar while still failing AA.
     fg, bg = props.get("textColor"), props.get("backgroundColor")
     if isinstance(fg, str) and isinstance(bg, str):
         ratio = _contrast_ratio(fg, bg)
-        if ratio is not None and ratio < 3.0:
+        if ratio is not None and ratio < 4.5:
             issues.append(_issue(
                 "low-contrast", "fix",
-                f"Text and background on '{ctype}' are too close to read (contrast {ratio:.1f}:1).",
-                "Pick a textColor that contrasts with backgroundColor, or drop both and let the theme decide.",
+                f"Text and background on '{ctype}' are too close to read (contrast {ratio:.1f}:1, "
+                "below the 4.5:1 minimum for body text).",
+                "Darken or lighten textColor until it clears 4.5:1 against backgroundColor, or drop both "
+                "and let the theme decide.",
                 cid,
             ))
 

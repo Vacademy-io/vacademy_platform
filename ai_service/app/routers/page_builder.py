@@ -527,9 +527,19 @@ async def _analyze_inspiration(
             'generous whitespace, tinted card headers>"],\n'
             '  "avoid": ["<treatments that would BREAK this look — e.g. gradients, glassmorphism, drop shadows>"]\n'
             "}\n"
-            "Rules: palette colours MUST be real hex values sampled from the screenshot (primary = the "
-            "colour used on buttons/links/accents; background = the dominant page surface; ink = body "
-            "text). List `sections` in the order they appear, top to bottom, one entry per visible band. "
+            "Rules: palette colours MUST be real hex values sampled from the screenshot.\n"
+            "  primary = the colour a visitor would name as THIS BRAND'S colour: the most saturated, "
+            "characterful hue, the one carrying decorative shapes, badges, highlights and key buttons. "
+            "Do NOT simply take the nav/link colour — if the links are a muted or near-neutral blue "
+            "while the page's character comes from a warmer or brighter hue, the warmer hue is the "
+            "primary. (A rebuild that copies the link colour is technically the same blue and looks "
+            "nothing like the original.)\n"
+            "  accent = the second most characterful hue.\n"
+            "  background = the dominant page surface. Say so precisely when it is an off-white, cream, "
+            "or tinted paper rather than pure white — that tint is a deliberate choice and a large part "
+            "of how the design feels.\n"
+            "  ink = body text.\n"
+            "List `sections` in the order they appear, top to bottom, one entry per visible band. "
             "Describe STRUCTURE AND TREATMENT ONLY — do NOT transcribe their headlines, marketing copy, "
             "brand name or logo, and never suggest reusing their images."
         ),
@@ -832,14 +842,33 @@ def _inspiration_block(inspiration: Any) -> str:
     primary = palette.get("primary")
     if primary:
         lines.append(
-            f"- COLOUR: set globalSettings.theme.primaryColor to \"{primary}\" (the reference's own "
-            "accent colour) and choose the preset whose family sits closest to it. This is the single "
+            f"- BRAND COLOUR: set globalSettings.theme.primaryColor to \"{primary}\" (the reference's own "
+            "brand colour) and choose the preset whose family sits closest to it. This is the single "
             "strongest cue that the page matches — do not substitute a preset colour for it."
         )
     else:
         lines.append(
-            "- COLOUR: no reliable colour was sampled — pick the preset that best fits the mood, and set "
-            "theme.primaryColor only if the institute's own brand colour is known."
+            "- BRAND COLOUR: no reliable colour was sampled — pick the preset that best fits the mood, and "
+            "set theme.primaryColor only if the institute's own brand colour is known."
+        )
+    background = palette.get("background")
+    if background and background.lower() not in ("#ffffff", "#fefefe"):
+        lines.append(
+            f"- CANVAS: the reference does NOT sit on white — its page surface is \"{background}\". Set "
+            f"page.backgroundColor to \"{background}\". A cream or tinted paper rebuilt on pure white "
+            "loses most of its warmth even when every other choice is right, and alternating section "
+            "tints should be picked to sit on THAT surface, not on white."
+        )
+    if palette.get("ink"):
+        lines.append(
+            f"- INK: body and heading text in the reference reads as \"{palette['ink']}\". Where you set a "
+            "textColor explicitly, stay close to it, and keep every text/background pair you author at a "
+            "contrast ratio of at least 4.5:1."
+        )
+    if palette.get("accent"):
+        lines.append(
+            f"- SECONDARY: \"{palette['accent']}\" is the reference's second colour — use it for ornaments, "
+            "chips or a single contrasting band rather than as the brand colour."
         )
     typo = inspiration.get("typography") if isinstance(inspiration.get("typography"), dict) else {}
     if typo:
@@ -881,6 +910,9 @@ def _inspiration_block(inspiration: Any) -> str:
             "- SIGNATURE DETAILS: reproduce these with our style vocabulary (chips, eyebrows, "
             "sectionHeading highlights, featureGrid style/headerVariant, ornaments, surface tints): "
             + "; ".join(moves)
+            + "\n  For flat overlapping discs of colour, use the 'circles-playful' or 'circles-corner' "
+            "ornament preset — NOT glow-orb, which is a soft blurred glow and will read as a faint "
+            "wash where the reference has crisp shapes."
         )
     avoid = inspiration.get("avoid") if isinstance(inspiration.get("avoid"), list) else []
     if avoid:
@@ -943,8 +975,10 @@ _DESIGN_LANGUAGES: List[Dict[str, str]] = [
         "theme": "preset sunset|amber|rose, atmosphere soft + medium, headingScale default, borderRadius pill",
         "fonts": "headingFamily Fraunces | Nunito over a Mulish or Nunito body",
         "moves": "rounded pill shapes everywhere; hero with an image collage; testimonialSection with ratings; "
-                 "featureGrid style 'tinted' with friendly iconName; generous colour",
-        "avoid": "dark inverted bands, sharp corners, corporate greys",
+                 "featureGrid style 'tinted' with friendly iconName; generous colour; flat overlapping discs via "
+                 "the 'circles-playful' ornament preset over a cream page.backgroundColor (this pairing IS the "
+                 "look — a blurred glow-orb on white is a different, blander design)",
+        "avoid": "dark inverted bands, sharp corners, corporate greys, blurred glow ornaments",
     },
     {
         "id": "corporate-trust",
@@ -1316,6 +1350,8 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         'label>", "headingFamily": "<serif/display heading font label — omit to reuse the body font>"}, '
         '"motion": {"personality": "..."}}, '
         '"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
+        '"backgroundColor": "#rrggbb (optional — the page canvas; set it when the design calls for a '
+        'cream, tinted or dark surface instead of white)", '
         '"components": [{"id": "<kebab-id>", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}, …]}}\n'
         "6–12 components. Do NOT include header or footer components — the site provides global ones. "
         "globalSettings is REQUIRED — a plain default theme makes the page look cheap.\n"
@@ -1741,6 +1777,14 @@ def _sanitize_page(
         "route": route,
         "components": components,
     }
+    # The page canvas. Rendered by the learner (CourseCataloguePage applies it to
+    # <main>) and editable in the admin, but this rebuild-from-scratch dropped it
+    # — the same silent loss that hid theme.primaryColor. A cream or tinted
+    # surface is a large part of how a reference design feels, so losing it
+    # rebuilt every warm-paper design on stark white.
+    page_bg = coerce_hex_color(page.get("backgroundColor"))
+    if page_bg:
+        result["backgroundColor"] = page_bg
     return result, global_settings, warnings
 
 

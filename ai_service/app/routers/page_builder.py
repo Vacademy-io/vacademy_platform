@@ -328,6 +328,56 @@ def _is_public_http_host(target: str) -> bool:
 _MAX_INLINE_IMAGE_BYTES = 6_000_000
 
 
+# How many reference screenshots the design pass reads. Was 3 — a payload
+# guess, not a model limit — which silently dropped half of a six-shot upload.
+_MAX_INSPIRATION_IMAGES = 6
+# Vision models downsample to roughly this edge internally, so sending a 3000px
+# screenshot costs bandwidth and latency for no extra detail.
+_VISION_MAX_EDGE = 1568
+
+
+def _downscale_for_vision(raw: bytes, ctype: str) -> tuple[bytes, str]:
+    """Shrink an oversized screenshot before it is inlined as a data URL.
+
+    The reference-design pass used to accept only 3 images because six raw
+    screenshots (1-2 MB each) made an unreasonably large request. Downscaling
+    first removes that constraint: a full-page 3022px screenshot lands around
+    150 KB at the edge the model actually uses, so more of the reference fits in
+    a smaller payload.
+
+    Best-effort — Pillow is present transitively (moviepy) and already lazily
+    imported elsewhere in this service, but any failure returns the original
+    bytes rather than losing the image."""
+    try:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(raw))
+        width, height = img.size
+        if max(width, height) <= _VISION_MAX_EDGE and len(raw) <= 400_000:
+            return raw, ctype
+        scale = min(1.0, _VISION_MAX_EDGE / float(max(width, height)))
+        if scale < 1.0:
+            img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+        # Flatten transparency onto white rather than letting JPEG turn alpha
+        # black — logos reach this path too, via the copilot's attachment pass.
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGBA")
+            flat = Image.new("RGB", img.size, (255, 255, 255))
+            flat.paste(img, mask=img.split()[-1])
+            img = flat
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=82, optimize=True)
+        out = buf.getvalue()
+        return (out, "image/jpeg") if len(out) < len(raw) else (raw, ctype)
+    except Exception as e:  # noqa: BLE001 — never lose an image to a resize
+        logger.warning("[page-builder] vision downscale skipped: %s", e)
+        return raw, ctype
+
+
 async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]]:
     """Fetch an admin-uploaded image OURSELVES and inline it as a data: URL,
     so the LLM provider never has to fetch it — media-service links can be
@@ -356,7 +406,8 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
                 ctype = "image/webp"
             else:
                 return None, f"not an image ({ctype or 'no content-type'})"
-        return f"data:{ctype};base64,{base64.b64encode(resp.content).decode()}", None
+        payload, ctype = _downscale_for_vision(resp.content, ctype)
+        return f"data:{ctype};base64,{base64.b64encode(payload).decode()}", None
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-builder] image inline failed for %s: %s", url[:120], e)
         return None, f"fetch error: {type(e).__name__}"
@@ -494,7 +545,7 @@ async def _analyze_inspiration(
     from ..services.api_key_resolver import ApiKeyResolver
 
     client = ChatLLMClient(ApiKeyResolver(db))
-    urls = [u for u in image_urls if isinstance(u, str) and u][:3]
+    urls = [u for u in image_urls if isinstance(u, str) and u][:_MAX_INSPIRATION_IMAGES]
     if not urls:
         return {}
     # Inline as data URLs for the same reason the copilot pass does: provider-side
@@ -546,7 +597,9 @@ async def _analyze_inspiration(
         "attachments": attachments,
     }]
     resp = await client.chat_completion(
-        messages, temperature=0.2, max_tokens=1600, institute_id=institute_id, user_id=user_id
+        # Room for a section blueprint across up to six screenshots; a truncated
+        # reply loses the tail of `sections`, which is the part that matters.
+        messages, temperature=0.2, max_tokens=2600, institute_id=institute_id, user_id=user_id
     )
     return _coerce_inspiration_spec(resp.get("content") or "")
 

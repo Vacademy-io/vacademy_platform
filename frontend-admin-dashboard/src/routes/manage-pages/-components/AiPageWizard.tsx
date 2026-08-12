@@ -26,7 +26,7 @@ import { AiIntakeChat, IntakeResult } from './AiIntakeChat';
 import { renderComponentPreview } from './ComponentPreviews';
 import {
     generateAiPage, estimateAiPageCredits, generateAiImage, generateAiSite,
-    AiPageImage, GeneratePageResponse, GenerateSiteResponse,
+    AiPageImage, GeneratePageResponse, GenerateSiteResponse, MAX_INSPIRATION_IMAGES,
 } from '../-services/ai-page-service';
 import { Component, Page } from '../-types/editor-types';
 
@@ -236,7 +236,7 @@ export const AiPageWizard = ({
             });
         }
         if (r.inspiration.length) {
-            setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, 3));
+            setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, MAX_INSPIRATION_IMAGES));
         }
         setStep('brief');
     };
@@ -520,7 +520,7 @@ export const AiPageWizard = ({
                                     ))}
                                 </div>
                             )}
-                            {inspiration.length < 3 && (
+                            {inspiration.length < MAX_INSPIRATION_IMAGES && (
                                 <div className="space-y-2">
                                     <ImageUploadField
                                         label="Add a screenshot"

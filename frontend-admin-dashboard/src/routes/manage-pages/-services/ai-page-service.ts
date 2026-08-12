@@ -135,6 +135,11 @@ export const editAiPage = async (payload: EditPagePayload): Promise<EditPageResp
     return response.data;
 };
 
+/** Reference screenshots the design pass reads. Mirrors _MAX_INSPIRATION_IMAGES
+ *  in page_builder.py — the server slices to the same number, so letting an
+ *  admin add more here would silently discard the extras. */
+export const MAX_INSPIRATION_IMAGES = 6;
+
 /* ─── Section variants (regenerate one section, several ways) ──────────── */
 
 export interface SectionVariant {

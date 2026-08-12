@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.certificate.notification.CertificateIssuedNotificationService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateSettingsResolver;
+import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -32,19 +34,22 @@ public class InstituteCertificateManager {
     private final MediaService mediaService;
     private final CertificateIssuedNotificationService certificateIssuedNotificationService;
     private final AuthService authService;
+    private final CertificateSettingsResolver certificateSettingsResolver;
 
     public InstituteCertificateManager(InstituteSettingService instituteSettingService,
                                        StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository,
                                        InstituteRepository instituteRepository,
                                        MediaService mediaService,
                                        CertificateIssuedNotificationService certificateIssuedNotificationService,
-                                       AuthService authService) {
+                                       AuthService authService,
+                                       CertificateSettingsResolver certificateSettingsResolver) {
         this.instituteSettingService = instituteSettingService;
         this.studentSessionInstituteGroupMappingRepository = studentSessionInstituteGroupMappingRepository;
         this.instituteRepository = instituteRepository;
         this.mediaService = mediaService;
         this.certificateIssuedNotificationService = certificateIssuedNotificationService;
         this.authService = authService;
+        this.certificateSettingsResolver = certificateSettingsResolver;
     }
 
     public ResponseEntity<String> generateAutomatedCourseCompletionCertificate(CustomUserDetails userDetails, String learnerId, String packageSessionId, String instituteId, CertificationGenerationRequest request) {
@@ -56,6 +61,16 @@ public class InstituteCertificateManager {
         // wins and learners keep seeing pre-fix output regardless of how the
         // template/tokens have changed.
         boolean forceRegenerate = request != null && Boolean.TRUE.equals(request.getRegenerate());
+
+        // Enablement is checked here, before the cached-file shortcut, not only
+        // inside the render path. Previously a learner whose mapping already had
+        // a cached file id got the certificate URL back without the resolver
+        // ever being consulted — so switching certificates off stopped new
+        // issuance but kept serving existing ones, and the audit-row self-heal
+        // below ran too. "Off" now means off for both paths.
+        if (!isCertificateEnabledFor(instituteStudentMapping.get())) {
+            throw new VacademyException(HttpStatus.NOT_FOUND, "Certificates are not enabled for this course");
+        }
 
         if(forceRegenerate || !StringUtils.hasText(instituteStudentMapping.get().getAutomatedCompletionCertificateFileId())){
             return handleCaseWhereCertificateNotPresent(learnerId,packageSessionId,instituteId, instituteStudentMapping, request);
@@ -76,6 +91,21 @@ public class InstituteCertificateManager {
                 mapping, mapping.getAutomatedCompletionCertificateFileId(), courseName);
 
         return new ResponseEntity<>(getPdfUrlFromFileId(mapping.getAutomatedCompletionCertificateFileId()), HttpStatus.ACCEPTED);
+    }
+
+    /**
+     * Whether certificates are switched on for this learner's course, resolved
+     * through the same {@code course override -> institute -> disabled} rule the
+     * render path uses, so the two can never disagree.
+     */
+    private boolean isCertificateEnabledFor(StudentSessionInstituteGroupMapping mapping) {
+        String packageId = Optional.ofNullable(mapping.getPackageSession())
+                .map(ps -> ps.getPackageEntity())
+                .map(PackageEntity::getId)
+                .orElse(null);
+        return certificateSettingsResolver
+                .resolve(mapping.getInstitute(), packageId, CertificateTypeEnum.COURSE_COMPLETION.name())
+                .isEnabled();
     }
 
     private String getPdfUrlFromFileId(String automatedCompletionCertificateFileId) {

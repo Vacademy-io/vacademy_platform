@@ -40,13 +40,20 @@ public class CertificateIssuedNotificationService {
     private final NotificationService notificationService;
     private final AuthService authService;
 
-    public void notifyCertificateIssued(Institute institute, String userId, String studentName,
+    /**
+     * @return true when an email was handed to the notification service. The
+     *         issuance path ignores this — a failed email must never block
+     *         certificate delivery — but the admin "Resend" action surfaces it,
+     *         since silently reporting success for an email that was never sent
+     *         is worse than saying nothing.
+     */
+    public boolean notifyCertificateIssued(Institute institute, String userId, String studentName,
                                         String courseName, String certificateId, String certificateUrl) {
         try {
             String email = resolveEmail(userId);
             if (email == null || email.isBlank()) {
                 log.warn("Skipping certificate-issued email for user {}: no email on file", userId);
-                return;
+                return false;
             }
 
             String resolvedStudentName = (studentName != null && !studentName.isBlank()) ? studentName : "Learner";
@@ -82,8 +89,10 @@ public class CertificateIssuedNotificationService {
                         null, null,
                         "UTILITY_EMAIL");
             }
+            return true;
         } catch (Exception e) {
             log.error("Failed to send certificate-issued email for user {}: {}", userId, e.getMessage());
+            return false;
         }
     }
 

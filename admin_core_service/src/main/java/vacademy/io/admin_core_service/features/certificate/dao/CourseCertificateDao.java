@@ -35,8 +35,12 @@ public class CourseCertificateDao {
     /**
      * `learner_operation.value` is TEXT, so every cast is guarded by a numeric
      * regex — non-numeric junk would otherwise abort the whole query.
+     *
+     * <p>The leading space matters: a text block strips trailing white space from
+     * every line, so the "AND" this is concatenated onto would otherwise fuse
+     * into "ANDlo.value" and break the SQL.
      */
-    private static final String NUMERIC_GUARD = "lo.value ~ '^-?\\d+(\\.\\d+)?$'";
+    private static final String NUMERIC_GUARD = " lo.value ~ '^-?\\d+(\\.\\d+)?$'";
 
     private static final String BASE_FROM = """
             FROM student_session_institute_group_mapping ssigm

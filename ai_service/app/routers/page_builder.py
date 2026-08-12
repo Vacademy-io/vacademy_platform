@@ -189,6 +189,10 @@ _IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
 # grid of a dozen programs falls back to icons. They are generated
 # concurrently, so the cost is linear but the latency is not.
 _MAX_AUTO_IMAGES = 14
+
+# Below this, an explicit vertical padding on a section that paints a background
+# is treated as a mistake rather than a choice — see sanitize_component.
+_MIN_BAND_PADDING_PX = 32.0
 # Value sentinel the composer uses in an image field to request generation.
 _GEN_PREFIX = "gen:"
 
@@ -1628,6 +1632,27 @@ def sanitize_component(
     ):
         style["layout"]["width"] = "full"
         warnings.append("Widened the hero to full-bleed (a constrained hero renders as an inset card)")
+    # A section that PAINTS A BAND must keep the design system's vertical
+    # rhythm. The composer likes to add paddingTop/paddingBottom in the 16-24px
+    # range, which is fine on a transparent section and wrong on a coloured one:
+    # the band then hugs its cards, and an asymmetric pair (16 top, 48 bottom)
+    # reads as a mistake rather than a choice. Dropping the too-small value
+    # restores .catalogue-section's padding-block, which already scales with the
+    # site's density setting.
+    if isinstance(style, dict):
+        paints_band = bool(style.get("backgroundColor") or cleaned_props.get("backgroundColor"))
+        if paints_band:
+            for key in ("paddingTop", "paddingBottom"):
+                raw_pad = style.get(key)
+                if not isinstance(raw_pad, str):
+                    continue
+                m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)px\s*", raw_pad)
+                if m and float(m.group(1)) < _MIN_BAND_PADDING_PX:
+                    style.pop(key, None)
+                    warnings.append(
+                        f"Dropped a {raw_pad} {key} on '{ctype}' — it paints a background band, so it "
+                        "keeps the section's own vertical rhythm"
+                    )
     if isinstance(style, dict) and isinstance(style.get("layout"), dict):
         prop_bg = cleaned_props.get("backgroundColor")
         if (

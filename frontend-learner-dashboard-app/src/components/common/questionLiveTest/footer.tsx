@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useAssessmentStore } from "@/stores/assessment-store";
@@ -57,13 +58,19 @@ export function Footer({ onToggleSidebar }: FooterProps) {
   };
 
   return (
-    // min-h (not h) plus a safe-area inset: the page is h-dvh, and on Android's
-    // edge-to-edge WebView the dynamic viewport extends behind the system nav
-    // bar — without this the pager sits under it and cannot be tapped.
+    // MainActivity runs setDecorFitsSystemWindows(false), so the WebView draws
+    // behind the system nav bar. Android WebView frequently reports
+    // env(safe-area-inset-bottom) as 0 for that bar (it only reliably exposes
+    // display-cutout insets), which is why an inset-only padding still left the
+    // pager untappable. max() takes the real inset where the platform reports one
+    // (iOS home indicator ~34px) and otherwise falls back to a floor tall enough
+    // to clear Android's 48dp three-button nav bar.
     <div
       className="sticky bottom-0 z-10 flex min-h-16 shrink-0 bg-primary-50 items-center justify-between border-t px-4"
       style={{ // design-lint-ignore: dynamic safe-area inset padding
-        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4px)",
+        paddingBottom: `max(env(safe-area-inset-bottom, 0px), ${
+          Capacitor.getPlatform() === "android" ? "52px" : "8px"
+        })`,
       }}
     >
       <Button

@@ -89,7 +89,14 @@ function DayDot({
   );
 }
 
-export function AttendanceWidget() {
+/**
+ * The streak is a game mechanic, not an attendance fact, so it rides the same
+ * `gamification` widget flag as the XP / badges panel: an institute that turned
+ * game mechanics off was still getting "start your streak" copy and a Fire
+ * counter inside the attendance card. Defaults to on, so institutes that never
+ * touched the flag are unaffected.
+ */
+export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean } = {}) {
   const [period, setPeriod] = useState<AttendancePeriod>("7d");
   const { data: stats, isLoading } = useAttendanceStats({ period });
   const { data: weeklyData, isLoading: isLoadingWeekly } =
@@ -136,7 +143,18 @@ export function AttendanceWidget() {
       (d) => d.status === "PRESENT" || d.status === "ABSENT"
     ) ?? false;
   const isEmpty =
-    (total === 0 && streak === 0) || (present === 0 && !hasMarkedDay);
+    (total === 0 && (!showStreak || streak === 0)) ||
+    (present === 0 && !hasMarkedDay);
+
+  // Empty-state copy has to drop the streak framing too, else an institute with
+  // game mechanics off still reads "start your streak".
+  const emptyTitle = showStreak
+    ? "Attend today's class to start your streak"
+    : "Attend today's class to start tracking attendance";
+  const emptyBody = showStreak
+    ? "Your attendance stats and weekly streak will appear here."
+    : "Your attendance stats for the week will appear here.";
+  const statGridClass = showStreak ? "grid-cols-3" : "grid-cols-2";
 
   const goToAttendance = () =>
     navigate({ to: "/learning-centre/attendance" });
@@ -199,16 +217,12 @@ export function AttendanceWidget() {
 
         {isEmpty ? (
           <div className="space-y-1.5 py-3 text-center">
-            <p className="text-body font-black text-play-ink">
-              Attend today's class to start your streak
-            </p>
-            <p className="text-caption font-bold text-play-ink/60">
-              Your attendance stats and weekly streak will appear here.
-            </p>
+            <p className="text-body font-black text-play-ink">{emptyTitle}</p>
+            <p className="text-caption font-bold text-play-ink/60">{emptyBody}</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={cn("grid gap-2", statGridClass)}>
               <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
                 <div className={cn("text-h3 font-black", getPercentageColor(pct))}>
                   {isLoading ? <Skeleton className="mx-auto h-8 w-12" /> : `${pct}%`}
@@ -216,23 +230,25 @@ export function AttendanceWidget() {
                 <div className="mt-0.5 text-3xs font-bold text-play-ink/60">Overall</div>
               </div>
 
-              <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
-                <div className="flex items-center justify-center gap-1 text-h3 font-black text-play-ink">
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-12" />
-                  ) : (
-                    <>
-                      <Fire
-                        size={18}
-                        weight="fill"
-                        className={streak > 0 ? "text-play-warn" : "text-play-ink/30"}
-                      />
-                      {streak}
-                    </>
-                  )}
+              {showStreak && (
+                <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
+                  <div className="flex items-center justify-center gap-1 text-h3 font-black text-play-ink">
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <Fire
+                          size={18}
+                          weight="fill"
+                          className={streak > 0 ? "text-play-warn" : "text-play-ink/30"}
+                        />
+                        {streak}
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-3xs font-bold text-play-ink/60">Streak</div>
                 </div>
-                <div className="mt-0.5 text-3xs font-bold text-play-ink/60">Streak</div>
-              </div>
+              )}
 
               <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
                 <div className="text-h3 font-black text-play-ink">
@@ -327,16 +343,12 @@ export function AttendanceWidget() {
 
         {isEmpty ? (
           <div className="space-y-1.5 py-3 text-center">
-            <p className="cp-heading text-body">
-              Attend today's class to start your streak
-            </p>
-            <p className="cp-muted text-caption">
-              Your attendance stats and weekly streak will appear here.
-            </p>
+            <p className="cp-heading text-body">{emptyTitle}</p>
+            <p className="cp-muted text-caption">{emptyBody}</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={cn("grid gap-2", statGridClass)}>
               <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
                 <div className={cn("text-h3 font-bold", getPercentageColor(pct))}>
                   {isLoading ? <Skeleton className="mx-auto h-8 w-12" /> : `${pct}%`}
@@ -344,23 +356,25 @@ export function AttendanceWidget() {
                 <div className="cp-muted mt-0.5 text-3xs">Overall</div>
               </div>
 
-              <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
-                <div className="cp-heading flex items-center justify-center gap-1 text-h3">
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-12" />
-                  ) : (
-                    <>
-                      <Fire
-                        size={18}
-                        weight="fill"
-                        className={streak > 0 ? "text-cp-gold" : "cp-muted"}
-                      />
-                      {streak}
-                    </>
-                  )}
+              {showStreak && (
+                <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
+                  <div className="cp-heading flex items-center justify-center gap-1 text-h3">
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <Fire
+                          size={18}
+                          weight="fill"
+                          className={streak > 0 ? "text-cp-gold" : "cp-muted"}
+                        />
+                        {streak}
+                      </>
+                    )}
+                  </div>
+                  <div className="cp-muted mt-0.5 text-3xs">Streak</div>
                 </div>
-                <div className="cp-muted mt-0.5 text-3xs">Streak</div>
-              </div>
+              )}
 
               <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
                 <div className="cp-heading text-h3">
@@ -460,16 +474,12 @@ export function AttendanceWidget() {
       <CardContent className="px-4 pb-4 space-y-4">
         {isEmpty ? (
           <div className="text-center py-3 space-y-1.5">
-            <p className="text-sm font-bold text-foreground">
-              Attend today's class to start your streak
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Your attendance stats and weekly streak will appear here.
-            </p>
+            <p className="text-sm font-bold text-foreground">{emptyTitle}</p>
+            <p className="text-xs text-muted-foreground">{emptyBody}</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-3">
+            <div className={cn("grid gap-3", statGridClass)}>
               {/* Overall % */}
               <div className="text-center">
                 <div className={cn("text-2xl font-bold", getPercentageColor(pct))}>
@@ -485,25 +495,27 @@ export function AttendanceWidget() {
               </div>
 
               {/* Streak */}
-              <div className="text-center">
-                <div className="text-2xl font-bold text-foreground flex items-center justify-center gap-1">
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-12" />
-                  ) : (
-                    <>
-                      <Fire
-                        size={20}
-                        weight="fill"
-                        className={streak > 0 ? "text-orange-500" : "text-slate-300"}
-                      />
-                      {streak}
-                    </>
-                  )}
+              {showStreak && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-foreground flex items-center justify-center gap-1">
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <Fire
+                          size={20}
+                          weight="fill"
+                          className={streak > 0 ? "text-orange-500" : "text-slate-300"}
+                        />
+                        {streak}
+                      </>
+                    )}
+                  </div>
+                  <div className="text-caption text-muted-foreground mt-0.5">
+                    Streak
+                  </div>
                 </div>
-                <div className="text-caption text-muted-foreground mt-0.5">
-                  Streak
-                </div>
-              </div>
+              )}
 
               {/* Present / Total */}
               <div className="text-center">

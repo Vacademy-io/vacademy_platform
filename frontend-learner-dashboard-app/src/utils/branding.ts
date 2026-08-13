@@ -91,8 +91,21 @@ export function resolveFontStack(fontFamily?: string | null): string {
       return buildFontStack("Work Sans");
     case "LEXEND":
       return buildFontStack("Lexend");
+    case "POPPINS":
+      return buildFontStack("Poppins");
+    case "PLUS JAKARTA SANS":
+      return buildFontStack("Plus Jakarta Sans");
+    case "OPEN SANS":
+      return buildFontStack("Open Sans");
     default:
-      return withArabicFallback(String(fontFamily));
+      // An unrecognised value is a literal CSS family, but it MUST still get the
+      // system tail. Without it the stack was just `<font>, 'Noto Naskh Arabic'`
+      // — and the Arabic face is unicode-range-scoped to Arabic codepoints, so
+      // Latin text can't match it. If the literal font isn't loaded, nothing in
+      // the stack can render Latin and the browser falls back to its own
+      // default, which in Chrome is a SERIF. That is how an institute
+      // configured with an unloaded font ended up rendering in Times New Roman.
+      return `${withArabicFallback(String(fontFamily))}, ${SYSTEM_TAIL}`;
   }
 }
 

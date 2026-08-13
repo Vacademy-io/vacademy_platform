@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
@@ -10,6 +11,14 @@ import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    type DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 
 interface CustomInviteFormCardProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -23,6 +32,13 @@ interface CustomInviteFormCardProps {
     handleDeleteOptionField: (id: number) => void;
     handleAddDropdownOptions: () => void;
     handleCloseDialog: (type: string, name: string, oldKey: boolean) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) => void;
 }
 
 const CustomInviteFormCard = ({
@@ -37,14 +53,19 @@ const CustomInviteFormCard = ({
     handleDeleteOptionField,
     handleAddDropdownOptions,
     handleCloseDialog,
+    handleEditFieldAt,
 }: CustomInviteFormCardProps) => {
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues } = form;
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
     const customFields = getValues('custom_fields');
-    console.log('customFields', customFields);
     return (
         <Card className="mb-4">
             <CardHeader>
@@ -58,63 +79,45 @@ const CustomInviteFormCard = ({
             <CardContent>
                 <div className="flex w-full flex-col gap-4">
                     <div className="flex flex-col gap-4">
+                        <FormFieldRowHeader />
                         <Sortable
                             value={customFieldsArray}
                             onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                                 moveCustomField(activeIndex, overIndex);
                                 updateFieldOrders();
                             }}
                         >
                             <div className="flex flex-col gap-4">
                                 {customFieldsArray.map((field, index) => {
+                                    const isEditing = editingIndex === index;
                                     return (
                                         <SortableItem key={field.id} value={field.id} asChild>
-                                            <div key={index} className="flex items-center gap-4">
-                                                <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                                    <h1 className="text-sm">
-                                                        {field.name}
-                                                        {field.oldKey && (
-                                                            <span className="text-subtitle text-danger-600">
-                                                                *
-                                                            </span>
-                                                        )}
-                                                        {!field.oldKey && field.isRequired && (
-                                                            <span className="text-subtitle text-danger-600">
-                                                                *
-                                                            </span>
-                                                        )}
-                                                    </h1>
-                                                    <div className="flex items-center gap-6">
-                                                        {!field.oldKey && (
-                                                            <MyButton
-                                                                type="button"
-                                                                scale="small"
-                                                                buttonType="secondary"
-                                                                className="min-w-6 !rounded-sm !p-0"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    handleDeleteOpenField(index);
-                                                                }}
-                                                            >
-                                                                <TrashSimple className="!size-4 text-danger-500" />
-                                                            </MyButton>
-                                                        )}
+                                            <div>
+                                                <FormFieldRow
+                                                    position={index + 1}
+                                                    name={field.name}
+                                                    type={field.type}
+                                                    isRequired={field.isRequired}
+                                                    locked={field.oldKey}
+                                                    isEditing={isEditing}
+                                                    onToggleRequired={() =>
+                                                        toggleIsRequired(index)
+                                                    }
+                                                    onEdit={() => setEditingIndex(index)}
+                                                    onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(index);
+                                                        }}
+                                                    dragHandle={
                                                         <SortableDragHandle
                                                             variant="ghost"
                                                             size="icon"
                                                             className="cursor-grab"
                                                         >
-                                                            <DotsSixVertical size={20} />
+                                                            <DotsSixVertical size={18} />
                                                         </SortableDragHandle>
-                                                    </div>
-                                                </div>
-                                                <h1 className="text-sm">Required</h1>
-                                                <Switch
-                                                    checked={field.isRequired}
-                                                    onCheckedChange={() => {
-                                                        toggleIsRequired(index);
-                                                    }}
+                                                    }
                                                 />
                                             </div>
                                         </SortableItem>
@@ -122,6 +125,41 @@ const CustomInviteFormCard = ({
                                 })}
                             </div>
                         </Sortable>
+                        {/* Editing reuses the add dialog, prefilled. Keyed per row so opening a
+                            different field re-runs the prefill. */}
+                        {editingIndex !== null && customFieldsArray[editingIndex] && (
+                            <SharedAddCustomFieldDialog
+                                key={customFieldsArray[editingIndex]._rhfKey}
+                                mode="edit"
+                                open
+                                onOpenChange={(isOpen) => {
+                                    if (!isOpen) setEditingIndex(null);
+                                }}
+                                initialField={{
+                                    type: customFieldsArray[editingIndex].type,
+                                    name: customFieldsArray[editingIndex].name,
+                                    options: (customFieldsArray[editingIndex].options ?? []).map(
+                                        (o) => o.value
+                                    ),
+                                    isRequired: customFieldsArray[editingIndex].isRequired,
+                                }}
+                                onAddField={(type, name, _oldKey, options, config) => {
+                                    handleEditFieldAt(
+                                        editingIndex,
+                                        type,
+                                        name,
+                                        options,
+                                        config as Record<string, unknown>
+                                    );
+                                    setEditingIndex(null);
+                                }}
+                                // Its own name must stay available, or saving an unchanged
+                                // label would be blocked as a duplicate.
+                                existingFieldNames={customFieldsArray
+                                    .filter((_, i) => i !== editingIndex)
+                                    .map((f) => f.name)}
+                            />
+                        )}
                     </div>
                     <div className="mt-2 flex items-center gap-6">
                         {!customFields?.some((field) => field.name === 'Gender') && (

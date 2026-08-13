@@ -8,6 +8,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
@@ -33,12 +35,47 @@ public class ActivityLogProcessorService {
         private final ActivityLogRepository activityLogRepository;
         private final StudentAnalyticsLLMService studentAnalyticsLLMService;
         private final ObjectMapper objectMapper;
+        private final CreditClient creditClient;
+        private final ActivityLogQueueClaimService activityLogQueueClaimService;
 
         private static final int BATCH_SIZE = 10;
         private static final int ENTRIES_PER_RUN = 20;
         private static final String STATUS_RAW = "raw";
         private static final String STATUS_PROCESSED = "processed";
         private static final String STATUS_FAILED = "failed";
+
+        /** In-flight status held while a replica works a claimed log. */
+        private static final String STATUS_PROCESSING = "processing";
+
+        /**
+         * How many times a single log may be attempted before it is left alone. Without a
+         * bound, the scheduler's `status IN ('raw','failed')` selection resurrected
+         * permanently-broken logs every hour indefinitely.
+         */
+        private static final int MAX_PROCESSING_ATTEMPTS = 3;
+
+        /**
+         * A claim older than this is assumed to belong to a replica that died mid-batch and
+         * is handed back. Comfortably longer than the worst-case batch: BATCH_SIZE logs x
+         * the LLM response timeout.
+         */
+        private static final int STALE_CLAIM_MINUTES = 30;
+
+        /**
+         * Terminal-for-now status for logs belonging to an institute with no credit. They
+         * are deliberately NOT left as 'raw': the scheduler takes the oldest entries
+         * first, so an unpaid institute would otherwise sit at the head of the queue and
+         * starve paying ones. Re-queue with
+         * {@code UPDATE activity_log SET status='raw' WHERE status='skipped_no_credits'}
+         * after a top-up.
+         */
+        private static final String STATUS_SKIPPED_NO_CREDITS = "skipped_no_credits";
+
+        /** Rough chars-per-token ratio, used only to size the pre-flight credit check. */
+        private static final int CHARS_PER_TOKEN_ESTIMATE = 4;
+
+        /** Mirrors StudentAnalyticsLLMService.MAX_COMPLETION_TOKENS for the estimate. */
+        private static final int ESTIMATED_COMPLETION_TOKENS = 2000;
 
         // Scheduler tracking
         private final AtomicReference<LocalDateTime> lastRunTime = new AtomicReference<>();
@@ -59,12 +96,21 @@ public class ActivityLogProcessorService {
                 log.info("[LLM-Analytics-Scheduler] ===== SCHEDULER RUN STARTED at {} =====", startTime);
 
                 try {
-                        List<ActivityLogProcessingProjection> rawLogs = activityLogRepository
-                                        .findProcessingDataByStatusWithLimit(
-                                                        Arrays.asList(STATUS_RAW, STATUS_FAILED), ENTRIES_PER_RUN);
+                        // Hand back anything a dead replica left in flight before claiming more.
+                        activityLogQueueClaimService.releaseStaleClaims(STALE_CLAIM_MINUTES);
+
+                        // Claim rather than select: this job runs on all four admin-core replicas,
+                        // and an unclaimed select had every replica calling the LLM on the same
+                        // oldest-20 logs - a 4x multiplier on spend for identical work.
+                        List<ActivityLogProcessingProjection> rawLogs = activityLogQueueClaimService.claimBatch(
+                                        Arrays.asList(STATUS_RAW, STATUS_FAILED),
+                                        MAX_PROCESSING_ATTEMPTS,
+                                        ENTRIES_PER_RUN,
+                                        STATUS_PROCESSING);
 
                         if (rawLogs.isEmpty()) {
-                                log.info("[LLM-Analytics-Scheduler] No raw activity logs to process");
+                                log.info("[LLM-Analytics-Scheduler] No activity logs claimed - queue empty "
+                                                + "or another replica took them");
                                 return;
                         }
 
@@ -129,16 +175,34 @@ public class ActivityLogProcessorService {
                 if (activityLog.getRawJson() == null || activityLog.getRawJson().isEmpty()) {
                         log.warn("[LLM-Analytics-Processing] Activity log {} has no raw JSON, skipping",
                                         activityLog.getId());
+                        // It is claimed at this point - resolve it rather than leaving it in flight
+                        // for the stale-claim reaper to pick up half an hour later.
+                        markAsFailed(activityLog.getId(), "No raw JSON to analyse");
+                        return;
+                }
+
+                // Resolve who pays for this call before spending anything on it.
+                String instituteId = resolveInstituteId(activityLog);
+                if (instituteId == null) {
+                        log.warn("[LLM-Analytics-Processing] Could not resolve an institute for activity log {} "
+                                        + "(user {}). Processing it unattributed and uncharged.",
+                                        activityLog.getId(), activityLog.getUserId());
+                } else if (!hasCreditsFor(instituteId, activityLog)) {
+                        log.warn("[LLM-Analytics-Processing] Institute {} has insufficient credits - "
+                                        + "skipping activity log {} without calling the LLM",
+                                        instituteId, activityLog.getId());
+                        activityLogRepository.updateProcessedData(activityLog.getId(), null,
+                                        STATUS_SKIPPED_NO_CREDITS);
                         return;
                 }
 
                 try {
                         long llmStart = System.nanoTime();
                         // Step 1: Call LLM (no DB connection held during this)
-                        // Note: Passing null for instituteId defaults it to Free Tier model usage. 
-                        // TODO: Implement fetching instituteId to properly authorize Premium tier usage per institute
                         JsonNode insights = studentAnalyticsLLMService
-                                        .generateStudentInsights(activityLog.getRawJson(), activityLog.getSourceType())
+                                        .generateStudentInsights(activityLog.getRawJson(),
+                                                        activityLog.getSourceType(),
+                                                        instituteId, activityLog.getUserId())
                                         .block();
                         long llmDurationMs = Duration.ofNanos(System.nanoTime() - llmStart).toMillis();
                         log.info("[LLM-Analytics-Processing] LLM call completed for activity log ID: {} in {} ms",
@@ -167,6 +231,61 @@ public class ActivityLogProcessorService {
                         markAsFailed(activityLog.getId(), e.getMessage());
                         throw new RuntimeException("Failed to process activity log", e);
                 }
+        }
+
+        /**
+         * Work out which institute owns an activity log.
+         *
+         * activity_log has no institute_id column, so there are two sources. Assessment
+         * submissions arrive from assessment_service, which already derived the institute
+         * and embedded it in the enriched payload - that value is authoritative. Everything
+         * else (quiz, assignment, question, video and document activity) carries no
+         * institute at all, so it is resolved from the learner's enrolment.
+         *
+         * @return the institute id, or null if neither source yields one
+         */
+        private String resolveInstituteId(ActivityLogProcessingProjection activityLog) {
+                try {
+                        JsonNode root = objectMapper.readTree(activityLog.getRawJson());
+                        JsonNode embedded = root.get("instituteId");
+                        if (embedded != null && embedded.isTextual() && !embedded.asText().isBlank()) {
+                                return embedded.asText().trim();
+                        }
+                } catch (Exception e) {
+                        log.debug("[LLM-Analytics-Processing] Could not read instituteId from raw JSON of {}: {}",
+                                        activityLog.getId(), e.getMessage());
+                }
+
+                String userId = activityLog.getUserId();
+                if (userId == null || userId.isBlank()) {
+                        return null;
+                }
+
+                try {
+                        return activityLogRepository.findInstituteIdByUserId(userId).orElse(null);
+                } catch (Exception e) {
+                        log.warn("[LLM-Analytics-Processing] Failed to resolve institute for user {}: {}",
+                                        userId, e.getMessage());
+                        return null;
+                }
+        }
+
+        /**
+         * Pre-flight affordability check, so an institute with an empty wallet never has
+         * work done on its behalf.
+         *
+         * {@link CreditClient#checkCredits} fails OPEN - if ai_service is unreachable the
+         * log is processed rather than dropped. That is deliberate: a credit-service blip
+         * should not silently stop analytics for everyone.
+         */
+        private boolean hasCreditsFor(String instituteId, ActivityLogProcessingProjection activityLog) {
+                int estimatedTokens = (activityLog.getRawJson().length() / CHARS_PER_TOKEN_ESTIMATE)
+                                + ESTIMATED_COMPLETION_TOKENS;
+                return creditClient.checkCredits(
+                                instituteId,
+                                RequestType.ANALYTICS.getValue(),
+                                studentAnalyticsLLMService.getPrimaryAnalyticsModel(),
+                                estimatedTokens);
         }
 
         private void validateInsights(JsonNode insights) {
@@ -269,6 +388,11 @@ public class ActivityLogProcessorService {
                         @Override
                         public String getId() {
                                 return activityLog.getId();
+                        }
+
+                        @Override
+                        public String getUserId() {
+                                return activityLog.getUserId();
                         }
 
                         @Override

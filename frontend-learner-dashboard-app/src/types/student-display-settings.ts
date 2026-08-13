@@ -35,6 +35,11 @@ export type StudentDashboardWidgetId =
   // band. Only the default/vibrant hero has one — the play / cleaner-play
   // heroes show a greeting band instead, which this flag does not affect.
   | "gettingStarted"
+  // The XP / streak / badges block at the bottom of the dashboard. Covers both
+  // the standard panel and the play theme's own trio of widgets. Note the
+  // badges card has a second, narrower switch of its own (the badge config's
+  // master toggle); this flag hides the whole block.
+  | "gamification"
   | "coursesStat"
   | "evaluationStat"
   | "continueLearning"
@@ -220,13 +225,10 @@ export interface StudentTutorialSettings {
   pdfGuideEnabled: boolean;
 }
 
-// Certificates
-export interface StudentCertificateSettings {
-  // Whether certificate generation is enabled
-  enabled: boolean;
-  // Percentage threshold after which certificate can be generated
-  generationThresholdPercent: number;
-}
+// Certificate settings used to live here as a duplicate of the ones on the
+// Certificate Settings page. Certificate Settings is now the single source of
+// truth; the learner app reads the resolved values from
+// GET /admin-core-service/certificate/learner/v1/config.
 
 // Course Settings
 export interface StudentCourseSettingsQuiz {
@@ -267,7 +269,6 @@ export interface StudentDisplaySettingsData {
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
   tutorials: StudentTutorialSettings;
-  certificates: StudentCertificateSettings;
   concentration: ConcentrationSettings;
   ui: StudentUISettings;
   postLoginRedirectRoute: string;

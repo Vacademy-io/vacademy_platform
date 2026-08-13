@@ -28,6 +28,8 @@ import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.InstituteChoice;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
@@ -35,6 +37,9 @@ import java.util.*;
 
 @Component
 public class AdminOAuth2Manager {
+
+    @Autowired
+    OriginInstituteResolver originInstituteResolver;
 
     @Autowired
     UserRepository userRepository;
@@ -137,12 +142,10 @@ public class AdminOAuth2Manager {
     }
 
     public void sendWelcomeMailToUser(User user) {
-        String instituteId = null;
+        // Drives both the sender address and the branding below, so an arbitrary role
+        // would welcome a user in the wrong institute's name.
+        String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
         InstituteInfoDTO instituteInfoDTO = null;
-
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            instituteId = user.getRoles().iterator().next().getInstituteId();
-        }
         String instituteName = "Vacademy"; // Default fallback
         String theme = "#E67E22";
         String learnerLoginUrl = "https://dash.vacademy.io";

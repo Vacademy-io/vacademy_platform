@@ -36,8 +36,7 @@ import { Preferences } from "@capacitor/preferences";
 import { toast } from "sonner";
 import { Storage } from "@capacitor/storage";
 import { useProctoring } from "@/hooks";
-import { App } from "@capacitor/app";
-import type { PluginListenerHandle } from "@capacitor/core";
+import { registerBackGuard } from "@/lib/back-guard";
 // import { formatDataFromStore } from "./page";
 import { useFileUpload } from "@/hooks/use-file-upload";
 // import { PdfViewerComponent } from "@/components/pdf-viewer"
@@ -74,6 +73,7 @@ export function Navbar({
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showTimesUpModal, setShowTimesUpModal] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showExitWarningModal, setShowExitWarningModal] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasAutoSubmittedRef = useRef(false);
@@ -346,16 +346,31 @@ export function Navbar({
   }, [tabSwitchCount, evaluationType, assessment]);
 
   useEffect(() => {
-    let backButtonListener: PluginListenerHandle | null = null;
+    // Native back (Android hardware/gesture). We register a guard rather than our
+    // own listener: Capacitor runs every backButton listener and ignores the
+    // return value, so the global one in __root would still have navigated to the
+    // dashboard underneath this modal.
+    const unregisterBackGuard = registerBackGuard(() => {
+      setShowExitWarningModal(true);
+      return true; // consumed — __root must not navigate
+    });
 
-    const setupBackButtonListener = async () => {
-      backButtonListener = await App.addListener("backButton", () => {
-        setShowSubmitModal(true);
-        return false;
-      });
+    // Browser/PWA back. beforeunload does not fire on an in-app route change, so
+    // trap popstate: park an extra history entry and immediately re-park it every
+    // time the learner pops it, which leaves them on the test with a warning.
+    const trapHistoryEntry = () => {
+      window.history.pushState(
+        { liveTestGuard: true },
+        "",
+        window.location.href,
+      );
     };
+    trapHistoryEntry();
 
-    setupBackButtonListener();
+    const handlePopState = () => {
+      setShowExitWarningModal(true);
+      trapHistoryEntry();
+    };
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -369,13 +384,13 @@ export function Navbar({
       }
     };
 
+    window.addEventListener("popstate", handlePopState);
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      if (backButtonListener) {
-        backButtonListener.remove();
-      }
+      unregisterBackGuard();
+      window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -788,6 +803,25 @@ export function Navbar({
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
+
+      {/* Back pressed during a live test. Deliberately offers no way out except
+          returning to the test or the normal Submit flow — an accidental back
+          press must not end the attempt or drop the learner on the dashboard. */}
+      <AlertDialog
+        open={showExitWarningModal}
+        onOpenChange={setShowExitWarningModal}
+      >
+        <AlertDialogContent>
+          <AlertDialogDescription>
+            Your test is still in progress. You cannot go back while attempting.
+            Use the Submit button when you have finished — your answers are saved
+            automatically.
+          </AlertDialogDescription>
+          <AlertDialogAction onClick={() => setShowExitWarningModal(false)}>
+            Return to Test
+          </AlertDialogAction>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <HelpModal
         open={helpType !== null}

@@ -96,6 +96,10 @@ public class GetSessionByIdResponseDTO {
         private String label;
         private Boolean required;
         private Boolean isDefault;
+        /** Position in the registration form, so the builder can list fields in the saved order. */
+        private Integer formOrder;
+        /** Raw options JSON — without it the builder cannot show or keep a dropdown's choices. */
+        private String config;
     }
 
     @Getter

@@ -530,6 +530,11 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                       AND ssigm.package_session_id = :packageSessionId
                       AND ssigm.status IN (:statusList)
                   ))
+              AND (CAST(:search AS text) IS NULL
+                   OR s.full_name ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.email ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.username ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.mobile_number ILIKE '%' || CAST(:search AS text) || '%')
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
              """,
@@ -544,10 +549,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                       AND ssigm.package_session_id = :packageSessionId
                       AND ssigm.status IN (:statusList)
                   ))
+              AND (CAST(:search AS text) IS NULL
+                   OR s.full_name ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.email ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.username ILIKE '%' || CAST(:search AS text) || '%'
+                   OR s.mobile_number ILIKE '%' || CAST(:search AS text) || '%')
             """,
             nativeQuery = true)
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId,
             @Param("packageSessionId") String packageSessionId,
+            @Param("search") String search,
             @Param("statusList") List<String> statusList,
             Pageable pageable);
 
@@ -2147,9 +2158,59 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
      * Find limited activity logs with only necessary fields for processing
      * Used by LLM analytics scheduler to optimize data fetching
      */
-    @Query(value = "SELECT id, source_type AS sourceType, raw_json AS rawJson, processed_json AS processedJson, status, created_at AS createdAt FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
-    List<ActivityLogProcessingProjection> findProcessingDataByStatusWithLimit(@Param("statuses") List<String> statuses,
+    // findProcessingDataByStatusWithLimit was removed in favour of claimProcessingBatch.
+    // An unclaimed select is what let all four admin-core replicas pick up the same
+    // oldest-N logs and each pay for the same LLM calls; leaving it here as an
+    // alternative was a standing invitation to reintroduce that.
+
+    /**
+     * Claim a batch of logs for this replica.
+     *
+     * FOR UPDATE SKIP LOCKED is what makes the hourly job safe to run on all four
+     * admin-core pods: each replica takes rows no other replica holds instead of all of
+     * them racing on the same oldest-20. Must be called inside a transaction that then
+     * flips the claimed rows to 'processing' - the row locks only last for the
+     * transaction, the status change is what keeps them claimed afterwards.
+     *
+     * maxAttempts bounds retries so a log that can never succeed stops coming back.
+     */
+    @Query(value = "SELECT id, user_id AS userId, source_type AS sourceType, raw_json AS rawJson, " +
+            "processed_json AS processedJson, status, created_at AS createdAt FROM activity_log " +
+            "WHERE status IN (:statuses) AND processing_attempts < :maxAttempts " +
+            "ORDER BY created_at ASC LIMIT :limit FOR UPDATE SKIP LOCKED", nativeQuery = true)
+    List<ActivityLogProcessingProjection> claimProcessingBatch(@Param("statuses") List<String> statuses,
+            @Param("maxAttempts") int maxAttempts,
             @Param("limit") int limit);
+
+    /**
+     * Flip claimed rows to their in-flight status and count the attempt up front, so an
+     * abandoned batch cannot retry without limit.
+     */
+    @Modifying
+    @Query(value = "UPDATE activity_log SET status = :status, processing_attempts = processing_attempts + 1, " +
+            "updated_at = CURRENT_TIMESTAMP WHERE id IN (:ids)", nativeQuery = true)
+    int markClaimed(@Param("ids") List<String> ids, @Param("status") String status);
+
+    /**
+     * Return logs stranded in 'processing' by a pod that died mid-batch. activity_log has
+     * no updated_at trigger, so markClaimed sets it explicitly and this reads it back as
+     * the claim timestamp.
+     */
+    @Modifying
+    @Query(value = "UPDATE activity_log SET status = 'failed', updated_at = CURRENT_TIMESTAMP " +
+            "WHERE status = 'processing' " +
+            "AND updated_at < CURRENT_TIMESTAMP - make_interval(mins => :staleMinutes)", nativeQuery = true)
+    int releaseStaleClaims(@Param("staleMinutes") int staleMinutes);
+
+    /**
+     * Resolve the institute that owns a learner, for attributing AI spend on their
+     * activity logs. Prefers an ACTIVE enrolment, then the most recent one, because a
+     * learner may hold mappings in several institutes over time.
+     */
+    @Query(value = "SELECT institute_id FROM student_session_institute_group_mapping " +
+            "WHERE user_id = :userId AND institute_id IS NOT NULL " +
+            "ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC LIMIT 1", nativeQuery = true)
+    Optional<String> findInstituteIdByUserId(@Param("userId") String userId);
 
     /**
      * Count activity logs by status

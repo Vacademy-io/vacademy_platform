@@ -16,6 +16,9 @@ interface NavigationButtonsProps {
   isPaymentDataReady?: boolean; // For Stripe processor or Eway encrypted data
   hasUnappliedReferral?: boolean;
   hidePrimaryButton?: boolean; // For CASHFREE inline card - pay via form's Pay Now
+  // Autopay invites: the review step shows a mandate-consent checkbox; block Next
+  // until the learner ticks it.
+  autopayConsentPending?: boolean;
 }
 
 const NavigationButtons = ({
@@ -31,10 +34,14 @@ const NavigationButtons = ({
   isPaymentDataReady = false,
   hasUnappliedReferral = false,
   hidePrimaryButton = false,
+  autopayConsentPending = false,
 }: NavigationButtonsProps) => {
   const isNextDisabled = () => {
     if (loading) return true;
     if (hasUnappliedReferral) return true;
+
+    // Step 2: Review — autopay invites require ticking the mandate consent first.
+    if (currentStep === 2 && autopayConsentPending) return true;
 
     // Step 1: Payment selection
     if (currentStep === 1 && !selectedPayment) return true;
@@ -59,7 +66,13 @@ const NavigationButtons = ({
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col-reverse sm:flex-row items-center justify-between w-full gap-3 mt-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+    // Pinned to the bottom of the viewport on phones. The plan step can run
+    // several screens long once features are listed, so a learner who picks a
+    // plan sees nothing happen and no way forward — the page reads as frozen
+    // because the only Next button is far below the fold. Sticky keeps it in
+    // reach the whole way down; from sm: up the page is short enough that the
+    // bar sits inline as before.
+    <div className="sticky bottom-0 z-30 sm:static p-4 sm:p-6 flex flex-col-reverse sm:flex-row items-center justify-between w-full gap-3 mt-4 bg-white border border-gray-200 rounded-lg shadow-lg sm:shadow-sm">
       <MyButton
         type="button"
         buttonType="secondary"

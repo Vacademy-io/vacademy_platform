@@ -15,6 +15,7 @@ import {
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { toast } from "sonner";
+import { runBackGuard } from "@/lib/back-guard";
 import { useUpdate } from "@/stores/useUpdate";
 import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
@@ -519,6 +520,11 @@ const RootComponent = () => {
     let handle: { remove: () => void } | null = null;
 
     App.addListener("backButton", ({ canGoBack }) => {
+      // A screen that must not be backed out of (e.g. a live test) registers a
+      // guard. Capacitor runs every listener, so without this check we would
+      // navigate away underneath that screen's own warning modal.
+      if (runBackGuard()) return;
+
       const currentPath = window.location.pathname;
       if (!canGoBack || isRootRoute(currentPath)) {
         App.minimizeApp();

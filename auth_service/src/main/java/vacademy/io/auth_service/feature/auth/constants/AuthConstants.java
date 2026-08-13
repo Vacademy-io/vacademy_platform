@@ -17,4 +17,6 @@ public class AuthConstants {
     public  static final List<String> VALID_ROLES_FOR_STUDENT_PORTAL = List.of("STUDENT", "PARENT");
 
     public static final String ADD_LEARNER = "/admin-core-service/institute/open_learner/v1/add-learner";
+
+    public static final String SELF_SIGNUP_LEAD_PATH = "/admin-core-service/internal/audience/self-signup-lead";
 }

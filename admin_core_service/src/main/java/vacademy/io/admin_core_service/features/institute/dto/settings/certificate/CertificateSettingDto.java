@@ -51,4 +51,22 @@ public class CertificateSettingDto {
     // doesn't act on this — it always renders currentHtmlCertificateTemplate —
     // but the frontend uses it to open the page in the right editor.
     private String preferredEditorMode;
+
+    // Certificate numbering format for this institute. Null keeps the historical
+    // shape ({PREFIX}-{SEQ:4}-{YYYY}), but sequence-backed rather than random.
+    // See CertificateNumberService for the supported tokens.
+    private CertificateNumberingDto certificateNumbering;
+
+    // What the {{CERTIFICATE_QR}} token encodes. Null/blank encodes the bare
+    // certificate number. Set a URL containing {{CERTIFICATE_ID}} — for example
+    // https://myschool.com/verify?c={{CERTIFICATE_ID}} — to make a scan land on
+    // a verification page instead. There is no platform-provided public
+    // verification endpoint, so this is opt-in per institute.
+    private String qrVerificationUrlTemplate;
+
+    // Which machine-readable code is stamped alongside the certificate number
+    // on every issued certificate: "QR" or "BARCODE". Null/unrecognised means
+    // QR — it carries more data, survives partial damage, and any phone camera
+    // reads it without a dedicated scanner.
+    private String badgeCodeType;
 }

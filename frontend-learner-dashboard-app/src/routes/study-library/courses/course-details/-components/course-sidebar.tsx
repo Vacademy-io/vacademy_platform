@@ -93,6 +93,13 @@ interface CourseSidebarProps {
   backendReadTimeMinutes?: number;
   paymentType?: string | null;
   packageSessionIdForCurrentLevel?: string | null;
+  /**
+   * Whether certificates are switched on for this batch, resolved server-side
+   * from Certificate Settings. When false the certificate messaging is hidden
+   * entirely — promising a certificate that will never be issued is worse than
+   * saying nothing.
+   */
+  certificatesEnabled?: boolean;
   percentageCompleted?: number;
   onEnrollmentClick: () => void;
   onRatingsLoadingChange: (loading: boolean) => void;
@@ -118,6 +125,7 @@ export const CourseSidebar = ({
   backendReadTimeMinutes,
   packageSessionIdForCurrentLevel,
   percentageCompleted,
+  certificatesEnabled,
   onEnrollmentClick,
   onRatingsLoadingChange,
 }: CourseSidebarProps) => {
@@ -476,22 +484,24 @@ export const CourseSidebar = ({
                   )}
                 />
               </div>
-              <div
-                className={cn(
-                  "p-2 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800",
-                  // Play — quiet highlight chip
-                  "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
-                )}
-              >
-                <p
+              {certificatesEnabled && (
+                <div
                   className={cn(
-                    "text-xs text-amber-700 dark:text-amber-400 font-medium text-center",
-                    "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                    "p-2 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800",
+                    // Play — quiet highlight chip
+                    "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
                   )}
                 >
-                  Certificate will be generated upon completion
-                </p>
-              </div>
+                  <p
+                    className={cn(
+                      "text-xs text-amber-700 dark:text-amber-400 font-medium text-center",
+                      "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                    )}
+                  >
+                    Certificate will be generated upon completion
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

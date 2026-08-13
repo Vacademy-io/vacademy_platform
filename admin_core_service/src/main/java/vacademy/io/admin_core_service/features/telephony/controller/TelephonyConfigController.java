@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.telephony.controller.dto.Telephon
 import vacademy.io.admin_core_service.features.telephony.core.TelephonyConfigCache;
 import vacademy.io.admin_core_service.features.telephony.core.TelephonyJson;
 import vacademy.io.admin_core_service.features.telephony.core.TelephonyProviderRegistry;
+import vacademy.io.admin_core_service.features.telephony.enums.ConfigRole;
 import vacademy.io.admin_core_service.features.telephony.enums.SelectorStrategy;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.InstituteTelephonyConfig;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.InstituteTelephonyConfigRepository;
@@ -47,7 +48,7 @@ public class TelephonyConfigController {
 
     @GetMapping("/{instituteId}")
     public ResponseEntity<TelephonyConfigViewDTO> get(@PathVariable String instituteId) {
-        return repo.findByInstituteId(instituteId)
+        return repo.findPrimaryByInstituteId(instituteId)
                 .map(c -> {
                     TelephonyConfigViewDTO dto = TelephonyConfigViewDTO.from(c);
                     dto.setWebhookCallbackBase(webhookCallbackBase);
@@ -76,10 +77,15 @@ public class TelephonyConfigController {
             throw new VacademyException("Unknown selector strategy: " + body.getDefaultSelectorKey());
         }
 
-        Optional<InstituteTelephonyConfig> existing = repo.findByInstituteId(instituteId);
+        // This endpoint owns the PRIMARY row only — the provider the institute's humans
+        // call on. The dedicated AI-calling line is a different row with its own
+        // endpoint (AiVoiceCarrierController), so switching the human provider here can
+        // never disturb AI calling and vice-versa.
+        Optional<InstituteTelephonyConfig> existing = repo.findPrimaryByInstituteId(instituteId);
         boolean isCreate = existing.isEmpty();
         InstituteTelephonyConfig cfg = existing.orElseGet(InstituteTelephonyConfig::new);
         cfg.setInstituteId(instituteId);
+        cfg.setRole(ConfigRole.PRIMARY);
         cfg.setProviderType(providerType);
         if (body.getApiAccountId() != null) cfg.setApiAccountId(body.getApiAccountId());
 

@@ -1,7 +1,7 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavigate, createLazyFileRoute } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useSidebar } from '@/components/ui/sidebar';
 import { MyButton } from '@/components/design-system/button';
@@ -29,12 +29,17 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { getCourseSettings } from '@/services/course-settings';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { KbGroundingCard } from './shared/components/KbGroundingCard';
+import type { KbGroundingValue } from './shared/components/KbGroundingCard';
 import { AI_SERVICE_BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { toast } from 'sonner';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
@@ -151,7 +156,9 @@ function RouteComponent() {
     }, [setOpen]);
 
     // Check for saved draft
-    const [savedDraft, setSavedDraft] = useState<{ draftTitle?: string; timestamp: string } | null>(null);
+    const [savedDraft, setSavedDraft] = useState<{ draftTitle?: string; timestamp: string } | null>(
+        null
+    );
     useEffect(() => {
         try {
             const raw = localStorage.getItem('aiCourseDraft');
@@ -164,7 +171,9 @@ function RouteComponent() {
                     });
                 }
             }
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
     }, []);
 
     const handleResumeDraft = () => {
@@ -213,13 +222,23 @@ function RouteComponent() {
     const [numberOfSubjects, setNumberOfSubjects] = useState('');
     const [numberOfModules, setNumberOfModules] = useState('');
     const [courseDepth, setCourseDepth] = useState<number>(3);
+    // Material the institute already owns. When set, the outline follows its
+    // topic tree and each slide is written from the pages about its subject.
+    const { kb: kbFromLink } = Route.useSearch();
+    // Arriving from a knowledge base page: start already grounded in it, so
+    // the teacher does not have to find the same material again.
+    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(
+        kbFromLink ? { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' } : null
+    );
+    // Chapter/slide counts start at '5', so "still empty?" can never detect an
+    // untouched control. Track the teacher's own choice explicitly instead.
+    const structureChosenByUser = useRef(false);
     const [referenceFiles, setReferenceFiles] = useState<PrerequisiteFile[]>([]);
     const [referenceUrls, setReferenceUrls] = useState<PrerequisiteUrl[]>([]);
     const [newReferenceUrl, setNewReferenceUrl] = useState('');
     const [selectedModel, setSelectedModel] = useState('auto');
-    const [aiVideoSettings, setAiVideoSettings] = useState<AiVideoSettings>(
-        DEFAULT_AI_VIDEO_SETTINGS
-    );
+    const [aiVideoSettings, setAiVideoSettings] =
+        useState<AiVideoSettings>(DEFAULT_AI_VIDEO_SETTINGS);
     const { uploadFile } = useFileUpload();
     const [isUploadingReferences, setIsUploadingReferences] = useState(false);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -241,7 +260,9 @@ function RouteComponent() {
         hasGemini: false,
     });
 
-    const { data: modelsList, isLoading: isLoadingModels } = useAIModelsList({ category: 'general' });
+    const { data: modelsList, isLoading: isLoadingModels } = useAIModelsList({
+        category: 'general',
+    });
     const [isScraping, setIsScraping] = useState(false);
 
     // Dialog states for bubbles
@@ -386,7 +407,9 @@ function RouteComponent() {
                     }
                 }
             })
-            .catch(() => { /* no settings yet */ });
+            .catch(() => {
+                /* no settings yet */
+            });
     }, []);
 
     useEffect(() => {
@@ -642,16 +665,16 @@ function RouteComponent() {
 
     const handleConfirmGenerate = async () => {
         const finalCourseLength = chapterLength === 'custom' ? customChapterLength : chapterLength;
-        const finalChapterCount = numberOfChapters === 'custom' ? customChapterCount : numberOfChapters;
-        const finalSlidesPerChapter = slidesPerChapter === 'custom' ? customSlidesPerChapter : slidesPerChapter;
+        const finalChapterCount =
+            numberOfChapters === 'custom' ? customChapterCount : numberOfChapters;
+        const finalSlidesPerChapter =
+            slidesPerChapter === 'custom' ? customSlidesPerChapter : slidesPerChapter;
 
         // Upload reference PDFs to media_service → fileIds, so the backend can
         // extract their text (to ground the course) and figures (to embed real
         // diagrams). Best-effort: a failed upload just drops that document.
         let referenceDocumentFileIds: string[] = [];
-        const pdfReferenceFiles = referenceFiles.filter(
-            (rf) => rf.file.type === 'application/pdf'
-        );
+        const pdfReferenceFiles = referenceFiles.filter((rf) => rf.file.type === 'application/pdf');
         // Only PDFs are content-ingested (MathPix is PDF-only); tell the user
         // their other reference files won't shape the course.
         if (referenceFiles.length > pdfReferenceFiles.length) {
@@ -685,7 +708,9 @@ function RouteComponent() {
                 setIsUploadingReferences(false);
             }
         } else if (pdfReferenceFiles.length > 0) {
-            toast.error('Could not upload reference PDFs (missing user id); continuing without them.');
+            toast.error(
+                'Could not upload reference PDFs (missing user id); continuing without them.'
+            );
         }
 
         // Prepare context from references
@@ -729,7 +754,9 @@ function RouteComponent() {
                 includeQuizzes,
                 includeHomework,
                 includeSolutions,
-                topicsPerSession: finalSlidesPerChapter ? parseInt(finalSlidesPerChapter) : undefined,
+                topicsPerSession: finalSlidesPerChapter
+                    ? parseInt(finalSlidesPerChapter)
+                    : undefined,
                 numberOfSubjects: numberOfSubjects ? parseInt(numberOfSubjects) : undefined,
                 numberOfModules: numberOfModules ? parseInt(numberOfModules) : undefined,
             },
@@ -738,6 +765,7 @@ function RouteComponent() {
             model: selectedModel,
             aiVideoSettings: aiVideoSettings,
             referenceDocumentFileIds,
+            kbGrounding,
             userId: userId,
             instituteId: instituteId,
             references: {
@@ -791,7 +819,7 @@ function RouteComponent() {
                 Settings are expanded on smaller screens) — a fixed height with
                 items-center used to clip the top and the Generate button. */}
             <div className="flex min-h-[calc(100vh-4rem)] justify-center bg-gradient-to-b from-indigo-50 via-white to-purple-50 px-4 py-6 sm:px-6">
-                <div className="mx-auto my-auto w-full max-w-[800px]">
+                <div className="m-auto w-full max-w-[800px]">
                     {/* Compact Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
@@ -825,11 +853,12 @@ function RouteComponent() {
                                         <BookOpen className="size-4 text-indigo-600" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-medium text-neutral-900 line-clamp-1">
+                                        <p className="line-clamp-1 text-sm font-medium text-neutral-900">
                                             {savedDraft.draftTitle || 'Untitled Course'}
                                         </p>
                                         <p className="text-xs text-neutral-500">
-                                            Draft saved {new Date(savedDraft.timestamp).toLocaleDateString()}
+                                            Draft saved{' '}
+                                            {new Date(savedDraft.timestamp).toLocaleDateString()}
                                         </p>
                                     </div>
                                 </div>
@@ -918,7 +947,9 @@ function RouteComponent() {
                                     ) : (
                                         <>
                                             <SelectItem value="beginner">Beginner</SelectItem>
-                                            <SelectItem value="intermediate">Intermediate</SelectItem>
+                                            <SelectItem value="intermediate">
+                                                Intermediate
+                                            </SelectItem>
                                             <SelectItem value="advanced">Advanced</SelectItem>
                                         </>
                                     )}
@@ -963,20 +994,43 @@ function RouteComponent() {
                             </Select>
 
                             {/* Number of Chapters Dropdown */}
-                            <Select value={numberOfChapters} onValueChange={(v) => { setNumberOfChapters(v); if (v !== 'custom') setCustomChapterCount(''); }}>
+                            <Select
+                                value={numberOfChapters}
+                                onValueChange={(v) => {
+                                    structureChosenByUser.current = true;
+                                    setNumberOfChapters(v);
+                                    if (v !== 'custom') setCustomChapterCount('');
+                                }}
+                            >
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <BookOpen className="size-3.5 text-neutral-500" />
-                                        {numberOfChapters === 'custom' && customChapterCount
-                                            ? <span>{customChapterCount} {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}</span>
-                                            : <SelectValue placeholder={getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)} />
-                                        }
+                                        {numberOfChapters === 'custom' && customChapterCount ? (
+                                            <span>
+                                                {customChapterCount}{' '}
+                                                {getTerminologyPlural(
+                                                    ContentTerms.Chapters,
+                                                    SystemTerms.Chapters
+                                                )}
+                                            </span>
+                                        ) : (
+                                            <SelectValue
+                                                placeholder={getTerminologyPlural(
+                                                    ContentTerms.Chapters,
+                                                    SystemTerms.Chapters
+                                                )}
+                                            />
+                                        )}
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[3, 4, 5, 6, 7, 8, 10, 12, 15, 20].map((num) => (
                                         <SelectItem key={num} value={num.toString()}>
-                                            {num} {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
+                                            {num}{' '}
+                                            {getTerminologyPlural(
+                                                ContentTerms.Chapters,
+                                                SystemTerms.Chapters
+                                            )}
                                         </SelectItem>
                                     ))}
                                     <SelectItem value="custom">Custom...</SelectItem>
@@ -984,14 +1038,21 @@ function RouteComponent() {
                             </Select>
 
                             {/* Course Length Dropdown */}
-                            <Select value={chapterLength} onValueChange={(v) => { setChapterLength(v); if (v !== 'custom') setCustomChapterLength(''); }}>
+                            <Select
+                                value={chapterLength}
+                                onValueChange={(v) => {
+                                    setChapterLength(v);
+                                    if (v !== 'custom') setCustomChapterLength('');
+                                }}
+                            >
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <Clock className="size-3.5 text-neutral-500" />
-                                        {chapterLength === 'custom' && customChapterLength
-                                            ? <span>{customChapterLength} min</span>
-                                            : <SelectValue placeholder="Duration" />
-                                        }
+                                        {chapterLength === 'custom' && customChapterLength ? (
+                                            <span>{customChapterLength} min</span>
+                                        ) : (
+                                            <SelectValue placeholder="Duration" />
+                                        )}
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1005,20 +1066,50 @@ function RouteComponent() {
                             </Select>
 
                             {/* Slides per Chapter Dropdown */}
-                            <Select value={slidesPerChapter} onValueChange={(v) => { setSlidesPerChapter(v); if (v !== 'custom') setCustomSlidesPerChapter(''); }}>
+                            <Select
+                                value={slidesPerChapter}
+                                onValueChange={(v) => {
+                                    structureChosenByUser.current = true;
+                                    setSlidesPerChapter(v);
+                                    if (v !== 'custom') setCustomSlidesPerChapter('');
+                                }}
+                            >
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <FileText className="size-3.5 text-neutral-500" />
-                                        {slidesPerChapter === 'custom' && customSlidesPerChapter
-                                            ? <span>{customSlidesPerChapter} {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}</span>
-                                            : <SelectValue placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} />
-                                        }
+                                        {slidesPerChapter === 'custom' && customSlidesPerChapter ? (
+                                            <span>
+                                                {customSlidesPerChapter}{' '}
+                                                {getTerminologyPlural(
+                                                    ContentTerms.Slides,
+                                                    SystemTerms.Slides
+                                                )}
+                                                /
+                                                {getTerminology(
+                                                    ContentTerms.Chapters,
+                                                    SystemTerms.Chapters
+                                                )}
+                                            </span>
+                                        ) : (
+                                            <SelectValue
+                                                placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}
+                                            />
+                                        )}
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[3, 4, 5, 6, 7, 8, 10].map((num) => (
                                         <SelectItem key={num} value={num.toString()}>
-                                            {num} {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
+                                            {num}{' '}
+                                            {getTerminologyPlural(
+                                                ContentTerms.Slides,
+                                                SystemTerms.Slides
+                                            )}
+                                            /
+                                            {getTerminology(
+                                                ContentTerms.Chapters,
+                                                SystemTerms.Chapters
+                                            )}
                                         </SelectItem>
                                     ))}
                                     <SelectItem value="custom">Custom...</SelectItem>
@@ -1027,7 +1118,9 @@ function RouteComponent() {
                         </div>
 
                         {/* Custom inputs for chapters/duration/slides if needed */}
-                        {(numberOfChapters === 'custom' || chapterLength === 'custom' || slidesPerChapter === 'custom') && (
+                        {(numberOfChapters === 'custom' ||
+                            chapterLength === 'custom' ||
+                            slidesPerChapter === 'custom') && (
                             <div className="mb-3 flex gap-2">
                                 {numberOfChapters === 'custom' && (
                                     <Input
@@ -1061,6 +1154,22 @@ function RouteComponent() {
                                 )}
                             </div>
                         )}
+
+                        <KbGroundingCard
+                            value={kbGrounding}
+                            onChange={setKbGrounding}
+                            onStructureSuggested={(chapters, slides) => {
+                                // The material's real shape beats an arbitrary
+                                // default, but never overrides a number the
+                                // teacher set for themselves.
+                                // The material's real shape beats an arbitrary
+                                // default, but never overrides a choice the
+                                // teacher has actually made.
+                                if (structureChosenByUser.current) return;
+                                setNumberOfChapters(String(chapters));
+                                setSlidesPerChapter(String(slides));
+                            }}
+                        />
 
                         {/* Bubbles Row 2 - Content Options & Actions */}
                         <div className="mb-1">
@@ -1301,12 +1410,23 @@ function RouteComponent() {
                                     onValueChange={setNumberOfSubjects}
                                 >
                                     <SelectTrigger className="w-full">
-                                        <SelectValue placeholder={`Select ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject).toLowerCase()}`} />
+                                        <SelectValue
+                                            placeholder={`Select ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject).toLowerCase()}`}
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {[1, 2, 3, 4, 5, 6].map((num) => (
                                             <SelectItem key={num} value={num.toString()}>
-                                                {num} {num > 1 ? getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject) : getTerminology(ContentTerms.Subject, SystemTerms.Subject)}
+                                                {num}{' '}
+                                                {num > 1
+                                                    ? getTerminologyPlural(
+                                                          ContentTerms.Subject,
+                                                          SystemTerms.Subject
+                                                      )
+                                                    : getTerminology(
+                                                          ContentTerms.Subject,
+                                                          SystemTerms.Subject
+                                                      )}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -1315,15 +1435,27 @@ function RouteComponent() {
                         )}
                         {courseDepth > 3 && (
                             <div>
-                                <Label className="mb-2 block text-sm">Number of {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}</Label>
+                                <Label className="mb-2 block text-sm">
+                                    Number of{' '}
+                                    {getTerminologyPlural(
+                                        ContentTerms.Modules,
+                                        SystemTerms.Modules
+                                    )}
+                                </Label>
                                 <Select value={numberOfModules} onValueChange={setNumberOfModules}>
                                     <SelectTrigger className="w-full">
-                                        <SelectValue placeholder={`Select ${getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules).toLowerCase()}`} />
+                                        <SelectValue
+                                            placeholder={`Select ${getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules).toLowerCase()}`}
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {[2, 3, 4, 5, 6, 8, 10].map((num) => (
                                             <SelectItem key={num} value={num.toString()}>
-                                                {num} {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
+                                                {num}{' '}
+                                                {getTerminologyPlural(
+                                                    ContentTerms.Modules,
+                                                    SystemTerms.Modules
+                                                )}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -1681,7 +1813,8 @@ function RouteComponent() {
                                             Skill Level
                                         </h4>
                                         <p className="text-sm capitalize text-neutral-600">
-                                            {instituteLevels.find(l => l.id === skillLevel)?.level_name || skillLevel}
+                                            {instituteLevels.find((l) => l.id === skillLevel)
+                                                ?.level_name || skillLevel}
                                         </p>
                                     </div>
                                 )}
@@ -1698,7 +1831,11 @@ function RouteComponent() {
                                 {numberOfModules && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Number of {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
+                                            Number of{' '}
+                                            {getTerminologyPlural(
+                                                ContentTerms.Modules,
+                                                SystemTerms.Modules
+                                            )}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {numberOfModules}
@@ -1708,7 +1845,11 @@ function RouteComponent() {
                                 {numberOfChapters && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Number of {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
+                                            Number of{' '}
+                                            {getTerminologyPlural(
+                                                ContentTerms.Chapters,
+                                                SystemTerms.Chapters
+                                            )}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {numberOfChapters}
@@ -1724,15 +1865,23 @@ function RouteComponent() {
                                             {chapterLength === 'custom'
                                                 ? `${customChapterLength} minutes`
                                                 : chapterLength
-                                                    ? `${chapterLength} minutes`
-                                                    : ''}
+                                                  ? `${chapterLength} minutes`
+                                                  : ''}
                                         </p>
                                     </div>
                                 )}
                                 {slidesPerChapter && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} per {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
+                                            {getTerminologyPlural(
+                                                ContentTerms.Slides,
+                                                SystemTerms.Slides
+                                            )}{' '}
+                                            per{' '}
+                                            {getTerminology(
+                                                ContentTerms.Chapters,
+                                                SystemTerms.Chapters
+                                            )}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {slidesPerChapter}

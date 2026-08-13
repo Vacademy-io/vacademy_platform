@@ -876,16 +876,28 @@ const HeroSectionWithState: React.FC<{
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          /* Course-details: 12-col grid (content 5 / banner 7). Homepage: 50/50. */
+          /* Course-details: 12-col grid (content 5 / banner 7). Homepage: 50/50.
+             With NO media the split columns are dropped entirely: the right
+             column is gated on hasHeroMedia, so a 2-col grid left the copy
+             squeezed into half the fold with dead space beside it (live on
+             book-store /homepage and /videos). Falling back to one column and a
+             reading measure matches how the placeholder variant above handles
+             the same case. */
           <div
             className={cn(
               "grid grid-cols-1 gap-8 lg:gap-12 items-center",
-              isCourseDetail ? "lg:grid-cols-12" : "lg:grid-cols-2",
+              hasHeroMedia && (isCourseDetail ? "lg:grid-cols-12" : "lg:grid-cols-2"),
             )}
           >
             {/* Left Content — 5/12 on desktop */}
             {(left || courseData) && (
-              <div className={cn("space-y-4", isCourseDetail ? (hasHeroMedia ? "lg:col-span-5" : "lg:col-span-12") : "")}>
+              <div
+                className={cn(
+                  "space-y-4",
+                  isCourseDetail && hasHeroMedia && "lg:col-span-5",
+                  !hasHeroMedia && "mx-auto w-full max-w-3xl",
+                )}
+              >
                 <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (

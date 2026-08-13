@@ -1090,11 +1090,10 @@ public class SubOrgLearnerService {
         if (optionalPackageSession.isEmpty()) {
             throw new VacademyException("PackageSession Not found");
         }
-        Map<String, Object> contextData = new HashMap<>();
-        contextData.put("member", userDTO);
-        contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("subOrgAdmin", adminDTO);
-        contextData.put("packageId", optionalPackageSession.get().getPackageEntity().getId());
+        // Built centrally so this route and bulk/v3/assign publish an identical context —
+        // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
+        Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
+                userDTO, adminDTO, optionalPackageSession.get());
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
                 packageSessionId, instituteId, contextData);
     }

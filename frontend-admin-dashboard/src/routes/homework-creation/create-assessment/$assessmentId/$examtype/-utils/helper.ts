@@ -615,26 +615,32 @@ export function calculateTotalTime(testData: z.infer<typeof sectionDetailsSchema
 
 export function convertToCustomFieldsData(data: RegistrationFormField[] | undefined) {
     if (!data) return [];
-    return data?.map((field) => ({
-        id: field.id,
-        type: field.field_type,
-        name: field.field_name,
-        oldKey:
-            field.field_key === 'full_name' ||
-            field.field_key === 'phone_number' ||
-            field.field_key === 'email'
-                ? true
-                : false,
-        isRequired: field.is_mandatory,
-        key: field.field_key,
-        ...(field.field_type === 'dropdown' && {
-            options: field.comma_separated_options.split(',').map((value, index) => ({
-                id: String(index),
-                value: value.trim(),
-                disabled: false,
-            })),
-        }),
-    }));
+    // field_order is the form order the learner page sorts by, and the API serializes these
+    // from an unordered set — without sorting here the builder lists them arbitrarily.
+    // Carrying `order` through also keeps it on the save payload instead of dropping it.
+    return [...data]
+        .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
+        .map((field) => ({
+            id: field.id,
+            type: field.field_type,
+            name: field.field_name,
+            oldKey:
+                field.field_key === 'full_name' ||
+                field.field_key === 'phone_number' ||
+                field.field_key === 'email'
+                    ? true
+                    : false,
+            isRequired: field.is_mandatory,
+            key: field.field_key,
+            ...(field.field_type === 'dropdown' && {
+                options: field.comma_separated_options.split(',').map((value, index) => ({
+                    id: String(index),
+                    value: value.trim(),
+                    disabled: false,
+                })),
+            }),
+            order: field.field_order,
+        }));
 }
 
 export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
@@ -692,6 +698,7 @@ export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCu
         comma_separated_options: field.options
             ? field.options.map((opt) => opt.value).join(',')
             : '', // Join options for dropdowns
+        ...(typeof field.order === 'number' ? { order_field: field.order } : {}),
     };
 };
 

@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.telephony.core.CallLogService;
 import vacademy.io.admin_core_service.features.telephony.core.RecordingPersistenceService;
 import vacademy.io.admin_core_service.features.telephony.core.TelephonyConfigCache;
 import vacademy.io.admin_core_service.features.telephony.core.TelephonyProviderRegistry;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.CallWebhookHandler;
@@ -71,13 +72,27 @@ public class TelephonyWebhookController {
             return ResponseEntity.status(HttpStatus.GONE).build();
         }
 
-        TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
+        // Resolve against the carrier that actually PLACED this call: a VACADEMY_AI row
+        // ran on the AI line, which may be a different Plivo subaccount from the one the
+        // institute's humans use (or a Plivo line at an institute whose humans are on
+        // Airtel). Using the primary config here would verify the callback against the
+        // wrong webhook token and later fetch the recording with the wrong credentials.
+        TelephonyConfigCache.Resolved resolved =
+                configCache.forCallProvider(row.getInstituteId(), row.getProviderType()).orElse(null);
         if (resolved == null) return ResponseEntity.status(HttpStatus.GONE).build();
 
-        // The authoritative provider is the institute's STORED config, not the
-        // attacker-controllable ?provider= param. Reject a mismatch and resolve
-        // the handler from config (also makes provider-type case-insensitive).
-        String configProvider = resolved.getConfig().getProviderType();
+        // The authoritative provider is our STORED state, not the attacker-controllable
+        // ?provider= param. Reject a mismatch and resolve the handler from it (also makes
+        // provider-type case-insensitive).
+        //
+        // For a Vacademy AI call the authoritative value is the CARRIER, not the row's own
+        // VACADEMY_AI marker: the bot's answer XML asks Plivo to post its status and
+        // recording callbacks, so they are Plivo events and PlivoCallWebhookHandler parses
+        // them. Reading it off the config instead would 400 every one of those callbacks
+        // for an institute whose primary provider is Airtel.
+        String configProvider = ProviderType.VACADEMY_AI.equals(row.getProviderType())
+                ? ProviderType.PLIVO
+                : resolved.getConfig().getProviderType();
         if (configProvider != null && providerType != null
                 && !configProvider.equalsIgnoreCase(providerType.trim())) {
             log.warn("telephony webhook: ?provider={} != configured {} for corr={}",

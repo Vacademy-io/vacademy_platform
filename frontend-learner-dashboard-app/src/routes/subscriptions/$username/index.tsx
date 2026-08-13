@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { Preferences } from "@capacitor/preferences";
 import {
   ArrowsClockwise,
-  CheckCircle,
   CreditCard,
   Info,
   SpinnerGap,
@@ -180,7 +179,7 @@ function RouteComponent() {
       <div className="border-t bg-white">
         <div className="mx-auto px-4 py-4">
           <p className="text-center text-sm text-gray-500">
-            Need help? Contact support for assistance with your subscription.
+            Need help? Message us and we&apos;ll sort it out.
           </p>
         </div>
       </div>
@@ -189,10 +188,14 @@ function RouteComponent() {
 }
 
 /**
- * Subscription list + stop-auto-deduction flow. Three states per plan:
- * - auto-deduction ON  → next charge date + "Stop auto-deduction" button
- * - auto-deduction OFF → notice with the exact end date it stops after
- * - payment failed     → warning notice
+ * Membership list + stop flow. Three visually distinct states per plan, because
+ * a learner glancing at this page should be able to tell them apart instantly:
+ * - renewing      → next payment date + "Stop membership" button, no banner
+ * - stopped       → amber "Membership stopped" + the date classes run until
+ * - payment failed → red, with the pay-now option below
+ *
+ * Deliberately not green-with-a-tick for the stopped state: that read as
+ * "everything is fine" to learners who had just cancelled.
  */
 function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const queryClient = useQueryClient();
@@ -277,9 +280,11 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       cancelSubscription(instituteId, userPlanId),
     onSuccess: (updated) => {
       const until = formatDate(updated.end_date);
-      toast.success("Auto-deduction stopped", {
+      // Not toast.success: they have cancelled something, and a green tick
+      // alongside "membership stopped" is the mixed signal this page had.
+      toast("Membership stopped", {
         description: until
-          ? `Your plan stays active until ${until}. You won't be charged again.`
+          ? `You can still join classes until ${until}. You won't be charged again.`
           : "You won't be charged again.",
       });
       setToCancel(null);
@@ -288,7 +293,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       });
     },
     onError: () => {
-      toast.error("Couldn't stop auto-deduction", {
+      toast.error("Couldn't stop your membership", {
         description: "Please try again in a moment.",
       });
     },
@@ -317,12 +322,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-gray-900">
-          Manage your subscription
-        </h2>
+        <h2 className="text-xl font-semibold text-gray-900">Your membership</h2>
         <p className="text-sm text-gray-600">
-          Stop auto-deduction anytime — you keep full access until the end of
-          the period you&apos;ve already got.
+          You can stop your membership anytime. Your classes carry on until the
+          date you&apos;ve already paid for.
         </p>
       </div>
 
@@ -364,8 +367,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                   {autopayOn && (
                     <p className="text-xs text-gray-500">
                       {nextCharge
-                        ? `Next auto-deduction on ${nextCharge}`
-                        : "Auto-deduction is on"}
+                        ? `Next payment on ${nextCharge}`
+                        : "Renews automatically"}
                     </p>
                   )}
                 </div>
@@ -378,29 +381,35 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                   layoutVariant="default"
                   onClick={() => setToCancel(sub)}
                 >
-                  Stop auto-deduction
+                  Stop membership
                 </MyButton>
               )}
             </div>
 
+            {/* A stopped membership is not a success state. Green with a tick
+                read as "all good", so learners who had just cancelled thought
+                nothing had happened. Amber says "this is ending", and the date
+                says when — which is the one thing they actually want to know. */}
             {!autopayOn && !paymentFailed && (
-              <div className="flex items-start gap-2 rounded-lg bg-success-50 p-3 text-sm text-success-600">
-                <CheckCircle className="mt-0.5 size-4 shrink-0" weight="fill" />
+              <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
+                <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
                 <span>
-                  Auto-deduction is off for this plan.{" "}
+                  <span className="font-medium">Membership stopped.</span>{" "}
                   {accessUntil
-                    ? `Your plan stays active until ${accessUntil} — after that date it stops and you won't be charged.`
-                    : "It stops at the end of your current period and you won't be charged."}
+                    ? `You can still join classes until ${accessUntil}. After that your membership ends. You won't be charged again.`
+                    : "You can still join classes until the end of the time you've paid for. You won't be charged again."}
                 </span>
               </div>
             )}
 
             {paymentFailed && (
-              <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
+              <div className="flex items-start gap-2 rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
                 <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
                 <span>
-                  The last auto-deduction for this plan failed.
-                  {accessUntil ? ` Access is valid until ${accessUntil}.` : ""}
+                  <span className="font-medium">Payment didn&apos;t go through.</span>{" "}
+                  {accessUntil
+                    ? `You can still join classes until ${accessUntil}. Pay below to keep your membership.`
+                    : "Pay below to keep your membership."}
                 </span>
               </div>
             )}
@@ -410,14 +419,14 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 <div className="text-sm text-gray-700">
                   {sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED" ? (
                     <span>
-                      Reactivate this membership — same plan, same courses, no
-                      re-enrollment needed.
+                      Start your membership again — same plan, same classes.
+                      You don&apos;t need to sign up again.
                     </span>
                   ) : (
                     <span>
-                      Want to continue after{" "}
-                      {accessUntil ?? "your current period"}? Pay once and your
-                      membership carries on.
+                      Want to keep going after{" "}
+                      {accessUntil ?? "your current period"}? Pay now and your
+                      classes carry on.
                     </span>
                   )}
                 </div>
@@ -494,18 +503,16 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warning className="size-5 text-danger-500" weight="fill" />
-              Stop auto-deduction?
+              Stop your membership?
             </DialogTitle>
             <DialogDescription>
-              Auto-deduction for{" "}
+              You can still join classes until{" "}
               <span className="font-medium text-gray-700">
-                {toCancel?.plan_name ?? "this subscription"}
-              </span>{" "}
-              will stop after{" "}
-              {formatDate(toCancel?.end_date) ??
-                "the end of your current period"}
-              . You keep full access until then and won&apos;t be charged
-              again.
+                {formatDate(toCancel?.end_date) ??
+                  "the end of the time you've paid for"}
+              </span>
+              . After that your membership ends and you won&apos;t be charged
+              again. You can start it again anytime.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -517,7 +524,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               onClick={() => setToCancel(null)}
               disable={cancelMutation.isPending}
             >
-              Keep it on
+              Keep membership
             </MyButton>
             <MyButton
               type="button"
@@ -529,9 +536,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               }
               disable={cancelMutation.isPending}
             >
-              {cancelMutation.isPending
-                ? "Stopping..."
-                : "Stop auto-deduction"}
+              {cancelMutation.isPending ? "Stopping..." : "Stop membership"}
             </MyButton>
           </DialogFooter>
         </DialogContent>

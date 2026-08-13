@@ -210,12 +210,16 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
             ? JSON.stringify(optionValues.map((v, i) => ({ id: i + 1, value: v, label: v })))
             : '';
 
+        // Array position is the order the admin sees and drags, so it is the only truthful
+        // source here. This was already the effective behaviour — the form schema carries no
+        // `order` key, so the previous `field.order ?? index` always fell through to the index
+        // — but stamping it explicitly is what makes a reorder actually persist.
         return {
             id: field._id ? (field.id || '') : '',
             institute_id: instituteId,
             type: '',
             type_id: '',
-            individual_order: (field as any).order ?? index,
+            individual_order: index,
             custom_field: {
                 guestId: '',
                 id: field._id || '',
@@ -224,7 +228,7 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
                 fieldType: backendType,
                 defaultValue: '',
                 config,
-                formOrder: (field as any).order ?? index,
+                formOrder: index,
                 isMandatory: field.isRequired,
                 isFilter: true,
                 isSortable: true,
@@ -258,7 +262,16 @@ function safeJsonParse<T = unknown>(str: string, fallback: T): T {
 export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetails) {
     const SEEDED_KEYS = ['full_name', 'email', 'phone_number'];
 
-    return inviteDetails?.institute_custom_fields?.map((field, index) => {
+    // The API does not guarantee an order, and the builder treats array position AS the
+    // form order (drag reorders the array, and the save path stamps the index). Listing
+    // them unsorted therefore both shows the wrong order and writes it back on save.
+    const orderOf = (field: { individual_order?: number; custom_field?: { formOrder?: number } }) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (field as any).individual_order ?? field.custom_field?.formOrder ?? 0;
+
+    return [...(inviteDetails?.institute_custom_fields ?? [])]
+        .sort((a, b) => orderOf(a) - orderOf(b))
+        .map((field, index) => {
         // Parse config — handles both formats:
         //   1. New JSON array: [{id,value,label}]  (from updated save path)
         //   2. Old object: { coommaSepartedOptions: "A,B,C" }

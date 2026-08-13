@@ -274,12 +274,6 @@ function mergeWithDefaults(
       pdfGuideEnabled:
         incoming?.tutorials?.pdfGuideEnabled ?? d.tutorials.pdfGuideEnabled,
     },
-    certificates: {
-      enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
-      generationThresholdPercent:
-        incoming?.certificates?.generationThresholdPercent ??
-        d.certificates.generationThresholdPercent,
-    },
     courseSettings: {
       quiz: {
         moveOnlyOnCorrectAnswer:

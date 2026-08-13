@@ -31,7 +31,10 @@ public class TelephonyNumberTxOps {
 
     @Transactional
     public TelephonyProviderNumber create(TelephonyProviderNumberDTO body) {
-        InstituteTelephonyConfig cfg = configRepo.findByInstituteId(body.getInstituteId())
+        // PRIMARY only: the Numbers card manages the institute's human-calling caller-ID
+        // pool. A dedicated AI_VOICE line carries its number on the config itself, so it
+        // is deliberately invisible here and cannot be edited into the pool.
+        InstituteTelephonyConfig cfg = configRepo.findPrimaryByInstituteId(body.getInstituteId())
                 .orElseThrow(() -> new VacademyException(
                         "Configure provider for this institute before adding numbers"));
         TelephonyProviderNumber n = TelephonyProviderNumber.builder()

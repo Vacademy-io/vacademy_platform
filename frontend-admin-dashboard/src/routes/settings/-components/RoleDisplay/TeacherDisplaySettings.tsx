@@ -24,6 +24,7 @@ import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '@/constants/display-settings/course-details-tabs';
 import { toast } from 'sonner';
 import {
     ArrowUp,
@@ -1159,10 +1160,11 @@ export default function TeacherDisplaySettings() {
                             'ACTIVITY',
                             'PULSE',
                             'REPORTS',
+                            'CERTIFICATES',
                             'DOWNLOADS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>([]);
+                        const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
                         const sorted = allIds
                             .map((id) => {
                                 const cfg = settings.courseDetails?.tabs.find((t) => t.id === id) || {
@@ -1212,6 +1214,9 @@ export default function TeacherDisplaySettings() {
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,
                                                         PULSE: 9,
+                                                        REPORTS: 10,
+                                                        CERTIFICATES: 11,
+                                                        DOWNLOADS: 12,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

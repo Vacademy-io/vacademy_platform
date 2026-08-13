@@ -2,10 +2,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { MyButton } from '@/components/design-system/button';
-import { DotsSixVertical, TrashSimple } from '@phosphor-icons/react';
+import { DotsSixVertical, PencilSimple, TrashSimple } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import {
+    AddCustomFieldDialog as SharedAddCustomFieldDialog,
+    type DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 
 interface CustomField {
     id: string | number;
@@ -29,6 +37,13 @@ interface EnquiryCustomFieldsCardProps {
     updateFieldOrders: () => void;
     handleDeleteOpenField: (id: number) => void;
     toggleIsRequired: (id: number) => void;
+    handleEditFieldAt: (
+        index: number,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: Record<string, unknown>
+    ) => void;
 }
 
 /**
@@ -42,11 +57,17 @@ const EnquiryCustomFieldsCard = ({
     updateFieldOrders,
     handleDeleteOpenField,
     toggleIsRequired,
+    handleEditFieldAt,
 }: EnquiryCustomFieldsCardProps) => {
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues, setValue } = form;
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'custom_fields',
+        // keyName: RHF otherwise overwrites each row's `id` with a fresh uuid on
+        // every array-level setValue, remounting rows (focus loss) and breaking
+        // id-based matching. Keep the domain id intact.
+        keyName: '_rhfKey',
     });
 
     // Initialize with enquiry location fields on mount
@@ -119,92 +140,110 @@ const EnquiryCustomFieldsCard = ({
                         </div>
                     ) : (
                         <div className="flex flex-col gap-4">
+                            <FormFieldRowHeader />
                             <Sortable
-                                value={customFieldsArray}
+                                // form is UseFormReturn<any>, so the custom keyName
+                                // erases `id` from the inferred row type. Rows do
+                                // carry the domain id at runtime.
+                                value={customFieldsArray as unknown as { id: string }[]}
                                 onMove={({ activeIndex, overIndex }) => {
+                                    setEditingIndex(null);
                                     moveCustomField(activeIndex, overIndex);
                                     updateFieldOrders();
                                 }}
                             >
                                 <div className="flex flex-col gap-4">
                                     {customFieldsArray.map((field, index) => {
-                                        // Type cast for proper TypeScript support
                                         const typedField = field as unknown as CustomField;
-
-                                        // Skip deleted fields
                                         if (typedField?.status === 'DELETED') return null;
-
+                                        const isEditing = editingIndex === index;
                                         return (
                                             <SortableItem
                                                 key={typedField.id}
                                                 value={typedField.id}
                                                 asChild
                                             >
-                                                <div
-                                                    key={index}
-                                                    className="flex items-center gap-4"
-                                                >
-                                                    <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                                        <h1 className="text-sm">
-                                                            {typedField.name}
-                                                            {typedField.oldKey && (
-                                                                <span className="text-subtitle text-danger-600">
-                                                                    {' '}
-                                                                    *
-                                                                </span>
-                                                            )}
-                                                            {!typedField.oldKey &&
-                                                                typedField.isRequired && (
-                                                                    <span className="text-subtitle text-danger-600">
-                                                                        {' '}
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                        </h1>
-                                                        <div className="flex items-center gap-6">
-                                                            {!typedField.oldKey && (
-                                                                <MyButton
-                                                                    type="button"
-                                                                    scale="small"
-                                                                    buttonType="secondary"
-                                                                    className="min-w-6 !rounded-sm !p-0"
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        handleDeleteOpenField(
-                                                                            index
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <TrashSimple className="!size-4 text-danger-500" />
-                                                                </MyButton>
-                                                            )}
+                                                <div>
+                                                    <FormFieldRow
+                                                        position={index + 1}
+                                                        name={typedField.name}
+                                                        type={typedField.type}
+                                                        isRequired={typedField.isRequired}
+                                                        locked={typedField.oldKey}
+                                                        isEditing={isEditing}
+                                                        onToggleRequired={() =>
+                                                            toggleIsRequired(index)
+                                                        }
+                                                        onEdit={() => setEditingIndex(index)}
+                                                        onDelete={() => {
+                                                            setEditingIndex(null);
+                                                            handleDeleteOpenField(index);
+                                                        }}
+                                                        dragHandle={
                                                             <SortableDragHandle
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="cursor-grab"
                                                             >
-                                                                <DotsSixVertical size={20} />
+                                                                <DotsSixVertical size={18} />
                                                             </SortableDragHandle>
-                                                        </div>
-                                                    </div>
-                                                    {!typedField.oldKey && (
-                                                        <>
-                                                            <h1 className="text-sm">Required</h1>
-                                                            <Switch
-                                                                checked={typedField.isRequired}
-                                                                onCheckedChange={() => {
-                                                                    toggleIsRequired(index);
-                                                                }}
-                                                            />
-                                                        </>
-                                                    )}
+                                                        }
+                                                    />
                                                 </div>
                                             </SortableItem>
                                         );
                                     })}
                                 </div>
                             </Sortable>
+                            {/* Editing reuses the shared custom-field dialog, prefilled. Keyed
+                                per row so opening a different field re-runs the prefill. */}
+                            {editingIndex !== null && customFieldsArray[editingIndex] && (
+                                <SharedAddCustomFieldDialog
+                                    key={
+                                        (customFieldsArray[editingIndex] as unknown as CustomField)
+                                            .id
+                                    }
+                                    mode="edit"
+                                    open
+                                    onOpenChange={(isOpen) => {
+                                        if (!isOpen) setEditingIndex(null);
+                                    }}
+                                    initialField={{
+                                        type: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).type,
+                                        name: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).name,
+                                        options: (
+                                            (
+                                                customFieldsArray[
+                                                    editingIndex
+                                                ] as unknown as CustomField
+                                            ).options ?? []
+                                        ).map((o) => o.value),
+                                        isRequired: (
+                                            customFieldsArray[editingIndex] as unknown as CustomField
+                                        ).isRequired,
+                                    }}
+                                    onAddField={(type, name, _oldKey, options, config) => {
+                                        handleEditFieldAt(
+                                            editingIndex,
+                                            type,
+                                            name,
+                                            options,
+                                            config as Record<string, unknown>
+                                        );
+                                        setEditingIndex(null);
+                                    }}
+                                    // Its own name must stay available, or saving an unchanged
+                                    // label would be blocked as a duplicate.
+                                    existingFieldNames={customFieldsArray
+                                        .map((f) => f as unknown as CustomField)
+                                        .filter((f, i) => i !== editingIndex && f.status !== 'DELETED')
+                                        .map((f) => f.name)}
+                                />
+                            )}
                         </div>
                     )}
                 </div>

@@ -25,8 +25,13 @@ import java.util.Map;
  * the whole existing outcome pipeline (classify → assign/stop/retry → workflow
  * resume) is reused unchanged.
  *
- * <p>Requires the institute's telephony provider to be PLIVO (Vacademy Voice) —
- * the AI agent is part of that product and dials on its subaccount + caller-ID.
+ * <p>Requires a Plivo line, because the bot only gets audio through Plivo's
+ * {@code <Stream>}. That line is resolved by
+ * {@link TelephonyConfigCache#getForAi} and is EITHER the institute's primary
+ * provider (when it's already Vacademy Voice) OR a dedicated {@code AI_VOICE}
+ * config — so an institute whose humans call over Airtel/Exotel can still run AI
+ * calling on a separate Plivo subaccount without changing anything about how its
+ * team dials. See {@code ConfigRole}.
  */
 @Component
 public class VacademyAiOutboundCaller implements AiOutboundCaller {
@@ -49,23 +54,37 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
             throw new VacademyException(
                     "Vacademy AI is not configured on this server (telephony.vacademy-ai.bot-base-url)");
         }
-        TelephonyConfigCache.Resolved resolved = configCache.get(spec.getInstituteId())
+        // The AI carrier, NOT necessarily the institute's human calling provider: a
+        // dedicated AI_VOICE config when one exists, else the primary (which is what an
+        // institute already on Vacademy Voice resolves to, exactly as before V448).
+        TelephonyConfigCache.Resolved resolved = configCache.getForAi(spec.getInstituteId())
                 .filter(r -> Boolean.TRUE.equals(r.getConfig().getEnabled()))
                 .orElseThrow(() -> new VacademyException(
                         "Calling is not configured for this institute"));
         if (!ProviderType.PLIVO.equals(resolved.getConfig().getProviderType())) {
+            // Reachable only when the institute has no dedicated AI line and its primary
+            // provider cannot carry media (Airtel IQ, Exotel — no <Stream> equivalent).
+            // Name the fix, because "not supported" sent admins hunting in the wrong place.
             throw new VacademyException(
-                    "Vacademy AI calling needs the Vacademy Voice (Plivo) provider to be active for this institute");
+                    "AI calling runs over a Vacademy Voice (Plivo) line, and this institute's "
+                    + "calling provider is " + resolved.getConfig().getProviderType()
+                    + ", which cannot carry an AI conversation. Add a dedicated AI calling line "
+                    + "in Settings → Calling → AI calling line — your team's calling stays on "
+                    + resolved.getConfig().getProviderType() + ".");
         }
 
         String callerId = resolveCallerId(spec.getInstituteId(), resolved, spec.getPreferredNumberId());
         if (callerId == null || callerId.isBlank()) {
-            throw new VacademyException("No Vacademy Voice number is configured for this institute");
+            throw new VacademyException(resolved.isDedicatedAiCarrier()
+                    ? "No caller-ID number is set on this institute's AI calling line"
+                    : "No Vacademy Voice number is configured for this institute");
         }
 
-        // Terminal + recording events flow through the standard status webhook; the
-        // institute's telephony config is PLIVO so its handler parses them, and the
-        // row is matched by corr. Full-session recording is requested by the BOT's
+        // Terminal + recording events flow through the standard status webhook; the row
+        // is matched by corr and TelephonyWebhookController resolves the PLIVO handler
+        // from the CALL's provider (VACADEMY_AI ⇒ Plivo), not from the institute's
+        // config — so these callbacks land even when the institute's humans are on
+        // Airtel. Full-session recording is requested by the BOT's
         // answer XML (<Record recordSession="true">) — Plivo's Call-create API has
         // no reliable record param — so the answer URL carries the callback (rcb),
         // and nxt (post-stream handoff <Dial> or hangup) carries the webhook token,
@@ -103,6 +122,14 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
 
     private String resolveCallerId(String instituteId, TelephonyConfigCache.Resolved resolved,
                                    String preferredNumberId) {
+        // A DEDICATED AI line has exactly one caller-ID, stored on the config itself, and
+        // it is the only correct answer: the institute's number pool and its Vacademy
+        // Voice settings both describe the PRIMARY provider — a different Plivo account
+        // entirely (or Airtel), so dialling from either would be rejected by the carrier
+        // or would leak the wrong number. Return early; do not fall through.
+        if (resolved.isDedicatedAiCarrier()) {
+            return resolved.getAiCallerId();
+        }
         // Explicit pick from the AI-call chooser wins — but only if it's an ENABLED number of
         // THIS institute (so a stale/forged id can't dial from someone else's number); on a
         // miss we fall through to the institute default rather than fail the call.

@@ -291,6 +291,147 @@ _QUESTION_TOPICS = (
 )
 
 
+# ── parroting the caller's own answer back at them ─────────────────────────
+# Founder, 2026-08-12, after a live Shiksha Nation call: "every time the person
+# answers, the AI again says okay. It asked how many marks, the person said
+# ninety-four, and it comes back 'okay, you got ninety-four'. There is no need to
+# reconfirm every time. It looks like an AI if you reconfirm everything."
+#
+# Three consecutive turns on that call opened with a restatement:
+#   "अच्छा है सुबोध, तो सुबोध अभी कौन से क्लास में है?"
+#   "ओके, सुबोध अभी आठवीं क्लास में है, तो … कितने मार्क्स आए थे?"
+#   "सुबोध के लास्ट बहुत अच्छे, तिरानवे प्रतिशत मार्क्स, बहुत बढ़िया स्कोर है।"
+#
+# WHY IN CODE, not the prompt. This is the same class NoRepeatGate exists for,
+# and the four measured prompt-only attempts recorded above (including no-echo
+# rules with GALAT/SAHI examples: 3.0 -> 3.0) are exactly this experiment. A
+# prompt rule ships alongside as a second line of defence; this is the first.
+#
+# CLAUSE level, not sentence level, because the parroting and the real question
+# share one sentence — dropping the sentence would drop the question with it.
+# What survives is anything the bot ADDED: "बहुत बढ़िया स्कोर है।" is a human
+# reaction and stays; "तिरानवे प्रतिशत मार्क्स" is the caller's own words and goes.
+_CLAUSE_SEP = ",;—–"
+
+# Words that carry no answer content, so a clause made only of these plus the
+# caller's own words is pure parroting. Deliberately function words only — a
+# content word the caller did NOT say means the bot is adding something.
+_ECHO_STOPWORDS = frozenset({
+    "अभी", "में", "मे", "है", "हैं", "हूँ", "हूं", "था", "थी", "थे", "का", "की", "के",
+    "को", "से", "पर", "ही", "भी", "और", "तो", "यह", "ये", "वो", "वह", "कि", "जी",
+    "कर", "हो", "आप", "आपके", "आपका", "आपकी", "मैं", "उनका", "उनकी", "उनके", "उसका",
+    "उसकी", "उसके", "इसका", "इसकी", "इसके",
+    "is", "are", "was", "were", "the", "a", "an", "in", "at", "of", "to", "for",
+    "and", "so", "has", "have", "had", "you", "your", "i", "it", "its", "that",
+    "this", "he", "she", "his", "her", "their", "got", "get", "with", "on",
+})
+# Leading connectives left dangling once the parroting in front of them is gone.
+_LEADING_CONNECTORS = frozenset({"तो", "और", "अब", "so", "and", "then", "now", "ok",
+                                 "okay", "ओके"})
+# Interrogatives, for "was the caller ASKING?" — reflecting a QUESTION back before
+# answering it is wanted behaviour (it is a prompt rule), and must survive this.
+_QUESTION_CUES = frozenset({
+    "क्या", "कितना", "कितनी", "कितने", "कैसे", "कैसा", "क्यों", "कब", "कहाँ", "कहां",
+    "कौन", "कौनसा", "किस", "kya", "kitna", "kitni", "kitne", "kaise", "kaisa",
+    "kyun", "kyon", "kab", "kahan", "kaun", "what", "how", "why", "when", "where",
+    "which", "who", "whom", "can", "could", "do", "does", "did", "will", "would",
+})
+
+
+def caller_asked_a_question(text: str) -> bool:
+    """Was the caller's last turn a QUESTION rather than an answer?
+
+    Reflecting a question back ("अच्छा, आप timing को लेकर पूछ रहे हैं —") is a
+    prompt rule and good practice; parroting an ANSWER back is what the founder
+    flagged. Sarvam does not reliably punctuate, so cues as well as '?'.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    if "?" in t or "？" in t:
+        return True
+    return bool(set(_words(t)) & _QUESTION_CUES)
+
+
+def strip_echo_opener(sentence: str, caller_text: str, bot_question: str = "",
+                      max_clauses: int = 2, echo_ratio: float = 0.6) -> str:
+    """PURE. Drop leading clauses that only repeat what the caller just said.
+
+    Returns the trimmed sentence, or the sentence unchanged when there is nothing
+    safe to drop. NEVER returns empty, and never drops:
+      * a clause containing a question (that IS the next step),
+      * a clause with two or more digit groups (a phone number / date read-back
+        is required behaviour, see the CLOSE CONCRETELY prompt rule),
+      * anything at all when the caller was ASKING rather than answering,
+      * the last remaining clause, or a tail too thin to stand alone.
+
+    A clause is parroting when nearly all of its CONTENT words (function words and
+    acknowledgments removed) already appear in the caller's answer or in the bot's
+    own question — i.e. it introduces nothing.
+    """
+    import re
+
+    text = (sentence or "").strip()
+    if not text or not (caller_text or "").strip():
+        return sentence
+    if caller_asked_a_question(caller_text):
+        return sentence
+    # Split on clause punctuation, keeping the separators so nothing is glued.
+    clauses: list = []
+    buf = ""
+    for p in re.split(f"([{re.escape(_CLAUSE_SEP)}])", text):
+        if p in _CLAUSE_SEP:
+            clauses.append(buf)
+            buf = ""
+        else:
+            buf += p
+    clauses.append(buf)
+    clauses = [c for c in clauses if c.strip()]
+    if len(clauses) < 2:
+        return sentence
+
+    reference = set(_words(caller_text)) | set(_words(bot_question))
+    acks = _BACKCHANNEL_WORDS
+    dropped = 0
+    while dropped < max_clauses and len(clauses) - dropped >= 2:
+        clause = clauses[dropped]
+        ws = _words(clause)
+        if not ws:
+            dropped += 1
+            continue
+        if "?" in clause or "？" in clause:
+            break
+        if len(ws) > 10:
+            break                       # too much said to be a bare restatement
+        if len(re.findall(r"\d+", clause)) >= 2:
+            break                       # a read-back we are required to do
+        content = [w for w in ws if w not in acks and w not in _ECHO_STOPWORDS]
+        if not content:
+            dropped += 1                # pure acknowledgment ("ओके")
+            continue
+        overlap = sum(1 for w in content if w in reference)
+        if overlap >= max(1, int(round(echo_ratio * len(content)))):
+            dropped += 1
+            continue
+        break
+
+    if not dropped:
+        return sentence
+    tail = clauses[dropped:]
+    # Shed a connective the parroting used to hang off ("…, तो <question>").
+    head_words = _words(tail[0])
+    if head_words and head_words[0] in _LEADING_CONNECTORS:
+        first = tail[0].strip()
+        tail = [first.split(None, 1)[1] if " " in first else first, *tail[1:]]
+    out = ", ".join(t.strip() for t in tail if t.strip()).strip()
+    # A tail that cannot stand on its own is worse than the parroting.
+    if len(_words(out)) < 3 and "?" not in out:
+        return sentence
+    if out[:1].islower() and text[:1].isupper():
+        out = out[0].upper() + out[1:]
+    return out or sentence
+
+
 def question_topic(sentence: str):
     """Which of our standard questions is this, if any? None = not one of them.
 

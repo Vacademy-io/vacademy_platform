@@ -14,12 +14,33 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { handleGetQuestionPaperById } from '../../-utils/question-paper-services';
 import { convertQuestionsToExportSchema } from '../../-utils/helper';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { MyButton } from '@/components/design-system/button';
 
-const ExportQuestionPaper = ({ questionPaperId }: { questionPaperId: string }) => {
+const ExportQuestionPaper = ({
+    questionPaperId,
+    triggerVariant = 'icon',
+}: {
+    questionPaperId: string;
+    // 'icon' keeps the bare arrow icon; 'button' renders a labelled action for card rows.
+    triggerVariant?: 'icon' | 'button';
+}) => {
     return (
         <Dialog>
-            <DialogTrigger>
-                <ArrowSquareOut />
+            <DialogTrigger asChild={triggerVariant === 'button'}>
+                {triggerVariant === 'button' ? (
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        layoutVariant="default"
+                        className="h-8 gap-1.5"
+                    >
+                        <ArrowSquareOut size={16} />
+                        Export
+                    </MyButton>
+                ) : (
+                    <ArrowSquareOut />
+                )}
             </DialogTrigger>
             <DialogContent className="no-scrollbar !m-0 h-full !w-full !max-w-full !gap-0 overflow-y-auto !rounded-none !p-0">
                 <ExportSettingsProvider>

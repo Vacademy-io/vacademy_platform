@@ -632,27 +632,35 @@ export function calculateTotalTime(testData: z.infer<typeof sectionDetailsSchema
 
 export function convertToCustomFieldsData(data: RegistrationFormField[] | undefined) {
     if (!data) return [];
-    return data?.map((field) => ({
-        id: field.id,
-        type: field.field_type,
-        name: field.field_name,
-        oldKey:
-            field.field_key === 'full_name' ||
-            field.field_key === 'phone_number' ||
-            field.field_key === 'email'
-                ? true
-                : false,
-        isRequired: field.is_mandatory,
-        key: field.field_key,
-        ...(field.field_type === 'dropdown' && {
-            options: field.comma_separated_options.split(',').map((value, index) => ({
-                id: String(index),
-                value: value.trim(),
-                disabled: false,
-            })),
-        }),
-        order: field.field_order,
-    }));
+    // field_order is the form order — the learner page sorts by it. The API serializes these
+    // from an unordered set, so without sorting here the builder lists them in an arbitrary
+    // order, and dragging a row would then save that arbitrary order over the real one.
+    return [...data]
+        .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
+        .map((field) => ({
+            id: field.id,
+            type: field.field_type,
+            name: field.field_name,
+            oldKey:
+                field.field_key === 'full_name' ||
+                field.field_key === 'phone_number' ||
+                field.field_key === 'email'
+                    ? true
+                    : false,
+            isRequired: field.is_mandatory,
+            key: field.field_key,
+            // Carries help text and the other per-field settings back into the builder, so the
+            // edit dialog opens showing what was saved.
+            ...(field.config ? { config: field.config } : {}),
+            ...(field.field_type === 'dropdown' && {
+                options: field.comma_separated_options.split(',').map((value, index) => ({
+                    id: String(index),
+                    value: value.trim(),
+                    disabled: false,
+                })),
+            }),
+            order: field.field_order,
+        }));
 }
 
 export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
@@ -702,17 +710,25 @@ export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
 }
 
 export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCustomField => {
+    // Help text and the other per-field settings live in `config`, already a JSON string.
+    // `default_value` / `description` stay empty: duplicating the same values into those
+    // legacy top-level fields would only drift.
     return {
         id: field.id,
         name: field.name,
         type: field.type,
         default_value: '', // Provide a default value, if necessary
         description: '', // Provide a description, if necessary
+        // Always sent (as '' when there are no settings) so clearing help text actually clears it.
+        config: field.config ?? '',
         is_mandatory: field.isRequired,
         key: field.key, // Use the ID as the key
         comma_separated_options: field.options
             ? field.options.map((opt) => opt.value).join(',')
             : '', // Join options for dropdowns
+        // Only send a real position. Sending 0 for a legacy row whose order is
+        // unset would stamp field_order=0 and jump it to the top of the form.
+        ...(typeof field.order === 'number' ? { order_field: field.order } : {}),
     };
 };
 

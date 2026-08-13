@@ -157,8 +157,12 @@ export const formatDataFromStore = async (
 };
 
 export default function Page() {
-  const { loadState, saveState } = useAssessmentStore();
+  const { loadState, saveState, currentQuestion } = useAssessmentStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // The question area is the only scroller (see the h-dvh layout below), so it
+  // keeps its offset when the question swaps — the learner would land partway
+  // down the next question, often mid-options. Reset it on every change.
+  const questionScrollRef = useRef<HTMLElement>(null);
   const [playMode, setPlayMode] = useState<string>("");
   const [evaluationType, setEvaluationType] = useState<string>("");
   // Latches so we show the "save failed" toast exactly once per failure streak
@@ -334,14 +338,34 @@ export default function Page() {
     fetchPlayMode();
   }, []);
 
+  useEffect(() => {
+    // "auto" not "smooth": a visible scroll animation on every Next tap reads as
+    // lag on low-end devices, and the learner is already looking at the top.
+    questionScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [currentQuestion?.question_id]);
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="flex flex-col w-full bg-gray-50">
+    // fixed inset-0, not h-dvh: body carries safe-area padding, so a 100dvh child
+    // starts below the top inset and overflows the screen by that much — pushing
+    // the footer off the bottom, behind the Android nav bar, where it can't be
+    // tapped. Positioning against the viewport ignores that padding, so we
+    // re-apply the top inset here (same calc body uses, which offsets the navbar's
+    // own built-in spacing). The bottom inset is handled inside Footer.
+    <div
+      className="fixed inset-0 flex flex-col w-full overflow-hidden bg-gray-50"
+      style={{ // design-lint-ignore: dynamic safe-area inset padding
+        paddingTop: "calc(env(safe-area-inset-top, 0px) - 20px)",
+      }}
+    >
       <Navbar playMode={playMode} evaluationType={evaluationType} />
       <SectionTabs />
-      <div className="flex-1 overflow-hidden">
-        <main className="w-full h-full p-4 md:p-6 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <main
+          ref={questionScrollRef}
+          className="w-full h-full p-4 md:p-6 overflow-auto overscroll-contain"
+        >
           <QuestionDisplay />
         </main>
       </div>

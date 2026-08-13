@@ -248,7 +248,7 @@ export function convertStudyLibraryQuestion(question: MyQuestion) {
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -278,7 +278,7 @@ export function convertStudyLibraryQuestion(question: MyQuestion) {
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -293,7 +293,7 @@ export function convertStudyLibraryQuestion(question: MyQuestion) {
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -308,7 +308,7 @@ export function convertStudyLibraryQuestion(question: MyQuestion) {
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -528,7 +528,7 @@ export function convertToQuestionSlideFormat(question: MyQuestion, sourceId?: st
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -556,7 +556,7 @@ export function convertToQuestionSlideFormat(question: MyQuestion, sourceId?: st
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -570,7 +570,7 @@ export function convertToQuestionSlideFormat(question: MyQuestion, sourceId?: st
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID
@@ -584,7 +584,7 @@ export function convertToQuestionSlideFormat(question: MyQuestion, sourceId?: st
             text: {
                 id: null, // Assuming no direct mapping for option text ID
                 type: 'HTML', // Assuming option content is HTML
-                content: opt?.name?.replace(/<\/?p>/g, ''), // Remove <p> tags from content
+                content: opt?.name,
             },
             explanation_text: {
                 id: null, // Assuming no direct mapping for explanation text ID

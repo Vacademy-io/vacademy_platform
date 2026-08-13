@@ -551,12 +551,17 @@ public class AudienceService {
         // (user + audience_response) surface real errors, and the enrichment steps are
         // best-effort so a lead is never lost over optional config.
 
-        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
-        // creating the auth user so a rejected lead never creates an orphan account.
-        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                dto.getInstituteId(), audience.getId(), dto.getEmail(), dto.getMobileNumber());
-        if (dedupRejection.isPresent()) {
-            return dedupRejection.get();
+        // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked before creating the
+        // auth user so a REJECTed lead never creates an orphan account. ALLOW_REASSIGN lets
+        // the lead through and carries the repeat-lead counsellor/status settings to apply below.
+        LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
+        java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                .checkDuplicate(dto.getInstituteId(), audience.getId(), dto.getEmail(), dto.getMobileNumber());
+        if (dupMatch.isPresent()) {
+            if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                return dupMatch.get().rejectionMessage();
+            }
+            repeatLeadSettings = dupMatch.get().repeatLeadSettings();
         }
 
         // 1. Create/fetch the lead's user in auth_service (no credentials email).
@@ -605,11 +610,12 @@ public class AudienceService {
             logger.error("Catalogue lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
         }
 
-        // Pool auto-assignment — catalogue leads carry no counsellor, so this is pure pool
-        // routing (previously catalogue leads never got an owner).
-        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+        // Pool auto-assignment — catalogue leads carry no counsellor, so absent a repeat-lead
+        // policy this is pure pool routing (previously catalogue leads never got an owner).
+        applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 null, null, createdUser != null ? createdUser.getFullName() : null,
                 audience.getCampaignName());
+        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
 
         return savedResponse.getId();
     }
@@ -731,11 +737,15 @@ public class AudienceService {
 
         final String src = StringUtils.hasText(sourceId) ? sourceId : "live-class";
 
-        // Institute-configured hard dedup — before creating the auth user.
-        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                instituteId, audience.getId(), email, mobileNumber);
-        if (dedupRejection.isPresent()) {
-            return dedupRejection.get();
+        // Institute-configured dedup — before creating the auth user.
+        LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
+        java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                .checkDuplicate(instituteId, audience.getId(), email, mobileNumber);
+        if (dupMatch.isPresent()) {
+            if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                return dupMatch.get().rejectionMessage();
+            }
+            repeatLeadSettings = dupMatch.get().repeatLeadSettings();
         }
 
         // 1. Create/fetch the lead's user in auth_service (no credentials email).
@@ -807,10 +817,12 @@ public class AudienceService {
             logger.error("Live-class lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
         }
 
-        // Pool auto-assignment — live-class leads carry no counsellor, so this is pure pool routing.
-        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+        // Pool auto-assignment — live-class leads carry no counsellor, so absent a repeat-lead
+        // policy this is pure pool routing.
+        applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, audience.getInstituteId(),
                 null, null, createdUser != null ? createdUser.getFullName() : null,
                 audience.getCampaignName());
+        applyRepeatLeadStatus(repeatLeadSettings, userId, audience.getInstituteId());
 
         return savedResponse.getId();
     }
@@ -866,8 +878,9 @@ public class AudienceService {
     }
 
     private static final String PHONE_ENQUIRIES_AUDIENCE_NAME = "Phone Enquiries";
+    private static final String SELF_SIGNUPS_AUDIENCE_NAME = "Self Sign-ups";
 
-    /** A lead resolved — or created — from an inbound phone caller. */
+    /** A lead resolved — or created — from an inbound phone caller (also reused for self-signups). */
     public record InboundCallLeadRef(String responseId, String userId, String audienceId) {}
 
     /**
@@ -986,6 +999,82 @@ public class AudienceService {
     }
 
     /**
+     * Resolve the per-institute "Self Sign-ups" audience, creating a minimal ACTIVE
+     * one on first use so an open learner registration needs no manual campaign setup.
+     */
+    private Audience getOrCreateSelfSignupsAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, SELF_SIGNUPS_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(SELF_SIGNUPS_AUDIENCE_NAME)
+                            .campaignType("SELF_SIGNUP")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Learners who registered themselves without enrolling in a course")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned Self Sign-ups audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Capture a lead for a learner who self-registered (auth_service) without enrolling
+     * in any course/package-session. The auth user already exists — this only creates the
+     * lead-side record so the signup is visible to the institute admin in the Leads list,
+     * since the normal learner list requires a course enrollment to show up at all.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InboundCallLeadRef captureSelfSignupLead(String instituteId, String userId, String name, String email,
+            String mobile) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(userId)) return null;
+
+        // De-dup: if this user is ALREADY a lead anywhere in the institute, reuse it
+        // — never a second lead for the same person.
+        List<String> existing = audienceResponseRepository.findResponseIdByInstituteAndUser(instituteId, userId);
+        if (existing != null && !existing.isEmpty()) {
+            String responseId = existing.get(0);
+            String audienceId = audienceResponseRepository.findById(responseId)
+                    .map(AudienceResponse::getAudienceId).orElse(null);
+            logger.info("Self-signup lead: user {} already a lead (response {}) — reused", userId, responseId);
+            return new InboundCallLeadRef(responseId, userId, audienceId);
+        }
+
+        Audience audience = getOrCreateSelfSignupsAudience(instituteId);
+        AudienceResponse saved = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("SELF_SIGNUP")
+                .sourceId("SELF_SIGNUP")
+                .userId(userId)
+                .parentName(name)
+                .parentEmail(email)
+                .parentMobile(truncateForParentMobileColumn(mobile))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        try {
+            logLeadSubmitted(saved);
+        } catch (Exception e) {
+            logger.error("Self-signup lead {}: logLeadSubmitted failed: {}", saved.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(saved.getId(), saved.getAudienceId(),
+                    instituteId, saved.getSourceType(), saved.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Self-signup lead {}: score failed: {}", saved.getId(), e.getMessage());
+        }
+
+        logger.info("Self-signup lead captured: response={} user={} inst={}",
+                saved.getId(), userId, instituteId);
+        return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
+    }
+
+    /**
      * Submit a lead from website form
      * Automatically creates/fetches user from auth_service
      */
@@ -1033,12 +1122,18 @@ public class AudienceService {
                 return "Error in submitting the response: user email, mobile number or name is required";
             }
 
-            // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
-            // creating the auth user so a rejected lead never creates an orphan account.
-            java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                    instituteId, requestDTO.getAudienceId(), userDTO.getEmail(), userDTO.getMobileNumber());
-            if (dedupRejection.isPresent()) {
-                return dedupRejection.get();
+            // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked before creating the
+            // auth user so a REJECTed lead never creates an orphan account. ALLOW_REASSIGN lets
+            // the lead through and carries the repeat-lead counsellor/status settings to apply below.
+            LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
+            java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                    .checkDuplicate(instituteId, requestDTO.getAudienceId(), userDTO.getEmail(),
+                            userDTO.getMobileNumber());
+            if (dupMatch.isPresent()) {
+                if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                    return dupMatch.get().rejectionMessage();
+                }
+                repeatLeadSettings = dupMatch.get().repeatLeadSettings();
             }
 
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
@@ -1113,12 +1208,13 @@ public class AudienceService {
                 }
 
                 // 3c. Counsellor assignment — manual owner wins (e.g. a CSV bulk import that
-                // carries a lead owner per row), otherwise pool auto-assignment. Centralised in
-                // autoAssignCounsellorOnIntake so every pool-routed channel shares one
-                // implementation. Non-blocking — submission still succeeds if routing fails.
-                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                // carries a lead owner per row), otherwise pool auto-assignment or the
+                // repeat-lead policy. Centralised in applyCounsellorAssignment. Non-blocking —
+                // submission still succeeds if routing fails.
+                applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                         requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
                         userForNotification.getFullName(), audience.getCampaignName());
+                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -1460,6 +1556,71 @@ public class AudienceService {
     }
 
     /**
+     * Counsellor assignment for a lead intake, aware of the repeat-lead policy
+     * (LEAD_SETTING.data.dedup.repeatLead) when the submission matched an existing lead
+     * under the "Allow & reassign" dedup action. An explicit per-submission counsellor
+     * (e.g. a CSV row's owner column) always wins — it's a stronger, more specific signal
+     * than the general repeat-lead policy — regardless of repeat-lead status.
+     *
+     * @param repeatLeadSettings null for a first-time lead (unchanged prior behaviour);
+     *                           non-null when this submission matched an existing lead and
+     *                           the institute's dedup action is ALLOW_REASSIGN.
+     */
+    private void applyCounsellorAssignment(LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings,
+            AudienceResponse savedResponse, String leadUserId, String instituteId,
+            String requestManualCounsellorId, String requestManualCounsellorName,
+            String leadFullName, String campaignName) {
+        if (StringUtils.hasText(requestManualCounsellorId)) {
+            autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId,
+                    requestManualCounsellorId, requestManualCounsellorName, leadFullName, campaignName);
+            return;
+        }
+        if (repeatLeadSettings == null) {
+            autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, null, null,
+                    leadFullName, campaignName);
+            return;
+        }
+        switch (repeatLeadSettings.counsellorMode()) {
+            case NONE -> {
+                try {
+                    userLeadProfileService.assignCounselor(leadUserId, instituteId, null, null);
+                } catch (Exception e) {
+                    logger.error("Failed to clear repeat-lead counsellor for user {}: {}",
+                            leadUserId, e.getMessage());
+                }
+            }
+            case SAME_AS_PREVIOUS -> {
+                // No-op by design — leave whatever counsellor the lead already had untouched.
+            }
+            case SPECIFIC -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId,
+                    repeatLeadSettings.specificCounsellorId(), repeatLeadSettings.specificCounsellorName(),
+                    leadFullName, campaignName);
+            case ROUND_ROBIN -> autoAssignCounsellorOnIntake(savedResponse, leadUserId, instituteId, null, null,
+                    leadFullName, campaignName);
+        }
+    }
+
+    /**
+     * Repeat-lead status handling (LEAD_SETTING.data.dedup.repeatLead.statusMode).
+     * KEEP_EXISTING (or no repeat-lead settings) does nothing — status is never touched.
+     * RESET_TO_NEW resets the lead's profile-level conversion status back to "LEAD" (the
+     * platform's default/new-lead status), which mirrors onto every audience_response row
+     * for that user via {@link UserLeadProfileService#updateConversionStatus}.
+     */
+    private void applyRepeatLeadStatus(LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings,
+            String leadUserId, String instituteId) {
+        if (repeatLeadSettings == null
+                || repeatLeadSettings.statusMode() != LeadDedupSettingService.StatusMode.RESET_TO_NEW) {
+            return;
+        }
+        try {
+            userLeadProfileService.updateConversionStatus(leadUserId, instituteId, "LEAD", "SYSTEM");
+        } catch (Exception e) {
+            logger.error("Failed to reset repeat-lead status for user {}: {}", leadUserId, e.getMessage());
+        }
+    }
+
+    /**
      * Resolve an optional pipeline lead status key to a lead_status.id within the institute.
      * Returns null when the key is blank or no matching status exists for the institute, in
      * which case the lead is created without a pipeline status (unchanged prior behaviour).
@@ -1502,13 +1663,19 @@ public class AudienceService {
         UserDTO createdUser = null;
         try {
             UserDTO userDTO = requestDTO.getUserDTO();
+            LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
-                // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
-                // creating the auth user so a rejected lead never creates an orphan account.
-                java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                        instituteId, requestDTO.getAudienceId(), userDTO.getEmail(), userDTO.getMobileNumber());
-                if (dedupRejection.isPresent()) {
-                    return dedupRejection.get();
+                // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked before creating
+                // the auth user so a REJECTed lead never creates an orphan account. ALLOW_REASSIGN
+                // lets the lead through and carries the repeat-lead settings to apply below.
+                java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                        .checkDuplicate(instituteId, requestDTO.getAudienceId(), userDTO.getEmail(),
+                                userDTO.getMobileNumber());
+                if (dupMatch.isPresent()) {
+                    if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                        return dupMatch.get().rejectionMessage();
+                    }
+                    repeatLeadSettings = dupMatch.get().repeatLeadSettings();
                 }
 
                 // Call auth_service to create or fetch existing user
@@ -1570,12 +1737,12 @@ public class AudienceService {
                     // Non-blocking
                 }
 
-                // 3c. Counsellor assignment — manual owner wins, else pool auto-assign.
-                // Same centralised path as v1 submitLead (v2 previously skipped assignment,
-                // so v2-submitted leads never got an owner).
-                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                // 3c. Counsellor assignment — manual owner wins, else pool auto-assign or the
+                // repeat-lead policy. Same centralised path as v1 submitLead.
+                applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                         requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
                         createdUser.getFullName(), audience.getCampaignName());
+                applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
                 // 4. Build custom field map for email (to pass to workflow)
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -1951,13 +2118,20 @@ public class AudienceService {
 
         String instituteId = audience.getInstituteId();
 
-        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before creating
-        // any users so a rejected lead never creates orphan parent/child accounts. When this
-        // setting is disabled (default), STEP 4's soft-merge dedupeKey logic below is unchanged.
-        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                instituteId, requestDTO.getAudienceId(), requestDTO.getParentEmail(), requestDTO.getParentMobile());
-        if (dedupRejection.isPresent()) {
-            throw new VacademyException(dedupRejection.get());
+        // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked before creating any
+        // users so a REJECTed lead never creates orphan parent/child accounts. ALLOW_REASSIGN
+        // lets it through; only statusMode applies here (counsellor assignment for walk-ins
+        // goes through the separate linkCounsellorToEnquiry engine below, untouched). When
+        // this setting is disabled (default), STEP 4's soft-merge dedupeKey logic is unchanged.
+        LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
+        java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                .checkDuplicate(instituteId, requestDTO.getAudienceId(), requestDTO.getParentEmail(),
+                        requestDTO.getParentMobile());
+        if (dupMatch.isPresent()) {
+            if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                throw new VacademyException(dupMatch.get().rejectionMessage());
+            }
+            repeatLeadSettings = dupMatch.get().repeatLeadSettings();
         }
 
         // STEP 2: Create parent and child users using batch endpoint
@@ -2122,6 +2296,7 @@ public class AudienceService {
         }
 
         linkCounsellorToEnquiry(instituteId, requestDTO.getAudienceId(), enquiry, requestDTO.getCounsellorId());
+        applyRepeatLeadStatus(repeatLeadSettings, parentUserId, instituteId);
 
         // STEP 6: Build custom field map for email
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -2579,6 +2754,30 @@ public class AudienceService {
                 ? String.join(",", filterDTO.getOverallStatuses())
                 : null;
 
+        // Audience multi-select (Recent Leads "All audiences" dropdown). The list can
+        // carry any number of campaign ids:
+        //   0 ids  -> untouched, the caller sees every audience they're allowed to
+        //   1 id   -> collapsed onto audienceId so the request takes the existing
+        //             per-campaign query (which also honours source/dedup filters)
+        //   2+ ids -> left as a CSV that narrows the institute-wide query below
+        // An explicit audienceId always wins, so per-campaign callers are unaffected.
+        List<String> requestedAudienceIds = filterDTO.getAudienceIds() == null
+                ? List.of()
+                : filterDTO.getAudienceIds().stream()
+                        .filter(id -> id != null && !id.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
+        if ((filterDTO.getAudienceId() == null || filterDTO.getAudienceId().isBlank())
+                && requestedAudienceIds.size() == 1) {
+            filterDTO.setAudienceId(requestedAudienceIds.get(0));
+        }
+        String requestedAudienceIdsCsv = (filterDTO.getAudienceId() == null
+                || filterDTO.getAudienceId().isBlank())
+                        && requestedAudienceIds.size() > 1
+                                ? String.join(",", requestedAudienceIds)
+                                : null;
+
         // SECURITY: the campaign-users client sends only audienceId (no instituteId),
         // and every RBAC block below gates on a non-blank instituteId — so the
         // per-campaign list used to skip counsellor-hierarchy and sub-org scoping
@@ -2588,6 +2787,15 @@ public class AudienceService {
         if ((filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())
                 && filterDTO.getAudienceId() != null && !filterDTO.getAudienceId().isBlank()) {
             audienceRepository.findById(filterDTO.getAudienceId())
+                    .map(Audience::getInstituteId)
+                    .ifPresent(filterDTO::setInstituteId);
+        }
+        // Same derivation for the multi-audience case — the institute-wide query it
+        // routes to gates on a non-blank instituteId, and all selected campaigns
+        // belong to one institute.
+        if ((filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())
+                && requestedAudienceIdsCsv != null) {
+            audienceRepository.findById(requestedAudienceIds.get(0))
                     .map(Audience::getInstituteId)
                     .ifPresent(filterDTO::setInstituteId);
         }
@@ -2778,6 +2986,7 @@ public class AudienceService {
                     includeUnassigned,
                     filterDTO.getIsUnassigned(),
                     allowedAudienceIdsCsv,
+                    requestedAudienceIdsCsv,
                     conversionStatusFilter,
                     audienceStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -3427,6 +3636,29 @@ public class AudienceService {
             String newEmail = updates.getEmail();
             String newPhone = updates.getMobileNumber();
             if (StringUtils.hasText(newEmail) || StringUtils.hasText(newPhone)) {
+                // Institute-configured dedup (LEAD_SETTING.data.dedup) — the same check used
+                // at lead creation, so editing a lead's contact info can't silently collide
+                // with another lead the admin's field/scope setting is supposed to catch.
+                // excludeResponseId keeps this row from matching its own not-yet-saved self.
+                // An in-place edit always blocks on a match regardless of action
+                // (REJECT/ALLOW_REASSIGN) — there is no new response here to reassign.
+                String instituteId = response.getAudienceId() != null
+                        ? audienceRepository.findById(response.getAudienceId())
+                                .map(Audience::getInstituteId).orElse(null)
+                        : null;
+                if (StringUtils.hasText(instituteId)) {
+                    leadDeduplicationService
+                            .checkDuplicate(instituteId, response.getAudienceId(), newEmail, newPhone, responseId)
+                            .ifPresent(match -> {
+                                throw new ConflictException(StringUtils.hasText(match.rejectionMessage())
+                                        ? match.rejectionMessage()
+                                        : "A lead already exists with this phone number or email.");
+                            });
+                }
+
+                // Legacy campaign-scoped combined-key check — kept as the baseline safety net
+                // for institutes that haven't configured LEAD_SETTING.data.dedup, and to keep
+                // dedupeKey (used by the enquiry flow's soft-merge) up to date either way.
                 String newKey = leadDeduplicationService.generateDedupeKey(newEmail, newPhone);
                 if (newKey != null && response.getAudienceId() != null) {
                     leadDeduplicationService.findDuplicate(response.getAudienceId(), newKey)
@@ -4171,13 +4403,17 @@ public class AudienceService {
                     formProvider, audienceId, email);
         }
 
-        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked against the
-        // lead's real (pre-synthesis) email/phone, before creating the auth user, so a
-        // rejected lead never creates an orphan account.
-        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
-                instituteId, audienceId, processedData.getEmail(), processedData.getPhone());
-        if (dedupRejection.isPresent()) {
-            return dedupRejection.get();
+        // Institute-configured dedup (LEAD_SETTING.data.dedup) — checked against the lead's
+        // real (pre-synthesis) email/phone, before creating the auth user, so a REJECTed lead
+        // never creates an orphan account. ALLOW_REASSIGN lets it through with repeat-lead settings.
+        LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings = null;
+        java.util.Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService
+                .checkDuplicate(instituteId, audienceId, processedData.getEmail(), processedData.getPhone());
+        if (dupMatch.isPresent()) {
+            if (dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                return dupMatch.get().rejectionMessage();
+            }
+            repeatLeadSettings = dupMatch.get().repeatLeadSettings();
         }
 
         // 1. Create/fetch user from auth_service
@@ -4238,11 +4474,12 @@ public class AudienceService {
         }
 
         // 3b. Pool auto-assignment. Webhook leads (Facebook/Meta Lead Ads, Google Lead Forms,
-        // Zoho, etc.) carry no counsellor, so this routes purely through the campaign's
-        // counselor pool. Centralised in autoAssignCounsellorOnIntake. Runs before the workflow
-        // trigger so downstream workflow nodes see an owned lead.
-        autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+        // Zoho, etc.) carry no counsellor, so absent a repeat-lead policy this routes purely
+        // through the campaign's counselor pool. Runs before the workflow trigger so
+        // downstream workflow nodes see an owned lead.
+        applyCounsellorAssignment(repeatLeadSettings, savedResponse, userId, instituteId,
                 null, null, createdUser.getFullName(), audience.getCampaignName());
+        applyRepeatLeadStatus(repeatLeadSettings, userId, instituteId);
 
         // 4. Build custom field map for workflow
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());

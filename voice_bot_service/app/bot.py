@@ -85,7 +85,7 @@ from .providers import build_llm, build_stt, build_tts
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, normalize_spoken, question_topic,
-                       ABSORB)
+                       strip_echo_opener, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -614,17 +614,46 @@ class NoRepeatGate(FrameProcessor):
 
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
-    def __init__(self, enabled=None, last_caller_text=None, diag=None):
+    def __init__(self, enabled=None, last_caller_text=None, diag=None,
+                 no_echo=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
+        self._no_echo = no_echo or (lambda: True)
         self._spoken: list = []
         self._asked: set = set()      # question TOPICS already put to the caller
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
         self._handback = 0
+
+    def _trim_echo(self, sentence: str) -> str:
+        """Strip a reply's opening clause when it only parrots the caller's answer.
+
+        Applied to the FIRST sentence of a reply only: that is where the
+        restatement lands ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"), and a
+        mid-reply clause that happens to reuse the caller's words is usually the
+        bot building on them, not confirming them. See
+        turntake.strip_echo_opener for what it refuses to touch.
+        """
+        if not self._no_echo():
+            return sentence
+        try:
+            # The bot's own last QUESTION is half the reference set: the caller's
+            # answer is short ("तिरानवे प्रतिशत") and the parroting reuses the
+            # question's nouns too ("मार्क्स", "क्लास"), which the caller never said.
+            bot_question = next((s for s in reversed(self._spoken) if "?" in s), "")
+            out = strip_echo_opener(sentence, self._last_caller_text(), bot_question)
+        except Exception:
+            logger.exception("no-echo: trim failed — speaking the reply as written")
+            return sentence
+        if out != sentence:
+            if self._diag is not None:
+                self._diag.bump("echoes_trimmed")
+            logger.info("no-echo: dropped parroted opener %r -> %r",
+                        sentence.strip()[:56], out.strip()[:56])
+        return out
 
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
@@ -680,6 +709,8 @@ class NoRepeatGate(FrameProcessor):
                 sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
                 if not sentence.strip():
                     continue
+                if self._emitted == 0:
+                    sentence = self._trim_echo(sentence)
                 if self._keep(sentence):
                     await self._emit(sentence, direction)
                 else:
@@ -693,6 +724,8 @@ class NoRepeatGate(FrameProcessor):
             tail = self._buf.strip()
             self._buf = ""
             if tail:
+                if self._emitted == 0:
+                    tail = self._trim_echo(tail)
                 if self._keep(tail):
                     await self._emit(tail, direction)
                 else:
@@ -1610,6 +1643,32 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
         "Toh accommodation\u2026\u2019."
     )
+    # Founder, 2026-08-12, on a live Shiksha Nation call: "every time the person
+    # answers, the AI again says okay. It asked how many marks, the person said
+    # ninety-four, and it comes back 'okay, you got ninety-four'. There is no need
+    # to reconfirm every time — it looks like an AI." Three turns in a row opened
+    # with the restatement.
+    #
+    # SECOND line of defence only. NoRepeatGate's docstring records four measured
+    # prompt-only attempts at this exact class of repetition, one of them "no-echo
+    # rules with GALAT/SAHI examples in the script" (3.0 -> 3.0 echoes) — the
+    # 16k-character prompt is saturated. turntake.strip_echo_opener does the
+    # load-bearing work; this just lowers how often it has to fire.
+    no_echo_rule = (
+        "- NEVER CONFIRM AN ANSWER BACK. When the caller ANSWERS your question, do not "
+        "repeat it, restate it, or open with ‘okay, so <their answer>…’. They know "
+        "what they just said; repeating it wastes their time and sounds like a machine "
+        "reading a form. Simply USE the answer in your next line."
+        + ("" if is_english else
+           " GALAT: ‘ओके, सुबोध अभी "
+           "आठवीं क्लास में "
+           "है, तो लास्ट exam में "
+           "कितने marks आए थे?’ SAHI: "
+           "‘लास्ट exam में कितने "
+           "marks आए थे?’")
+        + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
+        "and read a booked day and time back once. Everything else, never."
+    )
     # Live call went out in the evening but opened 'Good morning' — the authored script
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
     # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
@@ -1750,6 +1809,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             plain_hindi_rule,
             plain_speech_rule,
             fast_open_rule,
+            no_echo_rule,
             one_step_rule,
             goal_drive_rule,
             lead_name_line,
@@ -1782,15 +1842,21 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         plain_hindi_rule,
         plain_speech_rule,
         fast_open_rule,
+        no_echo_rule,
         one_step_rule,
         goal_drive_rule,
         ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
          "acknowledge, never use the same word twice in a row."),
-        ("- Briefly reflect back the caller's specific point before you answer so they feel "
-         "heard — not a generic 'I understand'."
+        # Scoped to a QUESTION or a CONCERN on purpose. Reflecting one back shows you
+        # listened; reflecting an ANSWER back is the parroting no_echo_rule forbids,
+        # and the unscoped version of this line was licence for exactly that.
+        ("- When the caller asks a QUESTION or raises a CONCERN, briefly reflect that point "
+         "back before you answer so they feel heard — not a generic 'I understand'. Never do "
+         "this with an ANSWER they gave you."
          if is_english else
-         "- Briefly reflect back the caller's specific point before you answer (e.g. 'अच्छा, आप "
-         "timing को लेकर puchh rahe hain —') so they feel heard. Not a generic 'मैं समझती हूँ'."),
+         "- When the caller asks a QUESTION or raises a CONCERN, briefly reflect that point "
+         "back before you answer (e.g. 'अच्छा, आप timing को लेकर puchh rahe hain —') so they "
+         "feel heard. Not a generic 'मैं समझती हूँ'. NEVER do this with an ANSWER they gave you."),
         "- Match the caller's energy: a brief, businesslike caller gets crisp efficiency; a "
         "chatty, warm caller gets a little more warmth. Don't be relentlessly peppy.",
         ("- Say clock times naturally in the 12-hour format — 'five PM', 'ten thirty AM'."
@@ -2081,6 +2147,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         last_caller_text=lambda: (outcome.transcript[-1].get("text", "")
                                   if outcome.transcript
                                   and outcome.transcript[-1].get("role") == "user" else ""),
+        no_echo=lambda: settings.no_echo_enabled,
         diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
@@ -2330,12 +2397,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                       if t.get("role") == "user"
                       and not (t.get("text") or "").lstrip().startswith("[")
                       and not is_carrier_announcement(t.get("text") or "")]
-            _n, _samples = diag_mod.reconcile_answers(_heard, _delivered)
-            diag.answers_deleted = _n
-            diag.answers_deleted_samples = _samples
-            if _n:
+            _lost = diag_mod.split_lost(_heard, _delivered)
+            diag.answers_deleted = _lost.answers
+            diag.answers_deleted_samples = _lost.answer_samples
+            # Sub-floor scraps are a measured loss but not a lost ANSWER, and
+            # reporting them as one sent the founder hunting for an answer that
+            # was never spoken (call c7bf5ff5, verbatim "वो।"). Carried, logged
+            # at INFO, no fault — see diagnostics._lost_carries_meaning.
+            diag.fragments_lost = _lost.fragments
+            diag.fragments_lost_samples = _lost.fragment_samples
+            if _lost.answers:
                 logger.warning("diagnostics: %d caller answer(s) never reached the model "
-                               "corr=%s %s", _n, corr, _samples[:5])
+                               "corr=%s %s", _lost.answers, corr,
+                               _lost.answer_samples[:5])
+            if _lost.fragments:
+                logger.info("diagnostics: %d sub-word caller scrap(s) lost (no answer in "
+                            "them, no fault) corr=%s %s", _lost.fragments, corr,
+                            _lost.fragment_samples)
             # Did the caller hear the same sentence over and over? (REPLY_LOOP)
             diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
             if diag.max_reply_restarts >= 2:

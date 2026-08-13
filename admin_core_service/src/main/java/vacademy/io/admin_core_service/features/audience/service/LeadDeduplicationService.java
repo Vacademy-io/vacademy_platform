@@ -100,15 +100,35 @@ public class LeadDeduplicationService {
     }
 
     /**
-     * Institute-configurable hard-reject dedup check (LEAD_SETTING.data.dedup).
+     * Result of a duplicate match under the institute's configured action:
+     * REJECT carries a user-facing rejection message; ALLOW_REASSIGN carries the
+     * repeat-lead settings the caller must apply (counsellor + status handling).
+     */
+    public record DuplicateMatch(LeadDedupSettingService.DedupAction action, String rejectionMessage,
+            LeadDedupSettingService.RepeatLeadSettings repeatLeadSettings) {
+    }
+
+    /**
+     * Institute-configurable dedup check (LEAD_SETTING.data.dedup).
      * Independent of {@link #generateDedupeKey} / {@link #findDuplicate} / {@link #markDuplicate},
      * which remain the enquiry flow's soft-merge mechanism used when this setting is disabled.
      *
-     * @return a user-facing rejection message if a matching, non-duplicate, non-opted-out
-     *         lead already exists per the institute's configured field+scope; empty if the
-     *         setting is disabled, the relevant field is blank, or no match was found.
+     * @return empty if the setting is disabled, the relevant field is blank, or no match was
+     *         found; otherwise a {@link DuplicateMatch} — REJECT (block the submission, as
+     *         before) or ALLOW_REASSIGN (let it through, caller applies repeatLeadSettings).
      */
-    public Optional<String> checkForRejection(String instituteId, String audienceId, String email, String phone) {
+    public Optional<DuplicateMatch> checkDuplicate(String instituteId, String audienceId, String email, String phone) {
+        return checkDuplicate(instituteId, audienceId, email, phone, null);
+    }
+
+    /**
+     * Same as {@link #checkDuplicate(String, String, String, String)}, but excludes a specific
+     * response id from the match — for an in-place lead edit (updateLeadProfile), so checking
+     * "does this new value collide with some OTHER lead" doesn't match the row being edited
+     * against its own not-yet-saved self. Creation-flow callers pass null (nothing to exclude).
+     */
+    public Optional<DuplicateMatch> checkDuplicate(String instituteId, String audienceId, String email, String phone,
+            String excludeResponseId) {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
         if (!settings.enabled()) return Optional.empty();
 
@@ -126,33 +146,44 @@ public class LeadDeduplicationService {
             case CAMPAIGN -> "in this lead list";
         };
 
+        boolean exists;
+        String matchedFieldLabel;
         if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
             String last10 = lastNDigits(phone, 10);
             if (last10 == null) return Optional.empty();
-            boolean exists = switch (scope) {
-                case INSTITUTE -> audienceResponseRepository.existsByInstituteIdAndPhoneLast10(instituteId, last10);
+            exists = switch (scope) {
+                case INSTITUTE -> audienceResponseRepository
+                        .existsByInstituteIdAndPhoneLast10(instituteId, last10, excludeResponseId);
                 case SELECTED -> audienceResponseRepository.existsByAudienceIdInAndPhoneLast10(
-                        settings.audienceIds(), last10);
-                case CAMPAIGN -> audienceResponseRepository.existsByAudienceIdAndPhoneLast10(audienceId, last10);
+                        settings.audienceIds(), last10, excludeResponseId);
+                case CAMPAIGN -> audienceResponseRepository
+                        .existsByAudienceIdAndPhoneLast10(audienceId, last10, excludeResponseId);
             };
-            return exists
-                    ? Optional.of("A lead with this phone number already exists " + scopeLabel + ".")
-                    : Optional.empty();
+            matchedFieldLabel = "phone number";
+        } else {
+            String normalizedEmail = (email != null) ? email.trim() : "";
+            if (normalizedEmail.isEmpty()) return Optional.empty();
+            exists = switch (scope) {
+                case INSTITUTE -> audienceResponseRepository
+                        .existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail, excludeResponseId);
+                case SELECTED -> audienceResponseRepository.existsByAudienceIdInAndParentEmailIgnoreCase(
+                        settings.audienceIds(), normalizedEmail, excludeResponseId);
+                case CAMPAIGN -> audienceResponseRepository
+                        .existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail, excludeResponseId);
+            };
+            matchedFieldLabel = "email";
         }
 
-        String normalizedEmail = (email != null) ? email.trim() : "";
-        if (normalizedEmail.isEmpty()) return Optional.empty();
-        boolean exists = switch (scope) {
-            case INSTITUTE -> audienceResponseRepository
-                    .existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail);
-            case SELECTED -> audienceResponseRepository
-                    .existsByAudienceIdInAndParentEmailIgnoreCase(settings.audienceIds(), normalizedEmail);
-            case CAMPAIGN -> audienceResponseRepository
-                    .existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail);
-        };
-        return exists
-                ? Optional.of("A lead with this email already exists " + scopeLabel + ".")
-                : Optional.empty();
+        if (!exists) return Optional.empty();
+
+        if (settings.action() == LeadDedupSettingService.DedupAction.ALLOW_REASSIGN) {
+            return Optional.of(new DuplicateMatch(
+                    LeadDedupSettingService.DedupAction.ALLOW_REASSIGN, null, settings.repeatLead()));
+        }
+        return Optional.of(new DuplicateMatch(
+                LeadDedupSettingService.DedupAction.REJECT,
+                "A lead with this " + matchedFieldLabel + " already exists " + scopeLabel + ".",
+                null));
     }
 
     /**

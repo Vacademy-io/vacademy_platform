@@ -18,6 +18,8 @@ import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.InstituteChoice;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.ArrayList;
@@ -39,6 +41,9 @@ public class UserOperationService {
 
     @Autowired
     private UserCredentialUpdateService userCredentialUpdateService;
+
+    @Autowired
+    private OriginInstituteResolver originInstituteResolver;
 
     public String sendUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
         if (userIds == null || userIds.isEmpty()) {
@@ -71,14 +76,16 @@ public class UserOperationService {
             return "Invalid data for sending passwords";
         }
 
-        // Extract institute ID from the first user's roles for email configuration
-        String instituteId = null;
-        for (User user : users) {
-            if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-                instituteId = user.getRoles().iterator().next().getInstituteId();
-                break; // Use the first available institute ID
-            }
-        }
+        // One sender address covers the whole batch, so pick it from every recipient's institutes
+        // rather than from whichever user happens to sort first: an admin sending credentials from
+        // their institute's portal should have that institute's address win even if the first user
+        // in the list also belongs to another one.
+        String instituteId = originInstituteResolver.chooseInstituteIdFor(
+                users.stream()
+                        .filter(u -> u.getRoles() != null)
+                        .flatMap(u -> u.getRoles().stream())
+                        .map(UserRole::getInstituteId)
+                        .toList());
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(NotificationEmailBody.sendUserPasswords("auth-service"));
@@ -138,10 +145,10 @@ public class UserOperationService {
 
     @Async
     public String sendPasswordToUser(User user) {
-        String instituteId = null;
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            instituteId = user.getRoles().iterator().next().getInstituteId();
-        }
+        // Carries the user's new password. Reached by self-invocation, so despite @Async this
+        // runs on the request thread and the host can disambiguate a multi-institute user;
+        // if it ever does run async the choice degrades to the first role, as before.
+        String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
 
         String emailBody = NotificationEmailBody.sendUpdatedUserPasswords(
                 "auth-service", user.getFullName(), user.getUsername(), user.getPassword());

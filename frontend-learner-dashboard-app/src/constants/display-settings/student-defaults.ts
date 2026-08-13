@@ -113,6 +113,8 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     { id: "upcomingLiveClasses", visible: true },
     { id: "myMentors", visible: true },
     { id: "thisWeekAttendance", visible: true },
+    // Bottom of the main flow: XP / streak / badges.
+    { id: "gamification", visible: true },
     // Bottom-of-page commerce CTAs.
     { id: "exploreMemberships", visible: true },
     { id: "exploreBooks", visible: true },
@@ -202,10 +204,6 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     enabled: false,
     enabledTours: [...LEARNER_TOUR_KEYS],
     pdfGuideEnabled: false,
-  },
-  certificates: {
-    enabled: true,
-    generationThresholdPercent: 80,
   },
   concentration: {
     enabled: true,

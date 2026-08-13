@@ -51,6 +51,7 @@ import Students from './student-list';
 import Assessments from './assessment-list';
 import LiveSessions from './live-sessions-list';
 import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
+import { CertificatesTab } from '../../-components/certificates/CertificatesTab';
 import Planning from './planning';
 import Activity from './activity';
 import PulseTab from '../../-components/pulse/PulseTab';
@@ -873,6 +874,9 @@ export const SubjectMaterial = () => {
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
                 Select a batch to view its reports.
             </div>
+        ),
+        [TabType.CERTIFICATES]: (
+            <CertificatesTab packageId={courseId} packageSessionId={packageSessionIds ?? ''} />
         ),
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">

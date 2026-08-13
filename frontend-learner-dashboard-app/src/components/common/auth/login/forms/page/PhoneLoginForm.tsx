@@ -225,6 +225,15 @@ export function PhoneLoginForm({
                         to: "/institute-selection",
                         search: { redirect: forwardRedirect, type, courseId },
                     });
+                } else if (authorityKeys.length === 0) {
+                    // A valid token with no authorities: the number resolved to an
+                    // account that holds no role here. Without this the code fell
+                    // through every branch and simply did nothing — the OTP screen
+                    // sat there looking like it had hung.
+                    toast.error(i18n.t("auth:toasts.noAccessForNumber", {
+                        defaultValue:
+                            "This number isn't registered for this institute. Try email or username sign-in.",
+                    }));
                 } else {
                     const instituteId = authorityKeys[0];
 

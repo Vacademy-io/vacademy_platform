@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00811935E04FA62B1E99A99D /* LaunchScreenSadbhavana.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8F29AA281E525DB1CE0EA129 /* LaunchScreenSadbhavana.storyboard */; };
+		0BEE3853FEB47C0B02EC3402 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		0E0D4AE92FC2BDC200E29BEC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		0E0D4AEE2FC2BDC200E29BEC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0E0D4AEF2FC2BDC200E29BEC /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -60,6 +61,7 @@
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
+		11C855A6C72427C7B48AE0A9 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		12AD9106DDA4265C98D16D1F /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		14E8D273FC7A03FCCF0B9EEE /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		159478D4A77785769B1BB798 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
@@ -74,6 +76,8 @@
 		1AAA00082F25A00000000008 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		31170A8D66EED80E34866581 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		329BB999A146DCEBDA88E078 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		3A7868FD7D8DDF8CD40CF1AA /* Pods_The_Learning_Bridge.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */; };
 		46A7B0ECA8980A28B0BD1018 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		475FB3FCE38A042F08A9CFB1 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		49FAB1FA9EFE4D4829783A68 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
@@ -131,12 +135,15 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		5196ADBA4C84E9586D75D263 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		5F9B7DDE407A109105FCE883 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		632A502BBCD083435CB3716D /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		661F44D6FD6CD47A777FAC1F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		6A06DF9587F957C47E506E6C /* LaunchScreenHCCA.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */; };
 		6C4154AC2C76E90C80F8FAF0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */; };
 		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
 		74B8DD78D6B5433D776E4F60 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		75E87E8FB750CD0712B18F9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		8096B6932B8C76CF811F7345 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		8D50592351C9F5AFCB6E79DB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		92CF6E9FD15192700D5BAD2F /* Pods_Edzumo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */; };
 		96554FD5C2B79909CAF44F19 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -144,10 +151,13 @@
 		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		A105E8843376451BD5F73DE4 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		A5742CAF260A4E0C4386CECF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		A60CC089905753E236B6F4B0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 05656F4AC827527D07E072ED /* GoogleService-Info.plist */; };
 		A7D6712AA2A1334E27616C2D /* Pods_ZOE_Edtech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */; };
 		AB74E2C5E5FB1BA34C8B492A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
+		B83E117C7A3798C189F896E2 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
 		C27B4B808CE5938482E862F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */; };
 		C2B8C112621143C004BC58B9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
@@ -164,6 +174,7 @@
 
 /* Begin PBXFileReference section */
 		043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.release.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.release.xcconfig"; sourceTree = "<group>"; };
+		05656F4AC827527D07E072ED /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		06A9C7727BA813EC43D26305 /* Pods-Edzumo.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Edzumo.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Edzumo/Pods-Edzumo.debug.xcconfig"; sourceTree = "<group>"; };
 		07F30C5C54EA4686AD3DA612 /* Pods-Chanakaya IAS Academy.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.debug.xcconfig"; sourceTree = "<group>"; };
 		0E0D4AF82FC2BDC200E29BEC /* Chanakya IAS Academy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chanakya IAS Academy.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -195,6 +206,7 @@
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sadbhavana.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		33EFFB28CF0D60C91479D913 /* Pods-Shiksha Nation.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.debug.xcconfig"; sourceTree = "<group>"; };
+		3D7CB4FFA47FBB9D06D8073E /* Pods-The Learning Bridge.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-The Learning Bridge.release.xcconfig"; path = "Pods/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge.release.xcconfig"; sourceTree = "<group>"; };
 		3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ZOE Edtech.debug.xcconfig"; path = "Pods/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech.debug.xcconfig"; sourceTree = "<group>"; };
 		46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_ZOE_Edtech.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_HCCA_Learning.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -222,10 +234,12 @@
 		89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Edzumo.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.release.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.release.xcconfig"; sourceTree = "<group>"; };
 		8F29AA281E525DB1CE0EA129 /* LaunchScreenSadbhavana.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenSadbhavana.storyboard; path = App/Base.lproj/LaunchScreenSadbhavana.storyboard; sourceTree = "<group>"; };
+		8F5C8CE0F71D5E46E46BEA3A /* The Learning Bridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "The Learning Bridge.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		918C8D739E4A0EF5E5B1D60D /* Pods-Shiksha Nation.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.release.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.release.xcconfig"; sourceTree = "<group>"; };
 		920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Chanakya_IAS_Academy.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
+		AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-The Learning Bridge.debug.xcconfig"; path = "Pods/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge.debug.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B313585718531D2F9A4F2BE7 /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HCCA Learning.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -235,6 +249,7 @@
 		D35753CB6D9F8BC8951462E0 /* Pods-Sadbhavana.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sadbhavana.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Sadbhavana/Pods-Sadbhavana.debug.xcconfig"; sourceTree = "<group>"; };
 		D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_the7cs.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7AB920C24733C910B2A7F0C /* Pods-Edzumo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Edzumo.release.xcconfig"; path = "Pods/Target Support Files/Pods-Edzumo/Pods-Edzumo.release.xcconfig"; sourceTree = "<group>"; };
+		DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_The_Learning_Bridge.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
 		E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenSN.storyboard; path = App/Base.lproj/LaunchScreenSN.storyboard; sourceTree = "<group>"; };
 		F31D50D520F6C4986A9BDAEE /* Pods-Uplift Teacher Training.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.debug.xcconfig"; sourceTree = "<group>"; };
@@ -319,6 +334,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		852721FC763114B33C5B93C8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0BEE3853FEB47C0B02EC3402 /* Foundation.framework in Frameworks */,
+				3A7868FD7D8DDF8CD40CF1AA /* Pods_The_Learning_Bridge.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DC2682EE259919EB083044F2 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -369,6 +393,7 @@
 				920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */,
 				4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */,
 				46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */,
+				DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -414,6 +439,7 @@
 				2AD8C058D1A8D73C46386616 /* Sadbhavana.app */,
 				B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */,
 				18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */,
+				8F5C8CE0F71D5E46E46BEA3A /* The Learning Bridge.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -435,6 +461,15 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		613907A03E6EF39A640FAE2A /* The-Learning-Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				05656F4AC827527D07E072ED /* GoogleService-Info.plist */,
+			);
+			name = "The-Learning-Bridge";
+			path = "GoogleServiceConfigs/The-Learning-Bridge";
 			sourceTree = "<group>";
 		};
 		71A3D620F457F0F49DA0FE58 /* HCCA */ = {
@@ -472,6 +507,8 @@
 				2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */,
 				1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */,
 				3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */,
+				3D7CB4FFA47FBB9D06D8073E /* Pods-The Learning Bridge.release.xcconfig */,
+				AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
@@ -480,6 +517,7 @@
 			isa = PBXGroup;
 			children = (
 				71A3D620F457F0F49DA0FE58 /* HCCA */,
+				613907A03E6EF39A640FAE2A /* The-Learning-Bridge */,
 			);
 			name = GoogleServiceConfigs;
 			sourceTree = "<group>";
@@ -639,6 +677,25 @@
 			productReference = 18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */;
 			productType = "com.apple.product-type.application";
 		};
+		48848ED30651CEC4CCEE23CF /* The Learning Bridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AE304D0D1E1C6EDD8685C41 /* Build configuration list for PBXNativeTarget "The Learning Bridge" */;
+			buildPhases = (
+				CDC505F5D8ABB6EC4A49C1E2 /* [CP] Check Pods Manifest.lock */,
+				4BAE17E3646807FDF13D12C1 /* Sources */,
+				852721FC763114B33C5B93C8 /* Frameworks */,
+				8378B065235D59AFE24A170B /* Resources */,
+				F4FE68E0D3DA648B26911FA5 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "The Learning Bridge";
+			productName = "The Learning Bridge";
+			productReference = 8F5C8CE0F71D5E46E46BEA3A /* The Learning Bridge.app */;
+			productType = "com.apple.product-type.application";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -760,6 +817,7 @@
 				CC8C5DDFADE1C48862D95C96 /* Sadbhavana */,
 				9E04A32BBEABFC7C87A4B817 /* HCCA Learning */,
 				3A2DF063AB452C2097ED392D /* ZOE Edtech */,
+				48848ED30651CEC4CCEE23CF /* The Learning Bridge */,
 			);
 		};
 /* End PBXProject section */
@@ -891,6 +949,20 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8378B065235D59AFE24A170B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B83E117C7A3798C189F896E2 /* LaunchScreen.storyboard in Resources */,
+				329BB999A146DCEBDA88E078 /* public in Resources */,
+				75E87E8FB750CD0712B18F9B /* Assets.xcassets in Resources */,
+				11C855A6C72427C7B48AE0A9 /* capacitor.config.json in Resources */,
+				8D50592351C9F5AFCB6E79DB /* Main.storyboard in Resources */,
+				632A502BBCD083435CB3716D /* config.xml in Resources */,
+				A60CC089905753E236B6F4B0 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1263,6 +1335,28 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		CDC505F5D8ABB6EC4A49C1E2 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-The Learning Bridge-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		D4FA830D6135156114248C6D /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1328,6 +1422,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		F4FE68E0D3DA648B26911FA5 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -1450,6 +1559,14 @@
 				2612C186DA7B446990F59A91 /* OfflineMediaPlugin.swift in Sources */,
 				89B75F7B56AA48949FC3667E /* OfflineMediaSchemeHandler.swift in Sources */,
 				B54A1F3CD7664D439F52C51A /* MainViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4BAE17E3646807FDF13D12C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A5742CAF260A4E0C4386CECF /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1810,6 +1927,31 @@
 			};
 			name = Release;
 		};
+		1E7410ADAD77DF3AF0D2D643 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
+				INFOPLIST_KEY_CFBundleName = "The Learning Bridge";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		3013FC9BE777CA42F4DE1A26 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */;
@@ -1827,6 +1969,30 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		38F1D384D5630BC96945343B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3D7CB4FFA47FBB9D06D8073E /* Pods-The Learning Bridge.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
+				INFOPLIST_KEY_CFBundleName = "The Learning Bridge";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
@@ -2203,6 +2369,15 @@
 			buildConfigurations = (
 				3013FC9BE777CA42F4DE1A26 /* Release */,
 				39E0D923D47FEE5EA242BB0D /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AE304D0D1E1C6EDD8685C41 /* Build configuration list for PBXNativeTarget "The Learning Bridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38F1D384D5630BC96945343B /* Release */,
+				1E7410ADAD77DF3AF0D2D643 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

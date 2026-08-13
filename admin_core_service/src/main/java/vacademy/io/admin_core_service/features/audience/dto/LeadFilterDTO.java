@@ -20,6 +20,17 @@ import java.sql.Timestamp;
 public class LeadFilterDTO {
 
     private String audienceId;
+    /**
+     * Multi-select variant of {@link #audienceId} — narrows the cross-audience
+     * (institute-wide) listing to these campaigns. Used by the Recent Leads
+     * "All audiences" dropdown, which lets a counsellor pick several lists at
+     * once. A single id here behaves exactly like audienceId (the service
+     * collapses it onto the per-campaign query so source/dedup filters still
+     * apply); two or more stay on the institute-wide query with an
+     * audience_id IN (...) predicate. Requires instituteId. Null/empty = all
+     * audiences, as before.
+     */
+    private java.util.List<String> audienceIds;
     private String instituteId;
     private String sourceType; // WEBSITE, GOOGLE_ADS, WALK_IN, etc.
     private String sourceId;

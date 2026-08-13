@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { Link } from '@tanstack/react-router';
+import { fetchAiVoiceCarrier } from '@/routes/settings/telephony/-services/ai-voice-carrier';
 import { AiAgentsCard } from './AiAgentsCard';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -575,6 +577,8 @@ export default function AiCallingSettings() {
                         </p>
                     </div>
 
+                    {settings.provider === 'VACADEMY_AI' && <AiCarrierStatusStrip />}
+
                     {settings.enabled && (
                         <div className="grid max-w-md gap-2">
                             <Label htmlFor="ai-campaign-id">Default Campaign ID</Label>
@@ -1029,6 +1033,52 @@ export default function AiCallingSettings() {
                     {saving ? 'Saving…' : 'Save AI calling settings'}
                 </MyButton>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Where Vacademy AI calls physically go out from, shown right under the provider
+ * picker. Vacademy AI streams the live conversation over Plivo, so an institute whose
+ * team calls on Airtel or Exotel needs a separate Vacademy Voice line — and the failure
+ * without one is invisible here: the settings save fine and the very first dial throws.
+ * This strip surfaces that before anyone builds an agent, and points at the one card
+ * that fixes it.
+ */
+function AiCarrierStatusStrip() {
+    const instituteId = getCurrentInstituteId() ?? '';
+    const { data, isLoading } = useQuery({
+        queryKey: ['ai-voice-carrier', instituteId],
+        queryFn: () => fetchAiVoiceCarrier(instituteId),
+        enabled: !!instituteId,
+    });
+
+    if (isLoading || !data) return null;
+
+    const line = data.ready
+        ? `AI calls go out on ${
+              data.mode === 'DEDICATED'
+                  ? 'a dedicated Vacademy Voice line'
+                  : `your ${data.primaryProviderName ?? 'calling'} account`
+          }${data.callerId ? ` (${data.callerId})` : ''}.`
+        : (data.blockingReason ?? 'AI calls can’t be placed yet.');
+
+    return (
+        <div
+            className={`flex max-w-2xl flex-col gap-1 rounded-lg border p-3 ${
+                data.ready
+                    ? 'border-success-200 bg-success-50'
+                    : 'border-warning-200 bg-warning-50'
+            }`}
+        >
+            <span
+                className={`text-caption ${data.ready ? 'text-success-800' : 'text-warning-800'}`}
+            >
+                {line}
+            </span>
+            <Link to="/settings/telephony" className="text-caption text-primary-500 underline">
+                Manage the AI calling line
+            </Link>
         </div>
     );
 }

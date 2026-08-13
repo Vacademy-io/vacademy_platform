@@ -1827,3 +1827,84 @@ async def test_statements_about_a_topic_are_not_suppressed_as_questions():
     rec.text.clear()
     await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hoti hai. ")
     assert any("chalis hazaar" in t for t in rec.text), rec.text
+
+
+# ── no-echo gate (2026-08-12): "there is no need to reconfirm every time" ─────
+# Founder, on live call c7bf5ff5: "It asked how many marks, the person said
+# ninety-four, and it comes back 'okay, you got ninety-four'. It looks like an AI
+# if you reconfirm everything every time." Three turns in a row opened with the
+# restatement, and each one shared its sentence with the real next question —
+# which is why this is a CLAUSE trim and not a sentence gate.
+def _no_echo_gate(rec, caller, diag=None, on=True):
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller,
+                       diag=diag, no_echo=lambda: on)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g
+
+
+@pytest.mark.asyncio
+async def test_the_parroted_opener_never_reaches_the_caller():
+    """Verbatim turn 2 of the call. The restatement goes, the question stays."""
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "सुबोध अभी आठवीं में है।", diag=d)
+    await _reply(g, "सुबोध अभी कौन से क्लास में है? ")        # the question it asked
+    rec.text.clear()
+    await _reply(g, "ओके, सुबोध अभी आठवीं क्लास में है, तो सुबोध के लास्ट एनुअल एक्ज़ाम "
+                    "में कितने मार्क्स आए थे? ")
+    said = " ".join(rec.text)
+    assert "आठवीं क्लास में है" not in said, said
+    assert "कितने मार्क्स" in said, "the question was trimmed away with the echo"
+    assert d.echoes_trimmed == 1
+
+
+@pytest.mark.asyncio
+async def test_the_bots_own_reaction_survives_the_trim():
+    """A counsellor really does say "that's a great score" — they just don't read
+    the number back first. Only the caller's own words go."""
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "तिरानवे प्रतिशत।")
+    await _reply(g, "सुबोध के लास्ट एनुअल एक्ज़ाम में कितने मार्क्स आए थे? ")
+    rec.text.clear()
+    await _reply(g, "सुबोध के लास्ट बहुत अच्छे, तिरानवे प्रतिशत मार्क्स, बहुत बढ़िया स्कोर है। ")
+    said = " ".join(rec.text)
+    assert "तिरानवे" not in said, said
+    assert "बढ़िया स्कोर" in said
+
+
+@pytest.mark.asyncio
+async def test_only_the_first_sentence_of_a_reply_is_trimmed():
+    """A later sentence reusing the caller's words is the bot BUILDING on them."""
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "सुबोध अभी आठवीं में है।")
+    await _reply(g, "हमारा Insight program है। ", "सुबोध आठवीं में है, तो यही सही रहेगा। ")
+    assert "सुबोध आठवीं में है" in " ".join(rec.text)
+
+
+@pytest.mark.asyncio
+async def test_the_required_digit_read_back_is_never_trimmed():
+    """CLOSE CONCRETELY makes reading a number back mandatory — the one echo we
+    DO want. A gate that eats it would break booking confirmation."""
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "nau do teen chaar paanch chhe saat aath nau shunya")
+    await _reply(g, "आपका number nau do teen chaar, paanch chhe saat aath nau shunya, सही है? ")
+    assert "nau do teen chaar" in " ".join(rec.text)
+
+
+@pytest.mark.asyncio
+async def test_no_echo_kill_switch_restores_the_old_behaviour():
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "सुबोध अभी आठवीं में है।", on=False)
+    await _reply(g, "ओके, सुबोध अभी आठवीं क्लास में है, तो marks कितने आए थे? ")
+    assert "आठवीं क्लास में है" in " ".join(rec.text)
+
+
+@pytest.mark.asyncio
+async def test_a_reply_that_is_entirely_parroting_still_says_something():
+    """Same rule as NoRepeatGate: one clumsy line beats dead air."""
+    rec = _NRRec()
+    g = _no_echo_gate(rec, "सुबोध आठवीं में है।")
+    await _reply(g, "सुबोध आठवीं में है। ")
+    assert " ".join(rec.text).strip()

@@ -19,6 +19,34 @@ const getAssessmentIdFromStorage = async (): Promise<string | null> => {
   return parsed?.assessment_id ?? null;
 };
 
+/**
+ * Whether a question actually holds an answer, derived from the answer maps.
+ *
+ * `isAnswered` is bookkeeping kept alongside the answers, so it can drift out of
+ * sync with them (a resume that rebuilds one but not the other leaves a question
+ * that shows its answer in the question pane while the navigator and the submit
+ * summary count it as unattempted). Deriving from the answer itself is the
+ * single source of truth — anything restoring state should use this.
+ *
+ * Non-MCQ answers are stored as a single-element array of free text, so an empty
+ * or whitespace-only string must not count as answered.
+ */
+export const hasAnswerFor = (
+  questionId: string,
+  answers: Record<string, string[]>,
+  codingAnswers: Record<string, { sourceCode?: string }>
+): boolean => {
+  const coding = codingAnswers?.[questionId];
+  if (coding?.sourceCode && coding.sourceCode.trim().length > 0) return true;
+
+  const answer = answers?.[questionId];
+  if (!Array.isArray(answer) || answer.length === 0) return false;
+
+  return answer.some(
+    (value) => value !== null && value !== undefined && String(value).trim() !== ""
+  );
+};
+
 interface PdfFile {
   fileId: string;
   fileName: string;
@@ -172,11 +200,21 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         }
 
         section.question_preview_dto_list.forEach((question) => {
+          // Re-entering an in-progress attempt (the preview screen calls this on
+          // mount) must not erase progress: a blind reset here left `answers`
+          // populated but every flag false, so the navigator showed "Not Visited"
+          // and submission counted answered questions as unattempted. Keep any
+          // existing flags and re-derive isAnswered from the answers we hold.
+          const previous = state.questionStates[question.question_id];
           questionStates[question.question_id] = {
-            isAnswered: false,
-            isVisited: false,
-            isMarkedForReview: false,
-            isDisabled: false,
+            isAnswered: hasAnswerFor(
+              question.question_id,
+              state.answers,
+              state.codingAnswers
+            ),
+            isVisited: previous?.isVisited ?? false,
+            isMarkedForReview: previous?.isMarkedForReview ?? false,
+            isDisabled: previous?.isDisabled ?? false,
           };
 
           if (

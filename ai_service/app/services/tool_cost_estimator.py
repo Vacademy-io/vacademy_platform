@@ -245,6 +245,80 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "audio_minutes",
         "params": {},
     },
+    # ---- Knowledge Base (V435) ---------------------------------------------
+    # MUST agree with the V435 ai_tool_pricing seeds AND computeToolCredits in
+    # frontend-admin-dashboard/src/services/ai-credits/get-ai-credits.ts.
+    #
+    # Per ingested page: covers parse (free PyMuPDF for digital pages, paid
+    # MathPix OCR only for scanned ones), figure extraction + S3 re-host,
+    # chunking, embedding and the summary tree. 0.5 cr/page ≈ ₹0.29 against
+    # ~₹0.26 real cost on a scanned regional-language book, and far above cost
+    # on a digital English one — so the digital majority subsidises the
+    # expensive scans rather than every scan being individually penalised.
+    "kb_ingest_page": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
+        "params": {},
+    },
+    # One web page or YouTube transcript — scrape/fetch + embed, no OCR, so page
+    # count is meaningless and this is flat.
+    "kb_ingest_url": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # One grounded, cited question against a KB. Deliberately cheap: this is how
+    # an admin learns whether the corpus is any good, and metering it heavily
+    # would suppress exactly the behaviour that builds trust in the feature.
+    "kb_ask": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # ---- Question papers from a knowledge base (V441) -----------------------
+    # request_type 'assessment' is already in the ai_token_usage CHECK — reusing
+    # it avoids another DROP+ADD of that constraint (the V325/V435 trap).
+    # MUST agree with the V441 seeds and FE computeToolCredits.
+    "kb_paper_blueprint": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Priced per question so the preview reads "60 questions ≈ 95 credits".
+    # flat_base covers retrieval + the post-generation validation pass.
+    "kb_paper_questions": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("5"),
+        "per_unit_credits": Decimal("1.5"),
+        "unit_field": "questions",
+        "params": {},
+    },
+    "kb_paper_regenerate": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # One-time, permanent unlock of a curated library (V445). Deliberately low:
+    # nothing in the catalogue can be sampled before purchase, so the first
+    # unlock is bought on faith. Keep in sync with the V445 seed and with
+    # computeToolCredits on the frontend.
+    "kb_library_unlock": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("50"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

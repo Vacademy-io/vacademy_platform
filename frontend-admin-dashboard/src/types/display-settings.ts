@@ -90,6 +90,7 @@ export type CourseDetailsTabId =
     | 'ACTIVITY'
     | 'PULSE'
     | 'REPORTS'
+    | 'CERTIFICATES'
     | 'DOWNLOADS'
     | 'SETTINGS';
 

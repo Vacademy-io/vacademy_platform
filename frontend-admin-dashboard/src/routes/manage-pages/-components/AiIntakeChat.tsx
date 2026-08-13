@@ -17,6 +17,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
 import {
     intakeAiTurn, IntakeTurn, IntakeResponse, AiPageImage, AiCourseSnapshotItem,
+    MAX_INSPIRATION_IMAGES,
 } from '../-services/ai-page-service';
 
 export interface IntakeResult {
@@ -230,7 +231,7 @@ export const AiIntakeChat = ({
             pageType: last.page_type || 'homepage',
             wholeSite: last.whole_site,
             images: collectedImages.current,
-            inspiration: collectedInspiration.current.slice(0, 3),
+            inspiration: collectedInspiration.current.slice(0, MAX_INSPIRATION_IMAGES),
         });
     };
 

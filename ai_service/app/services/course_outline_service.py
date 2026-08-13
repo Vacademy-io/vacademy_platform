@@ -59,10 +59,123 @@ class CourseOutlineGenerationService:
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
+    def _apply_kb_grounding(self, request: CourseOutlineRequest) -> bool:
+        """Ground the outline in a knowledge base's topic tree.
+
+        Returns True when it applied, so the caller can skip the PDF path: the
+        topic tree describes the WHOLE corpus, while the PDF path can only fit
+        the document's first 60k characters. Falling through to both would spend
+        a MathPix conversion to make the prompt worse.
+        """
+        grounding = getattr(request, "kb_grounding", None)
+        if not grounding:
+            return False
+        try:
+            from ..db import db_session
+            from .kb import course_grounding
+
+            with db_session() as db:
+                block = course_grounding.outline_grounding_block(
+                    db,
+                    kb_id=grounding.knowledge_base_id,
+                    institute_id=request.institute_id,
+                    node_ids=grounding.node_ids,
+                    mode=grounding.mode,
+                )
+            if not block:
+                return False
+            request.user_prompt = f"{request.user_prompt}{block}"
+            logger.info(
+                "Grounded outline in knowledge base %s (%d topics selected, %s)",
+                grounding.knowledge_base_id, len(grounding.node_ids or []), grounding.mode,
+            )
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"KB outline grounding failed (continuing): {str(e)}")
+            return False
+
+    async def _ground_slides_from_kb(
+        self,
+        kb_grounding: dict,
+        content_todos: list,
+        institute_id: Optional[str],
+    ) -> None:
+        """Retrieve the knowledge base passages for every slide, concurrently.
+
+        Each slide asks about its OWN subject, so a slide on rotational motion is
+        written from the pages about rotational motion rather than from whatever
+        fitted into the outline prompt. Bounded concurrency: this is one
+        embedding call plus one vector query per slide, and a 25-slide course
+        should not open 25 sessions at once.
+        """
+        kb_id = (kb_grounding or {}).get("knowledge_base_id")
+        if not kb_id or not institute_id:
+            return
+        mode = (kb_grounding or {}).get("mode") or "STRICT"
+
+        try:
+            from ..db import db_session
+            from .kb import course_grounding
+        except Exception:  # noqa: BLE001
+            logger.warning("KB grounding unavailable; continuing ungrounded")
+            return
+
+        semaphore = asyncio.Semaphore(4)
+        service = self._content_generation_service
+
+        async def one(todo) -> None:
+            # Chapter + title: specific enough to retrieve the right pages,
+            # short enough to embed cheaply.
+            query = " ".join(
+                p for p in [
+                    getattr(todo, "chapter_name", None),
+                    todo.title or todo.name or "",
+                ] if p
+            ).strip()
+            if not query:
+                return
+            async with semaphore:
+                try:
+                    # EACH slide owns its session: these run under gather and a
+                    # shared Session cannot serve concurrent queries.
+                    with db_session() as db:
+                        grounding = await course_grounding.ground_slide(
+                            db, kb_id=kb_id, institute_id=institute_id,
+                            query=query, mode=mode,
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.warning("KB grounding failed for %s", todo.path, exc_info=True)
+                    return
+
+            service._kb_grounding_by_path[todo.path] = (
+                course_grounding.slide_prompt_block(grounding, mode)
+            )
+            if grounding.supported:
+                service._kb_citations_by_path[todo.path] = grounding.citations
+                if grounding.figures:
+                    # Reuse the existing figure-embedding path, so KB figures land
+                    # in slides through the same code the PDF path already uses.
+                    service._document_figures_by_path.setdefault(todo.path, [])
+                    service._document_figures_by_path[todo.path].extend(grounding.figures)
+            else:
+                service._kb_unsupported_paths.append(todo.path)
+
+        await asyncio.gather(*(one(t) for t in content_todos), return_exceptions=True)
+
+        supported = len(content_todos) - len(service._kb_unsupported_paths)
+        logger.info(
+            "KB grounding: %d/%d slides supported by knowledge base %s (%s)",
+            supported, len(content_todos), kb_id, mode,
+        )
+
     async def _apply_reference_grounding(self, request: CourseOutlineRequest) -> None:
         """If reference PDFs were uploaded, ingest them and append their extracted
         text/tables to the user prompt so the outline is built from the actual
         document. Best-effort — a failure leaves the prompt unchanged."""
+        # A selected knowledge base is the better source and is already indexed,
+        # so it wins outright rather than being concatenated with a PDF dump.
+        if self._apply_kb_grounding(request):
+            return
         file_ids = getattr(request, "reference_document_file_ids", None)
         if not file_ids:
             return
@@ -471,6 +584,7 @@ class CourseOutlineGenerationService:
         language: Optional[str] = "English",
         video_settings: Optional[dict] = None,
         reference_document_file_ids: Optional[list] = None,
+        kb_grounding: Optional[dict] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -574,6 +688,18 @@ class CourseOutlineGenerationService:
             # is assigned to the ONE slide it best matches (by caption↔title) so
             # the same figure doesn't get embedded on every slide. Best-effort.
             self._content_generation_service._document_figures_by_path = {}
+            self._content_generation_service._kb_grounding_by_path = {}
+            self._content_generation_service._kb_citations_by_path = {}
+            self._content_generation_service._kb_unsupported_paths = []
+
+            # Retrieve each slide's OWN pages. This is the step the uploaded-PDF
+            # path never had: there, reference documents contribute figures only
+            # and every slide's text is written from model knowledge.
+            if kb_grounding:
+                await self._ground_slides_from_kb(
+                    kb_grounding, content_todos, institute_id
+                )
+
             if reference_document_file_ids:
                 try:
                     from .course_document_ingest import ingest_documents, assign_figures_to_slides
@@ -589,7 +715,15 @@ class CourseOutlineGenerationService:
                         and "assignment" not in (t.title or "").lower()
                     ]
                     figures_by_path = assign_figures_to_slides(ingest.figures, doc_slides)
-                    self._content_generation_service._document_figures_by_path = figures_by_path
+                    # MERGE, never assign: KB grounding has already put this
+                    # course's knowledge-base figures in here, and a plain
+                    # assignment silently threw all of them away whenever a
+                    # teacher attached a reference PDF as well as picking a
+                    # knowledge base.
+                    existing = self._content_generation_service._document_figures_by_path
+                    for path, figs in figures_by_path.items():
+                        existing.setdefault(path, [])
+                        existing[path].extend(figs)
                     logger.info(
                         f"Content generation: {len(ingest.figures)} reference figure(s) "
                         f"assigned across {len(figures_by_path)} slide(s)"

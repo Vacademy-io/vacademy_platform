@@ -8,6 +8,7 @@ import { InboundSetupGuideCard } from './inbound-setup-guide-card';
 import { TelephonyCreditsCard } from './telephony-credits-card';
 import { IvrBuilderCard } from './ivr-builder-card';
 import { VacademyVoiceConfigCard } from './vacademy-voice-config-card';
+import { AiVoiceCarrierCard } from './ai-voice-carrier-card';
 
 /**
  * Provider-aware Calling settings stack. The provider Config card is ALWAYS
@@ -53,11 +54,16 @@ export function TelephonyProviderCards() {
     const isManagedVoice = has('MANAGED_VOICE');
     const showInboundApplet = has('SYNC_INBOUND_APPLET') && !isManagedVoice;
     const showIvrBuilder = has('IVR_BUILDER');
+    // The AI line is NOT capability-gated: it matters MOST when the active provider
+    // can't carry AI (Airtel/Exotel), which is exactly when a capability gate would
+    // have hidden it. Shown as soon as any provider is configured.
+    const showAiCarrier = !!providerType;
 
     return (
         <>
             {showWallet && <TelephonyCreditsCard />}
             <TelephonyConfigCard />
+            {showAiCarrier && <AiVoiceCarrierCard />}
             {isManagedVoice && <VacademyVoiceConfigCard />}
             {showCounsellorMap && <TelephonyCounsellorMapCard />}
             {showInboundApplet && <InboundSetupGuideCard />}

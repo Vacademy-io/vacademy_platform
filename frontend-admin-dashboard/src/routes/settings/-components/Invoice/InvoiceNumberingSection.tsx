@@ -267,10 +267,10 @@ export function InvoiceNumberingSection({ value, onChange }: Props) {
                                                 token.riskyForTax && 'border-warning-200 bg-warning-50'
                                             )}
                                         >
-                                            <span className="font-mono">{token.label}</span>
-                                            <span className="ml-1.5 text-neutral-400">
-                                                {token.example}
-                                            </span>
+                                            {/* Label only. Showing the example inline doubled
+                                                every chip's width and turned the palette into a
+                                                wall of text; it lives in the tooltip instead. */}
+                                            {token.label}
                                         </button>
                                     ))}
                                 </div>
@@ -311,11 +311,16 @@ export function InvoiceNumberingSection({ value, onChange }: Props) {
                                 <SelectContent>
                                     {SCOPE_OPTIONS.map((option) => (
                                         <SelectItem key={option.value} value={option.value}>
-                                            {option.label} — {option.hint}
+                                            {option.label}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {/* Hint lives here rather than inside the option, so the trigger
+                                shows a short label instead of overflowing its column. */}
+                            <p className="text-caption text-neutral-500">
+                                {SCOPE_OPTIONS.find((o) => o.value === value.seqScope)?.hint}
+                            </p>
                         </div>
 
                         <div className="space-y-1.5">
@@ -350,7 +355,7 @@ export function InvoiceNumberingSection({ value, onChange }: Props) {
                                 placeholder="Derived from the institute name"
                             />
                             <p className="text-caption text-neutral-500">
-                                Used by the Institute code value.
+                                Fills the Institute code value.
                             </p>
                         </div>
 
@@ -367,10 +372,8 @@ export function InvoiceNumberingSection({ value, onChange }: Props) {
                                 }
                             />
                             <p className="text-caption text-neutral-500">
-                                For continuing a series from another accounting system. Leave
-                                blank to carry on from #{preview?.nextSequence ?? 1}. This can only
-                                move numbering forward — a lower value is ignored so issued
-                                numbers are never reused.
+                                Only for continuing a series from another system. Moves numbering
+                                forward only.
                             </p>
                         </div>
 

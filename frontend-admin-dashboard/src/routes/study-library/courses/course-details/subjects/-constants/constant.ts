@@ -12,6 +12,7 @@ export enum TabType {
     ACTIVITY = 'ACTIVITY',
     PULSE = 'PULSE',
     REPORTS = 'REPORTS',
+    CERTIFICATES = 'CERTIFICATES',
     DOWNLOADS = 'DOWNLOADS',
     SETTINGS = 'SETTINGS',
     DISCUSSION = 'DISCUSSION',
@@ -33,6 +34,7 @@ export const tabs = [
     { label: 'Activity', value: 'ACTIVITY' },
     { label: 'Pulse', value: 'PULSE' },
     { label: 'Reports', value: 'REPORTS' },
+    { label: 'Certificates', value: 'CERTIFICATES' },
     { label: 'Downloads', value: 'DOWNLOADS' },
     { label: 'Settings', value: 'SETTINGS' },
     { label: 'Discussion', value: 'DISCUSSION' },
@@ -41,11 +43,6 @@ export const tabs = [
     // { label: 'Announcements ', value: 'ANNOUNCEMENT' },
 ];
 
-/**
- * Course-details tabs that stay hidden unless a role's display settings
- * explicitly turn them on. Unlike the other tabs (which default to visible when
- * a role config doesn't mention them), these default to OFF. Currently empty —
- * every tab (including Live Sessions and Pulse) defaults to visible; admins can
- * still hide any of them per role in Settings → Display → Course Details Tabs.
- */
-export const DEFAULT_HIDDEN_COURSE_DETAILS_TABS = new Set<string>([]);
+// Re-exported so existing course-details imports keep working; the list itself
+// lives in constants/ because the settings UIs need it too.
+export { DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '@/constants/display-settings/course-details-tabs';

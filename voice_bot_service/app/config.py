@@ -373,6 +373,12 @@ class Settings:
     # behaviour, in case a deployment ever needs it back in a hurry.
     no_repeat_enabled: bool = field(
         default_factory=lambda: _env("NO_REPEAT_ENABLED", "true").lower() == "true")
+    # Drop the leading clause when a reply only parrots the caller's own answer
+    # back ("ओके, सुबोध अभी आठवीं क्लास में है, तो …") — founder 2026-08-12, "there
+    # is no need to reconfirm every time, it looks like an AI". Same reason this
+    # is code and not a prompt rule as NO_REPEAT_ENABLED; same kill switch shape.
+    no_echo_enabled: bool = field(
+        default_factory=lambda: _env("NO_ECHO_ENABLED", "true").lower() == "true")
     # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
     # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
     edge_tts_voice: str = field(

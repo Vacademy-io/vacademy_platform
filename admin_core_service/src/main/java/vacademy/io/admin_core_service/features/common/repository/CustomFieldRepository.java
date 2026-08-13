@@ -96,6 +96,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
             AND cf.status = 'ACTIVE'
       WHERE s.id     = :sessionId
         AND s.status = 'LIVE'
+      ORDER BY cf.form_order ASC, cf.created_at ASC
       """, nativeQuery = true)
   List<FlatFieldProjection> getSessionCustomFieldsBySessionId(@Param("sessionId") String sessionId);
 

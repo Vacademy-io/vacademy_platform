@@ -163,6 +163,16 @@ export const VIMOTION_VIDEO_THUMBNAIL_REGENERATE = (videoId: string) =>
     `${AI_SERVICE_BASE_URL}/external/video/v1/thumbnail/${videoId}/regenerate`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
+// Course-scoped certificate management, backing the Certificates tab on the
+// course page. Settings are addressed by packageId (an override applies to every
+// batch of the course); the dashboard and learner list are addressed by
+// packageSessionId, since certificates are issued per batch.
+export const COURSE_CERTIFICATE_BASE = `${BASE_URL}/admin-core-service/institute/v1/certificate/course`;
+export const COURSE_CERTIFICATE_SETTINGS = `${COURSE_CERTIFICATE_BASE}/settings`;
+export const COURSE_CERTIFICATE_DASHBOARD = `${COURSE_CERTIFICATE_BASE}/dashboard`;
+export const COURSE_CERTIFICATE_LEARNERS = `${COURSE_CERTIFICATE_BASE}/learners`;
+export const COURSE_CERTIFICATE_ISSUE = `${COURSE_CERTIFICATE_BASE}/issue`;
+export const COURSE_CERTIFICATE_RESEND = `${COURSE_CERTIFICATE_BASE}/resend`;
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
@@ -299,6 +309,11 @@ export const TELEPHONY_IVR_MENU_BY_ID = (menuId: string) =>
 // Vacademy Voice product config (enable flag, caller-ID, recording, compliance, plan).
 export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/voice-config/${encodeURIComponent(instituteId)}`;
+// Which line AI calls go out on: the team's provider, or a dedicated Vacademy Voice
+// line for institutes whose provider (Airtel/Exotel) can't carry a media stream.
+// GET | PUT { mode: PRIMARY|DEDICATED, … } | DELETE (unlink).
+export const TELEPHONY_AI_CARRIER = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ai-carrier/${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
@@ -979,6 +994,16 @@ export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 
+// Short links — settings toggles + institute link management (proxied to media-service)
+export const SHORT_LINK_ADMIN_BASE = `${BASE_URL}/admin-core-service/v1/short-link`;
+export const SHORT_LINK_EFFECTIVE_SETTINGS = `${SHORT_LINK_ADMIN_BASE}/settings`;
+export const SHORT_LINK_LIST = `${SHORT_LINK_ADMIN_BASE}/list`;
+export const SHORT_LINK_CREATE_CUSTOM = `${SHORT_LINK_ADMIN_BASE}/custom`;
+export const SHORT_LINK_UPDATE = `${SHORT_LINK_ADMIN_BASE}/update`;
+export const SHORT_LINK_DEACTIVATE = `${SHORT_LINK_ADMIN_BASE}/deactivate`;
+// Public get-or-create (media-service via gateway) — settings-enforced server-side
+export const PUBLIC_GET_OR_CREATE_SHORT_LINK = `${BASE_URL}/media-service/public/v1/short-link/get-or-create`;
+
 // Onboarding Flows — ordered checklists (FORM steps built from institute custom
 // fields) that a lead/student goes through between "agreed to join" and "fully
 // enrolled". Gated behind institute setting ONBOARDING_SETTING (see
@@ -1175,6 +1200,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 // Institute scope comes from the auth token — no params
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+// Several treatments of ONE section, to choose between. Billed as an edit.
+export const AI_PAGE_BUILDER_SECTION = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/section`;
 // Header / footer / theme — the settings shared by every page.
 export const AI_PAGE_BUILDER_SITE_CHROME = () =>
     `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;

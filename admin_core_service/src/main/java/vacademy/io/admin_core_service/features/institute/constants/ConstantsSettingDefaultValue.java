@@ -364,9 +364,10 @@ public class ConstantsSettingDefaultValue {
                                 </div>
                             </div>
                 
-                            <div class="footer-link">
-                                <p>WWW.CODECIRCLE.ORG</p>
-                            </div>
+                            <!-- No website line by default. This slot used to hardcode one
+                                 customer's domain, which then rendered on every other
+                                 institute's certificate. Admins who want it can add
+                                 {{INSTITUTE_WEBSITE}} from the template editor. -->
                         </div>
                     </div>
                 </body>

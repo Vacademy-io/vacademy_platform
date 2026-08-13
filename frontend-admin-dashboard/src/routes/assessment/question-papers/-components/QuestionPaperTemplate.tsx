@@ -1,11 +1,8 @@
-import { FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { DotsSixVertical, Plus, X } from '@phosphor-icons/react';
+import { DotsSixVertical, Plus, WarningCircle, X } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { useFieldArray } from 'react-hook-form';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { PPTComponentFactory } from './QuestionPaperTemplatesTypes/PPTComponentFactory';
@@ -45,6 +42,7 @@ import {
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { QuestionType } from '@/constants/dummy-data';
+import { cn } from '@/lib/utils';
 import { QuestionTypeSelection } from './QuestionTypeSelection';
 import { DialogClose } from '@radix-ui/react-dialog';
 
@@ -58,6 +56,7 @@ export function QuestionPaperTemplate({
     currentQuestionIndex,
     setCurrentQuestionIndex,
     examType,
+    triggerVariant = 'plain',
 }: QuestionPaperTemplateProps) {
     const [isQuestionPaperTemplateDialog, setIsQuestionPaperTemplateDialog] = useState(false);
     const { instituteLogo } = useInstituteLogoStore();
@@ -65,9 +64,9 @@ export function QuestionPaperTemplate({
     const queryClient = useQueryClient();
     const { instituteDetails } = useInstituteDetailsStore();
     const [addQuestionDialogBox, setAddQuestionDialogBox] = useState(false);
-    const { control, getValues, setValue, formState, watch } = form;
+    const { getValues, setValue, formState, watch } = form;
     const questions = watch('questions') || [];
-    const title = getValues('title') || '';
+    const title = watch('title') || '';
     const yearClass = getValues('yearClass') || '';
     const subject = getValues('subject') || '';
     const [isQuestionDataLoading, setIsQuestionDataLoading] = useState(false);
@@ -285,7 +284,10 @@ export function QuestionPaperTemplate({
                 ...(data.subject !== 'N/A' && {
                     subject_id: getIdBySubjectName(instituteDetails?.subjects || [], subject),
                 }),
-                questions: transformQuestionsData,
+                // Deep-clone: this snapshot must stay independent of the live form value below,
+                // since react-hook-form's setValue mutates nested question objects in place —
+                // sharing references here made edits invisible to the added/updated/deleted diff.
+                questions: structuredClone(transformQuestionsData),
             });
             setValue('questions', transformQuestionsData);
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
@@ -311,7 +313,6 @@ export function QuestionPaperTemplate({
     }, [examType, form]);
 
     const handleTriggerForm = () => {
-
         form.trigger();
 
         const errors = form.formState.errors;
@@ -331,18 +332,32 @@ export function QuestionPaperTemplate({
             open={isQuestionPaperTemplateDialog}
             onOpenChange={setIsQuestionPaperTemplateDialog}
         >
-            <DialogTrigger>
+            <DialogTrigger asChild={isViewMode && triggerVariant === 'secondary'}>
                 {isViewMode ? (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className={`m-0 border-none pl-2 font-normal shadow-none ${
-                            isAssessment ? 'text-primary-500' : ''
-                        }`}
-                        onClick={handleViewQuestionPaper}
-                    >
-                        {buttonText}
-                    </Button>
+                    triggerVariant === 'secondary' ? (
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            layoutVariant="default"
+                            className="h-8 gap-1.5"
+                            onClick={handleViewQuestionPaper}
+                        >
+                            {buttonText}
+                        </MyButton>
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                                'm-0 border-none pl-2 font-normal shadow-none',
+                                isAssessment ? 'text-primary-500' : ''
+                            )}
+                            onClick={handleViewQuestionPaper}
+                        >
+                            {buttonText}
+                        </Button>
+                    )
                 ) : (
                     <Button type="button" variant="outline" className="w-52 border">
                         {isManualCreated ? (
@@ -360,38 +375,42 @@ export function QuestionPaperTemplate({
                     <DashboardLoader />
                 ) : (
                     <div className="flex h-screen flex-col">
-                        <div className="flex w-full shrink-0 items-center justify-between bg-primary-100 p-2">
-                            <div className="flex items-start gap-2">
+                        <div className="flex h-14 w-full shrink-0 items-center justify-between gap-4 border-b border-neutral-200 bg-primary-50 px-4">
+                            <div className="flex min-w-0 items-center gap-3">
                                 <img
                                     src={instituteLogo}
                                     alt="logo"
-                                    className="size-12 rounded-full"
+                                    className="size-9 shrink-0 rounded-full object-cover"
                                 />
-                                <FormField
-                                    control={control}
-                                    name="title"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormControl>
-                                                <Input
-                                                    value={field.value}
-                                                    onChange={field.onChange}
-                                                    className="rounded-none border-none p-0 !text-h3 shadow-none focus-visible:ring-0 focus-visible:ring-transparent"
-                                                    placeholder="Untitled"
-                                                    disabled
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <QuestionPaperEditDialog form={form} />
+                                <div className="flex min-w-0 items-center gap-1">
+                                    <h1 className="truncate text-title font-semibold text-neutral-700">
+                                        {title || 'Untitled'}
+                                    </h1>
+                                    <QuestionPaperEditDialog form={form} />
+                                </div>
+                                <span className="hidden shrink-0 rounded-full bg-white px-2 py-0.5 text-caption text-neutral-600 sm:inline">
+                                    {questions.length}{' '}
+                                    {questions.length === 1 ? 'question' : 'questions'}
+                                </span>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <Button
-                                    type="submit"
-                                    variant="outline"
-                                    className="w-44 bg-transparent shadow-none hover:bg-transparent"
+                            <div className="flex shrink-0 items-center gap-2">
+                                <DialogClose asChild>
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        layoutVariant="default"
+                                        className="min-w-24 sm:min-w-24"
+                                    >
+                                        Exit
+                                    </MyButton>
+                                </DialogClose>
+                                <MyButton
+                                    type="button"
+                                    buttonType="primary"
+                                    scale="medium"
+                                    layoutVariant="default"
+                                    className="min-w-24 sm:min-w-24"
                                     onClick={
                                         isViewMode
                                             ? () =>
@@ -402,31 +421,26 @@ export function QuestionPaperTemplate({
                                     }
                                 >
                                     Save
-                                </Button>
-                                <DialogClose>
-                                    <Button
-                                        type="submit"
-                                        variant="outline"
-                                        className="w-44 bg-transparent shadow-none hover:bg-transparent"
-                                    >
-                                        Exit
-                                    </Button>
-                                </DialogClose>
+                                </MyButton>
                             </div>
                         </div>
                         <div className="flex min-h-0 flex-1 items-stretch">
-                            <div className="flex h-full w-40 shrink-0 flex-col items-center gap-2 pt-4">
+                            <div className="flex h-full w-48 shrink-0 flex-col gap-3 border-r border-neutral-200 bg-neutral-50 p-3">
                                 <AlertDialog
                                     open={addQuestionDialogBox}
                                     onOpenChange={setAddQuestionDialogBox}
                                 >
-                                    <AlertDialogTrigger>
-                                        <Button
+                                    <AlertDialogTrigger asChild>
+                                        <MyButton
                                             type="button"
-                                            className="max-w-sm bg-primary-500 text-xs text-white shadow-none"
+                                            buttonType="primary"
+                                            scale="medium"
+                                            layoutVariant="default"
+                                            className="w-full gap-1 sm:min-w-0"
                                         >
-                                            Add Question
-                                        </Button>
+                                            <Plus size={16} />
+                                            Add question
+                                        </MyButton>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent className="h-4/5 overflow-y-auto p-0">
                                         <div className="sticky top-0 flex items-center justify-between rounded-md bg-primary-50">
@@ -448,18 +462,22 @@ export function QuestionPaperTemplate({
                                         ></QuestionTypeSelection>
                                     </AlertDialogContent>
                                 </AlertDialog>
-                                <div className="flex min-h-0 w-40 flex-1 flex-col items-start gap-4 overflow-x-hidden overflow-y-auto p-2">
+                                <span className="px-1 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                    Questions
+                                </span>
+                                <div className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1">
                                     <Sortable
                                         value={fields}
                                         onMove={({ activeIndex, overIndex }) =>
                                             move(activeIndex, overIndex)
                                         }
                                     >
-                                        <div className="question-rail-zoom flex flex-col gap-8 overflow-x-hidden">
+                                        <div className="flex flex-col gap-2 overflow-x-hidden pb-4">
                                             {fields.map((field, index) => {
                                                 // Check if the current question has an error
                                                 const hasError =
                                                     formState.errors?.questions?.[index];
+                                                const isActive = currentQuestionIndex === index;
                                                 return (
                                                     <SortableItem
                                                         key={field.id}
@@ -467,73 +485,93 @@ export function QuestionPaperTemplate({
                                                         asChild
                                                     >
                                                         <div
-                                                            key={index}
-                                                            onClick={() => {
-                                                                setCurrentQuestionIndex(index);
-                                                                return;
-                                                            }}
-                                                            className={`rounded-xl border-4 bg-primary-50 p-6 ${
-                                                                currentQuestionIndex === index
-                                                                    ? 'border-primary-500 bg-none'
-                                                                    : 'bg-none'
-                                                            }`}
+                                                            onClick={() =>
+                                                                setCurrentQuestionIndex(index)
+                                                            }
+                                                            className={cn(
+                                                                'group cursor-pointer rounded-lg border bg-white p-2 transition-colors',
+                                                                isActive
+                                                                    ? 'border-primary-500 ring-1 ring-primary-500'
+                                                                    : 'border-neutral-200 hover:border-primary-200',
+                                                                hasError && !isActive
+                                                                    ? 'border-danger-300'
+                                                                    : ''
+                                                            )}
                                                         >
-                                                            <TooltipProvider>
-                                                                <Tooltip
-                                                                    open={hasError ? true : false}
-                                                                >
-                                                                    <TooltipTrigger>
-                                                                        <div className="flex flex-col">
-                                                                            <div className="flex items-center justify-start gap-4">
-                                                                                <h1 className="left-0 w-96 whitespace-nowrap text-4xl font-bold">
-                                                                                    {index + 1}
-                                                                                    &nbsp;
-                                                                                    {getPPTViewTitle(
-                                                                                        getValues(
-                                                                                            `questions.${index}.questionType`
-                                                                                        ) as QuestionType
-                                                                                    )}
-                                                                                </h1>
-                                                                                <SortableDragHandle
-                                                                                    variant="outline"
-                                                                                    size="icon"
-                                                                                    className="size-16"
-                                                                                >
-                                                                                    <DotsSixVertical className="!size-12" />
-                                                                                </SortableDragHandle>
-                                                                            </div>
-                                                                            <PPTComponentFactory
-                                                                                key={index}
-                                                                                type={
-                                                                                    getValues(
-                                                                                        `questions.${index}.questionType`
-                                                                                    ) as QuestionType
-                                                                                }
-                                                                                props={{
-                                                                                    form: form,
-                                                                                    currentQuestionIndex:
-                                                                                        index,
-                                                                                    setCurrentQuestionIndex:
-                                                                                        setCurrentQuestionIndex,
-                                                                                    className:
-                                                                                        'relative mt-4 rounded-xl border-4 border-primary-300 bg-white p-4',
-                                                                                }}
-                                                                            />
-                                                                        </div>
-                                                                    </TooltipTrigger>
-                                                                    {hasError && (
-                                                                        <TooltipContent
-                                                                            className="ml-3 border-2 border-danger-400 bg-primary-50"
-                                                                            side="right"
-                                                                        >
-                                                                            <p>
-                                                                                Question isn&apos;t
-                                                                                complete
-                                                                            </p>
-                                                                        </TooltipContent>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span
+                                                                    className={cn(
+                                                                        'flex size-5 shrink-0 items-center justify-center rounded-sm text-caption font-semibold',
+                                                                        isActive
+                                                                            ? 'bg-primary-500 text-white'
+                                                                            : 'bg-neutral-100 text-neutral-600'
                                                                     )}
-                                                                </Tooltip>
-                                                            </TooltipProvider>
+                                                                >
+                                                                    {index + 1}
+                                                                </span>
+                                                                <span className="min-w-0 flex-1 truncate text-caption text-neutral-500">
+                                                                    {getPPTViewTitle(
+                                                                        getValues(
+                                                                            `questions.${index}.questionType`
+                                                                        ) as QuestionType
+                                                                    )}
+                                                                </span>
+                                                                {hasError && (
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <span
+                                                                                    className="flex shrink-0 items-center"
+                                                                                    aria-label="Question isn't complete"
+                                                                                >
+                                                                                    <WarningCircle
+                                                                                        weight="fill"
+                                                                                        className="size-4 text-danger-500"
+                                                                                    />
+                                                                                </span>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent side="right">
+                                                                                <p>
+                                                                                    Question
+                                                                                    isn&apos;t
+                                                                                    complete
+                                                                                </p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                )}
+                                                                <SortableDragHandle
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="size-5 shrink-0 text-neutral-400 opacity-40 transition-opacity group-hover:opacity-100"
+                                                                >
+                                                                    <DotsSixVertical className="size-4" />
+                                                                </SortableDragHandle>
+                                                            </div>
+                                                            {/* Scaled-down live preview. Capped on the
+                                                                unzoomed wrapper so a long question
+                                                                can't stretch the rail. */}
+                                                            <div className="mt-1.5 max-h-32 overflow-hidden rounded-md">
+                                                                <div className="question-rail-zoom">
+                                                                    <PPTComponentFactory
+                                                                        key={index}
+                                                                        type={
+                                                                            getValues(
+                                                                                `questions.${index}.questionType`
+                                                                            ) as QuestionType
+                                                                        }
+                                                                        props={{
+                                                                            form: form,
+                                                                            currentQuestionIndex:
+                                                                                index,
+                                                                            setCurrentQuestionIndex:
+                                                                                setCurrentQuestionIndex,
+                                                                            className:
+                                                                                'relative rounded-xl border-4 border-neutral-200 bg-white p-4',
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </SortableItem>
                                                 );
@@ -542,24 +580,45 @@ export function QuestionPaperTemplate({
                                     </Sortable>
                                 </div>
                             </div>
-                            <Separator orientation="vertical" className="h-full" />
                             {questions.length === 0 ? (
-                                <div className="flex h-full w-full items-center justify-center">
-                                    <h1>No Question Exists.</h1>
+                                <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
+                                    <h2 className="text-h3-semibold text-neutral-700">
+                                        No questions yet
+                                    </h2>
+                                    <p className="max-w-sm text-body text-neutral-500">
+                                        Add your first question to start building this paper.
+                                    </p>
+                                    <MyButton
+                                        type="button"
+                                        buttonType="primary"
+                                        scale="medium"
+                                        layoutVariant="default"
+                                        className="gap-1"
+                                        onClick={() => setAddQuestionDialogBox(true)}
+                                    >
+                                        <Plus size={16} />
+                                        Add question
+                                    </MyButton>
                                 </div>
                             ) : (
-                                <div className="ml-6 flex h-full min-w-0 flex-1 flex-col gap-3 overflow-y-auto pr-6 pt-4">
-                                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span className="text-subtitle font-semibold text-neutral-600">
-                                                Subject / topic tags
-                                            </span>
+                                <div className="mx-auto flex h-full w-full min-w-0 max-w-5xl flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
+                                    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                                        <div className="flex items-end justify-between gap-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-subtitle font-semibold text-neutral-700">
+                                                    Subject / topic tags
+                                                </span>
+                                                <span className="text-caption text-neutral-500">
+                                                    Used to group questions in reports and question
+                                                    search.
+                                                </span>
+                                            </div>
                                             <MyButton
                                                 type="button"
                                                 buttonType="secondary"
                                                 scale="small"
                                                 layoutVariant="default"
-                                                className="h-8"
+                                                className="h-8 shrink-0"
                                                 onClick={applyCurrentTagsToAll}
                                             >
                                                 Apply to all questions

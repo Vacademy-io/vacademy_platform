@@ -20,6 +20,8 @@ export interface RegistrationFormField {
     created_at: string;
     updated_at: string;
     field_order: number;
+    /** Per-field settings as a JSON string (help text, default value, ...). */
+    config?: string | null;
 }
 
 interface PreBatchRegistration {
@@ -145,6 +147,14 @@ export interface ConvertedCustomField {
     is_mandatory: boolean;
     key: string;
     comma_separated_options: string;
+    /** Per-field settings as a JSON string (help text, default value, ...). */
+    config?: string;
+    /**
+     * Maps to RegistrationFieldDto.orderField. Optional on purpose: omitting it
+     * lets the server keep the stored field_order. Sending 0 for a legacy row
+     * with a NULL order would jump it to the top of the public form.
+     */
+    order_field?: number;
 }
 
 export interface CustomFieldStep3 {
@@ -158,6 +168,10 @@ export interface CustomFieldStep3 {
     description?: string;
     key: string;
     is_mandatory?: boolean;
+    /** Per-field settings as a JSON string (help text, default value, ...). */
+    config?: string;
+    /** Position in the registration form; kept in sync by updateFieldOrders on drag. */
+    order?: number;
 }
 
 // Assuming customFields is an object where keys are strings and values are the custom field details
@@ -170,6 +184,8 @@ export type CustomFields = {
     options?: { id: string; value: string }[];
     default_value?: string;
     description?: string;
+    /** Per-field settings as a JSON string (help text, default value, ...). */
+    config?: string;
     key?: string;
     is_mandatory?: boolean;
     order: number;

@@ -13,6 +13,7 @@ import {
     DotsSixVertical,
     DownloadSimple,
     Plus,
+    PencilSimple,
     TrashSimple,
 } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
@@ -27,6 +28,10 @@ import {
     transformBatchData,
 } from '../../-utils/helper';
 import { Switch } from '@/components/ui/switch';
+import {
+    FormFieldRow,
+    FormFieldRowHeader,
+} from '@/components/common/custom-fields/FormFieldRow';
 import { Checkbox } from '@/components/ui/checkbox';
 import SelectField from '@/components/design-system/select-field';
 import { timeLimit } from '@/constants/dummy-data';
@@ -53,7 +58,10 @@ import { Step3ParticipantsListIndiviudalStudentInterface } from '@/types/assessm
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
-import type { DropdownOption } from '@/components/common/custom-fields/AddCustomFieldDialog';
+import type {
+    CustomFieldConfig,
+    DropdownOption,
+} from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
 
@@ -83,6 +91,8 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const sectionsInfo = getAllSessions(batches_for_sessions || []);
 
     const [selectedSection, setSelectedSection] = useState(sectionsInfo ? sectionsInfo[0]?.id : '');
+
+    const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
 
     // Extract batch IDs from preBatchData
     const batchIds = new Set(
@@ -181,6 +191,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     const customFields = getValues('open_test.custom_fields');
     watch('open_test.custom_fields');
 
+    /** The row whose pencil was clicked — drives the prefilled edit dialog. */
+    const editingField = customFields?.find((field) => field.id === editingFieldId);
+
     const handleSubmitStep3Form = useMutation({
         mutationFn: ({
             oldFormData,
@@ -246,6 +259,36 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             field.id === id ? { ...field, isRequired: !field.isRequired } : field
         );
         setValue('open_test.custom_fields', updatedFields);
+    };
+
+    const patchField = (id: string, patch: Record<string, unknown>) => {
+        const updatedFields = customFields?.map((field) =>
+            field.id === id ? { ...field, ...patch } : field
+        );
+        setValue('open_test.custom_fields', updatedFields);
+    };
+
+    // Editing reuses the "Add Custom Field" dialog, prefilled. The id is kept so the
+    // save-time diff still reads this as an update rather than an add + remove.
+    const handleEditCustomField = (
+        id: string,
+        type: string,
+        name: string,
+        options?: DropdownOption[],
+        config?: CustomFieldConfig
+    ) => {
+        patchField(id, {
+            type,
+            name,
+            isRequired: config?.isRequired ?? true,
+            // Dropping the options on a switch to a non-choice type stops stale
+            // values from reappearing if the admin switches back.
+            options: options?.map((opt, index) => ({
+                id: String(index),
+                value: opt.value,
+            })),
+        });
+        setEditingFieldId(null);
     };
 
     const handleAddOpenFieldValues = (type: string, name: string, oldKey: boolean) => {
@@ -628,60 +671,35 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                 key: 'registration_form_fields',
                             }) === 'REQUIRED' && (
                                 <div className="flex w-full flex-col gap-4">
-                                    <h1>Registration Input Field</h1>
+                                    <div className="flex flex-col">
+                                        <h1>Registration Form Fields</h1>
+                                        <p className="text-caption text-neutral-500">
+                                            Click the pencil to rename a field or edit its
+                                            options
+                                        </p>
+                                    </div>
+                                    <FormFieldRowHeader />
                                     <div className="flex flex-col gap-4">
                                         {customFields?.map((fields, index) => {
+                                            const isEditingField = editingFieldId === fields.id;
                                             return (
-                                                <div
+                                                <FormFieldRow
                                                     key={index}
-                                                    className="flex items-center gap-4"
-                                                >
-                                                    <div className="flex w-3/4 items-center justify-between rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2">
-                                                        <h1 className="text-sm">
-                                                            {fields.name}
-                                                            {fields.oldKey && (
-                                                                <span className="text-subtitle text-danger-600">
-                                                                    *
-                                                                </span>
-                                                            )}
-                                                            {!fields.oldKey &&
-                                                                fields.isRequired && (
-                                                                    <span className="text-subtitle text-danger-600">
-                                                                        *
-                                                                    </span>
-                                                                )}
-                                                        </h1>
-                                                        <div className="flex items-center gap-6">
-                                                            {!fields.oldKey && (
-                                                                <MyButton
-                                                                    type="button"
-                                                                    scale="small"
-                                                                    buttonType="secondary"
-                                                                    className="min-w-6 !rounded-sm !p-0"
-                                                                    onClick={() =>
-                                                                        handleDeleteOpenField(
-                                                                            fields.id
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <TrashSimple className="!size-4 text-danger-500" />
-                                                                </MyButton>
-                                                            )}
-                                                            <DotsSixVertical size={20} />
-                                                        </div>
-                                                    </div>
-                                                    {!fields.oldKey && (
-                                                        <>
-                                                            <h1 className="text-sm">Required</h1>
-                                                            <Switch
-                                                                checked={fields.isRequired}
-                                                                onCheckedChange={() =>
-                                                                    toggleIsRequired(fields.id)
-                                                                }
-                                                            />
-                                                        </>
-                                                    )}
-                                                </div>
+                                                    position={index + 1}
+                                                    name={fields.name}
+                                                    type={fields.type}
+                                                    isRequired={fields.isRequired}
+                                                    locked={fields.oldKey}
+                                                    isEditing={isEditingField}
+                                                    onToggleRequired={() =>
+                                                        toggleIsRequired(fields.id)
+                                                    }
+                                                    onEdit={() => setEditingFieldId(fields.id)}
+                                                    onDelete={() =>
+                                                        handleDeleteOpenField(fields.id)
+                                                    }
+                                                    dragHandle={null}
+                                                />
                                             );
                                         })}
                                     </div>
@@ -772,6 +790,46 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                             }
                                         />
                                     </div>
+                                    {/* Editing reuses the add dialog, prefilled. Keyed by field id
+                                        so opening a different row re-runs the prefill. */}
+                                    {editingField && (
+                                        <SharedAddCustomFieldDialog
+                                            key={editingField.id}
+                                            mode="edit"
+                                            open
+                                            onOpenChange={(isOpen) => {
+                                                if (!isOpen) setEditingFieldId(null);
+                                            }}
+                                            initialField={{
+                                                type: editingField.type,
+                                                name: editingField.name,
+                                                options: (editingField.options ?? []).map(
+                                                    (o) => o.value
+                                                ),
+                                                isRequired: editingField.isRequired,
+                                            }}
+                                            onAddField={(type, name, _oldKey, options, config) =>
+                                                handleEditCustomField(
+                                                    editingField.id,
+                                                    type,
+                                                    name,
+                                                    options,
+                                                    config
+                                                )
+                                            }
+                                            // Its own name must stay available, or saving an
+                                            // unchanged label would be blocked as a duplicate.
+                                            existingFieldNames={
+                                                customFields
+                                                    ?.filter(
+                                                        (f) =>
+                                                            f.id !== editingField.id &&
+                                                            (f as any).status !== 'DELETED'
+                                                    )
+                                                    .map((f) => f.name) ?? []
+                                            }
+                                        />
+                                    )}
                                     <Dialog>
                                         <DialogTrigger className="flex justify-start">
                                             <MyButton

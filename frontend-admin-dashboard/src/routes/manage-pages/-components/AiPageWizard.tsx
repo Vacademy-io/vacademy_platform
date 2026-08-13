@@ -26,12 +26,18 @@ import { AiIntakeChat, IntakeResult } from './AiIntakeChat';
 import { renderComponentPreview } from './ComponentPreviews';
 import {
     generateAiPage, estimateAiPageCredits, generateAiImage, generateAiSite,
-    AiPageImage, GeneratePageResponse, GenerateSiteResponse,
+    AiPageImage, GeneratePageResponse, GenerateSiteResponse, MAX_INSPIRATION_IMAGES,
 } from '../-services/ai-page-service';
 import { Component, Page } from '../-types/editor-types';
 
+// MUST cover every archetype the composer knows (_ARCHETYPE_RULES in
+// page_builder.py). 'courses' was missing: the intake assistant returns it, but
+// with no chip for it the brief step renders with nothing selected and the
+// admin has to pick something else — silently swapping the archetype that
+// guarantees every offering gets its own block for one that does not.
 const PAGE_TYPES = [
     { key: 'homepage', label: 'Homepage' },
+    { key: 'courses', label: 'All courses' },
     { key: 'course-landing', label: 'Course landing' },
     { key: 'about', label: 'About us' },
     { key: 'admissions', label: 'Admissions' },
@@ -46,6 +52,24 @@ const DIRECTIONS = [
 ];
 
 type Step = 'chat' | 'brief' | 'assets' | 'confirm' | 'review';
+
+/** Dialog width per step — these steps hold very different things, and one width
+ *  made two of them cramped: the chat carries a conversation plus a row of
+ *  screenshot thumbnails, and review renders a preview of the whole generated
+ *  page.
+ *
+ *  These are w-* not max-w-*: DialogContent's base class pins a FIXED 400px
+ *  width (with a 90vw cap), so a max-width only raises a ceiling the dialog
+ *  never reaches — every dialog in the app is 400px wide no matter what max-w
+ *  it passes. tailwind-merge replaces the fixed width; the small-screen guard
+ *  is folded into each token's min(). */
+const STEP_WIDTH: Record<Step, string> = {
+    chat: 'w-dialog-xl',
+    brief: 'w-dialog-md',
+    assets: 'w-dialog-lg',
+    confirm: 'w-dialog-md',
+    review: 'w-dialog-xl',
+};
 
 export const AiPageWizard = ({
     open,
@@ -68,6 +92,13 @@ export const AiPageWizard = ({
     const [inspiration, setInspiration] = useState<string[]>([]);
     const [sourceUrl, setSourceUrl] = useState('');
     const [pendingInsp, setPendingInsp] = useState('');
+    // The brief step was reached from the assistant rather than typed by hand,
+    // so its fields are a proposal to review — chiefly the page type.
+    const [fromAssistant, setFromAssistant] = useState(false);
+    // Adding a page to a site that already has a look should match it. Default
+    // ON whenever a theme exists, because "a new page, same theme" is the common
+    // case and the alternative silently restyles every existing page.
+    const [keepTheme, setKeepTheme] = useState(true);
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     // Every generation lands as a variant tab; the admin flips between them
     // and accepts the one they like (regens never overwrite earlier drafts).
@@ -116,6 +147,13 @@ export const AiPageWizard = ({
             }));
     }, [instituteDetails]);
 
+    /** Only the look — never tracking ids, lead-capture or payment config. */
+    const siteTheme = useMemo(() => {
+        const gs = (config?.globalSettings ?? {}) as Record<string, any>;
+        if (!gs.theme && !gs.fonts) return undefined;
+        return { theme: gs.theme, fonts: gs.fonts, motion: gs.motion };
+    }, [config?.globalSettings]);
+
     const terminology = useMemo(
         () => ({
             course: getTerminology(ContentTerms.Course, SystemTerms.Course),
@@ -141,6 +179,7 @@ export const AiPageWizard = ({
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
                 inspiration_image_urls: inspiration,
+                global_settings: keepTheme ? siteTheme : undefined,
                 source_url: sourceUrl.trim() || undefined,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
@@ -207,11 +246,18 @@ export const AiPageWizard = ({
         handleClose(false);
     };
 
-    // Chat intake hands its gathered brief + assets to the classic pipeline
-    // and jumps straight to the confirm (credits) step.
+    // Chat intake hands its gathered brief + assets to the classic pipeline.
+    // It lands on the BRIEF step, not straight on confirm: page type is the
+    // single most consequential choice in the whole flow (it selects the page
+    // archetype, which governs structure), and jumping past it meant the
+    // assistant's guess was applied invisibly — a directory archetype picked
+    // for a marketing page produced dense spec tables and no way to tell why.
+    // The same jump also skipped the assets step, so logo/photos could only
+    // ever be attached inside the chat.
     const acceptIntake = (r: IntakeResult) => {
         setBrief(r.brief);
         setPageType(r.pageType);
+        setFromAssistant(true);
         setWholeSite(r.wholeSite);
         if (r.images.length) {
             setImages((prev) => {
@@ -220,9 +266,9 @@ export const AiPageWizard = ({
             });
         }
         if (r.inspiration.length) {
-            setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, 3));
+            setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, MAX_INSPIRATION_IMAGES));
         }
-        setStep('confirm');
+        setStep('brief');
     };
 
     const reset = () => {
@@ -233,6 +279,7 @@ export const AiPageWizard = ({
         setInspiration([]);
         setSourceUrl('');
         setPendingInsp('');
+        setFromAssistant(false);
         setDirectionIdx(-1);
         setVariants([]);
         setActiveVariant(0);
@@ -290,7 +337,9 @@ export const AiPageWizard = ({
             {/* overflow-x-hidden: DialogContent is a grid; a wide child (the
                 scaled preview's marquee) would otherwise expand the implicit
                 column and shove the footer buttons off-screen. */}
-            <DialogContent className={step === 'chat' ? 'max-w-4xl overflow-x-hidden' : 'max-w-xl overflow-x-hidden'}>
+            <DialogContent
+                className={`${STEP_WIDTH[step]} flex max-h-dialog-tall flex-col overflow-x-hidden`}
+            >
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />
@@ -298,6 +347,10 @@ export const AiPageWizard = ({
                     </DialogTitle>
                 </DialogHeader>
 
+                {/* Steps scroll INSIDE the dialog: the assets step can now hold six
+                    reference screenshots, and with no bound the footer was pushed off
+                    the bottom of the viewport with no way to reach Next. */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
                 {/* Kept mounted (hidden) off-step so the transcript survives
                     hopping to the form/assets steps and back. */}
                 <div className={step === 'chat' ? '' : 'hidden'}>
@@ -311,6 +364,15 @@ export const AiPageWizard = ({
 
                 {step === 'brief' && (
                     <div className="space-y-4">
+                        {fromAssistant && (
+                            /* text-primary-500, not 600: theme-provider only overrides --primary-50
+                               through --primary-500, so 600 keeps index.css's orange default and
+                               rendered orange-on-green for a green-branded institute. */
+                            <p className="rounded-lg border border-primary-200 bg-primary-50 p-2.5 text-caption text-primary-500">
+                                The assistant filled this in from your chat. Check the page type below — it
+                                decides how the page is structured — then edit anything before continuing.
+                            </p>
+                        )}
                         <div>
                             <Label className="text-xs">What kind of page?</Label>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -341,7 +403,28 @@ export const AiPageWizard = ({
                             <p className="mt-1 text-caption text-gray-400">
                                 Write in any language — the page copy will match it.
                             </p>
+                            {/* The images step sits behind a Next button that is disabled until a
+                                brief exists, so uploading looked impossible from this route. Say
+                                where the uploads are, and why the button is greyed out. */}
+                            <p className="mt-1 text-caption text-gray-400">
+                                {brief.trim()
+                                    ? 'Next step: upload your logo, photos, and screenshots of sites you want this to look like.'
+                                    : 'Add a brief to continue — your logo, photos and inspiration screenshots come next.'}
+                            </p>
                         </div>
+                        {siteTheme && (
+                            <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                                <div>
+                                    <Label className="text-xs">Match my current site theme</Label>
+                                    <p className="text-caption text-gray-400">
+                                        Keeps the colours and fonts your other pages already use. Turn off
+                                        only if you want this page to propose its own — that would restyle
+                                        the whole site when you accept it.
+                                    </p>
+                                </div>
+                                <Switch checked={keepTheme} onCheckedChange={setKeepTheme} />
+                            </div>
+                        )}
                         <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
                             <div>
                                 <Label className="text-xs">Use my real {terminology.course.toLowerCase()} data</Label>
@@ -489,7 +572,7 @@ export const AiPageWizard = ({
                                     ))}
                                 </div>
                             )}
-                            {inspiration.length < 3 && (
+                            {inspiration.length < MAX_INSPIRATION_IMAGES && (
                                 <div className="space-y-2">
                                     <ImageUploadField
                                         label="Add a screenshot"
@@ -636,9 +719,26 @@ export const AiPageWizard = ({
                             </div>
                         </div>
                         {result.warnings.length > 0 && (
-                            <p className="text-caption text-warning-600">
-                                {result.warnings.length} item(s) were auto-cleaned during validation.
-                            </p>
+                            /* Warnings now carry the self-check's findings ("this
+                               section is empty", "nothing to click"), not just
+                               sanitiser cleanups — a bare count told the admin
+                               nothing they could act on. */
+                            <details className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+                                <summary className="cursor-pointer text-caption font-medium text-warning-700">
+                                    {result.warnings.length} thing{result.warnings.length === 1 ? '' : 's'} to
+                                    check before you publish
+                                </summary>
+                                <ul className="mt-2 list-disc space-y-1 pl-4 text-caption text-warning-700">
+                                    {result.warnings.slice(0, 8).map((w, i) => (
+                                        <li key={i}>{w}</li>
+                                    ))}
+                                </ul>
+                                {result.warnings.length > 8 && (
+                                    <p className="mt-1 pl-4 text-caption text-warning-600">
+                                        +{result.warnings.length - 8} more
+                                    </p>
+                                )}
+                            </details>
                         )}
                         {result.global_settings && (
                             <div className="flex items-center justify-between rounded-lg border border-primary-100 bg-primary-50 p-3">
@@ -658,6 +758,8 @@ export const AiPageWizard = ({
                         </p>
                     </div>
                 )}
+
+                </div>
 
                 <DialogFooter className="gap-2">
                     {step === 'chat' && (

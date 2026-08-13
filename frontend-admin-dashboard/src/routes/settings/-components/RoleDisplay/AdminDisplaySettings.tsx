@@ -29,6 +29,7 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
+import { DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '@/constants/display-settings/course-details-tabs';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
@@ -1176,6 +1177,7 @@ export default function AdminDisplaySettings() {
                             'ACTIVITY',
                             'PULSE',
                             'REPORTS',
+                            'CERTIFICATES',
                             'DOWNLOADS',
                             'SETTINGS',
                         ];
@@ -1190,11 +1192,12 @@ export default function AdminDisplaySettings() {
                             ACTIVITY: 8,
                             PULSE: 9,
                             REPORTS: 10,
-                            DOWNLOADS: 11,
-                            SETTINGS: 12,
+                            CERTIFICATES: 11,
+                            DOWNLOADS: 12,
+                            SETTINGS: 13,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>([]);
+                        const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
                         const sorted = detailsIds
                             .map((id) => ({
                                 ...(settings.courseDetails?.tabs.find((t) => t.id === id) || {

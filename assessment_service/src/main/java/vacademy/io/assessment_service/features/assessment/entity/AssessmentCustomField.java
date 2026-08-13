@@ -36,6 +36,14 @@ public class AssessmentCustomField {
     @Column(name = "comma_separated_options", nullable = true)
     private String commaSeparatedOptions;
 
+    /**
+     * Per-field settings as JSON — help text, default value, checkbox heading/consent body,
+     * file constraints. One blob rather than a column per setting, matching
+     * custom_fields.config in admin_core_service. Null means "no extra settings".
+     */
+    @Column(name = "config", nullable = true)
+    private String config;
+
     @Column(name = "status", nullable = true)
     private String status;
 

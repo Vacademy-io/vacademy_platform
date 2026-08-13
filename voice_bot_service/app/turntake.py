@@ -61,7 +61,11 @@ _BACKCHANNEL_WORDS = frozenset({
     "ok", "okay", "okey", "kk", "yes", "yeah", "yah", "ya", "yup", "yep",
     # Audio-checks: "are you there / can you hear me". A resumed sentence
     # answers these; a cancelled-and-restarted one does not.
-    "hello", "helo", "hallo", "hlo", "hey", "हेलो", "हैलो", "हलो",
+    # "hi" was missing while hello/helo/hallo/hlo/hey were all here — an
+    # oversight that cost call 2fc70065: the operator announcement's first
+    # fragment was bare "Hi.", which fell through to INTERRUPT and drove a whole
+    # LLM reply. It is the commonest greeting in English there is.
+    "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
     "right", "correct", "sure", "fine", "good", "great", "cool", "alright",
     "go", "on", "ahead", "continue", "carry",
 })
@@ -154,6 +158,10 @@ _CARRIER_PHRASES = (
     # our opening before the second fragment could arm anything.
     "your call", "been forwarded", "forwarded to", "record your", "leave a",
     "the person you", "trying to reach",
+    # "record your name and reason for calling" split as "If you record your" +
+    # "name and reason." on call 2fc70065 — the tail is three words, so the 1-2
+    # word scrap filter cannot reach it, and no human answering a phone says it.
+    "name and reason", "your name and", "and reason",
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
@@ -185,7 +193,7 @@ def is_carrier_announcement(text: str) -> bool:
 # not either — see TranscriptCollector, which switches to a short "can you hear
 # me?" and then stops talking.
 _AUDIO_CHECK_WORDS = frozenset({
-    "hello", "helo", "hallo", "hlo", "hey", "हेलो", "हैलो", "हलो",
+    "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
 })
 
 

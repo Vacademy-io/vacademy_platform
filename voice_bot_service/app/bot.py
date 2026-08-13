@@ -151,7 +151,10 @@ class TranscriptCollector(FrameProcessor):
         self._in_machine_window = in_machine_window or (lambda: False)
         self._reply_in_flight = reply_in_flight or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
-        # Have we already identified this line as a machine greeting?
+        # Have we already identified this line as a machine greeting? Kept for the
+        # log/diagnostic trail only — the scrap filter below deliberately no
+        # longer waits for it, because the fragment that does the damage is the
+        # FIRST one and it is never the recognisable one.
         self._carrier_seen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
@@ -246,13 +249,28 @@ class TranscriptCollector(FrameProcessor):
             # announcements around it were all filtered correctly.
             #
             # Deliberately narrow: only BEFORE we have spoken (after that the
-            # caller is answering us and every word matters), only 1-2 word
-            # scraps, and never an audio-check — "hello" in this window is the
-            # human picking up mid-greeting, which is the one thing here we
-            # must not swallow.
-            if (self._carrier_seen and self._in_machine_window()
+            # caller is answering us and every word matters) and only 1-2 word
+            # scraps.
+            #
+            # NO LONGER requires _carrier_seen, and no longer spares audio-checks
+            # — call 2fc70065 (2026-08-13) proved both conditions were the hole.
+            # The operator announcement arrives in FRAGMENTS and its first one was
+            # bare "Hi.", which matches no carrier phrase, so it counted as the
+            # callee and drove a full LLM reply; the recognisable fragment ("If you
+            # record your") landed 0.6s LATER and armed the latch after the damage.
+            # The caller's own "Hello." then absorbed into a second generation, and
+            # the caller heard Shreya introduce herself TWICE in four seconds
+            # ("अच्छा अभी तो आपने बताया, दो बार क्यों बता…" — they said so on the line).
+            #
+            # The asymmetry is what makes swallowing these safe: before we have
+            # spoken, OUR OPENING is the right answer to any greeting, and it is
+            # already queued (suppresses_opening ignores 1-2 word scraps, so the
+            # greet still fires). If it was the operator we have dodged a
+            # duplicate introduction; if it was the callee they get greeted
+            # properly a moment later. Neither branch needs a generation.
+            if (self._in_machine_window()
                     and not self._bot_spoke_once()
-                    and len(text.split()) <= 2 and not is_audio_check(text)):
+                    and len(text.split()) <= 2):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 if self._diag is not None:
                     self._diag.bump("carrier_announcements")
@@ -1839,8 +1857,20 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # to on the first turn, when the model has no previous turns of its own.
     opening_line = _clean_opening(_fill_placeholders(
         (agent.get("openingLine") or "").strip(), context))
+    # Does the opening actually INTRODUCE anyone, or is it just a greeting? This
+    # decides the difference between two opposite instructions, and getting it
+    # wrong is what call 2fc70065 sounded like. The opening line had been changed
+    # to bare "Hello", so the rule below told the model it had already named
+    # itself and its company and must "NEVER introduce yourself again" — when the
+    # caller had heard nothing but "Hello". The model introduced itself anyway
+    # (correctly), but with no stable notion of the introduction being DONE it did
+    # so on every generation, and quoting a one-word opening back at it verbatim
+    # invited it to replay "Hello" too. The caller heard the whole introduction
+    # twice and said so: "अभी तो आपने बताया, दो बार क्यों बता…".
+    _intro_words = [w for w in (name, context.get("instituteName") or "") if w]
+    opening_introduces = any(w.casefold() in opening_line.casefold() for w in _intro_words)
     already_said_rule = ""
-    if opening_line:
+    if opening_line and opening_introduces:
         already_said_rule = (
             "ALREADY SPOKEN — do not repeat: this call has ALREADY opened with exactly "
             f"\"{opening_line}\" It has been said. NEVER introduce yourself, your name or "
@@ -1849,6 +1879,18 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "checking the line is alive, so simply continue). Resume from the point in your "
             "instructions that comes AFTER the introduction. Keep speaking the SAME LANGUAGE "
             "as that opening unless the caller clearly asks for another one."
+        )
+    elif opening_line:
+        already_said_rule = (
+            f"ALREADY SPOKEN: this call has opened with \"{opening_line}\" — a GREETING ONLY. "
+            "The caller does NOT yet know who you are. So introduce yourself and your company "
+            "EXACTLY ONCE, in your very first reply, and then NEVER again: after that first "
+            "reply, treat the introduction as finished for the whole call. Do not greet a "
+            "second time, do not say your name or your company a second time, and never "
+            "repeat that opening word back. A bare 'hello' from the caller mid-call means "
+            "they are checking the line is alive — carry on from where you were, do not "
+            "re-introduce. Keep speaking the SAME LANGUAGE as that opening unless the caller "
+            "clearly asks for another one."
         )
 
     # An agent whose author wrote a real prompt (opening choreography, identity rules,

@@ -1691,15 +1691,59 @@ async def test_machine_greeting_scraps_do_not_suppress_our_opening():
 
 
 @pytest.mark.asyncio
-async def test_a_human_picking_up_mid_greeting_is_never_swallowed():
-    """The one thing this filter must not eat."""
+async def test_a_human_picking_up_mid_greeting_is_still_answered():
+    """REVERSED 2026-08-13 (call 2fc70065), deliberately.
+
+    This used to assert that a pre-speech "Hello." REACHED THE MODEL. That is a
+    mechanism, and the mechanism was the bug: the caller's greeting drove a full
+    LLM generation *while the scripted opening was also playing*, so the caller
+    heard Shreya introduce herself twice in four seconds and said so on the line
+    ("अभी तो आपने बताया, दो बार क्यों बता…"). The operator's own fragmented
+    announcement did the same thing one beat earlier via bare "Hi.".
+
+    The OUTCOME the original test cared about — a human who picks up is never
+    ignored — is preserved and is what is asserted now: the greeting does not
+    reach the model, and it also does not suppress our opening, so the opening is
+    what answers them. One reply instead of two.
+    """
     rec = _Rec()
     tc = _replay_collector(rec)
     tc._bot_spoke_once = lambda: False
     await _feed(tc, "Your call has been forwarded to voicemail.")
     rec.frames.clear()
     await _feed(tc, "Hello.")
-    assert rec.frames, "the human saying hello was dropped as machine noise"
+    from app.turntake import suppresses_opening
+    assert rec.frames == [], "a bare greeting must not drive its own generation"
+    # ...and the thing that actually answers them still fires.
+    assert not suppresses_opening("Hello."), "our opening must still play"
+    assert tc._outcome.transcript[-1]["text"] == "Hello.", "still on the record"
+
+
+@pytest.mark.asyncio
+async def test_the_operator_fragment_that_caused_the_double_intro():
+    """Call 2fc70065: the announcement split as "Hi." + "If you record your" +
+    "name and reason." The FIRST fragment matches no carrier phrase, so it
+    counted as the callee and drove a whole reply — and the latch that would have
+    caught it only arms on the SECOND fragment, 0.6s too late."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    for frag in ("Hi.", "If you record your", "name and reason."):
+        await _feed(tc, frag)
+    assert rec.frames == [], f"an operator fragment reached the model: {rec.frames}"
+
+
+@pytest.mark.asyncio
+async def test_a_caller_who_really_takes_over_before_we_speak_still_reaches_the_model():
+    """The drop is bounded to 1-2 word scraps for exactly this reason: someone who
+    answers with a real question must get a real answer, not a scripted pitch."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    from app.turntake import suppresses_opening
+    await _feed(tc, "aap kaun bol rahe hain bhai")
+    assert rec.frames, "a substantive first turn was swallowed"
+    assert suppresses_opening("aap kaun bol rahe hain bhai")
 
 
 @pytest.mark.asyncio

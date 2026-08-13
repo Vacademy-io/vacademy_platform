@@ -94,6 +94,7 @@ const testInputFieldSchema = z.object({
 export const inviteLinkSchema = z.object({
     name: z.string(),
     includeInstituteLogo: z.boolean().default(false),
+    blendHeaderWithBackground: z.boolean().default(false),
     includePaymentPlans: z.boolean().default(false),
     requireApproval: z.boolean().default(false),
     messageTemplate: z.enum(['standard', 'review', 'custom']).optional(),

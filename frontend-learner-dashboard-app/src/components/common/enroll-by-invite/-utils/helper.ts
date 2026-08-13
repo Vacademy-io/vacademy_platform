@@ -30,6 +30,7 @@ export interface CourseDetailsJsonDataForInviteLink {
   tags: string[];
   showRelatedCourses: boolean;
   includeInstituteLogo: boolean;
+  blendHeaderWithBackground: boolean;
   includePaymentPlans: boolean;
   instituteLogoFileId: string;
   restrictToSameBatch: boolean;
@@ -184,6 +185,7 @@ export const transformApiDataToCourseDataForInvite = async (
       customHtml: apiData.customHtml,
       description: apiData.description,
       includeInstituteLogo: apiData.includeInstituteLogo,
+      blendHeaderWithBackground: apiData.blendHeaderWithBackground,
       includePaymentPlans: apiData.includePaymentPlans,
       learningOutcome: apiData.learningOutcome,
       restrictToSameBatch: apiData.restrictToSameBatch,

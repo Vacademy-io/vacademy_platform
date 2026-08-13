@@ -177,6 +177,11 @@ class CallDiagnostics:
     # land in its context because aggregators.assistant() sits downstream of the
     # gate that emits them.
     content_free_turns: int = 0
+    # Sentences un-recorded from the no-repeat memory because they were emitted
+    # but never PLAYED before an interruption (call 4b1a44b9: a cancelled
+    # never-heard question was then blocked as "already-said" on its real
+    # delivery). A few per call is the fix working; not a fault.
+    unsaid_reverted: int = 0
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -683,6 +688,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "handbacks": d.handbacks,
                 "repeatEscalations": d.repeat_escalations,
                 "contentFreeTurns": d.content_free_turns,
+                "unsaidReverted": d.unsaid_reverted,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

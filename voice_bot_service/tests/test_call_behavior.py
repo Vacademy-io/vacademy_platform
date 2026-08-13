@@ -2201,3 +2201,88 @@ async def test_a_normal_call_never_holds_or_hands_back():
               "कोई subject जिसमें दिक्कत आती है? "):
         await _reply(g, q)
     assert d.handbacks == 0 and d.content_free_turns == 0 and d.repeats_suppressed == 0
+
+
+# ── call 4b1a44b9 (2026-08-13): a never-played reply poisoned no-repeat ──────
+# Smart Turn fired on the caller's half-answer "Raman के", the generation it
+# triggered streamed the diagnostic question into _spoken, and the caller's
+# continuing speech ("eighty three percent बने थे") cancelled it before ANY
+# audio played. The real reply's same question was then dropped as
+# "already-said": the caller heard "बहुत अच्छे!", then 6.6s of silence, prompted
+# with "हम्म", got "जी, बोलिए।", and had to complain before the suppression cap
+# released the question. "Already said" must mean "already HEARD".
+def _gate_with_playout(caller="अच्छा।"):
+    played = {"text": ""}
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller,
+                       played_text=lambda: played["text"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g, rec, played
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_never_played_reply_does_not_poison_no_repeat():
+    from pipecat.frames.frames import InterruptionFrame
+    g, rec, played = _gate_with_playout()
+    Q = "Raman के साथ भी ऐसा है — कुछ chapters में बहुत अच्छा करता है? "
+    # Generation #1 streams the question; the caller never hears it.
+    await _reply(g, Q)
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    # Generation #2 — the real reply — must deliver it.
+    rec.text.clear()
+    await _reply(g, "बहुत अच्छे! ", Q)
+    said = " ".join(rec.text)
+    assert "कुछ chapters" in said, f"the never-played question was blocked: {said!r}"
+
+
+@pytest.mark.asyncio
+async def test_a_played_then_interrupted_reply_stays_recorded():
+    """The counter-case: audio that DID reach the caller is genuinely said —
+    an interruption after playout must not license a verbatim repeat."""
+    from pipecat.frames.frames import InterruptionFrame
+    g, rec, played = _gate_with_playout()
+    Q = "Raman के साथ भी ऐसा है — कुछ chapters में बहुत अच्छा करता है? "
+    await _reply(g, Q)
+    played["text"] = Q                      # it played, caller heard it
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    rec.text.clear()
+    await _reply(g, Q)
+    assert " ".join(rec.text) != Q.strip(), "a heard sentence was repeated verbatim"
+
+
+@pytest.mark.asyncio
+async def test_without_a_playout_source_interruption_keeps_everything():
+    """No played_text wired (older callers, tests) = unknown — keep the old
+    conservative behaviour rather than guessing."""
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    # Empty caller text so the echo-trim stays out of the way — this test is
+    # about the interruption branch only.
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "Raman के साथ भी ऐसा है — कुछ chapters में बहुत अच्छा करता है? "
+    await _reply(g, Q)
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    rec.text.clear()
+    await _reply(g, Q)
+    assert "कुछ chapters" not in " ".join(rec.text)
+
+
+@pytest.mark.asyncio
+async def test_partial_playout_unrecords_only_the_unheard_tail():
+    """Two sentences emitted, only the first played before the cut: the first
+    stays banned, the second must be sayable again."""
+    from pipecat.frames.frames import InterruptionFrame
+    g, rec, played = _gate_with_playout()
+    S1 = "Raman ke marks bahut acche hain aur foundation strong hai. "
+    S2 = "Kya main aapko MGP program ke baare mein bata doon? "
+    await _reply(g, S1, S2)
+    played["text"] = S1                     # cut after the first sentence
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    rec.text.clear()
+    await _reply(g, S1, S2)
+    said = " ".join(rec.text)
+    assert "MGP program" in said, "the unheard sentence stayed banned"
+    assert "foundation strong" not in said, "the heard sentence was repeated"

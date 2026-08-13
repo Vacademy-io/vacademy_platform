@@ -633,16 +633,25 @@ class NoRepeatGate(FrameProcessor):
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
-                 no_echo=None, handbacks=None):
+                 no_echo=None, handbacks=None, played_text=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
         self._no_echo = no_echo or (lambda: True)
         self._handbacks = tuple(handbacks) if handbacks else self._HANDBACK
+        # What the caller ACTUALLY heard (recent assistant entries of the played
+        # transcript). None = unknown, and the interruption branch then keeps
+        # everything, i.e. the old behaviour.
+        self._played_text = played_text
         self._spoken: list = []
         self._asked: set = set()      # question TOPICS already put to the caller
         self._suppressions: dict = {}  # key -> drops since we last let it through
+        # Sentences emitted since the last response START — i.e. the ones whose
+        # audio may not have reached the caller yet. On an interruption, any of
+        # these that never PLAYED are un-recorded, because "already said" must
+        # mean "already heard". See the InterruptionFrame branch.
+        self._pending: list = []
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
@@ -785,10 +794,12 @@ class NoRepeatGate(FrameProcessor):
         return " ".join(w for w in words if w) in cls._CONTENT_FREE
 
     async def _emit(self, text: str, direction):
-        self._spoken.append(normalize_spoken(text))
+        norm = normalize_spoken(text)
+        self._spoken.append(norm)
         topic = question_topic(text)
         if topic:
             self._asked.add(topic)
+        self._pending.append((norm, topic))
         self._emitted += 1
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
@@ -801,12 +812,44 @@ class NoRepeatGate(FrameProcessor):
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._said_real = False
             self._cf_held = ""
+            # The previous response ran to a natural start-of-next — its
+            # sentences played (or are playing out normally) and stay recorded.
+            self._pending = []
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, InterruptionFrame):
             # A cancelled reply's unsaid tail was never heard, so it is not
             # "already said" — but what DID play is still in _spoken.
+            #
+            # And that must include sentences that were EMITTED but never PLAYED.
+            # Call 4b1a44b9 (2026-08-13): Smart Turn fired on the fragment
+            # "Raman के", the generation it triggered streamed the diagnostic
+            # question into _spoken, and the caller's continuing speech cancelled
+            # it before one word of audio played. The REAL reply's same question
+            # was then dropped as "already-said", the caller got "बहुत अच्छे!"
+            # and 6.6s of silence, prompted with "हम्म", got a handback, and had
+            # to complain before the suppression cap finally released the
+            # question. "Already said" has to mean "already HEARD" — so anything
+            # pending that is absent from the played transcript is un-recorded.
+            if self._pending and self._played_text is not None:
+                try:
+                    played = normalize_spoken(self._played_text() or "")
+                    for norm, topic in self._pending:
+                        if norm and norm not in played:
+                            for i in range(len(self._spoken) - 1, -1, -1):
+                                if self._spoken[i] == norm:
+                                    del self._spoken[i]
+                                    break
+                            if topic:
+                                self._asked.discard(topic)
+                            if self._diag is not None:
+                                self._diag.bump("unsaid_reverted")
+                            logger.info("no-repeat: un-recording never-played %r",
+                                        norm[:56])
+                except Exception:
+                    logger.exception("no-repeat: unplayed-revert failed — keeping all")
+            self._pending = []
             self._buf, self._held_tail, self._cf_held = "", "", ""
             await self.push_frame(frame, direction)
             return
@@ -2363,6 +2406,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
+        # PlayedTranscriptRecorder's record of what the caller actually heard —
+        # the interruption branch uses it to un-record never-played sentences.
+        played_text=lambda: " ".join(
+            t.get("text") or "" for t in outcome.transcript[-6:]
+            if t.get("role") == "assistant"),
         diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,

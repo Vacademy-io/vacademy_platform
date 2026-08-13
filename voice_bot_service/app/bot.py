@@ -633,23 +633,38 @@ class NoRepeatGate(FrameProcessor):
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
-                 no_echo=None, handbacks=None):
+                 no_echo=None, handbacks=None, played_text=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
         self._no_echo = no_echo or (lambda: True)
         self._handbacks = tuple(handbacks) if handbacks else self._HANDBACK
+        # What the caller ACTUALLY heard (recent assistant entries of the played
+        # transcript). None = unknown, and the interruption branch then keeps
+        # everything, i.e. the old behaviour.
+        self._played_text = played_text
         self._spoken: list = []
         self._asked: set = set()      # question TOPICS already put to the caller
         self._suppressions: dict = {}  # key -> drops since we last let it through
+        # Sentences emitted since the last response START — i.e. the ones whose
+        # audio may not have reached the caller yet. On an interruption, any of
+        # these that never PLAYED are un-recorded, because "already said" must
+        # mean "already heard". See the InterruptionFrame branch.
+        self._pending: list = []
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
         self._handback = 0
-        # Handbacks since the last reply that actually said something. >0 means
-        # the caller's last turn was answered with "you talk" and nothing else.
+        # Content-free turns since the last reply that actually said something.
+        # >0 means the caller's last turn was answered with "you talk" and
+        # nothing else — whether that came from us or from the model.
         self._consecutive_handbacks = 0
+        self._said_real = False
+        # A content-free opener we are holding rather than speaking, and the last
+        # sentence the gate dropped (kept ACROSS turns, unlike _held_tail).
+        self._cf_held = ""
+        self._last_suppressed = ""
 
     def _trim_echo(self, sentence: str) -> str:
         """Strip a reply's opening clause when it only parrots the caller's answer.
@@ -746,16 +761,48 @@ class NoRepeatGate(FrameProcessor):
     # is "never leave the caller with nothing". A repeated question is a small
     # cost; a bot that can only say "you talk" cannot be answered at all, and the
     # conversation has no way back. After one handback the held sentence goes out.
-    _HANDBACK = ("Ji, boliye.", "Haan ji?", "Aap batayiye.", "Ji?")
+    # DEVANAGARI, not romanized. These go straight to a hi-IN voice without ever
+    # passing the prompt's SCRIPT rule, and Google TTS reads Latin-spelt Hindi
+    # letter-by-letter — the founder heard "aa jaayega" come out as "A A जाएगा"
+    # on call f9deaf6c. Sarvam bulbul handles either script, Google does not.
+    _HANDBACK = ("जी, बोलिए।", "हाँ जी?", "आप बताइए।", "जी?")
     _HANDBACK_EN = ("Yes, go ahead.", "Sorry, you were saying?", "Please go on.", "Yes?")
 
+    # A reply that says nothing. The gate's own handbacks land in the model's
+    # context (aggregators.assistant() is downstream of this processor), so the
+    # model LEARNS them and starts producing them itself — on call f9deaf6c it
+    # answered a caller "Hello." with its own "Ji, boliye." and no suppression had
+    # even fired. To the caller that is identical to a handback, so it counts as
+    # one: two content-free turns in a row and we force real content out.
+    _CONTENT_FREE = frozenset({
+        "जी", "जी बोलिए", "हाँ जी", "हां जी", "आप बताइए", "बोलिए", "बताइए", "हाँ",
+        "ji", "ji boliye", "haan ji", "aap batayiye", "aap bataiye", "boliye",
+        "bataiye", "haan", "yes", "yes go ahead", "please go on",
+        "sorry you were saying",
+    })
+
+    # Strip punctuation only. NOT isalnum() — Devanagari vowel signs are not
+    # alphanumeric, so an isalnum filter turns "जी, बोलिए।" into "ज बलए" and the
+    # match silently never fires. Same trap as diagnostics._norm_answer.
+    _CF_STRIP = "।॥.,!?…\"'`~()[]{}:;-–—"
+
+    @classmethod
+    def _is_content_free(cls, text: str) -> bool:
+        """Would the caller get NOTHING out of this reply? ("जी, बोलिए।")"""
+        words = [w.strip(cls._CF_STRIP)
+                 for w in (text or "").casefold().replace("।", " ").split()]
+        return " ".join(w for w in words if w) in cls._CONTENT_FREE
+
     async def _emit(self, text: str, direction):
-        self._spoken.append(normalize_spoken(text))
+        norm = normalize_spoken(text)
+        self._spoken.append(norm)
         topic = question_topic(text)
         if topic:
             self._asked.add(topic)
+        self._pending.append((norm, topic))
         self._emitted += 1
-        self._consecutive_handbacks = 0     # the bot said something real
+        if not self._is_content_free(text):
+            self._said_real = True          # the bot said something answerable
         await self.push_frame(LLMTextFrame(text), direction)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -763,13 +810,47 @@ class NoRepeatGate(FrameProcessor):
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buf, self._emitted, self._held_tail = "", 0, ""
+            self._said_real = False
+            self._cf_held = ""
+            # The previous response ran to a natural start-of-next — its
+            # sentences played (or are playing out normally) and stay recorded.
+            self._pending = []
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, InterruptionFrame):
             # A cancelled reply's unsaid tail was never heard, so it is not
             # "already said" — but what DID play is still in _spoken.
-            self._buf, self._held_tail = "", ""
+            #
+            # And that must include sentences that were EMITTED but never PLAYED.
+            # Call 4b1a44b9 (2026-08-13): Smart Turn fired on the fragment
+            # "Raman के", the generation it triggered streamed the diagnostic
+            # question into _spoken, and the caller's continuing speech cancelled
+            # it before one word of audio played. The REAL reply's same question
+            # was then dropped as "already-said", the caller got "बहुत अच्छे!"
+            # and 6.6s of silence, prompted with "हम्म", got a handback, and had
+            # to complain before the suppression cap finally released the
+            # question. "Already said" has to mean "already HEARD" — so anything
+            # pending that is absent from the played transcript is un-recorded.
+            if self._pending and self._played_text is not None:
+                try:
+                    played = normalize_spoken(self._played_text() or "")
+                    for norm, topic in self._pending:
+                        if norm and norm not in played:
+                            for i in range(len(self._spoken) - 1, -1, -1):
+                                if self._spoken[i] == norm:
+                                    del self._spoken[i]
+                                    break
+                            if topic:
+                                self._asked.discard(topic)
+                            if self._diag is not None:
+                                self._diag.bump("unsaid_reverted")
+                            logger.info("no-repeat: un-recording never-played %r",
+                                        norm[:56])
+                except Exception:
+                    logger.exception("no-repeat: unplayed-revert failed — keeping all")
+            self._pending = []
+            self._buf, self._held_tail, self._cf_held = "", "", ""
             await self.push_frame(frame, direction)
             return
 
@@ -785,10 +866,24 @@ class NoRepeatGate(FrameProcessor):
                     continue
                 if self._emitted == 0:
                     sentence = self._trim_echo(sentence)
+                # We already gave the caller one "you talk" turn and the model is
+                # opening with another. Hold it: if real content follows it was
+                # only a filler and is better dropped anyway (fast_open_rule); if
+                # nothing follows, the End branch says something real instead.
+                # Only while _consecutive_handbacks is up, so the normal path and
+                # its latency are untouched — and these sentences are three words,
+                # so holding one costs nothing measurable.
+                if (self._emitted == 0 and not self._cf_held
+                        and self._consecutive_handbacks >= 1
+                        and self._is_content_free(sentence)):
+                    self._cf_held = sentence
+                    logger.info("no-repeat: holding a second content-free opener %r",
+                                sentence.strip()[:32])
+                    continue
                 if self._keep(sentence):
                     await self._emit(sentence, direction)
                 else:
-                    self._held_tail = sentence
+                    self._held_tail = self._last_suppressed = sentence
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", sentence.strip()[:56])
@@ -803,7 +898,7 @@ class NoRepeatGate(FrameProcessor):
                 if self._keep(tail):
                     await self._emit(tail, direction)
                 else:
-                    self._held_tail = tail
+                    self._held_tail = self._last_suppressed = tail
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
@@ -826,12 +921,40 @@ class NoRepeatGate(FrameProcessor):
                     # back in a few words so the line is not dead either.
                     line = self._handbacks[self._handback % len(self._handbacks)]
                     self._handback += 1
-                    self._consecutive_handbacks += 1
+                    # NOT counted here — the content-free check below owns the
+                    # counter, so a handback and a model-written "Ji, boliye."
+                    # increment it exactly once each.
                     if self._diag is not None:
                         self._diag.bump("handbacks")
                     logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
                     self._emitted += 1
                     await self.push_frame(LLMTextFrame(line), direction)
+            if self._emitted == 0 and self._cf_held:
+                # The model answered "you talk" for the second turn running. Say
+                # the thing it has been unable to get out instead; only if there
+                # is nothing at all do we let the filler through, because a silent
+                # turn is worse than a weak one.
+                real = self._last_suppressed or ""
+                if real:
+                    logger.warning("no-repeat: model repeated a content-free reply — "
+                                   "speaking held content instead %r", real.strip()[:56])
+                    if self._diag is not None:
+                        self._diag.bump("repeat_escalations")
+                    await self._emit(real, direction)
+                else:
+                    self._emitted += 1
+                    await self.push_frame(LLMTextFrame(self._cf_held), direction)
+            # Did this turn give the caller anything to answer? A reply the MODEL
+            # wrote that is only "Ji, boliye." counts the same as our own handback
+            # — see _CONTENT_FREE. Two in a row and the next one is forced out.
+            if self._said_real:
+                self._consecutive_handbacks = 0
+            elif self._emitted:
+                self._consecutive_handbacks += 1
+                if self._diag is not None:
+                    self._diag.bump("content_free_turns")
+                logger.info("no-repeat: content-free turn (%d in a row)",
+                            self._consecutive_handbacks)
             await self.push_frame(frame, direction)
             return
 
@@ -1471,6 +1594,21 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
         return ""
 
     return _PLACEHOLDER_RE.sub(repl, text)
+
+
+def _opening_is_substantive(opening: str, min_words: int = 4) -> bool:
+    """Does the scripted opening actually CARRY the call, or is it just a greeting?
+
+    "Hello" / "नमस्ते" answers nothing and asks nothing: the caller hears it and
+    waits, and so do we. Call 5d81ace1 sat silent for 2.1s after saying "Hello"
+    and only moved when the caller spoke a SECOND time — 5.9s to the first real
+    sentence. A full opening ("Hello, main Shreya baat kar rahi hoon Shiksha
+    Nation se…") needs no such help.
+
+    Same 4-word threshold as turntake.suppresses_opening, and for the same
+    reason: below it, a line is a greeting rather than a turn.
+    """
+    return len((opening or "").split()) >= min_words
 
 
 def _clean_opening(text: str) -> str:
@@ -2268,6 +2406,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
+        # PlayedTranscriptRecorder's record of what the caller actually heard —
+        # the interruption branch uses it to un-record never-played sentences.
+        played_text=lambda: " ".join(
+            t.get("text") or "" for t in outcome.transcript[-6:]
+            if t.get("role") == "assistant"),
         diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
@@ -2365,12 +2508,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
-        while (time.time() - connect_t < 2.5
-               and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
+        # Hold while the caller is MID-UTTERANCE so we do not talk over them, then
+        # a short settle, capped at 2.5s. The old condition also held on
+        # `user_started_t > connect_t`, which is true forever once the caller has
+        # made a single sound — so this loop always burned the whole 2.5s. On call
+        # 5d81ace1 the caller said one word ("Hello", 0.8s), Smart Turn reported
+        # EndOfTurnState.COMPLETE at +1.4s, and we still sat mute until +2.9s
+        # before saying anything. Waiting out a ceiling we already know is
+        # irrelevant is just dead air, and dead air at the START is what makes a
+        # caller say "hello?" — which is the thing that cancels the opening.
+        _settle_secs = 0.35
+        while time.time() - connect_t < 2.5:
             if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
+            if not flags["user_speaking"] and (
+                    flags["user_stopped_t"] == 0.0
+                    or time.time() - flags["user_stopped_t"] >= _settle_secs):
+                break
             await asyncio.sleep(0.1)
         if opening:
             diag.greet_path = "scripted"
@@ -2396,9 +2552,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # said a bit too much is far cheaper than re-delivering the whole
             # introduction, and the played transcript (PlayedTranscriptRecorder)
             # still records the truth for the report.
-            await task.queue_frames([
+            _frames = [
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
-                TTSSpeakFrame(opening, append_to_context=False)])
+                TTSSpeakFrame(opening, append_to_context=False)]
+            # A BARE-GREETING opening leads straight into the real one. Otherwise
+            # the call stalls: on 5d81ace1 the bot said "Hello" at +2.9s, stopped
+            # 0.3s later, and then said nothing for 2.1s because it was waiting
+            # for a caller turn while the caller waited for it — first real
+            # sentence at +5.9s. Depending on the caller to restart the
+            # conversation is not a plan; a one-word greeting is not an opening.
+            if not _opening_is_substantive(opening):
+                diag.greet_path = "scripted+intro"
+                logger.info("greet: opening %r is a bare greeting — following it "
+                            "straight into the introduction corr=%s", opening[:24], corr)
+                _frames.append(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                               "[You have just said that one-word greeting and the person is "
+                               "on the line. NOW deliver your opening — who you are, your "
+                               "company, and why you are calling — exactly as your "
+                               "instructions specify, then ask your first question. Do NOT "
+                               "greet again and do not repeat that word.]"}],
+                    run_llm=True))
+            await task.queue_frames(_frames)
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

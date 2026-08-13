@@ -30,7 +30,13 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # health can be re-derived across history without re-collecting anything.
 # v3 (2026-08-12): a lost sub-floor scrap ("वो।") is no longer an ANSWER_DELETED
 # — see _lost_carries_meaning.
-RULES_VERSION = 3
+# v4 (2026-08-14): the caller's own response time no longer counts as DEAD_AIR.
+# A gap measured when the CALLER starts speaking, with the bot having spoken last
+# ("both_quiet"), is the caller thinking — it is now tagged "caller_thinking" in
+# `silences` and kept out of the dead_air reservoir. It was 46.3% of dead-air
+# events and 45 of the RED-bar gaps over the 7 days to 2026-08-14. See
+# bot.set_user_speaking. Compare DEAD_AIR rates across the v3/v4 boundary with care.
+RULES_VERSION = 4
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py

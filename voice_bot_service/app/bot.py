@@ -2333,8 +2333,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
                 _gap = max(0.0, time.time() - _last)
-                diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
+                # THE CALLER'S OWN RESPONSE TIME IS NOT OUR DEAD AIR.
+                #
+                # This branch runs when the caller STARTS speaking, and measures
+                # backwards to whoever last stopped. When the BOT spoke last,
+                # that span is the caller thinking before they answer — a normal
+                # part of a phone conversation, not a defect.
+                #
+                # _silence_cause tags that span "both_quiet" (not ducked, no reply
+                # in flight, and bot_stopped_t >= user_stopped_t). Measured over
+                # 365 dead-air events in the 7 days to 2026-08-14, "both_quiet" at
+                # a user onset was 169 of them (46.3%) with a MEDIAN of 3.9s — i.e.
+                # squarely over the 3.5s AMBER bar — and produced 45 of the gaps
+                # past the 6s RED bar. DEAD_AIR was firing on 41% of calls, roughly
+                # half of it for callers simply taking a moment to reply.
+                #
+                # Renamed rather than dropped: the span is still recorded in
+                # `silences` (it is genuine, useful signal about how long callers
+                # take to answer this agent), it just no longer feeds the
+                # dead_air reservoir that verdict() scores.
+                #
+                # SCOPED TO THIS CALLBACK ON PURPOSE. set_bot_speaking computes the
+                # mirror gap — "the caller stopped, how long until WE spoke" — and
+                # "both_quiet" there means two bot utterances with a hole between
+                # them, which IS ours. That path is deliberately untouched.
+                if _why == "both_quiet":
+                    _why = "caller_thinking"
+                if _why != "caller_thinking":
+                    diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
                     logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)

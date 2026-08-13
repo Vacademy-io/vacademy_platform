@@ -86,7 +86,14 @@ export const SlideMaterial = ({
   const resolvePlaybackUrl = async (
     fileId: string,
     slideId: string,
-    mimeType: string
+    mimeType: string,
+    /**
+     * Stream from the local responder rather than decrypting into a Blob.
+     * Required for anything big: the Blob path needs ~4-5x the file size in
+     * transient memory, so a 51 MB PDF failed to load offline even though it
+     * had downloaded fine.
+     */
+    stream = false
   ): Promise<string> => {
     try {
       const userId = await getUserId();
@@ -96,8 +103,14 @@ export const SlideMaterial = ({
         fileId,
         slideId,
         mimeType,
+        stream,
         resolveRemoteUrl: () => getPublicUrl(fileId),
       });
+      // Streamed sources hold a native decrypt session open; hand its closer to
+      // the ref the slide lifecycle already drains on every slide change.
+      if (result.kind === "offline-stream") {
+        offlineStreamReleaseRef.current = result.release ?? null;
+      }
       return result.url ?? "";
     } catch {
       return getPublicUrl(fileId);
@@ -651,7 +664,7 @@ export const SlideMaterial = ({
                       fileId,
                       slideId: activeItem.id,
                       mimeType: "video/mp4",
-                      isVideo: true,
+                      stream: true,
                       resolveRemoteUrl: () => getPublicUrl(fileId),
                     })
                   : null;
@@ -886,7 +899,12 @@ export const SlideMaterial = ({
         case "DOCUMENT":
           if (activeItem.document_slide?.type === "PDF") {
             const pdfFileId = activeItem.document_slide.published_data || "";
-            const url = await resolvePlaybackUrl(pdfFileId, activeItem.id, "application/pdf");
+            const url = await resolvePlaybackUrl(
+              pdfFileId,
+              activeItem.id,
+              "application/pdf",
+              true
+            );
             if (!url) throw new Error("Failed to retrieve PDF URL");
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">

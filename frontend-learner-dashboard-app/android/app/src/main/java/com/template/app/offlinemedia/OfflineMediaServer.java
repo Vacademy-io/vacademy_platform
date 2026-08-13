@@ -28,7 +28,8 @@ import java.util.regex.Pattern;
  * androidx.webkit is intended for local *asset* serving, not for range-aware on-the-fly
  * decryption of an open native session — implementing our own tiny HTTP/1.1 GET+Range responder
  * bound to 127.0.0.1 is the most direct, dependency-free way to give the `<video>` tag a real
- * URL that supports seeking. This is the Android half of the "video always streams through
+ * URL that supports seeking. Large PDFs stream through here too: decrypting one into a Blob
+ * needed several times the file size in WebView memory and failed outright past ~50 MB. This is the Android half of the "video always streams through
  * OfflineMedia, never via a raw file:// src" playback strategy (the file on disk is ciphertext;
  * serving it directly would leak plaintext / play garbage).
  *
@@ -41,7 +42,8 @@ final class OfflineMediaServer {
 
     private static final String TAG = "OfflineMediaServer";
     private static final int CHUNK_SIZE = 256 * 1024; // multiple of the 16-byte AES block size
-    private static final Pattern REQUEST_LINE = Pattern.compile("^GET\\s+/([^/\\s]+)/stream\\S*\\s+HTTP/1\\.[01]$");
+    private static final Pattern REQUEST_LINE =
+        Pattern.compile("^(GET|HEAD|OPTIONS)\\s+/([^/\\s]+)/stream\\S*\\s+HTTP/1\\.[01]$");
     private static final Pattern RANGE_HEADER = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
 
     static final OfflineMediaServer INSTANCE = new OfflineMediaServer();
@@ -95,9 +97,11 @@ final class OfflineMediaServer {
                 writeStatusOnly(rawOut, 400, "Bad Request");
                 return;
             }
-            String token = lineMatcher.group(1);
+            String method = lineMatcher.group(1);
+            String token = lineMatcher.group(2);
 
             String rangeHeaderValue = null;
+            String origin = null;
             String header;
             while ((header = reader.readLine()) != null && !header.isEmpty()) {
                 int colon = header.indexOf(':');
@@ -105,6 +109,17 @@ final class OfflineMediaServer {
                 String name = header.substring(0, colon).trim();
                 String value = header.substring(colon + 1).trim();
                 if (name.equalsIgnoreCase("Range")) rangeHeaderValue = value;
+                else if (name.equalsIgnoreCase("Origin")) origin = value;
+            }
+
+            // A <video> tag loads media no-CORS, but pdf.js reads through XHR —
+            // cross-origin from the WebView's https://localhost page to this
+            // http://127.0.0.1 port — and its Range header is not CORS-safelisted,
+            // so the browser preflights first. Without an OPTIONS answer the PDF
+            // never loads, whatever the byte-serving code does.
+            if ("OPTIONS".equals(method)) {
+                writePreflight(rawOut, origin);
+                return;
             }
 
             OfflineMediaSession session = OfflineMediaSessionStore.INSTANCE.get(token);
@@ -113,13 +128,14 @@ final class OfflineMediaServer {
                 return;
             }
 
-            serveAsset(session, rangeHeaderValue, rawOut);
+            serveAsset(session, rangeHeaderValue, rawOut, origin, "HEAD".equals(method));
         } catch (IOException e) {
             Log.w(TAG, "Connection handling failed", e);
         }
     }
 
-    private void serveAsset(OfflineMediaSession session, String rangeHeaderValue, OutputStream out) throws IOException {
+    private void serveAsset(OfflineMediaSession session, String rangeHeaderValue, OutputStream out,
+                            String origin, boolean headersOnly) throws IOException {
         java.io.File file = new java.io.File(session.path);
         if (!file.exists()) {
             writeStatusOnly(out, 404, "File not found: " + session.path);
@@ -158,6 +174,7 @@ final class OfflineMediaServer {
         headers.append("Accept-Ranges: bytes\r\n");
         headers.append("Content-Length: ").append(contentLength).append("\r\n");
         headers.append("Cache-Control: no-store\r\n");
+        headers.append(corsHeaders(origin));
         headers.append("Connection: close\r\n");
         if (isPartial) {
             headers.append("Content-Range: bytes ").append(start).append('-').append(end).append('/').append(totalSize).append("\r\n");
@@ -165,7 +182,7 @@ final class OfflineMediaServer {
         headers.append("\r\n");
         out.write(headers.toString().getBytes(StandardCharsets.US_ASCII));
 
-        if (contentLength == 0) {
+        if (contentLength == 0 || headersOnly) {
             out.flush();
             return;
         }
@@ -197,9 +214,34 @@ final class OfflineMediaServer {
         out.flush();
     }
 
+    /**
+     * Echoes the caller's Origin rather than sending "*", so the allowance stays
+     * as narrow as the request. The socket is bound to 127.0.0.1 and every URL
+     * carries an unguessable token, so this is defence in depth either way.
+     */
+    private String corsHeaders(String origin) {
+        String allowed = (origin == null || origin.isEmpty()) ? "*" : origin;
+        return "Access-Control-Allow-Origin: " + allowed + "\r\n"
+            + "Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length\r\n"
+            + "Vary: Origin\r\n";
+    }
+
+    private void writePreflight(OutputStream out, String origin) throws IOException {
+        String response = "HTTP/1.1 204 No Content\r\n"
+            + corsHeaders(origin)
+            + "Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n"
+            + "Access-Control-Allow-Headers: Range, Content-Type, If-Range\r\n"
+            + "Access-Control-Max-Age: 86400\r\n"
+            + "Content-Length: 0\r\n"
+            + "Connection: close\r\n\r\n";
+        out.write(response.getBytes(StandardCharsets.US_ASCII));
+        out.flush();
+    }
+
     private void writeStatusOnly(OutputStream out, int code, String message) throws IOException {
         String body = message == null ? "" : message;
         String response = "HTTP/1.1 " + code + " " + statusText(code) + "\r\n"
+            + "Access-Control-Allow-Origin: *\r\n"
             + "Content-Type: text/plain\r\n"
             + "Content-Length: " + body.getBytes(StandardCharsets.UTF_8).length + "\r\n"
             + "Connection: close\r\n\r\n"

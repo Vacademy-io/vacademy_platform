@@ -12,10 +12,13 @@
  *     has offline turned off was still shown an "Offline Downloads" nav entry
  *     and screen that could never hold anything.
  *
- * The institute answer is cached in memory for the session and falls back to
- * "not available" on error, so a flaky network can't flash offline UI on and
- * off. It is deliberately fail-closed: better to hide a feature briefly than to
- * advertise one the institute has disabled.
+ * Only a real server response is treated as an answer. Anything else — no
+ * institute id yet, no network, a timeout — is provisional: it reports the last
+ * known answer (fail-closed if there has never been one) and keeps retrying in
+ * the background. Caching a provisional "no" is what made a fresh install hide
+ * Downloads until the app was force-quit: the very first call runs while the app
+ * is still booting, `getInstituteId()` isn't populated yet, and that "no" stuck
+ * for the entire process lifetime.
  */
 
 import { useEffect, useState } from "react";
@@ -23,6 +26,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { OFFLINE_SETTINGS_URL } from "@/constants/urls";
 import { getInstituteId } from "@/constants/helper";
 import { isOfflineSupported } from "@/lib/offline/platform";
+import { Network } from "@/utils/network-plugin";
 
 interface OfflineLearnerSettings {
   enabled: boolean;
@@ -32,6 +36,9 @@ interface OfflineLearnerSettings {
 
 /** Offline UI must not wait on a hanging request; see the timeout note below. */
 const SETTINGS_TIMEOUT_MS = 8000;
+/** Backoff for re-asking while the answer is still provisional. */
+const RETRY_MIN_MS = 1000;
+const RETRY_MAX_MS = 30_000;
 
 /**
  * Last answer the server actually gave, kept across launches.
@@ -63,15 +70,28 @@ function writePersisted(enabled: boolean): void {
   }
 }
 
+/** Set ONLY from a server response. `null` means "still don't really know". */
 let cached: boolean | null = null;
 let inFlight: Promise<boolean> | null = null;
-/** Mounted gates, notified when the answer is refreshed. */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryDelay = RETRY_MIN_MS;
+let reconnectListenerAttached = false;
+/** Mounted gates, notified when the answer changes. */
 const subscribers = new Set<(enabled: boolean) => void>();
+
+function notify(enabled: boolean): void {
+  subscribers.forEach((subscriber) => subscriber(enabled));
+}
 
 /** Clears the cached institute answer (call on logout / institute switch). */
 export function resetOfflineAvailabilityCache(): void {
   cached = null;
   inFlight = null;
+  retryDelay = RETRY_MIN_MS;
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
   try {
     localStorage.removeItem(PERSIST_KEY);
   } catch {
@@ -80,15 +100,47 @@ export function resetOfflineAvailabilityCache(): void {
 }
 
 /**
- * What to report when the server can't be reached: the last confirmed answer,
- * or "not available" if this device has never had one. Never-confirmed stays
- * fail-closed — we still don't advertise a feature nobody has granted.
+ * What to report while we still have no server answer: the last confirmed one,
+ * or "not available" if this device has never had one. Deliberately does NOT
+ * populate `cached` — that would freeze a temporary failure into the session.
  */
-function fallbackWhenUnreachable(): boolean {
-  const remembered = readPersisted();
-  cached = remembered ?? false;
-  subscribers.forEach((notify) => notify(cached === true));
-  return cached;
+function provisionalAnswer(): boolean {
+  return readPersisted() ?? false;
+}
+
+/**
+ * Keeps asking until the server actually answers. Without this, everything that
+ * can delay the first attempt — a token not yet written, a cold network, a
+ * captive portal — permanently hid the feature for that launch.
+ */
+function scheduleRetry(): void {
+  if (cached !== null || retryTimer !== null) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void fetchInstituteEnabled().then(() => {
+      if (cached === null) {
+        retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+        scheduleRetry();
+      }
+    });
+  }, retryDelay);
+}
+
+/** A regained connection is the most likely moment for a provisional answer to become real. */
+function attachReconnectRetry(): void {
+  if (reconnectListenerAttached) return;
+  reconnectListenerAttached = true;
+  void Network.addListener("networkStatusChange", (status) => {
+    if (!status.connected || cached !== null) return;
+    retryDelay = RETRY_MIN_MS;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    scheduleRetry();
+  }).catch(() => {
+    // no network plugin (web/tests) — the backoff timer still covers us
+  });
 }
 
 async function fetchInstituteEnabled(): Promise<boolean> {
@@ -98,7 +150,8 @@ async function fetchInstituteEnabled(): Promise<boolean> {
   inFlight = (async () => {
     try {
       const instituteId = await getInstituteId();
-      if (!instituteId) return fallbackWhenUnreachable();
+      // Not an answer — the learner's institute simply isn't known yet.
+      if (!instituteId) return provisionalAnswer();
       const response = await authenticatedAxiosInstance.get<OfflineLearnerSettings>(
         OFFLINE_SETTINGS_URL,
         {
@@ -106,21 +159,29 @@ async function fetchInstituteEnabled(): Promise<boolean> {
           // Bounded: an unreachable server makes this hang rather than fail, and
           // the whole offline UI waits on it — the Downloads screen renders
           // blank for as long as the request is outstanding. Time out and treat
-          // it as "not available" instead of showing nothing indefinitely.
+          // it as provisional instead of showing nothing indefinitely.
           timeout: SETTINGS_TIMEOUT_MS,
         }
       );
       cached = response.data?.enabled === true;
       writePersisted(cached);
-      subscribers.forEach((notify) => notify(cached === true));
+      notify(cached);
       return cached;
     } catch {
-      return fallbackWhenUnreachable();
+      return provisionalAnswer();
     } finally {
       inFlight = null;
     }
   })();
-  return inFlight;
+
+  const answer = await inFlight;
+  if (cached === null) {
+    // Still provisional — tell the UI what we have and keep trying.
+    notify(answer);
+    attachReconnectRetry();
+    scheduleRetry();
+  }
+  return answer;
 }
 
 /**
@@ -132,6 +193,7 @@ export async function refreshOfflineAvailability(): Promise<boolean> {
   if (!isOfflineSupported()) return false;
   cached = null;
   inFlight = null;
+  retryDelay = RETRY_MIN_MS;
   return fetchInstituteEnabled();
 }
 
@@ -159,8 +221,8 @@ export function useOfflineAvailable(): boolean | null {
       if (!cancelled) setAvailable(enabled);
     };
     void fetchInstituteEnabled().then(apply);
-    // Re-read whenever another surface refreshes the answer (see
-    // refreshOfflineAvailability) so every mounted gate agrees.
+    // Re-read whenever the answer is refreshed — by another surface calling
+    // refreshOfflineAvailability, or by a background retry finally succeeding.
     subscribers.add(apply);
     return () => {
       cancelled = true;

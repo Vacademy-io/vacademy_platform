@@ -110,6 +110,7 @@ import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import { ChapterDripConditionDialog } from './ChapterDripConditionDialog';
 import { OfflineAvailabilityDialog } from './OfflineAvailabilityDialog';
+import type { OfflineSourceType } from '@/types/offline-access';
 import { OfflineTelemetryCard } from './OfflineTelemetryCard';
 import { WifiSlash } from '@phosphor-icons/react';
 import { AddSubjectForm } from '../subjects/-components/add-subject.tsx/add-subject-form';
@@ -632,18 +633,29 @@ export const CourseStructureDetails = ({
     const [dripConditions, setDripConditions] = useState<any[]>([]);
     const [loadingDripConditions, setLoadingDripConditions] = useState(false);
 
-    // Chapter offline-availability dialog state
-    const [chapterOfflineDialog, setChapterOfflineDialog] = useState<{
+    // Offline-availability dialog state. Rules resolve down the chain
+    // PACKAGE -> PACKAGE_SESSION -> SUBJECT -> MODULE -> CHAPTER -> SLIDE, so the
+    // dialog is keyed on the level it was opened from rather than assuming a
+    // chapter — setting a whole subject or module offline in one action instead
+    // of visiting each chapter under it.
+    const [offlineDialog, setOfflineDialog] = useState<{
         open: boolean;
-        chapterId: string | null;
-        chapterName: string | null;
-    }>({ open: false, chapterId: null, chapterName: null });
-    const handleOpenChapterOfflineDialog = (chapterId: string, chapterName: string) => {
-        setChapterOfflineDialog({ open: true, chapterId, chapterName });
+        sourceType: OfflineSourceType;
+        sourceId: string | null;
+        nodeName: string | null;
+    }>({ open: false, sourceType: 'CHAPTER', sourceId: null, nodeName: null });
+    const handleOpenOfflineDialog = (
+        sourceType: OfflineSourceType,
+        sourceId: string,
+        nodeName: string
+    ) => {
+        setOfflineDialog({ open: true, sourceType, sourceId, nodeName });
     };
-    const handleCloseChapterOfflineDialog = () => {
-        setChapterOfflineDialog({ open: false, chapterId: null, chapterName: null });
+    const handleCloseOfflineDialog = () => {
+        setOfflineDialog((prev) => ({ ...prev, open: false, sourceId: null, nodeName: null }));
     };
+    const handleOpenChapterOfflineDialog = (chapterId: string, chapterName: string) =>
+        handleOpenOfflineDialog('CHAPTER', chapterId, chapterName);
 
     // Navigation state for loose view
     const [currentNavigationLevel, setCurrentNavigationLevel] = useState<
@@ -3956,6 +3968,26 @@ export const CourseStructureDetails = ({
                                                             Delete
                                                         </DropdownMenuItem>
                                                         )}
+                                                        {/* Sets the rule for every chapter under
+                                                            this subject at once — the resolver
+                                                            walks SUBJECT -> MODULE -> CHAPTER, so
+                                                            anything below still overrides it. */}
+                                                        <DropdownMenuItem
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleOpenOfflineDialog(
+                                                                    'SUBJECT',
+                                                                    subject.id,
+                                                                    subject.subject_name
+                                                                );
+                                                            }}
+                                                        >
+                                                            <WifiSlash
+                                                                size={14}
+                                                                className="mr-2 text-primary-500"
+                                                            />
+                                                            Offline Availability
+                                                        </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -4093,6 +4125,24 @@ export const CourseStructureDetails = ({
                                                                     Delete
                                                                 </DropdownMenuItem>
                                                                 )}
+                                                                {/* Same rule, one level down: covers every chapter in this
+                                                                    module while leaving per-chapter overrides intact. */}
+                                                                <DropdownMenuItem
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenOfflineDialog(
+                                                                            'MODULE',
+                                                                            mod.module.id,
+                                                                            mod.module.module_name
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <WifiSlash
+                                                                        size={14}
+                                                                        className="mr-2 text-primary-500"
+                                                                    />
+                                                                    Offline Availability
+                                                                </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -4232,6 +4282,24 @@ export const CourseStructureDetails = ({
                                                                     Delete
                                                                 </DropdownMenuItem>
                                                                 )}
+                                                                {/* Same rule, one level down: covers every chapter in this
+                                                                    module while leaving per-chapter overrides intact. */}
+                                                                <DropdownMenuItem
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenOfflineDialog(
+                                                                            'MODULE',
+                                                                            mod.module.id,
+                                                                            mod.module.module_name
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <WifiSlash
+                                                                        size={14}
+                                                                        className="mr-2 text-primary-500"
+                                                                    />
+                                                                    Offline Availability
+                                                                </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -5287,15 +5355,15 @@ export const CourseStructureDetails = ({
                     )}
             />
 
-            {/* Chapter Offline Availability Dialog */}
-            {chapterOfflineDialog.open && batchPackageSessionId && (
+            {/* Offline Availability Dialog (subject / module / chapter) */}
+            {offlineDialog.open && batchPackageSessionId && (
                 <OfflineAvailabilityDialog
-                    open={chapterOfflineDialog.open}
-                    onClose={handleCloseChapterOfflineDialog}
-                    sourceType="CHAPTER"
-                    sourceId={chapterOfflineDialog.chapterId ?? ''}
+                    open={offlineDialog.open}
+                    onClose={handleCloseOfflineDialog}
+                    sourceType={offlineDialog.sourceType}
+                    sourceId={offlineDialog.sourceId ?? ''}
                     packageSessionId={batchPackageSessionId}
-                    nodeName={chapterOfflineDialog.chapterName ?? 'Chapter'}
+                    nodeName={offlineDialog.nodeName ?? 'This content'}
                 />
             )}
         </div>

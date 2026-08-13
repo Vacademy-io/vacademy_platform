@@ -47,8 +47,20 @@ export interface ResolveSlideSourceParams {
   slideId: string;
   /** MIME type to tag the decrypted Blob with (viewer-dependent — e.g. "application/pdf", "audio/mpeg"). */
   mimeType: string;
-  /** True for VIDEO assets — routed to offline-stream (not yet implemented) instead of offline-blob. */
-  isVideo?: boolean;
+  /**
+   * Serve the asset from the local decrypting HTTP responder instead of
+   * decrypting it into a Blob.
+   *
+   * The Blob path materialises the whole file several times over: Filesystem
+   * hands it across the bridge as base64 (~1.33x, and ~2.7x once held as a JS
+   * string), then again as bytes, again as decrypted chunks, and again as the
+   * Blob — roughly 4-5x the file size in transient memory. A 51 MB PDF needed
+   * ~240 MB and the allocation failed, which surfaced to the learner as
+   * "Failed to retrieve PDF URL" on content that had downloaded perfectly.
+   * Streaming has no such ceiling, so anything large (video, PDF) should set
+   * this; small payloads can keep using the simpler Blob path.
+   */
+  stream?: boolean;
   /** Remote resolver, e.g. `getPublicUrl(fileId)` — only called for the `remote` path. */
   resolveRemoteUrl: () => Promise<string>;
 }
@@ -59,7 +71,7 @@ export interface ResolveSlideSourceParams {
  * `upload_file.ts`.
  */
 export async function resolveSlideSource(params: ResolveSlideSourceParams): Promise<SlideSourceResult> {
-  const { userId, fileId, slideId, mimeType, isVideo, resolveRemoteUrl } = params;
+  const { userId, fileId, slideId, mimeType, stream, resolveRemoteUrl } = params;
 
   const online = (await Network.getStatus()).connected;
 
@@ -88,7 +100,7 @@ export async function resolveSlideSource(params: ResolveSlideSourceParams): Prom
     return { kind: "unavailable-offline" };
   }
 
-  if (isVideo) {
+  if (stream) {
     try {
       const absolutePath = await resolveAbsolutePath(userId, asset.local_path);
       const keyB64 = await getRawOfflineKeyB64(userId);
@@ -96,11 +108,11 @@ export async function resolveSlideSource(params: ResolveSlideSourceParams): Prom
         path: absolutePath,
         key: keyB64,
         nonce: asset.nonce,
-        mimeType: mimeType || "video/mp4",
+        mimeType: mimeType || "application/octet-stream",
       });
       return { kind: "offline-stream", url, release: () => void closeAsset(token) };
     } catch (error) {
-      console.error(`[offline-resolve] failed to open offline video asset ${fileId}`, error);
+      console.error(`[offline-resolve] failed to open offline asset ${fileId} for streaming`, error);
       return { kind: "unavailable-offline" };
     }
   }

@@ -142,7 +142,7 @@ describe("resolveSlideSource decision table", () => {
       nonce: "bm9uY2U=",
     });
 
-    const result = await resolveSlideSource({ ...baseParams, isVideo: true });
+    const result = await resolveSlideSource({ ...baseParams, stream: true });
 
     expect(result.kind).toBe("offline-stream");
     expect(result.url).toBe("offline-media://tok-1/stream");
@@ -165,7 +165,7 @@ describe("resolveSlideSource decision table", () => {
     });
     mockOpenAsset.mockRejectedValueOnce(new Error("plugin unavailable"));
 
-    const result = await resolveSlideSource({ ...baseParams, isVideo: true });
+    const result = await resolveSlideSource({ ...baseParams, stream: true });
 
     expect(result.kind).toBe("unavailable-offline");
   });

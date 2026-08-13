@@ -1908,3 +1908,103 @@ async def test_a_reply_that_is_entirely_parroting_still_says_something():
     g = _no_echo_gate(rec, "सुबोध आठवीं में है।")
     await _reply(g, "सुबोध आठवीं में है। ")
     assert " ".join(rec.text).strip()
+
+
+# ── call 3148ccd4 (2026-08-13): the gate that gagged the bot ─────────────────
+# The worst call we have logs for. Mumbai box, 90 seconds: 20 bot sentences
+# suppressed, SEVEN handbacks, and "Raman abhi kaun si class mein hai?" — asked
+# once, never answered — blocked on all six attempts to ask it again. The caller
+# spent the last 45s asking "मैं क्या बताऊँ?" (what am I supposed to tell you)
+# and hung up. Latency was fine throughout: LLM 0.18-0.32s, TTS 0.14-0.39s.
+@pytest.mark.asyncio
+async def test_an_unanswered_question_can_be_asked_again():
+    """THE regression. The bot must not be permanently gagged on the one question
+    that would move the call forward."""
+    caller = {"t": "हाँ।"}
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+
+    await _reply(g, "Raman abhi kaun si class mein hai? ")
+    got = []
+    # The caller never answers — they are still working out who is calling.
+    for said in ("बताइए।", "जी, बोलिए।", "मैं क्या बताऊँ?", "क्या बोलूं?"):
+        caller["t"] = said
+        rec.text.clear()
+        await _reply(g, "Raman abhi kaun si class mein hai? ")
+        got.append(" ".join(rec.text))
+    assert any("class mein hai" in g_ for g_ in got), (
+        "the bot never got to re-ask the question the caller never answered: %r" % got)
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_answered_question_is_still_suppressed():
+    """The original bug this gate exists for must stay fixed: asking a closing
+    question again a couple of turns later is still suppressed."""
+    caller = {"t": "haan"}
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "Kya aap iski fees ke baare mein jaanna chahenge? ")
+    rec.text.clear()
+    await _reply(g, "MGP ki fees chalis hazaar se saath hazaar ke beech hai. ",
+                 "Kya aap iski fees ke baare mein jaanna chahengi? ")
+    joined = " ".join(rec.text)
+    assert "chalis hazaar" in joined
+    assert "jaanna chaheng" not in joined, "the re-asked question got through"
+
+
+@pytest.mark.asyncio
+async def test_the_bot_never_says_you_talk_twice_running():
+    """Every handback line means "you speak" — from the party that placed the
+    call. One is recovery; a run of them is a conversation with no way back."""
+    caller = {"t": "बताइए।"}
+    rec = _NRRec()
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"], diag=d)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+
+    await _reply(g, "Aapne apne bete Raman ke liye ek query dali thi. ")
+    heard = []
+    for said in ("बताइए।", "जी, बोलिए।", "आप बताइए।", "मैं क्या बताऊँ?"):
+        caller["t"] = said
+        rec.text.clear()
+        await _reply(g, "Aapne apne bete Raman ke liye ek query dali thi. ")
+        heard.append(" ".join(rec.text))
+    for a, bb in zip(heard, heard[1:]):
+        assert not (a in b.NoRepeatGate._HANDBACK and bb in b.NoRepeatGate._HANDBACK), (
+            "two handbacks in a row: %r" % heard)
+
+
+@pytest.mark.asyncio
+async def test_handbacks_follow_the_agents_language():
+    """These lines never touch the LLM, so the prompt's SCRIPT rule cannot reach
+    them — an English agent would hand back in romanized Hindi."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "tell me",
+                       handbacks=b.NoRepeatGate._HANDBACK_EN)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "You had submitted a query for your son Raman. ")
+    rec.text.clear()
+    await _reply(g, "You had submitted a query for your son Raman. ")
+    assert " ".join(rec.text) in b.NoRepeatGate._HANDBACK_EN
+
+
+def test_a_handback_run_is_a_fault_not_a_silent_counter():
+    """On the real call this fired zero signals: the panel showed ANSWER_DELETED
+    (a one-word fragment), DEAD_AIR and LIKELY_MACHINE, none of which was it."""
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics(user_turns=15, bot_turns=15, handbacks=7)
+    v = dg.verdict(d)
+    assert v["health"] == dg.RED
+    assert v["headline"] == dg.HANDBACK_LOOP
+    assert "asking the caller to talk" in dg.to_payload(d)["headlineText"]
+    # ...and it outranks the consequences it causes.
+    d2 = dg.CallDiagnostics(user_turns=15, bot_turns=15, handbacks=7,
+                            answers_deleted=1, dead_air=[6.1])
+    assert dg.verdict(d2)["headline"] == dg.HANDBACK_LOOP

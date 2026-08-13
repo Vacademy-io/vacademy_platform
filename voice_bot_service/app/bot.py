@@ -615,18 +615,23 @@ class NoRepeatGate(FrameProcessor):
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
-                 no_echo=None):
+                 no_echo=None, handbacks=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
         self._no_echo = no_echo or (lambda: True)
+        self._handbacks = tuple(handbacks) if handbacks else self._HANDBACK
         self._spoken: list = []
         self._asked: set = set()      # question TOPICS already put to the caller
+        self._suppressions: dict = {}  # key -> drops since we last let it through
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
         self._handback = 0
+        # Handbacks since the last reply that actually said something. >0 means
+        # the caller's last turn was answered with "you talk" and nothing else.
+        self._consecutive_handbacks = 0
 
     def _trim_echo(self, sentence: str) -> str:
         """Strip a reply's opening clause when it only parrots the caller's answer.
@@ -655,26 +660,76 @@ class NoRepeatGate(FrameProcessor):
                         sentence.strip()[:56], out.strip()[:56])
         return out
 
+    # How many times one sentence (or one question topic) may be silently
+    # dropped before we let it through anyway.
+    #
+    # The ban used to be PERMANENT, and that is what killed call 3148ccd4. The
+    # bot asked "Raman abhi kaun si class mein hai?" once, the caller — still
+    # working out who was calling — never answered it, and the gate then blocked
+    # all six attempts to ask again. It was not a handback problem: even on the
+    # turns where some other sentence survived, the ONE question that could have
+    # moved the call forward was gagged, so there was no path out.
+    #
+    # The model holds the whole conversation in its context. If it asks the same
+    # thing a THIRD time across three separate turns, it is not being sloppy —
+    # it is telling us the answer never arrived (which ANSWER_DELETED confirmed
+    # on that very call). Believe it. Being wrong costs the caller one repeated
+    # question; being right saves the call. The counter resets when we let one
+    # through, so a model stuck in a loop still only gets one in three.
+    _MAX_SUPPRESSIONS = 2
+
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
             return True
         if caller_asked_to_repeat(self._last_caller_text()):
             return True            # they ASKED us to say it again
-        if is_repeat(sentence, self._spoken):
-            return False
         # Same QUESTION, different words. Sentence similarity cannot see this:
         # call 597aeb3f asked "Aur wo abhi kis class mein hai?" and then "Raman
         # abhi kis class mein padh raha hai?", which score ~0.6 against each
         # other and sailed through.
         topic = question_topic(sentence)
-        return not (topic and topic in self._asked)
+        if not (is_repeat(sentence, self._spoken) or (topic and topic in self._asked)):
+            return True
+        # ONE budget per topic, not one per mechanism. Keying the two branches
+        # separately let a re-asked question burn 2 drops as a near-identical
+        # sentence and 2 more as an already-asked topic — four silent drops for
+        # something the caller was waiting on.
+        key = topic or normalize_spoken(sentence)[:48]
+        n = self._suppressions.get(key, 0) + 1
+        if n > self._MAX_SUPPRESSIONS:
+            self._suppressions[key] = 0
+            logger.info("no-repeat: %r suppressed %d times and the caller still "
+                        "has not moved on — saying it", sentence.strip()[:56],
+                        self._MAX_SUPPRESSIONS)
+            if self._diag is not None:
+                self._diag.bump("repeat_escalations")
+            return True
+        self._suppressions[key] = n
+        return False
 
     # Said INSTEAD of a reply that turned out to be entirely a repeat. The first
     # version of this guard re-emitted the duplicate rather than go silent, and
     # it fired seven times in one afternoon — so the guard against dead air was
     # itself producing the repetition the founder was hearing. Hand the turn
     # back instead, and never with the same words twice running.
+    #
+    # ONE handback, then ESCALATE — call 3148ccd4 (2026-08-13), the worst call
+    # we have logs for. Every one of these lines means "you talk", and the bot is
+    # the party that placed the call. On that call the gate suppressed 20
+    # sentences, handed back SEVEN times, and the caller answered each one:
+    # "आप कुछ बोल क्यों नहीं रही हैं?" -> "मैं क्या बताऊँ?" -> "मैं क्या बताऊँ?" ->
+    # "क्या बोलूं?" -> "मुझे समझ नहीं आ रहा आप क्यों phone कर रहे हैं" — forty-five
+    # seconds of two parties telling each other to go first, then the callee hung
+    # up. The trigger was ordinary: "Raman abhi kaun si class mein hai?" was asked
+    # ONCE, never answered, and the gate then blocked all SIX attempts to ask it
+    # again, which is the one thing a human counsellor would obviously do.
+    #
+    # So the rule the original comment was reaching for is not "never repeat", it
+    # is "never leave the caller with nothing". A repeated question is a small
+    # cost; a bot that can only say "you talk" cannot be answered at all, and the
+    # conversation has no way back. After one handback the held sentence goes out.
     _HANDBACK = ("Ji, boliye.", "Haan ji?", "Aap batayiye.", "Ji?")
+    _HANDBACK_EN = ("Yes, go ahead.", "Sorry, you were saying?", "Please go on.", "Yes?")
 
     async def _emit(self, text: str, direction):
         self._spoken.append(normalize_spoken(text))
@@ -682,6 +737,7 @@ class NoRepeatGate(FrameProcessor):
         if topic:
             self._asked.add(topic)
         self._emitted += 1
+        self._consecutive_handbacks = 0     # the bot said something real
         await self.push_frame(LLMTextFrame(text), direction)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -734,13 +790,30 @@ class NoRepeatGate(FrameProcessor):
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
             if self._emitted == 0 and self._held_tail:
-                # Everything was a repeat. Do NOT say it again — hand the turn
-                # back in a few words so the line is not dead either.
-                line = self._HANDBACK[self._handback % len(self._HANDBACK)]
-                self._handback += 1
-                logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
-                self._emitted += 1
-                await self.push_frame(LLMTextFrame(line), direction)
+                if self._consecutive_handbacks >= 1:
+                    # ESCALATE (call 3148ccd4). We already handed the turn back
+                    # once and the caller still has nothing to answer. Saying
+                    # "you talk" a second time is how a call becomes unrecoverable
+                    # — so say the held sentence, repeat and all. It is almost
+                    # always the question the caller never answered, which is
+                    # exactly what a human would ask again.
+                    logger.warning("no-repeat: second all-repeat reply in a row — "
+                                   "speaking it rather than handing back again %r",
+                                   self._held_tail.strip()[:56])
+                    if self._diag is not None:
+                        self._diag.bump("repeat_escalations")
+                    await self._emit(self._held_tail, direction)
+                else:
+                    # Everything was a repeat. Do NOT say it again — hand the turn
+                    # back in a few words so the line is not dead either.
+                    line = self._handbacks[self._handback % len(self._handbacks)]
+                    self._handback += 1
+                    self._consecutive_handbacks += 1
+                    if self._diag is not None:
+                        self._diag.bump("handbacks")
+                    logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
+                    self._emitted += 1
+                    await self.push_frame(LLMTextFrame(line), direction)
             await self.push_frame(frame, direction)
             return
 
@@ -2148,6 +2221,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                   if outcome.transcript
                                   and outcome.transcript[-1].get("role") == "user" else ""),
         no_echo=lambda: settings.no_echo_enabled,
+        # An English agent handing back in romanized Hindi ("Ji, boliye.") is a
+        # language break the caller hears immediately — and these lines bypass
+        # the prompt's SCRIPT rule entirely because they never touch the LLM.
+        handbacks=(NoRepeatGate._HANDBACK_EN
+                   if _agent_language(agent)[0] == "en-IN" else None),
         diag=diag)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,

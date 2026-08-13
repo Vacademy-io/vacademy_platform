@@ -6,7 +6,7 @@ The word-list decisions are the product behavior the founder signed off
 The asymmetry under test: when unsure, INTERRUPT — wrongly stopping the bot
 costs a moment; wrongly steamrolling the caller costs the call.
 """
-from app.turntake import (mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement,
+from app.turntake import (mid_reply_action, ABSORB, INTERRUPT, is_carrier_announcement, is_repeat,
                           suppresses_opening, strip_echo_opener, caller_asked_a_question)
 from app.callstate import (
     CallState, WatchdogConfig, watchdog_decide, apply_decision,
@@ -315,3 +315,68 @@ def test_caller_asked_a_question_reads_cues_not_just_punctuation():
         assert caller_asked_a_question(q), q
     for a in ("सुबोध अभी आठवीं में है।", "तिरानवे प्रतिशत।", "हाँ।", ""):
         assert not caller_asked_a_question(a), a
+
+
+# ── is_repeat: the quick_ratio screen must not change a single answer ────────
+# The screen exists for cost (10ms/sentence at 150 spoken sentences, in the audio
+# path, on a 1-vCPU box carrying ten calls). real_quick_ratio/quick_ratio are
+# documented UPPER BOUNDS on ratio(), so skipping below the threshold is exact —
+# these rows pin the behaviour either side of the 0.80 boundary anyway.
+
+def test_is_repeat_still_catches_the_real_re_renders():
+    """Verbatim from the calls this gate was built for: the model re-renders its
+    own question slightly differently every time."""
+    spoken = ["kya aap iski fees ke baare mein jaanna chahenge",
+              "raman abhi kaun si class mein hai?"]
+    for s in ("Kya aap iski fees ke baare mein jaanna chahengi?",
+              "kya aap iski fees ke baare mein jaanna chahenge",
+              "Raman abhi kaun si class mein hai?"):
+        assert is_repeat(s, spoken), s
+
+
+def test_is_repeat_lets_genuinely_new_content_through():
+    spoken = ["kya aap iski fees ke baare mein jaanna chahenge",
+              "raman abhi kaun si class mein hai?"]
+    for s in ("MGP ki fees chalis hazaar se saath hazaar ke beech hai.",
+              "Shreyash ji, main Shiksha Nation se baat kar rahi hoon.",
+              "Koi subject jisme zyada dikkat aati hai?"):
+        assert not is_repeat(s, spoken), s
+
+
+def test_is_repeat_ignores_short_fragments_and_empty_history():
+    # Acknowledgements legitimately recur; suppressing them would strip the bot
+    # of every ack it has.
+    for s in ("Achha.", "Theek hai.", "Hmm…", "Ji."):
+        assert not is_repeat(s, ["achha.", "theek hai."]), s
+    assert not is_repeat("a long enough sentence to be considered at all", [])
+    assert not is_repeat("", ["something"])
+
+
+def test_strip_echo_opener_only_ever_deletes():
+    """Seeded fuzz over the shapes a live reply can take. This runs on every
+    reply in the audio path: it must never raise, never blank a reply, never
+    swallow the caller's question, and never invent words."""
+    import random
+    rng = random.Random(20260813)
+    alphabets = ["अआइईउऊएऐओऔकखगघचछजझटठडढतथदधनपफबभमयरलवशषसह ािीुूेैोौंँ्",
+                 "abcdefghijklmnopqrstuvwxyz ", ",;—–.?!।॥ ", "0123456789 "]
+    seps = ",;—– \t\n\r"
+
+    def bare(s):
+        return "".join(c for c in (s or "").casefold() if c not in seps)
+
+    def subsequence(small, big):
+        it = iter(big)
+        return all(c in it for c in small)
+
+    cases = ["", " ", ",", ",,,,", "?", "।", "a" * 3000, "हाँ, हाँ, हाँ?",
+             ",".join(["शब्द"] * 200)]
+    for _ in range(1500):
+        alpha = "".join(rng.sample(alphabets, rng.randint(1, len(alphabets))))
+        cases.append("".join(rng.choice(alpha) for _ in range(rng.randint(0, 300))))
+    for sent in cases:
+        caller = rng.choice(cases) or "सुबोध अभी आठवीं में है।"
+        out = strip_echo_opener(sent, caller, rng.choice(cases))
+        assert sent.strip() == "" or out.strip(), f"blanked a reply: {sent!r}"
+        assert "?" not in sent or "?" in out, f"swallowed a question: {sent!r}"
+        assert subsequence(bare(out), bare(sent)), f"invented text from {sent!r}"

@@ -253,13 +253,28 @@ def is_repeat(sentence: str, spoken, threshold: float = 0.80) -> bool:
 
     Short fragments are never repeats — "haan", "theek hai", "achha" legitimately
     recur, and suppressing them would strip the bot of every acknowledgement.
+
+    COST. This is called for every sentence of every reply, on a 1-vCPU box
+    carrying up to ten concurrent calls, and ``spoken`` grows for the whole call.
+    A full ratio() against each entry measured 10 ms per sentence at 150 spoken
+    sentences and 29 ms at 400 — in the audio path, per sentence. So: hold seq2
+    fixed (SequenceMatcher caches its index for b, and rebuilding it per entry
+    was most of the cost) and screen with real_quick_ratio/quick_ratio, which are
+    UPPER BOUNDS on ratio() — skipping below the threshold cannot change a single
+    answer, it only skips work that could not have qualified.
     """
     import difflib
     t = " ".join((sentence or "").split()).casefold()
     if len(t) < 22:
         return False
+    # autojunk left at its default on purpose: changing it changes ratio() itself,
+    # and this optimisation must be answer-for-answer identical to what shipped.
+    sm = difflib.SequenceMatcher(None, "", t)
     for prev in spoken or ():
-        if difflib.SequenceMatcher(None, prev, t).ratio() >= threshold:
+        sm.set_seq1(prev)
+        if sm.real_quick_ratio() < threshold or sm.quick_ratio() < threshold:
+            continue
+        if sm.ratio() >= threshold:
             return True
     return False
 

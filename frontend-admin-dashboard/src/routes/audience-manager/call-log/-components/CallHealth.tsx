@@ -68,6 +68,7 @@ const HEADLINE_TEXT: Record<string, string> = {
     ANSWER_DELETED: 'Caller answers were discarded before the agent saw them',
     BOT_SILENT: 'The agent never spoke — the caller heard nothing',
     REPLY_LOOP: 'The agent kept restarting the same reply',
+    HANDBACK_LOOP: 'The agent had nothing to say and kept asking the caller to talk',
     DEAD_AIR: 'Long silence during the call',
     FALSE_REASK: 'Agent re-asked for answers it had already heard',
     LIKELY_MACHINE: 'Probably an answering machine, not a person',
@@ -86,6 +87,7 @@ const FAULT_LABEL: Record<string, string> = {
     ANSWER_DELETED: 'Answers deleted',
     BOT_SILENT: 'Agent silent',
     REPLY_LOOP: 'Reply loop',
+    HANDBACK_LOOP: 'Nothing to say',
     DEAD_AIR: 'Dead air',
     FALSE_REASK: 'False re-ask',
     LIKELY_MACHINE: 'Likely machine',
@@ -195,6 +197,19 @@ function faultEvidence(code: string, d: CallDiagnostics): string[] {
                       ),
                 turn.answersDeletedSamples?.length
                     ? `${turn.answersDeletedSamples.length} captured verbatim (below)`
+                    : null
+            );
+            break;
+        case 'HANDBACK_LOOP':
+            out.push(
+                turn.handbacks
+                    ? count(turn.handbacks, 'turn answered with “you talk”', 'turns answered with “you talk”')
+                    : null,
+                turn.repeatsSuppressed
+                    ? `${turn.repeatsSuppressed} sentence(s) suppressed as already-said`
+                    : null,
+                turn.repeatEscalations
+                    ? `${turn.repeatEscalations} said anyway to break the loop`
                     : null
             );
             break;

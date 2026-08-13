@@ -62,11 +62,21 @@ BOT_SILENT = "BOT_SILENT"
 # thing that was actually broken — that the caller heard the same sentence over
 # and over and never heard the end of it — had no counter at all.
 REPLY_LOOP = "REPLY_LOOP"
+# The bot answered the caller with a content-free "you talk" line because the
+# no-repeat gate had suppressed its whole reply. Added 2026-08-13 from call
+# 3148ccd4: 20 sentences suppressed, 7 handbacks, and the ONE question the caller
+# never answered ("Raman abhi kaun si class mein hai?") blocked on all six
+# attempts to ask it again. The caller spent the last forty-five seconds asking
+# "मैं क्या बताऊँ?" — what am I supposed to tell you — and hung up. Every existing
+# panel signal was about something else: ANSWER_DELETED named a one-word
+# fragment, DEAD_AIR named the symptom, LIKELY_MACHINE was simply wrong. The
+# thing that actually broke the call had no counter at all.
+HANDBACK_LOOP = "HANDBACK_LOOP"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
-    BOT_SILENT, REPLY_LOOP,
+    BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -74,8 +84,10 @@ ALL_FAULTS = (
 # to hear them outranks a TTS stall: on live call 393859bc the headline read
 # "Voice synthesis stalled" while the actual story was that the caller repeated
 # "hybrid model" four times and we never once transcribed it.
+# HANDBACK_LOOP outranks ANSWER_DELETED and DEAD_AIR deliberately: on call
+# 3148ccd4 all three fired, and the other two describe consequences of it.
 HEADLINE_PRIORITY = (
-    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, TTS_WEDGE, REPLY_UNPLAYED,
+    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, HANDBACK_LOOP, TTS_WEDGE, REPLY_UNPLAYED,
     ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM,
     TRANSFER_FAILED, PROMPT_UNFILLED,
 )
@@ -150,6 +162,16 @@ class CallDiagnostics:
     carrier_announcements: int = 0
     # Sentences dropped because the bot had already said them this call.
     repeats_suppressed: int = 0
+    # Replies that were ENTIRELY suppressed, so the caller got "Ji, boliye." —
+    # "you talk" — instead of an answer. Untracked until call 3148ccd4, where
+    # seven of these in ninety seconds made the call unrecoverable while the
+    # panel reported ANSWER_DELETED and DEAD_AIR. The suppression counter above
+    # could not tell that story: it counts sentences, and what matters is TURNS
+    # the caller could not answer.
+    handbacks: int = 0
+    # Times we said a repeat anyway rather than hand back twice running. Healthy
+    # in ones; a run of them means the model is stuck on a line it cannot get past.
+    repeat_escalations: int = 0
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -507,6 +529,15 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     elif d.replies_never_played == 1:
         fire(REPLY_UNPLAYED, AMBER)
 
+    # A handback is a TURN the caller could not answer. One is recovery; a run of
+    # them is a conversation with no way forward. RED at 3 because that is where
+    # 3148ccd4 became unrecoverable — the caller started asking what they were
+    # even supposed to say.
+    if d.handbacks >= 3:
+        fire(HANDBACK_LOOP, RED)
+    elif d.handbacks >= 2:
+        fire(HANDBACK_LOOP, AMBER)
+
     if d.answers_deleted is not None:          # None = not measured: never fires
         if d.answers_deleted >= 3:
             fire(ANSWER_DELETED, RED)
@@ -597,6 +628,7 @@ _HEADLINE_TEXT = {
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
     BOT_SILENT: "The agent never spoke — the caller heard nothing",
     REPLY_LOOP: "The agent kept restarting the same reply",
+    HANDBACK_LOOP: "The agent had nothing to say and kept asking the caller to talk",
 }
 
 
@@ -643,6 +675,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "carrierAnnouncements": d.carrier_announcements,
                 "repeatsSuppressed": d.repeats_suppressed,
                 "echoesTrimmed": d.echoes_trimmed,
+                "handbacks": d.handbacks,
+                "repeatEscalations": d.repeat_escalations,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

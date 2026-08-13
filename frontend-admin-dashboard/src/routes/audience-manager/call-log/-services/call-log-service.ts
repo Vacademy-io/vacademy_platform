@@ -89,20 +89,30 @@ export type CallFaultLevel = 'AMBER' | 'RED';
  * only ever added. The order here is also the bot's HEADLINE_PRIORITY, i.e. the
  * order faults must be shown in.
  */
+// A code missing here renders as "Unrecognised fault code" in the sheet — which
+// is exactly what REPLY_LOOP did on call 597aeb3f, because it shipped in the bot
+// and not here.
+//
+// ORDER IS THE CONTRACT, and it had silently drifted: this list used to open
+// CRASH, TTS_WEDGE, REPLY_UNPLAYED… while the bot's HEADLINE_PRIORITY opens
+// CRASH, BOT_SILENT, STT_DEAF… so the two sides disagreed from index 1. A call
+// with BOT_SILENT + TTS_WEDGE showed "Voice synthesis stalled" here and "The
+// agent never spoke" in the bot's own headline — precisely the inversion the
+// BOT_SILENT and STT_DEAF comments in diagnostics.py exist to prevent. Kept in
+// lockstep now by test_fe_fault_list_matches_headline_priority (python suite),
+// which parses THIS array.
 export const CALL_FAULT_CODES = [
     'CRASH',
+    'BOT_SILENT',
+    'STT_DEAF',
+    'REPLY_LOOP',
+    'HANDBACK_LOOP',
     'TTS_WEDGE',
     'REPLY_UNPLAYED',
     'ANSWER_DELETED',
-    // Newer bot faults. A code missing here renders as "Unrecognised fault
-    // code" in the sheet — which is exactly what REPLY_LOOP did on call
-    // 597aeb3f, because it shipped in the bot and not here.
-    'BOT_SILENT',
-    'REPLY_LOOP',
     'DEAD_AIR',
     'FALSE_REASK',
     'LIKELY_MACHINE',
-    'STT_DEAF',
     'SLOW_TTS',
     'SLOW_LLM',
     'TRANSFER_FAILED',
@@ -157,6 +167,14 @@ export interface CallDiagnostics {
         repeatsSuppressed?: number | null;
         /** Opening clauses dropped because they only parroted the caller's answer back. */
         echoesTrimmed?: number | null;
+        /**
+         * Turns where the WHOLE reply was suppressed as already-said, so the caller
+         * got a content-free "you talk" line instead of an answer. Drives
+         * HANDBACK_LOOP. Absent on rows written before rules v3.
+         */
+        handbacks?: number | null;
+        /** Times a repeat was said anyway rather than hand back twice running. */
+        repeatEscalations?: number | null;
         /** Operator/voicemail lines filtered out of the agent's context. */
         carrierAnnouncements?: number | null;
         nudges?: number | null;

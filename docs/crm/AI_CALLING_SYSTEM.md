@@ -473,8 +473,36 @@ is state, and state belongs in code.
 
 | Trim | What it drops | Key state |
 |---|---|---|
-| **No-repeat** | a sentence already spoken this call (fuzzy, 0.80) or a question whose *topic* was already asked (`question_topic` — paraphrases score ~0.6 and sailed through similarity alone) | `_spoken`, `_asked` |
+| **No-repeat** | a sentence already spoken this call (fuzzy, 0.80) or a question whose *topic* was already asked (`question_topic` — paraphrases score ~0.6 and sailed through similarity alone) | `_spoken`, `_asked`, `_suppressions` |
 | **No-echo** (`_trim_echo` → `turntake.strip_echo_opener`) | a leading **clause** that only restates what the caller just answered | the caller's last turn + the bot's own last question |
+
+**The ban is bounded, and that bound is load-bearing.** It used to be permanent, and
+that is what destroyed call 3148ccd4 (2026-08-13, the worst call in the logs). The bot
+asked *"Raman abhi kaun si class mein hai?"* once; the caller — still working out who was
+calling — never answered; the gate then blocked **all six** attempts to ask again. Twenty
+sentences were suppressed, the bot fell through to its handback line **seven times**, and
+the caller spent the last forty-five seconds asking *"मैं क्या बताऊँ?"* — *what am I
+supposed to tell you* — before hanging up. Latency was fine throughout (LLM 0.18–0.32 s,
+TTS 0.14–0.39 s): the bot was not slow, it was **gagged**.
+
+So `_MAX_SUPPRESSIONS = 2`. The model holds the whole conversation in its context; if it
+asks the same thing a third time across three separate turns it is not being sloppy, it is
+reporting that the answer never arrived (`ANSWER_DELETED` fired on that very call,
+confirming it). Being wrong costs one repeated question; being right saves the call. The
+counter resets on release, so a model stuck in a loop still only gets one attempt in three.
+
+Two more guards from the same call:
+
+- **Never hand back twice running.** Every handback line means *"you talk"*, from the party
+  that placed the call. After one, the held sentence goes out instead — repeat and all,
+  because it is almost always the question the caller never answered.
+- **Handbacks follow the agent's language** (`_HANDBACK` / `_HANDBACK_EN`). They never pass
+  through the LLM, so the prompt's SCRIPT rule cannot reach them, and an English agent was
+  handing back in romanized Hindi (*"Ji, boliye."*).
+
+`handbacks` and `repeatEscalations` ride the diagnostics blob, and a run of handbacks now
+fires `HANDBACK_LOOP` (§11.3) — before this, twenty suppressions and seven handbacks
+produced **no signal at all**.
 
 Echo-trimming is **clause**-level, not sentence-level, because the parroting and
 the real next question share one sentence — *"ओके, सुबोध अभी आठवीं क्लास में है, तो
@@ -743,6 +771,7 @@ Fault codes (closed, append-only; `RULES_VERSION` bumps when thresholds change):
 | `BOT_SILENT` | caller spoke, bot produced zero audio | The agent never spoke |
 | `STT_DEAF` | hearing failures ≥1, STT reconnects ≥3, or VAD heard speech and we transcribed nothing | The agent could not hear the caller |
 | `REPLY_LOOP` | ≥3 consecutive near-identical bot turns (fuzzy, 0.82 similarity) | The agent kept restarting the same reply |
+| `HANDBACK_LOOP` | ≥3 handbacks (RED) / ≥2 (AMBER) — replies suppressed *whole*, so the caller got "you talk" instead of an answer (§7.3a) | The agent had nothing to say and kept asking the caller to talk |
 | `TTS_WEDGE` | stalls ≥2 / cap hit / stall + silent generation | Voice synthesis stalled |
 | `REPLY_UNPLAYED` | a generated reply never reached the caller | A reply was never played |
 | `ANSWER_DELETED` | caller finals that never reached the LLM context **and carried something** — see the scrap carve-out below | Caller answers were discarded |
@@ -891,6 +920,8 @@ V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role`
 | **8–10 s of silence mid-call** | wedged TTS socket (letterless chunk, Sarvam reject) | `TTS_WEDGE`, `tts.wedges`/`stalls`; `dead air … awaiting_playout` |
 | **Bot talks over the caller** | VAD deaf on the phone leg | `VAD_MIN_VOLUME` (must be ~0.35), `turnTaking.bargeIns = 0` with long user turns |
 | **Bot repeats the same opening** | reply cut then regenerated in a loop | `REPLY_LOOP`, `maxReplyRestarts`; check absorb list for the word the caller used |
+| **Caller says "why aren't you saying anything?" / "what am I supposed to tell you?"** | the no-repeat gate suppressed whole replies and the bot fell through to "you talk" (§7.3a) | `HANDBACK_LOOP`, `turnTaking.handbacks`; bot log `no-repeat: dropping already-said` — the sentence dropped most often is the question the call needed |
+| **Caller says "you never told me who you are"** | the opening was VAD-interrupted seconds in, but the FULL text was already committed to the LLM context, so `already_said_rule` then forbids re-introducing | bot log `greet: openingLine spoken at +Ns` vs a `broadcasting interruption` right after; a greet later than ~2 s invites the caller's "hello?" that cancels it |
 | **"It never heard my answer"** | aggregator deleted the turn | `ANSWER_DELETED` + `answersDeletedSamples` |
 | **Bot confirms every answer back ("okay, you got ninety-four")** | the model reaches for a restatement opener on every turn; the prompt rule alone does not hold it | `turnTaking.echoesTrimmed` — if it is climbing the trim is working; if it is 0 and the parroting is audible, check `NO_ECHO_ENABLED` and whether the authored agent script *itself* contains echo lines (a registry prompt ≥600 chars is authoritative, §3.3) |
 | **Panel says an answer was discarded but the transcript looks complete** | a one-character scrap, not an answer — fixed in `RULES_VERSION` 3 (§11.3). On a row stored under v2 read `answersDeletedSamples`: a single syllable is the tell | `rulesVersion` on the row; `turnTaking.fragmentsLost` on v3+ rows |

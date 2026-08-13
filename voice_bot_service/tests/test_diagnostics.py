@@ -570,3 +570,52 @@ def test_the_scrap_floor_is_not_the_containment_floor():
     signs are dropped by _norm_answer, so genuine answers normalize SHORT."""
     for answer in ("SSC.", "DPS", "आठवीं", "पाँच", "CBSE"):
         assert dg.split_lost([answer], []).answers == 1, answer
+
+
+# ── the bot and the admin UI share a fault vocabulary; nothing enforced it ────
+
+def _fe_fault_codes():
+    """The admin dashboard's CALL_FAULT_CODES, parsed out of the TS source."""
+    import os
+    import re
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ts = os.path.join(os.path.dirname(here), "frontend-admin-dashboard", "src", "routes",
+                      "audience-manager", "call-log", "-services", "call-log-service.ts")
+    if not os.path.exists(ts):          # bot deployed without the monorepo
+        return None
+    with open(ts, encoding="utf-8") as fh:
+        src = fh.read()
+    block = src.split("export const CALL_FAULT_CODES = [")[1].split("]")[0]
+    return re.findall(r"'([A-Z_]+)'", block)
+
+
+def test_fe_fault_list_matches_headline_priority():
+    """A fault the UI has never heard of renders as "Unrecognised fault code",
+    and the ORDER decides which headline a row shows from diag_faults alone.
+
+    Both halves have burned us: REPLY_LOOP shipped in the bot and not the UI
+    (call 597aeb3f), and the order had drifted so far that BOT_SILENT +
+    TTS_WEDGE showed "Voice synthesis stalled" in the UI while the bot's own
+    headline said "The agent never spoke" — the exact inversion the BOT_SILENT
+    and STT_DEAF comments in this module exist to prevent. This is a
+    cross-language contract with no compiler; it needs a test.
+    """
+    fe = _fe_fault_codes()
+    if fe is None:
+        import pytest
+        pytest.skip("frontend not present next to the bot")
+    missing = [c for c in dg.HEADLINE_PRIORITY if c not in fe]
+    assert not missing, f"faults the admin UI cannot render: {missing}"
+    assert fe == list(dg.HEADLINE_PRIORITY), (
+        "CALL_FAULT_CODES order must equal HEADLINE_PRIORITY — the UI derives a "
+        f"row's headline from it.\n  bot: {list(dg.HEADLINE_PRIORITY)}\n   ui: {fe}")
+
+
+def test_every_fault_has_headline_text():
+    """A fired fault with no sentence renders as an empty headline."""
+    for code in dg.ALL_FAULTS:
+        d = dg.CallDiagnostics()
+        text = dg._HEADLINE_TEXT.get(code)
+        assert text, f"{code} has no headline sentence"
+        assert len(text) < 90, f"{code} headline too long for a row hover: {text!r}"
+        del d

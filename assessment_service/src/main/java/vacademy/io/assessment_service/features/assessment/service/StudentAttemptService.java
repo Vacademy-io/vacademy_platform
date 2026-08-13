@@ -254,13 +254,15 @@ public class StudentAttemptService {
      * question_wise_marks rows) and the attempt JSON is parsed once, because the
      * previous per-question form (3+ selects and a full re-parse per question)
      * took 20-30s per attempt during live exams and saturated the async pool.
-     * The question_wise_marks upserts are flushed in one saveAll at the end;
-     * same transaction, so commit-time visibility is unchanged.
+     * The question_wise_marks upserts are flushed in one saveAll at the end —
+     * including on the failure path, preserving the pre-batching behaviour
+     * where every question scored before a mid-loop failure kept its row.
      *
      * @param studentAttemptOptional - The student's attempt details, wrapped in an Optional.
      * @return The total marks for the learner's attempt.
      */
     public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional){
+        MarksCalculationContext context = null;
         try{
             double totalMarks = 0.0;
 
@@ -274,21 +276,34 @@ public class StudentAttemptService {
 
             List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
 
-            MarksCalculationContext context = buildMarksCalculationContext(assessment, studentAttempt, sectionList,
-                    attemptData);
+            context = buildMarksCalculationContext(assessment, studentAttempt, sectionList, attemptData);
 
             for (String section : sectionList) {
                 totalMarks += calculateMarksForSection(section, assessment, studentAttempt, context);
             }
 
-            if (!context.dirtyQuestionWiseMarks.isEmpty()) {
-                questionWiseMarksService.createQuestionWiseMarks(context.dirtyQuestionWiseMarks);
-            }
+            flushQuestionWiseMarks(context);
+            context = null;
 
             return totalMarks;
         } catch (Exception e) {
             log.error("Failed To Calculate Marks: " +e.getMessage());
+            // Persist whatever was scored before the failure — the pre-batching
+            // code saved each question's row as it went, so a mid-loop failure
+            // must not wipe the per-question breakdown for the whole attempt.
+            flushQuestionWiseMarks(context);
             return 0.0;
+        }
+    }
+
+    private void flushQuestionWiseMarks(MarksCalculationContext context) {
+        if (context == null || context.dirtyQuestionWiseMarks.isEmpty()) {
+            return;
+        }
+        try {
+            questionWiseMarksService.createQuestionWiseMarks(context.dirtyQuestionWiseMarks);
+        } catch (Exception e) {
+            log.error("Failed to persist question wise marks: {}", e.getMessage());
         }
     }
 

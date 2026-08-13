@@ -34,19 +34,43 @@ public class ReportExportExecutorConfig {
      *
      * <p>Sized against the live-exam recalculation load: every learner sync
      * enqueues a marks recalc here, so at 200-1000 concurrent test-takers the
-     * enqueue rate is roughly syncs-per-minute/60 per second. 4/8 threads with
-     * the (now 20-connection) Hikari pool keeps drain rate above arrival rate;
-     * the CallerRunsPolicy below is the overload valve — past 100 queued, work
-     * degrades visibly onto Tomcat threads instead of being dropped.
+     * enqueue rate is roughly syncs-per-minute/60 per second. core MUST equal
+     * max here: ThreadPoolExecutor only grows past core once the queue is FULL,
+     * so with queue 100 a "max" above core would never be reached in time.
+     * 8 threads with the (now 20-connection) Hikari pool keeps drain rate above
+     * arrival rate; the CallerRunsPolicy below is the overload valve — past 100
+     * queued, work degrades visibly onto Tomcat threads instead of being dropped.
      */
     @Bean("taskExecutor")
     public ThreadPoolTaskExecutor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
+        executor.setCorePoolSize(8);
         executor.setMaxPoolSize(8);
         executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("default-async-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * Small dedicated pool for fire-and-forget workflow trigger HTTP calls
+     * ({@code WorkflowTriggerClient}). Kept OFF the default pool deliberately:
+     * during a live exam that queue is full of marks recalcs, and a trigger
+     * stuck behind them — or run inline via that pool's CallerRunsPolicy —
+     * would block a learner request thread for up to connect+read timeout.
+     * Triggers are best-effort, so under overload the oldest is dropped
+     * rather than blocking anyone.
+     */
+    @Bean("workflowTriggerExecutor")
+    public ThreadPoolTaskExecutor workflowTriggerExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("workflow-trigger-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(false);
         executor.initialize();
         return executor;

@@ -55,7 +55,7 @@ public class WorkflowTriggerClient {
      * @param instituteId The institute scope
      * @param contextData Additional context data for the workflow
      */
-    @Async
+    @Async("workflowTriggerExecutor")
     public void triggerEvent(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
         try {
             String url = adminCoreServiceUrl + "/admin-core-service/internal/workflow/trigger";

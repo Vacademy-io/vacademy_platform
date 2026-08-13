@@ -645,7 +645,10 @@ class NoRepeatGate(FrameProcessor):
         # everything, i.e. the old behaviour.
         self._played_text = played_text
         self._spoken: list = []
-        self._asked: set = set()      # question TOPICS already put to the caller
+        # topic -> the normalized QUESTION we actually asked about it. A dict,
+        # not a set: topic membership alone is not evidence of a re-ask — see
+        # _TOPIC_REASK_THRESHOLD for the call that proved it.
+        self._asked: dict = {}
         self._suppressions: dict = {}  # key -> drops since we last let it through
         # Sentences emitted since the last response START — i.e. the ones whose
         # audio may not have reached the caller yet. On an interruption, any of
@@ -711,17 +714,39 @@ class NoRepeatGate(FrameProcessor):
     # through, so a model stuck in a loop still only gets one in three.
     _MAX_SUPPRESSIONS = 2
 
+    # A topic match NARROWS the candidates; similarity must CONFIRM the re-ask.
+    #
+    # Topic membership alone banned a question on its FIRST delivery — twice, on
+    # calls 4b1a44b9 and 761decff (2026-08-13). The script's step-4 question
+    # ("कितने मार्क्स आए थे?") and its step-5 DIAGNOSTIC ("कुछ chapters में अच्छा
+    # करता है और कुछ topics में marks खो देता है?") both contain the keyword
+    # "marks", so question_topic files both under the same topic — but they are
+    # DIFFERENT questions (similarity 0.35). The instant the bot asked for the
+    # marks, the diagnostic was pre-banned: the caller answered "83%", heard
+    # praise and NO question, prompted "हम्म", got a handback, and a second voice
+    # on the line had to say "आप बोलिए ना, आपने phone किया है" before the
+    # suppression cap released it.
+    #
+    # So a same-topic sentence is a re-ask only if it also RESEMBLES the question
+    # we actually asked about that topic. The paraphrase this tier exists for
+    # (597aeb3f: "Aur wo abhi kis class mein hai?" -> "Raman abhi kis class mein
+    # padh raha hai?") scores 0.73; the false positive scores 0.35. 0.5 splits
+    # them with margin on both sides.
+    _TOPIC_REASK_THRESHOLD = 0.5
+
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
             return True
         if caller_asked_to_repeat(self._last_caller_text()):
             return True            # they ASKED us to say it again
-        # Same QUESTION, different words. Sentence similarity cannot see this:
-        # call 597aeb3f asked "Aur wo abhi kis class mein hai?" and then "Raman
-        # abhi kis class mein padh raha hai?", which score ~0.6 against each
-        # other and sailed through.
+        # Same QUESTION, different words. Sentence similarity at 0.80 cannot see
+        # this (597aeb3f's pair scores ~0.7), so the topic supplies the candidate
+        # and a looser similarity bar confirms it.
         topic = question_topic(sentence)
-        if not (is_repeat(sentence, self._spoken) or (topic and topic in self._asked)):
+        prev_ask = self._asked.get(topic) if topic else None
+        same_topic_reask = prev_ask is not None and is_repeat(
+            sentence, [prev_ask], threshold=self._TOPIC_REASK_THRESHOLD)
+        if not (is_repeat(sentence, self._spoken) or same_topic_reask):
             return True
         # ONE budget per topic, not one per mechanism. Keying the two branches
         # separately let a re-asked question burn 2 drops as a near-identical
@@ -797,9 +822,11 @@ class NoRepeatGate(FrameProcessor):
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         topic = question_topic(text)
+        # Remember the PREVIOUS exemplar so an un-poison can restore it exactly.
+        prev_exemplar = self._asked.get(topic) if topic else None
         if topic:
-            self._asked.add(topic)
-        self._pending.append((norm, topic))
+            self._asked[topic] = norm
+        self._pending.append((norm, topic, prev_exemplar))
         self._emitted += 1
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
@@ -835,14 +862,19 @@ class NoRepeatGate(FrameProcessor):
             if self._pending and self._played_text is not None:
                 try:
                     played = normalize_spoken(self._played_text() or "")
-                    for norm, topic in self._pending:
+                    for norm, topic, prev_exemplar in self._pending:
                         if norm and norm not in played:
                             for i in range(len(self._spoken) - 1, -1, -1):
                                 if self._spoken[i] == norm:
                                     del self._spoken[i]
                                     break
-                            if topic:
-                                self._asked.discard(topic)
+                            # Restore the exemplar the never-played ask displaced
+                            # (None = the topic had not been asked before).
+                            if topic and self._asked.get(topic) == norm:
+                                if prev_exemplar is None:
+                                    self._asked.pop(topic, None)
+                                else:
+                                    self._asked[topic] = prev_exemplar
                             if self._diag is not None:
                                 self._diag.bump("unsaid_reverted")
                             logger.info("no-repeat: un-recording never-played %r",

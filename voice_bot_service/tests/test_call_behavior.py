@@ -2286,3 +2286,92 @@ async def test_partial_playout_unrecords_only_the_unheard_tail():
     said = " ".join(rec.text)
     assert "MGP program" in said, "the unheard sentence stayed banned"
     assert "foundation strong" not in said, "the heard sentence was repeated"
+
+
+# ── calls 4b1a44b9 + 761decff (2026-08-13): topic collision pre-banned a question ──
+# question_topic files BOTH the script's marks question ("कितने मार्क्स आए थे?")
+# and its DIAGNOSTIC ("कुछ chapters में अच्छा करता है और कुछ topics में marks खो
+# देता है?") under topic "marks" — they share a keyword and nothing else
+# (similarity 0.35). Topic membership alone counted as a re-ask, so asking for
+# the marks pre-banned the diagnostic: the caller answered "83%", heard praise
+# and NO question, prompted "हम्म", got "जी, बोलिए।", and a second voice on the
+# line had to say "आप बोलिए ना, आपने phone किया है" before the suppression cap
+# released it. A topic match must be CONFIRMED by similarity to the question
+# actually asked about that topic.
+MARKS_Q = "Raman के लास्ट एनुअल एग्जाम में कितने मार्क्स आए थे? "
+DIAG_Q = ("Raman के साथ भी ऐसा है कि कुछ चैप्टर्स में बहुत अच्छा करता है "
+          "और कुछ specific टॉपिक्स में marks खो देता है? ")
+
+
+@pytest.mark.asyncio
+async def test_the_marks_question_does_not_pre_ban_the_diagnostic():
+    """Verbatim call 761decff. The diagnostic's FIRST delivery must play."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True,
+                       last_caller_text=lambda: "I think 83% around बन गया।")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, MARKS_Q)
+    rec.text.clear()
+    await _reply(g, "83%। ", DIAG_Q, "बहुत अच्छे मार्क्स हैं। ")
+    said = " ".join(rec.text)
+    assert "खो देता है" in said, f"the diagnostic was pre-banned again: {said!r}"
+
+
+@pytest.mark.asyncio
+async def test_a_paraphrased_reask_of_the_same_question_is_still_dropped():
+    """The case the topic tier exists for (call 597aeb3f): same question in new
+    words scores ~0.7 — under the 0.80 sentence bar, over the 0.5 topic bar."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "haan")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "Aur wo abhi kis class mein hai? ")
+    rec.text.clear()
+    await _reply(g, "Achha ji. ", "Raman abhi kis class mein padh raha hai? ")
+    said = " ".join(rec.text)
+    assert "padh raha" not in said, f"a paraphrased re-ask got through: {said!r}"
+    assert "Achha" in said, "the non-repeat part of the reply must still play"
+
+
+def test_topic_collision_pair_is_separated_by_the_threshold():
+    """Pin the numbers the 0.5 threshold rests on, so a wording change in either
+    standard question that erodes the margin fails loudly here."""
+    import difflib
+    from app.turntake import normalize_spoken, question_topic
+    assert question_topic(MARKS_Q) == question_topic(DIAG_Q) == "marks"
+    collide = difflib.SequenceMatcher(
+        None, normalize_spoken(MARKS_Q), normalize_spoken(DIAG_Q)).ratio()
+    para = difflib.SequenceMatcher(
+        None, normalize_spoken("Aur wo abhi kis class mein hai?"),
+        normalize_spoken("Raman abhi kis class mein padh raha hai?")).ratio()
+    assert collide < 0.45, f"collision pair drifted up: {collide:.2f}"
+    assert para > 0.55, f"paraphrase pair drifted down: {para:.2f}"
+
+
+@pytest.mark.asyncio
+async def test_unpoison_restores_the_topic_exemplar_it_displaced():
+    """A same-topic question that emits but never PLAYS must not erase the
+    record of the ask the caller actually heard. MARKS_Q and DIAG_Q share the
+    topic while being different questions, so the diagnostic displaces the
+    exemplar when it emits — an interruption before playout must put the heard
+    phrasing back, and must free the diagnostic to be asked again."""
+    from pipecat.frames.frames import InterruptionFrame
+    from app.turntake import normalize_spoken
+    played = {"text": ""}
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["text"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, MARKS_Q)
+    played["text"] = MARKS_Q                  # the marks question WAS heard
+    await _reply(g, DIAG_Q)                   # emits (0.35 < 0.5), displaces exemplar
+    assert g._asked["marks"] == normalize_spoken(DIAG_Q)
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    # The heard phrasing is back on record…
+    assert g._asked["marks"] == normalize_spoken(MARKS_Q)
+    # …and the never-heard diagnostic is sayable again.
+    rec.text.clear()
+    await _reply(g, DIAG_Q)
+    assert "खो देता है" in " ".join(rec.text), "the un-played diagnostic stayed banned"

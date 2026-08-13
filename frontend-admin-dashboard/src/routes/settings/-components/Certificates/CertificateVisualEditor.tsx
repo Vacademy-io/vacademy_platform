@@ -18,6 +18,16 @@ import type {
 // they must be treated as images here too — otherwise the editor sizes them as
 // text boxes and the serializer emits a raw data URI as visible text.
 import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
+import {
+    AUTO_BADGE,
+    codeDisplayName,
+    codeFieldName,
+    codePlaceholder,
+    codeSizePx,
+    planFromFieldNames,
+    PX_PER_MM,
+    type BadgeCodeType,
+} from '../../-utils/certificate-auto-badge';
 
 const SYSTEM_IMAGE_FIELDS = new Set([
     'institute_logo',
@@ -50,6 +60,13 @@ interface Props {
      */
     customImages?: CustomImage[];
     onCustomImagesChange?: (next: CustomImage[]) => void;
+    /**
+     * Which code the institute stamps automatically. Drives the ghost preview
+     * of the badge, so switching QR ↔ Barcode changes what admins see it print.
+     */
+    badgeCodeType?: BadgeCodeType;
+    /** Sample number shown inside the ghost badge. */
+    sampleCertificateId?: string;
 }
 
 type DragMode =
@@ -66,9 +83,13 @@ export const CertificateVisualEditor = ({
     systemImageUrls,
     customImages,
     onCustomImagesChange,
+    badgeCodeType = 'QR',
+    sampleCertificateId = 'VA-0123-2026',
 }: Props) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const customImageInputRef = useRef<HTMLInputElement | null>(null);
+    const ghostCodeRef = useRef<HTMLImageElement | null>(null);
+    const ghostIdRef = useRef<HTMLSpanElement | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [drag, setDrag] = useState<DragMode>({ kind: 'idle' });
     const [scale, setScale] = useState(1);
@@ -253,6 +274,93 @@ export const CertificateVisualEditor = ({
         [fieldMappings, selectedId]
     );
 
+    // What the backend will still stamp bottom-right, given what is placed.
+    const badgePlan = useMemo(
+        () => planFromFieldNames(fieldMappings.map((f) => f.fieldName)),
+        [fieldMappings]
+    );
+
+    // The ghost is laid out by the browser (it shrink-wraps its contents just
+    // like the PDF renderer does), so read the real boxes off the DOM rather
+    // than re-deriving them — that keeps "where it prints" and "where the field
+    // lands when you grab it" the same rectangle.
+    const domRectToImageRect = (el: HTMLElement) => {
+        const surface = document.getElementById('cert-editor-surface');
+        if (!surface) return null;
+        const s = surface.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return {
+            x: Math.round((r.left - s.left) / scale),
+            y: Math.round((r.top - s.top) / scale),
+            width: Math.round(r.width / scale),
+            height: Math.round(r.height / scale),
+        };
+    };
+
+    /**
+     * Grabbing the automatic badge turns it into real fields at the exact spot
+     * it was drawn, then hands the drag straight over to them — so the gesture
+     * reads as "move that thing" rather than "configure a replacement for it".
+     * Once placed, the backend stops stamping its own (see certificate-auto-badge).
+     */
+    const adoptAutoBadge = (e: React.PointerEvent) => {
+        e.stopPropagation();
+        const adopted: FieldMapping[] = [];
+        if (badgePlan.code && ghostCodeRef.current) {
+            const rect = domRectToImageRect(ghostCodeRef.current);
+            if (rect) {
+                adopted.push({
+                    id: nanoid(),
+                    fieldName: codeFieldName(badgeCodeType),
+                    displayName: codeDisplayName(badgeCodeType),
+                    type: 'text',
+                    position: rect,
+                    style: {
+                        fontSize: AUTO_BADGE.idFontSizePx,
+                        fontColor: AUTO_BADGE.textColor,
+                        fontFamily: AUTO_BADGE.fontFamily,
+                        alignment: 'center',
+                        fontWeight: 'normal',
+                    },
+                });
+            }
+        }
+        if (badgePlan.id && ghostIdRef.current) {
+            const rect = domRectToImageRect(ghostIdRef.current);
+            if (rect) {
+                adopted.push({
+                    id: nanoid(),
+                    fieldName: 'certificate_id',
+                    displayName: 'Certificate ID',
+                    type: 'text',
+                    position: rect,
+                    style: {
+                        fontSize: AUTO_BADGE.idFontSizePx,
+                        fontColor: AUTO_BADGE.textColor,
+                        fontFamily: AUTO_BADGE.fontFamily,
+                        alignment: 'center',
+                        fontWeight: 'normal',
+                    },
+                });
+            }
+        }
+        if (adopted.length === 0) return;
+        onFieldMappingsChange([...fieldMappings, ...adopted]);
+
+        // Continue the same gesture on the code (or the number, when the code
+        // was already placed) so the admin drags without re-pressing.
+        const primary = adopted[0];
+        if (!primary) return;
+        setSelectedId(primary.id);
+        const pos = evtToImagePos(e);
+        setDrag({
+            kind: 'move',
+            id: primary.id,
+            offsetX: pos.x - primary.position.x,
+            offsetY: pos.y - primary.position.y,
+        });
+    };
+
     return (
         <div className="flex flex-col gap-3">
             {/* Toolbar */}
@@ -400,8 +508,74 @@ export const CertificateVisualEditor = ({
                                 </div>
                             );
                         })}
+
+                        {/* Ghost of the badge the backend stamps on every
+                            certificate. Drawn with the server's own offsets and
+                            sizes so this is where it really prints; grabbing it
+                            converts it into fields you own. */}
+                        {badgePlan.any && (
+                            <div
+                                onPointerDown={adoptAutoBadge}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Stamped automatically on every certificate — drag to position it yourself"
+                                className="absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
+                                style={{
+                                    // Mirrors appendCertificateIdBadge in
+                                    // InstituteSettingService — see
+                                    // certificate-auto-badge.ts.
+                                    right: AUTO_BADGE.rightMm * PX_PER_MM,
+                                    bottom: AUTO_BADGE.bottomMm * PX_PER_MM,
+                                    padding: `${AUTO_BADGE.paddingYPx}px ${AUTO_BADGE.paddingXPx}px`,
+                                    border: `${AUTO_BADGE.borderPx}px solid ${AUTO_BADGE.borderColor}`,
+                                    borderRadius: AUTO_BADGE.borderRadiusPx,
+                                    background: AUTO_BADGE.background,
+                                    fontFamily: AUTO_BADGE.fontFamily,
+                                    fontSize: AUTO_BADGE.idFontSizePx,
+                                    color: AUTO_BADGE.textColor,
+                                    letterSpacing: AUTO_BADGE.letterSpacing,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                {badgePlan.code && (
+                                    <img
+                                        ref={ghostCodeRef}
+                                        src={codePlaceholder(badgeCodeType)}
+                                        alt={codeDisplayName(badgeCodeType)}
+                                        draggable={false}
+                                        style={{
+                                            width: codeSizePx(badgeCodeType).width,
+                                            height: codeSizePx(badgeCodeType).height,
+                                            display: 'block',
+                                        }}
+                                    />
+                                )}
+                                {badgePlan.id && (
+                                    <span
+                                        ref={ghostIdRef}
+                                        style={{
+                                            display: 'block',
+                                            marginTop: AUTO_BADGE.idMarginTopPx,
+                                        }}
+                                    >
+                                        {sampleCertificateId}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
+                {badgePlan.any && (
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                        {[
+                            badgePlan.code ? codeDisplayName(badgeCodeType) : null,
+                            badgePlan.id ? 'Certificate number' : null,
+                        ]
+                            .filter(Boolean)
+                            .join(' + ')}{' '}
+                        is stamped bottom-right on every certificate. Drag the dashed box to
+                        position it yourself.
+                    </p>
+                )}
             </div>
 
         </div>

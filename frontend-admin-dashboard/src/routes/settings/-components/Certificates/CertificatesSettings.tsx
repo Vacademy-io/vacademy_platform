@@ -41,6 +41,13 @@ import type {
     ImageTemplate,
 } from '@/types/certificate/certificate-types';
 import { serializeImageTemplateToHtml } from '../../-utils/serialize-image-template-to-html';
+import {
+    buildAutoBadgeHtml,
+    codeSizePx,
+    injectAutoBadge,
+    planFromHtml,
+    type BadgeCodeType,
+} from '../../-utils/certificate-auto-badge';
 import { downloadCertificateTemplatePreview } from '../../-utils/download-certificate-template';
 import {
     type BuiltinCertificateTemplate,
@@ -299,6 +306,11 @@ const CertificatesSettings = () => {
             }),
         [numberingPattern, numberingPrefix, numberingSuffix, sequencePadding, derivedPrefix]
     );
+
+    // Same number the editor ghost and both previews show, so a sample number
+    // never changes shape as you move between design and preview. Falls back
+    // when the numbering pattern is empty and the preview comes out blank.
+    const sampleCertificateNumber = numberingPreview || 'VA-0123-2026';
 
     // Visual editor state.
     const [imageTemplate, setImageTemplate] = useState<ImageTemplate | null>(null);
@@ -662,9 +674,19 @@ const CertificatesSettings = () => {
         // Scale default field size to the canvas's natural pixel dimensions so
         // a freshly dropped chip is comfortably visible regardless of whether
         // the uploaded template is 1200x800 or 4488x3173.
-        const width = Math.round(Math.max(220, imageTemplate.width * 0.3));
+        //
+        // Codes are the exception: they are images with a fixed aspect, so they
+        // get the same box the backend's automatic stamp uses. A text-shaped
+        // box would letterbox a QR into a sliver and squash a barcode until it
+        // stops scanning.
+        const isCodeField =
+            field.name === 'certificate_qr' || field.name === 'certificate_barcode';
+        const codeBox = codeSizePx(field.name === 'certificate_barcode' ? 'BARCODE' : 'QR');
+        const width = isCodeField
+            ? codeBox.width
+            : Math.round(Math.max(220, imageTemplate.width * 0.3));
         const fontSize = Math.max(18, Math.round(imageTemplate.height * 0.03));
-        const height = Math.round(fontSize * 2);
+        const height = isCodeField ? codeBox.height : Math.round(fontSize * 2);
         const newMapping: FieldMapping = {
             id: nanoid(),
             fieldName: field.name,
@@ -1185,10 +1207,12 @@ const CertificatesSettings = () => {
                         <option value="BARCODE">Barcode (Code 128)</option>
                     </select>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        Stamped next to the certificate number on every certificate. To position it
-                        yourself instead, drag the <strong>QR Code</strong> or <strong>Barcode</strong>{' '}
-                        field onto the design below — your placement then replaces this automatic one,
-                        so you never get two.
+                        Stamped next to the certificate number, bottom-right — the design below shows
+                        you exactly where. To position it yourself instead, drag that badge, or drag
+                        the <strong>QR Code</strong> / <strong>Barcode</strong> field onto the design.
+                        The same goes for the number: wherever you place{' '}
+                        <strong>Certificate ID</strong>, it stops being stamped automatically, so you
+                        never get two of either.
                     </p>
                 </div>
 
@@ -1339,6 +1363,8 @@ const CertificatesSettings = () => {
                             customWidthMm={customWidthMm}
                             customHeightMm={customHeightMm}
                             onResetToDefault={() => setHtmlTemplate(defaultCertificateHtml)}
+                            badgeCodeType={badgeCodeType}
+                            sampleCertificateId={sampleCertificateNumber}
                         />
                     )}
 
@@ -1419,6 +1445,8 @@ const CertificatesSettings = () => {
                                     systemImageUrls={{ institute_logo: logoUrl }}
                                     customImages={customImages}
                                     onCustomImagesChange={setCustomImages}
+                                    badgeCodeType={badgeCodeType}
+                                    sampleCertificateId={sampleCertificateNumber}
                                 />
                             )}
 
@@ -1429,6 +1457,8 @@ const CertificatesSettings = () => {
                                     customImages={customImages}
                                     logoUrl={logoUrl}
                                     instituteName={effectiveInstituteName}
+                                    badgeCodeType={badgeCodeType}
+                                    sampleCertificateId={sampleCertificateNumber}
                                 />
                             )}
                         </div>
@@ -1512,6 +1542,8 @@ const HtmlCertificateEditor = ({
     customWidthMm,
     customHeightMm,
     onResetToDefault,
+    badgeCodeType,
+    sampleCertificateId,
 }: {
     html: string;
     onHtmlChange: (html: string) => void;
@@ -1522,6 +1554,8 @@ const HtmlCertificateEditor = ({
     customWidthMm: number;
     customHeightMm: number;
     onResetToDefault: () => void;
+    badgeCodeType: BadgeCodeType;
+    sampleCertificateId: string;
 }) => {
     const insertAtCaret = (token: string) => {
         const ta = textareaRef.current;
@@ -1542,7 +1576,7 @@ const HtmlCertificateEditor = ({
     };
 
     const previewSrcDoc = useMemo(() => {
-        const sampleCertId = 'PREVIEW-0000-2026';
+        const sampleCertId = sampleCertificateId;
         const samples: Record<string, string> = {
             '{{STUDENT_NAME}}': 'Alex Sample',
             '{{INSTITUTE_NAME}}': instituteName || 'Vacademy Institute',
@@ -1579,22 +1613,22 @@ const HtmlCertificateEditor = ({
                 logoUrl ||
                 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
         };
+        // Plan off the raw template, before substitution removes the tokens.
+        const badgePlan = planFromHtml(html || '');
         let out = html || '';
         for (const [t, v] of Object.entries(samples)) out = out.split(t).join(v);
-        // Mirror server-side appendCertificateIdBadge so admins see the
-        // bottom-right cert ID chip that learners will see on the issued
-        // PDF, regardless of where (or whether) they placed {{CERTIFICATE_ID}}
-        // in the template.
-        const badge =
-            `<div style="position:fixed;bottom:8mm;right:10mm;` +
-            `font-family:Arial,sans-serif;font-size:10px;color:#444;` +
-            `background:rgba(255,255,255,0.85);padding:3px 8px;` +
-            `border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;">` +
-            `Certificate ID: ${sampleCertId}</div>`;
-        const closing = out.lastIndexOf('</body>');
-        out = closing >= 0 ? out.slice(0, closing) + badge + out.slice(closing) : out + badge;
-        return out;
-    }, [html, logoUrl, instituteName]);
+        // Mirror server-side appendCertificateIdBadge, including the scannable
+        // code it stamps beside the number. The old hand-rolled copy showed the
+        // number only, so the code arrived unannounced on the issued PDF.
+        return injectAutoBadge(
+            out,
+            buildAutoBadgeHtml({
+                badgePlan,
+                codeType: badgeCodeType,
+                certificateId: sampleCertId,
+            })
+        );
+    }, [html, logoUrl, instituteName, badgeCodeType, sampleCertificateId]);
 
     return (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -1774,15 +1808,23 @@ const CertificateSettingsPreview = ({
     customImages,
     logoUrl,
     instituteName,
+    badgeCodeType,
+    sampleCertificateId,
 }: {
     imageTemplate: ImageTemplate;
     fieldMappings: FieldMapping[];
     customImages?: CustomImage[];
     logoUrl?: string;
     instituteName?: string;
+    badgeCodeType: BadgeCodeType;
+    sampleCertificateId: string;
 }) => {
     const srcDoc = useMemo(() => {
         const html = serializeImageTemplateToHtml(imageTemplate, fieldMappings, customImages);
+        // Read the plan off the un-substituted template, exactly as the backend
+        // does — after substitution the tokens are gone and every design would
+        // look like it places nothing.
+        const badgePlan = planFromHtml(html);
         const samples: Record<string, string> = {
             '{{STUDENT_NAME}}': 'Alex Sample',
             '{{INSTITUTE_NAME}}': instituteName || 'Vacademy Institute',
@@ -1794,7 +1836,7 @@ const CertificateSettingsPreview = ({
             '{{DATE_OF_COMPLETION}}': new Date().toLocaleDateString(),
             // Legacy alias for pre-rename templates.
             '{{ISSUE_DATE}}': new Date().toLocaleDateString(),
-            '{{CERTIFICATE_ID}}': 'PREVIEW-0000-2026',
+            '{{CERTIFICATE_ID}}': sampleCertificateId,
             '{{CERTIFICATE_QR}}': CERTIFICATE_QR_PLACEHOLDER,
             '{{CERTIFICATE_BARCODE}}': CERTIFICATE_BARCODE_PLACEHOLDER,
             '{{ENROLLMENT_NUMBER}}': 'ENR2024001',
@@ -1819,8 +1861,26 @@ const CertificateSettingsPreview = ({
         };
         let out = html;
         for (const [t, v] of Object.entries(samples)) out = out.split(t).join(v);
-        return out;
-    }, [imageTemplate, fieldMappings, customImages, logoUrl, instituteName]);
+        // Mirror the server's automatic badge so the preview shows the code and
+        // number an admin has not placed themselves — the parts that would
+        // otherwise appear for the first time on an issued PDF.
+        return injectAutoBadge(
+            out,
+            buildAutoBadgeHtml({
+                badgePlan,
+                codeType: badgeCodeType,
+                certificateId: sampleCertificateId,
+            })
+        );
+    }, [
+        imageTemplate,
+        fieldMappings,
+        customImages,
+        logoUrl,
+        instituteName,
+        badgeCodeType,
+        sampleCertificateId,
+    ]);
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [fitScale, setFitScale] = useState(1);

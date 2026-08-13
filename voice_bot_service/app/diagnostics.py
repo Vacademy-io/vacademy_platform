@@ -182,6 +182,11 @@ class CallDiagnostics:
     # never-heard question was then blocked as "already-said" on its real
     # delivery). A few per call is the fix working; not a fault.
     unsaid_reverted: int = 0
+    # LLM generations blocked because nothing new had been said (a stale turn
+    # closing on a silence fallback re-triggered inference with the context
+    # unchanged — call 17be14f2). Each one is a reply-to-nothing that used to
+    # re-deliver the intro. Evidence, not a fault.
+    empty_runs_blocked: int = 0
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -689,6 +694,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "repeatEscalations": d.repeat_escalations,
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
+                "emptyRunsBlocked": d.empty_runs_blocked,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

@@ -38,9 +38,11 @@ from pipecat.frames.frames import (
     Frame,
     InterimTranscriptionFrame,
     InterruptionFrame,
+    LLMContextFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
+    LLMRunFrame,
     LLMTextFrame,
     TranscriptionFrame,
     TTSAudioRawFrame,
@@ -48,6 +50,7 @@ from pipecat.frames.frames import (
     TTSStartedFrame,
     TTSStoppedFrame,
     TTSTextFrame,
+    UserSpeakingFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -136,10 +139,17 @@ class TranscriptCollector(FrameProcessor):
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
-                 bot_spoke_once=None):
+                 bot_spoke_once=None, on_voice_tick=None, on_continuation=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
+        # Acoustic truth: the transport's VAD pushes UserSpeakingFrame every
+        # 0.2s while voice is live. The turn-level Started/Stopped frames can
+        # lag this by seconds (see CallState.voice_tick_t).
+        self._on_voice_tick = on_voice_tick or (lambda: None)
+        # Tells NoRepeatGate the NEXT response is a continuation of a cut reply
+        # — the one place a paraphrased restatement is never legitimate.
+        self._on_continuation = on_continuation or (lambda: None)
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -206,7 +216,10 @@ class TranscriptCollector(FrameProcessor):
         # transcripts only (no interims), so without this the clock goes stale during
         # a LONG caller utterance and the watchdog spoke "kya aap sun paa rahe hain?"
         # WHILE THE CALLER WAS TALKING (observed 13x in 48h of live calls).
+        if isinstance(frame, UserSpeakingFrame):
+            self._on_voice_tick()         # voice is live RIGHT NOW (acoustics)
         if isinstance(frame, UserStartedSpeakingFrame):
+            self._on_voice_tick()
             self._set_user_speaking(True)
             self._on_activity(user=True)
         elif isinstance(frame, UserStoppedSpeakingFrame):
@@ -373,6 +386,11 @@ class TranscriptCollector(FrameProcessor):
                                    "from where you were interrupted, in one "
                                    "short sentence. Do not restart or "
                                    "re-greet.]")
+                        # A continuation must ADD, never restate: arm the strict
+                        # no-repeat bar for the reply this cue generates. Call
+                        # 17be14f2's audible repetition was this exact reply
+                        # paraphrasing the intro past the normal 0.80 bar.
+                        self._on_continuation()
                         await self.push_frame(LLMMessagesAppendFrame(
                             messages=[{"role": "user", "content": cue}],
                             run_llm=True), direction)
@@ -649,6 +667,15 @@ class NoRepeatGate(FrameProcessor):
         # not a set: topic membership alone is not evidence of a re-ask — see
         # _TOPIC_REASK_THRESHOLD for the call that proved it.
         self._asked: dict = {}
+        # Armed by the absorb path: the NEXT response continues a cut reply, so
+        # a moderate paraphrase of anything already said is a restart, not new
+        # content. Call 17be14f2: the continuation re-said the intro line as
+        # "वेबसाइट … पढ़ाई … enquiry डाली थी" (0.7 vs the 0.80 bar) and the
+        # caller heard the introduction twice. Strictness is scoped to that one
+        # response; normal replies keep the 0.80 bar and its false-positive
+        # safety margin.
+        self._continuation_next = False
+        self._strict_this_response = False
         self._suppressions: dict = {}  # key -> drops since we last let it through
         # Sentences emitted since the last response START — i.e. the ones whose
         # audio may not have reached the caller yet. On an interruption, any of
@@ -733,6 +760,14 @@ class NoRepeatGate(FrameProcessor):
     # padh raha hai?") scores 0.73; the false positive scores 0.35. 0.5 splits
     # them with margin on both sides.
     _TOPIC_REASK_THRESHOLD = 0.5
+    # The bar for a CONTINUATION response (absorb path). 0.6 catches the
+    # observed paraphrase (~0.7) with margin while leaving genuinely new
+    # content (which shares little text with what played) untouched.
+    _CONTINUATION_THRESHOLD = 0.6
+
+    def mark_continuation(self) -> None:
+        """The next response continues a cut reply — hold it to the strict bar."""
+        self._continuation_next = True
 
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
@@ -746,7 +781,10 @@ class NoRepeatGate(FrameProcessor):
         prev_ask = self._asked.get(topic) if topic else None
         same_topic_reask = prev_ask is not None and is_repeat(
             sentence, [prev_ask], threshold=self._TOPIC_REASK_THRESHOLD)
-        if not (is_repeat(sentence, self._spoken) or same_topic_reask):
+        bar = (self._CONTINUATION_THRESHOLD if self._strict_this_response
+               else 0.80)
+        if not (is_repeat(sentence, self._spoken, threshold=bar)
+                or same_topic_reask):
             return True
         # ONE budget per topic, not one per mechanism. Keying the two branches
         # separately let a re-asked question burn 2 drops as a near-identical
@@ -839,6 +877,8 @@ class NoRepeatGate(FrameProcessor):
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._said_real = False
             self._cf_held = ""
+            self._strict_this_response = self._continuation_next
+            self._continuation_next = False
             # The previous response ran to a natural start-of-next — its
             # sentences played (or are playing out normally) and stay recorded.
             self._pending = []
@@ -990,6 +1030,69 @@ class NoRepeatGate(FrameProcessor):
             await self.push_frame(frame, direction)
             return
 
+        await self.push_frame(frame, direction)
+
+
+class RunGuard(FrameProcessor):
+    """Between aggregators.user() and the LLM: a generation must ANSWER something.
+
+    THE CLASS OF BUG THIS KILLS (call 17be14f2, 2026-08-13, and its cousins on
+    4b1a44b9/761decff): the caller's pre-greet "हेलो" opened a user TURN whose
+    transcript was then dropped (machine-scrap filter) — but the turn itself
+    stayed open, and when it finally closed 4.6s later on a silence fallback,
+    the aggregator triggered an LLM inference WITH NO NEW USER CONTENT. The
+    model, asked to reply to nothing, re-delivered whatever its context says is
+    pending — the introduction — and the no-repeat gate was left to fight a
+    paraphrasing model with a similarity threshold. Every repetition incident
+    this month funnels through a generation that had nothing new to answer.
+
+    The rule is the definition of a conversation turn: run the LLM only when the
+    context's last message is a USER message we have not already answered.
+    Everything that legitimately generates satisfies it — the greet cue, the
+    absorb "carry on" cue, real caller turns — because they all APPEND before
+    they run. The empty-turn inference appends nothing, so its trigger arrives
+    with the context unchanged since the previous run, and is swallowed.
+    """
+
+    def __init__(self, context, enabled=None, diag=None):
+        super().__init__()
+        self._context = context
+        self._enabled = enabled or (lambda: True)
+        self._diag = diag
+        self._last_allowed_fp = None
+
+    def _fingerprint(self, msgs):
+        last = msgs[-1]
+        role = last.get("role") if isinstance(last, dict) else getattr(last, "role", None)
+        return role, (len(msgs), repr(last)[-300:])
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if (isinstance(frame, (LLMContextFrame, LLMRunFrame))
+                and direction == FrameDirection.DOWNSTREAM and self._enabled()):
+            try:
+                ctx = getattr(frame, "context", None) or self._context
+                msgs = ctx.get_messages() if ctx is not None else []
+            except Exception:
+                msgs = []
+            if msgs:
+                role, fp = self._fingerprint(msgs)
+                if role != "user":
+                    # Nothing new to answer — the last word was OURS.
+                    if self._diag is not None:
+                        self._diag.bump("empty_runs_blocked")
+                    logger.info("run-guard: blocking generation — last context "
+                                "message is %r, nothing new to answer", role)
+                    return
+                if fp == self._last_allowed_fp:
+                    # Identical input to the run we already did — the stale-turn
+                    # retrigger. Answering it again is how intros double.
+                    if self._diag is not None:
+                        self._diag.bump("empty_runs_blocked")
+                    logger.info("run-guard: blocking generation — context unchanged "
+                                "since the previous run")
+                    return
+                self._last_allowed_fp = fp
         await self.push_frame(frame, direction)
 
 
@@ -2424,7 +2527,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      recently_cut=_recently_cut, diag=diag,
                                      in_machine_window=_in_machine_window,
                                      reply_in_flight=_reply_in_flight,
-                                     bot_spoke_once=lambda: flags["bot_spoke_once"])
+                                     bot_spoke_once=lambda: flags["bot_spoke_once"],
+                                     on_voice_tick=lambda: flags.__setitem__(
+                                         "voice_tick_t", time.time()),
+                                     # late-bound: no_repeat is created below
+                                     on_continuation=lambda: no_repeat.mark_continuation())
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     no_repeat = NoRepeatGate(
@@ -2448,11 +2555,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
+    run_guard = RunGuard(llm_context,
+                         enabled=lambda: settings.run_guard_enabled,
+                         diag=diag)
+
     pipeline = Pipeline([
         transport.input(),
         stt,
         transcript,
         aggregators.user(),
+        run_guard,
         llm,
         sentinel,
         no_repeat,
@@ -2540,24 +2652,34 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
-        # Hold while the caller is MID-UTTERANCE so we do not talk over them, then
-        # a short settle, capped at 2.5s. The old condition also held on
-        # `user_started_t > connect_t`, which is true forever once the caller has
-        # made a single sound — so this loop always burned the whole 2.5s. On call
-        # 5d81ace1 the caller said one word ("Hello", 0.8s), Smart Turn reported
-        # EndOfTurnState.COMPLETE at +1.4s, and we still sat mute until +2.9s
-        # before saying anything. Waiting out a ceiling we already know is
-        # irrelevant is just dead air, and dead air at the START is what makes a
-        # caller say "hello?" — which is the thing that cancels the opening.
-        _settle_secs = 0.35
+        # Hold while the caller is AUDIBLY mid-utterance, then a short settle,
+        # capped at 2.5s. Two generations of this loop got the "is the caller
+        # speaking" signal wrong:
+        #   * v1 held on `user_started_t > connect_t` — true forever after one
+        #     sound, so it always burned the whole ceiling (call 5d81ace1).
+        #   * v2 keyed on user_speaking/user_stopped_t — but on pipecat 1.4
+        #     those are the aggregator's TURN lifecycle, and a turn can outlive
+        #     the voice by seconds (call 17be14f2: a "हेलो" turn closed on a
+        #     1500ms-silence fallback 4.6s later, so v2 ALSO burned the ceiling).
+        # The truth is acoustic: the transport's VAD pushes UserSpeakingFrame
+        # every 0.2s while voice is live, stamped into voice_tick_t. Quiet =
+        # no tick for 0.6s (3 missed ticks). The turn flag is consulted ONLY
+        # when no tick has ever arrived (a transport that doesn't emit them),
+        # and even then for at most 1.2s — so a stale-open turn can never pin
+        # the greet, while a caller who is genuinely talking holds it with
+        # fresh ticks for as long as they speak.
+        _tick_settle = 0.6
         while time.time() - connect_t < 2.5:
             if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
-            if not flags["user_speaking"] and (
-                    flags["user_stopped_t"] == 0.0
-                    or time.time() - flags["user_stopped_t"] >= _settle_secs):
+            now = time.time()
+            voiced = flags["voice_tick_t"]
+            acoustically_quiet = voiced == 0.0 or now - voiced >= _tick_settle
+            turn_holds = (voiced == 0.0 and flags["user_speaking"]
+                          and now - flags["user_started_t"] < 1.2)
+            if acoustically_quiet and not turn_holds:
                 break
             await asyncio.sleep(0.1)
         if opening:

@@ -379,6 +379,11 @@ class Settings:
     # is code and not a prompt rule as NO_REPEAT_ENABLED; same kill switch shape.
     no_echo_enabled: bool = field(
         default_factory=lambda: _env("NO_ECHO_ENABLED", "true").lower() == "true")
+    # Block LLM generations that have nothing new to answer (last context
+    # message not a fresh user message). Kills the reply-to-nothing class that
+    # re-delivered the intro on calls 17be14f2/761decff — see bot.RunGuard.
+    run_guard_enabled: bool = field(
+        default_factory=lambda: _env("RUN_GUARD_ENABLED", "true").lower() == "true")
     # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
     # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
     edge_tts_voice: str = field(

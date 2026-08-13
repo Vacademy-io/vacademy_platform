@@ -13,6 +13,9 @@ export const DonationHeader = ({ step }: DonationHeaderProps) => {
     instituteLogoFileId,
     instituteThemeCode,
     homeIconClickRoute,
+    hideInstituteName,
+    logoWidthPx,
+    logoHeightPx,
   } = useDomainRouting();
 
   return (
@@ -25,6 +28,9 @@ export const DonationHeader = ({ step }: DonationHeaderProps) => {
             instituteLogoFileId,
             instituteThemeCode,
             homeIconClickRoute,
+            hideInstituteName,
+            logoWidthPx,
+            logoHeightPx,
           }}
           size="small"
           showName={false}

@@ -568,6 +568,9 @@ const RegistrationWizard = ({
                   (instituteData?.theme as string) ||
                   null,
                 homeIconClickRoute: domainRouting.homeIconClickRoute ?? null,
+                hideInstituteName: domainRouting.hideInstituteName,
+                logoWidthPx: domainRouting.logoWidthPx,
+                logoHeightPx: domainRouting.logoHeightPx,
               }}
               size="medium"
               showName={true}

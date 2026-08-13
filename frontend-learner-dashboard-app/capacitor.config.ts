@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
   appName: "Vacademy Learner",
   // appName: "SSDC Horizon",
   webDir: "dist",
+  android: {
+    allowMixedContent: true,
+  },
   plugins: {
     CapacitorUpdater: {
       autoUpdate: false,

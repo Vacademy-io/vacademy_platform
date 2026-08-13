@@ -64,19 +64,23 @@ public class LearnerTrackingAsyncService {
                                 .max(Integer::compareTo)
                                 .orElse(0);
 
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.DOCUMENT_LAST_PAGE.name());
-
                 Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
 
                 // Use helper for percentage logic (cap at 100, skip if null)
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(), percentageWatched);
 
-                // Standard operation for non-percentage data
-                learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPage));
+                // DOCUMENT_LAST_PAGE is last-write-wins: an offline sync event whose
+                // clientTs is older than what's already been accepted for this
+                // device+slide (offline plan, Part A4 step 2) must not regress it,
+                // so OfflineSyncEventProcessor sets suppressPositionOps in that case.
+                if (!activityLogDTO.isSuppressPositionOps()) {
+                        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
+                                        LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.DOCUMENT_LAST_PAGE.name());
+                        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.DOCUMENT_LAST_PAGE.name(), String.valueOf(highestPage));
+                }
 
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
@@ -288,10 +292,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForVideo(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
-                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
-
                 // STEP 1: Get endTime for timestamp metric
                 Long maxEndTime = activityLogDTO.getVideos().stream()
                                 .map(VideoActivityLogDTO::getEndTimeInMillis)
@@ -322,8 +322,16 @@ public class LearnerTrackingAsyncService {
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), percentageWatched);
 
-                learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+                // VIDEO_LAST_TIMESTAMP is last-write-wins; suppressed for stale offline
+                // replay (offline plan, Part A4 step 2) -- see the DOCUMENT_LAST_PAGE
+                // comment above.
+                if (!activityLogDTO.isSuppressPositionOps()) {
+                        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                        userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
+                        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+                }
 
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
@@ -335,10 +343,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForHtmlVideo(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
-                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
-
                 // STEP 1: Get endTime for timestamp metric
                 Long maxEndTime = activityLogDTO.getVideos().stream()
                                 .map(VideoActivityLogDTO::getEndTimeInMillis)
@@ -368,8 +372,13 @@ public class LearnerTrackingAsyncService {
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), percentageWatched);
 
-                learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+                if (!activityLogDTO.isSuppressPositionOps()) {
+                        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                        userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
+                        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                        LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+                }
 
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }

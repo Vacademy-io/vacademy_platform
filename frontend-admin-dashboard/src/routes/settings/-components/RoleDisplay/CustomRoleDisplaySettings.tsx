@@ -1161,6 +1161,7 @@ export default function CustomRoleDisplaySettings({
                             'PULSE',
                             'REPORTS',
                             'CERTIFICATES',
+                            'DOWNLOADS',
                             'SETTINGS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
@@ -1211,7 +1212,8 @@ export default function CustomRoleDisplaySettings({
                                                         PULSE: 9,
                                                         REPORTS: 10,
                                                         CERTIFICATES: 11,
-                                                        SETTINGS: 12,
+                                                        DOWNLOADS: 12,
+                                                        SETTINGS: 13,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

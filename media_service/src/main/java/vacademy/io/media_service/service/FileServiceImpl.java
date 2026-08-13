@@ -561,4 +561,75 @@ public class FileServiceImpl implements FileService {
         return metadata;
     }
 
+    private static final String OFFLINE_CHECKSUM_TYPE_S3_ETAG = "S3_ETAG";
+
+    @Override
+    public List<vacademy.io.media_service.dto.OfflineAssetDetailsDTO> getOfflineAssetDetails(List<String> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return List.of();
+        }
+        List<vacademy.io.media_service.dto.OfflineAssetDetailsDTO> result = new ArrayList<>();
+        for (String fileId : fileIds) {
+            fileMetadataRepository.findById(fileId).ifPresent(fm -> {
+                lazilyFillOfflineMetadata(fm);
+                result.add(new vacademy.io.media_service.dto.OfflineAssetDetailsDTO(
+                        fm.getId(), fm.getFileSize(), fm.getFileType(), fm.getChecksum(), fm.getChecksumType()));
+            });
+        }
+        return result;
+    }
+
+    /**
+     * Fills the two offline-only columns the client needs before it can download
+     * an asset: checksum and file_size. Both come from the same S3 HEAD, so this
+     * fetches once when EITHER is missing.
+     *
+     * checksum is an opaque integrity/change token for offline asset diffing —
+     * plaintext ETag is fine even though the client encrypts the file locally,
+     * because the checksum is only ever compared against itself (never used to
+     * verify the encrypted bytes).
+     *
+     * file_size matters just as much: rows uploaded before the offline feature
+     * (or through paths that never recorded a size) carry file_size = NULL, and
+     * the manifest then ships size_bytes = null. The client stores size 0, the
+     * chunked downloader has no byte range to request, and the asset is wedged
+     * at PENDING forever. Backfilling it here keeps those legacy rows usable
+     * without a migration.
+     *
+     * Both are cached on the row from then on; a missing S3 object is logged and
+     * left null rather than failing the whole offline-asset-details batch.
+     */
+    private void lazilyFillOfflineMetadata(FileMetadata fm) {
+        boolean needsChecksum = !StringUtils.hasText(fm.getChecksum());
+        boolean needsSize = fm.getFileSize() == null || fm.getFileSize() <= 0;
+        if ((!needsChecksum && !needsSize) || !StringUtils.hasText(fm.getKey())) {
+            return;
+        }
+        try {
+            ObjectMetadata s3Metadata = s3Client.getObjectMetadata(bucketName, fm.getKey());
+            boolean changed = false;
+            if (needsChecksum) {
+                String etag = s3Metadata.getETag();
+                if (StringUtils.hasText(etag)) {
+                    fm.setChecksum(etag);
+                    fm.setChecksumType(OFFLINE_CHECKSUM_TYPE_S3_ETAG);
+                    changed = true;
+                }
+            }
+            if (needsSize) {
+                long contentLength = s3Metadata.getContentLength();
+                if (contentLength > 0) {
+                    fm.setFileSize(contentLength);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                fileMetadataRepository.save(fm);
+            }
+        } catch (Exception e) {
+            log.warn("offline-asset-details: could not fetch S3 metadata for fileId={} key={}: {}",
+                    fm.getId(), fm.getKey(), e.getMessage());
+        }
+    }
+
 }

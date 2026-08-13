@@ -208,10 +208,34 @@ export const useSlides = (chapterId: string) => {
   const getSlidesQuery = useQuery({
     queryKey: ["slides", chapterId],
     queryFn: async () => {
-      const response = await authenticatedAxiosInstance.get(
-        `${GET_SLIDES}?chapterId=${chapterId}`
-      );
-      
+      try {
+        return await fetchSlidesOnline(chapterId);
+      } catch (error) {
+        // Offline (or genuinely unreachable) fallback (plan §B4): hydrate
+        // from the last persisted manifest snapshot rather than surfacing an
+        // error screen. Returns null (not []) when nothing is persisted, so
+        // callers can still distinguish "no offline copy" from "empty chapter".
+        const offlineSlides = await tryHydrateOffline(chapterId);
+        if (offlineSlides) return offlineSlides;
+        throw error;
+      }
+    },
+    staleTime: 60_000,
+  });
+
+  return {
+    slides: getSlidesQuery.data,
+    isLoading: getSlidesQuery.isLoading,
+    error: getSlidesQuery.error,
+    refetch: getSlidesQuery.refetch,
+  };
+};
+
+async function fetchSlidesOnline(chapterId: string) {
+  const response = await authenticatedAxiosInstance.get(
+    `${GET_SLIDES}?chapterId=${chapterId}`
+  );
+
       // Debug: Log HTML_VIDEO slides to see their structure
       if (response.data && Array.isArray(response.data)) {
         const htmlVideoSlides = response.data.filter((slide: any) => 
@@ -237,16 +261,36 @@ export const useSlides = (chapterId: string) => {
           });
         }
       }
-      
-      return response.data;
-    },
-    staleTime: 60_000,
-  });
 
-  return {
-    slides: getSlidesQuery.data,
-    isLoading: getSlidesQuery.isLoading,
-    error: getSlidesQuery.error,
-    refetch: getSlidesQuery.refetch,
-  };
-};
+      return response.data;
+}
+
+async function tryHydrateOffline(chapterId: string): Promise<Slide[] | null> {
+  try {
+    const [{ getUserId }, { getPackageSessionId }, { hydrateOfflineSlides }, { getOfflineDb }, { nodesDao }] =
+      await Promise.all([
+        import("@/constants/getUserId"),
+        import("@/utils/study-library/get-list-from-stores/getPackageSessionId"),
+        import("@/lib/offline/hydrate-slides"),
+        import("@/lib/offline/db/connection"),
+        import("@/lib/offline/db/dao/nodes-dao"),
+      ]);
+    const userId = await getUserId();
+    if (!userId) return null;
+
+    // Resolve the batch from the chapter the learner actually opened. This used
+    // to come from Preferences' StudentDetails, which holds only the learner's
+    // PRIMARY batch — so for anyone enrolled in more than one, opening a
+    // downloaded chapter from a different course looked up the wrong manifest,
+    // found nothing, and the viewer rendered "No content" over content sitting
+    // on disk. The chapter's node row carries its own package_session_id.
+    const db = await getOfflineDb();
+    const chapterNode = await nodesDao.get(db, userId, chapterId);
+    const packageSessionId = chapterNode?.package_session_id ?? (await getPackageSessionId());
+    if (!packageSessionId) return null;
+
+    return await hydrateOfflineSlides(userId, packageSessionId, chapterId);
+  } catch {
+    return null;
+  }
+}

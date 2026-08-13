@@ -44,6 +44,16 @@ import { cn } from "@/lib/utils";
 interface CustomVideoPlayerProps {
     videoUrl: string;
     sourceType?: "FILE_ID" | "URL";
+    /**
+     * True when `videoUrl` is a locally-decrypted offline stream (the native
+     * `OfflineMedia` scheme — see src/lib/offline/resolve.ts `offline-stream`
+     * kind) rather than a remote signed URL. Forces download affordances off
+     * regardless of role permission — there is nothing sensible to "download"
+     * from a `offline-media://`/localhost decrypt session, and the whole
+     * point of on-device encryption is that no plaintext copy is ever
+     * exposed for export.
+     */
+    isOfflineSource?: boolean;
     onTimeUpdate?: (currentTime: number) => void;
     questions?: Array<{
         id: string;
@@ -107,12 +117,13 @@ function ControlButton({
 }
 
 const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
-    ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [], concentrationSettings }, ref) => {
+    ({ videoUrl, sourceType = "URL", isOfflineSource = false, onTimeUpdate, questions = [], concentrationSettings }, ref) => {
         const { activeItem } = useContentStore();
         // Whether this user's role is allowed to download the video. Defaults to
-        // false (today's behavior — native download is suppressed).
+        // false (today's behavior — native download is suppressed). Always
+        // false for an offline source, regardless of role permission.
         const { canDownload } = useSlideDownloadPermission();
-        const allowVideoDownload = canDownload(SlideDownloadTypeKey.VIDEO);
+        const allowVideoDownload = !isOfflineSource && canDownload(SlideDownloadTypeKey.VIDEO);
         // Select only the addActivity function to avoid re-renders due to trackingData updates
         const addActivity = useTrackingStore((state) => state.addActivity);
         const activityId = useRef(uuidv4());
@@ -1978,7 +1989,11 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             playsInline
                             preload="auto"
                             controlsList={allowVideoDownload ? undefined : "nodownload"}
-                            crossOrigin="anonymous"
+                            // The native OfflineMedia responders (iOS scheme
+                            // handler / Android localhost server) don't send
+                            // Access-Control-Allow-Origin — crossOrigin would
+                            // make some WebViews refuse to play the stream.
+                            crossOrigin={isOfflineSource ? undefined : "anonymous"}
                         >
                             <source src={actualVideoUrl} type="video/mp4" />
                             <source src={actualVideoUrl} type="video/webm" />

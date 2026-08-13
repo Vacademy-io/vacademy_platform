@@ -1178,6 +1178,7 @@ export default function AdminDisplaySettings() {
                             'PULSE',
                             'REPORTS',
                             'CERTIFICATES',
+                            'DOWNLOADS',
                             'SETTINGS',
                         ];
                         const orderForId: Record<string, number> = {
@@ -1192,7 +1193,8 @@ export default function AdminDisplaySettings() {
                             PULSE: 9,
                             REPORTS: 10,
                             CERTIFICATES: 11,
-                            SETTINGS: 12,
+                            DOWNLOADS: 12,
+                            SETTINGS: 13,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;

@@ -7,18 +7,24 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 interface MenuOptionsProps {
     onDelete: () => void;
     onEdit: () => void;
+    onOfflineAvailability?: () => void;
 }
 
-export const MenuOptions = ({ onDelete, onEdit }: MenuOptionsProps) => {
+export const MenuOptions = ({ onDelete, onEdit, onOfflineAvailability }: MenuOptionsProps) => {
     const editLabel = `Edit ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`;
     const deleteLabel = `Delete ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`;
-    const DropdownList = [editLabel, deleteLabel];
+    const offlineLabel = 'Offline Availability';
+    const DropdownList = onOfflineAvailability
+        ? [editLabel, offlineLabel, deleteLabel]
+        : [editLabel, deleteLabel];
 
     const handleMenuOptionsChange = (value: string) => {
         if (value === deleteLabel) {
             onDelete();
         } else if (value === editLabel) {
             onEdit();
+        } else if (value === offlineLabel) {
+            onOfflineAvailability?.();
         }
     };
 

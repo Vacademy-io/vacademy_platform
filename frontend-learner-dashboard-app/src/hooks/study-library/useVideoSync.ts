@@ -13,6 +13,7 @@ import { z } from "zod";
 import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 import { ADD_UPDATE_VIDEO_ACTIVITY } from "@/constants/urls";
+import { isNetworkError, trackOrQueue } from "@/lib/offline/events/track-or-queue";
 
 const STORAGE_KEY = "video_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -349,21 +350,60 @@ export const useVideoSync = () => {
             );
             inFlight.add(activity.activity_id);
             try {
-              console.log(`📡 [useVideoSync] Making API call for NEW activity: ${activity.activity_id}`);
-              await addUpdateVideoActivity.mutateAsync({
+              const queueContext = {
                 slideId: activity.id || "",
                 chapterId: chapterId || "",
-                requestPayload: apiPayload,
-                packageSessionId: packageSessionId || "",
                 moduleId: moduleId || "",
                 subjectId: subjectId || "",
+                packageSessionId: packageSessionId || "",
+              };
+              const queued = await trackOrQueue({
+                userId,
+                eventType: "VIDEO",
+                context: queueContext,
+                payload: apiPayload,
               });
-              console.log(`✅ [useVideoSync] NEW activity API call successful: ${activity.activity_id}`);
+              if (!queued) {
+                console.log(`📡 [useVideoSync] Making API call for NEW activity: ${activity.activity_id}`);
+                await addUpdateVideoActivity.mutateAsync({
+                  slideId: activity.id || "",
+                  chapterId: chapterId || "",
+                  requestPayload: apiPayload,
+                  packageSessionId: packageSessionId || "",
+                  moduleId: moduleId || "",
+                  subjectId: subjectId || "",
+                });
+                console.log(`✅ [useVideoSync] NEW activity API call successful: ${activity.activity_id}`);
+              }
               activity.sync_status = "SYNCED";
               activity.new_activity = false; // Move this here, after successful API call
               updatedActivities.push(activity);
               didSync = true;
             } catch (err) {
+              if (isNetworkError(err)) {
+                try {
+                  await trackOrQueue({
+                    userId,
+                    eventType: "VIDEO",
+                    context: {
+                      slideId: activity.id || "",
+                      chapterId: chapterId || "",
+                      moduleId: moduleId || "",
+                      subjectId: subjectId || "",
+                      packageSessionId: packageSessionId || "",
+                    },
+                    payload: apiPayload,
+                    force: true,
+                  });
+                  activity.sync_status = "SYNCED";
+                  activity.new_activity = false;
+                  updatedActivities.push(activity);
+                  didSync = true;
+                  continue;
+                } catch (queueErr) {
+                  console.error("[useVideoSync] failed to queue offline event", queueErr);
+                }
+              }
               console.log("add api call failed: ", err);
               // Keep the activity so the next tick retries it. Dropping it
               // here erased the whole un-synced segment buffer on a single
@@ -376,20 +416,58 @@ export const useVideoSync = () => {
             if (apiPayload.videos && apiPayload.videos.length > 0) {
               inFlight.add(activity.activity_id);
               try {
-                console.log(`📡 [useVideoSync] Making API call for UPDATE activity: ${activity.activity_id}`);
-                await addUpdateVideoActivity.mutateAsync({
+                const queueContext = {
                   slideId: activity.id || "",
                   chapterId: chapterId || "",
-                  requestPayload: apiPayload,
-                  packageSessionId: packageSessionId || "",
                   moduleId: moduleId || "",
                   subjectId: subjectId || "",
+                  packageSessionId: packageSessionId || "",
+                };
+                const queued = await trackOrQueue({
+                  userId,
+                  eventType: "VIDEO",
+                  context: queueContext,
+                  payload: apiPayload,
                 });
-                console.log(`✅ [useVideoSync] UPDATE activity API call successful: ${activity.activity_id}`);
+                if (!queued) {
+                  console.log(`📡 [useVideoSync] Making API call for UPDATE activity: ${activity.activity_id}`);
+                  await addUpdateVideoActivity.mutateAsync({
+                    slideId: activity.id || "",
+                    chapterId: chapterId || "",
+                    requestPayload: apiPayload,
+                    packageSessionId: packageSessionId || "",
+                    moduleId: moduleId || "",
+                    subjectId: subjectId || "",
+                  });
+                  console.log(`✅ [useVideoSync] UPDATE activity API call successful: ${activity.activity_id}`);
+                }
                 activity.sync_status = "SYNCED";
                 updatedActivities.push(activity);
                 didSync = true;
               } catch (err) {
+                if (isNetworkError(err)) {
+                  try {
+                    await trackOrQueue({
+                      userId,
+                      eventType: "VIDEO",
+                      context: {
+                        slideId: activity.id || "",
+                        chapterId: chapterId || "",
+                        moduleId: moduleId || "",
+                        subjectId: subjectId || "",
+                        packageSessionId: packageSessionId || "",
+                      },
+                      payload: apiPayload,
+                      force: true,
+                    });
+                    activity.sync_status = "SYNCED";
+                    updatedActivities.push(activity);
+                    didSync = true;
+                    continue;
+                  } catch (queueErr) {
+                    console.error("[useVideoSync] failed to queue offline event", queueErr);
+                  }
+                }
                 console.log("update api call failed: ", err);
                 // Keep for retry on the next tick (see NEW-activity catch).
                 updatedActivities.push(activity);

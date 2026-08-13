@@ -18,6 +18,7 @@ import {
 import { useRouter } from "@tanstack/react-router";
 import { Slide, useSlides } from "@/hooks/study-library/use-slides";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { DownloadNodeButton } from "@/components/common/offline/download-node-button";
 import {
   Tooltip,
   TooltipContent,
@@ -349,6 +350,7 @@ const SlideItem = ({
   onClick,
   isLocked,
   unlockMessage,
+  packageSessionId,
 }: {
   slide: Slide;
   index: number;
@@ -356,6 +358,7 @@ const SlideItem = ({
   onClick: () => void;
   isLocked?: boolean;
   unlockMessage?: string;
+  packageSessionId?: string;
 }) => {
   const { t } = useTranslation("studyContent");
   const [mediaKind, setMediaKind] = useState<"audio" | "video" | null>(null);
@@ -628,6 +631,12 @@ const SlideItem = ({
 
               {/* Right side: progress or status */}
               <div className="shrink-0 flex items-center gap-1">
+                <DownloadNodeButton
+                  nodeId={slide.id}
+                  nodeType="SLIDE"
+                  packageSessionId={packageSessionId}
+                  compact
+                />
                 {isLocked ? (
                   <LockedBadge size="sm" unlockMessage={unlockMessage} className="[.ui-play_&]:rounded-full [.ui-play_&]:bg-gray-200" />
                 ) : slide.percentage_completed != null && !isCompleted ? (
@@ -678,7 +687,10 @@ export const ChapterSidebarSlides = () => {
   const { activeItem, setActiveItem, items, slideEvaluations } =
     useContentStore();
   const router = useRouter();
-  const { chapterId } = router.state.location.search;
+  const { chapterId, sessionId } = router.state.location.search as {
+    chapterId?: string;
+    sessionId?: string;
+  };
   const { slides: rawSlides, isLoading } = useSlides(chapterId || "");
 
   // Use items from store if available (filtered by drip conditions), otherwise use raw slides
@@ -745,6 +757,7 @@ export const ChapterSidebarSlides = () => {
               isActive={slide.id === activeItem?.id}
               isLocked={locked}
               unlockMessage={unlockMessage}
+              packageSessionId={sessionId}
               onClick={async () => {
                 // Don't navigate if slide is locked
                 if (locked) {

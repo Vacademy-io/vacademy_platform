@@ -122,6 +122,14 @@ export const GET_SLIDES_PUBLIC = `${BASE_URL}/admin-core-service/open/v1/learner
 export const GET_SLIDES = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides`;
 export const GET_SLIDES_BY_PACKAGE_SESSION = `${BASE_URL}/admin-core-service/v1/learner-study-library/slides-by-package-session`;
 
+// Offline content download & sync.
+export const OFFLINE_MANIFEST_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/manifest`;
+export const OFFLINE_DOWNLOAD_URLS_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/download-urls`;
+export const OFFLINE_SYNC_BATCH_URL = `${BASE_URL}/admin-core-service/learner-tracking/offline-sync/v1/batch`;
+export const OFFLINE_DEVICES_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/devices`;
+// Institute-level offline kill switch — the whole offline UI hangs off this.
+export const OFFLINE_SETTINGS_URL = `${BASE_URL}/admin-core-service/learner-offline/v1/settings`;
+
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const GET_SIGNED_URL = `${BASE_URL}/media-service/get-signed-url`;
 export const GET_SIGNED_URL_PUBLIC = `${BASE_URL}/media-service/public/get-signed-url`;

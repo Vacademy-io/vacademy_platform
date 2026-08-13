@@ -84,6 +84,50 @@
 		4BBDA3A872CA19A3467D84F3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		69AD056C540847E4A3298870 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		EF8061D5CA924D34A39DE777 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		801EDFE3F88D4A70A44A00A1 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		80CBF2D1E6E14789BC249257 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		5CEE86A08BED4F15A7548F90 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		701DDABAABAF4E7BB5C51AE9 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		B529081F47694FDCA934FD6C /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		6A214F130D4C4807B42AF5B2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		2BD9EADE27C148BDAAC05D3E /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		5C81E7B1E26E4E219E727B00 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		542B13A323EA4A28A69BFA55 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		7AC2B5D585C2436285C22D6F /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		F1D7138149EB4FA8AF385C15 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		64F13DB96EA440508443ECF1 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		AD056A8BAB964CF8A82B5E28 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		439F2F8A2EB44A3AB00BC81C /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		F92B60D363B74C23B6D95691 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		0E0C6D3250494547B873F88D /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		540A41F34EC54BDAAB02875E /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		E6761DF1E0A246B3A45D6630 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		FA404FC5414543089A2C9103 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		19167FC1C77149F193D6E6C7 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		D91136FEE2F248F99CB856B4 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		1FD784859F894C6BB964779B /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		46BC7686D33545A089BB64AD /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		235EF7FF7C704F9E9022E9BE /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		C1607586FA904122A833A480 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		1893791D8E8340F5936C0B35 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		3995D85EFF584B57881CC141 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		02F5C080AD2E4959B0453516 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		260F0895AB5945E98BD705F3 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		CED1EE3C4F924B449A849A75 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		CC83C7694AF74710A268A7C3 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		732AEBA4D48A482C9947A155 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		BC67E2B60E714A6D84EC10FA /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		4445A6DD7B254233817F21CA /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		D14435C32FA64923B57163FE /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		2612C186DA7B446990F59A91 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		89B75F7B56AA48949FC3667E /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		B54A1F3CD7664D439F52C51A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		76D1CA09A18E4F8687EEBCCA /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		4C6D6B348A9E456FAD8CEF82 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		2E1FE691860D4A8ABD9B8D92 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		7750EF205F394B4B94D524FE /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -170,6 +214,10 @@
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineMediaCrypto.swift; sourceTree = "<group>"; };
+		070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineMediaPlugin.swift; sourceTree = "<group>"; };
+		C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineMediaSchemeHandler.swift; sourceTree = "<group>"; };
+		B732170F2E424837BA95FC36 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -401,6 +449,10 @@
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */,
+				070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */,
+				C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */,
+				B732170F2E424837BA95FC36 /* MainViewController.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -1395,6 +1447,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E0D4AE92FC2BDC200E29BEC /* AppDelegate.swift in Sources */,
+				69AD056C540847E4A3298870 /* OfflineMediaCrypto.swift in Sources */,
+				EF8061D5CA924D34A39DE777 /* OfflineMediaPlugin.swift in Sources */,
+				801EDFE3F88D4A70A44A00A1 /* OfflineMediaSchemeHandler.swift in Sources */,
+				80CBF2D1E6E14789BC249257 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1403,6 +1459,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E0D4AFF2FC2CB0100E29BEC /* AppDelegate.swift in Sources */,
+				5CEE86A08BED4F15A7548F90 /* OfflineMediaCrypto.swift in Sources */,
+				701DDABAABAF4E7BB5C51AE9 /* OfflineMediaPlugin.swift in Sources */,
+				B529081F47694FDCA934FD6C /* OfflineMediaSchemeHandler.swift in Sources */,
+				6A214F130D4C4807B42AF5B2 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1411,6 +1471,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E3507892F1C931700F1F9F9 /* AppDelegate.swift in Sources */,
+				2BD9EADE27C148BDAAC05D3E /* OfflineMediaCrypto.swift in Sources */,
+				5C81E7B1E26E4E219E727B00 /* OfflineMediaPlugin.swift in Sources */,
+				542B13A323EA4A28A69BFA55 /* OfflineMediaSchemeHandler.swift in Sources */,
+				7AC2B5D585C2436285C22D6F /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1419,6 +1483,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E35079E2F1C931F00F1F9F9 /* AppDelegate.swift in Sources */,
+				F1D7138149EB4FA8AF385C15 /* OfflineMediaCrypto.swift in Sources */,
+				64F13DB96EA440508443ECF1 /* OfflineMediaPlugin.swift in Sources */,
+				AD056A8BAB964CF8A82B5E28 /* OfflineMediaSchemeHandler.swift in Sources */,
+				439F2F8A2EB44A3AB00BC81C /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1427,6 +1495,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E5CB2362F0ABC0800089DAC /* AppDelegate.swift in Sources */,
+				F92B60D363B74C23B6D95691 /* OfflineMediaCrypto.swift in Sources */,
+				0E0C6D3250494547B873F88D /* OfflineMediaPlugin.swift in Sources */,
+				540A41F34EC54BDAAB02875E /* OfflineMediaSchemeHandler.swift in Sources */,
+				E6761DF1E0A246B3A45D6630 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1435,6 +1507,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				0EB0C0E82F73B79D003DA394 /* AppDelegate.swift in Sources */,
+				FA404FC5414543089A2C9103 /* OfflineMediaCrypto.swift in Sources */,
+				19167FC1C77149F193D6E6C7 /* OfflineMediaPlugin.swift in Sources */,
+				D91136FEE2F248F99CB856B4 /* OfflineMediaSchemeHandler.swift in Sources */,
+				1FD784859F894C6BB964779B /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1443,6 +1519,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */,
+				46BC7686D33545A089BB64AD /* OfflineMediaCrypto.swift in Sources */,
+				235EF7FF7C704F9E9022E9BE /* OfflineMediaPlugin.swift in Sources */,
+				C1607586FA904122A833A480 /* OfflineMediaSchemeHandler.swift in Sources */,
+				1893791D8E8340F5936C0B35 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1451,6 +1531,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				8096B6932B8C76CF811F7345 /* AppDelegate.swift in Sources */,
+				3995D85EFF584B57881CC141 /* OfflineMediaCrypto.swift in Sources */,
+				02F5C080AD2E4959B0453516 /* OfflineMediaPlugin.swift in Sources */,
+				260F0895AB5945E98BD705F3 /* OfflineMediaSchemeHandler.swift in Sources */,
+				CED1EE3C4F924B449A849A75 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1459,6 +1543,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1DA697911CA1F9685933BB9 /* AppDelegate.swift in Sources */,
+				CC83C7694AF74710A268A7C3 /* OfflineMediaCrypto.swift in Sources */,
+				732AEBA4D48A482C9947A155 /* OfflineMediaPlugin.swift in Sources */,
+				BC67E2B60E714A6D84EC10FA /* OfflineMediaSchemeHandler.swift in Sources */,
+				4445A6DD7B254233817F21CA /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1467,6 +1555,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				974474857A30479F153356F6 /* AppDelegate.swift in Sources */,
+				D14435C32FA64923B57163FE /* OfflineMediaCrypto.swift in Sources */,
+				2612C186DA7B446990F59A91 /* OfflineMediaPlugin.swift in Sources */,
+				89B75F7B56AA48949FC3667E /* OfflineMediaSchemeHandler.swift in Sources */,
+				B54A1F3CD7664D439F52C51A /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1483,6 +1575,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				76D1CA09A18E4F8687EEBCCA /* OfflineMediaCrypto.swift in Sources */,
+				4C6D6B348A9E456FAD8CEF82 /* OfflineMediaPlugin.swift in Sources */,
+				2E1FE691860D4A8ABD9B8D92 /* OfflineMediaSchemeHandler.swift in Sources */,
+				7750EF205F394B4B94D524FE /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

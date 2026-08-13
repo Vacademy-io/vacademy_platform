@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG-BUILD OVERLAY: permits cleartext HTTP everywhere so a dev phone can
+     talk to a local backend on the LAN (e.g. http://<mac-ip>:8072). Release
+     builds use the locked-down main config (loopback-only cleartext). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

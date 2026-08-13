@@ -12,8 +12,10 @@ import { useCopySlide } from '../../-services/copySlides';
 import { toast } from 'sonner';
 
 interface CopyTo {
-    openDialog: 'copy' | 'move' | 'delete' | 'drip-conditions' | null;
-    setOpenDialog: Dispatch<SetStateAction<'copy' | 'move' | 'delete' | 'drip-conditions' | null>>;
+    openDialog: 'copy' | 'move' | 'delete' | 'drip-conditions' | 'offline-availability' | null;
+    setOpenDialog: Dispatch<
+        SetStateAction<'copy' | 'move' | 'delete' | 'drip-conditions' | 'offline-availability' | null>
+    >;
 }
 
 export const CopyToDialog = ({ openDialog, setOpenDialog }: CopyTo) => {

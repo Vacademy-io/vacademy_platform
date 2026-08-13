@@ -1161,6 +1161,7 @@ export default function TeacherDisplaySettings() {
                             'PULSE',
                             'REPORTS',
                             'CERTIFICATES',
+                            'DOWNLOADS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
@@ -1215,6 +1216,7 @@ export default function TeacherDisplaySettings() {
                                                         PULSE: 9,
                                                         REPORTS: 10,
                                                         CERTIFICATES: 11,
+                                                        DOWNLOADS: 12,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

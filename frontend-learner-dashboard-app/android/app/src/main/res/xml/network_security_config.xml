@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Permits cleartext (plain HTTP, no TLS) traffic to the loopback interface only. Required for
+  the OfflineMedia plugin's localhost video-streaming responder
+  (android/app/src/main/java/com/template/app/offlinemedia/OfflineMediaServer.java), which the
+  WebView's <video> tag talks to over http://127.0.0.1:<port>/... — a real TLS cert isn't
+  possible (or meaningful) for an ephemeral loopback-only port, and the content never leaves the
+  device (the socket is bound to 127.0.0.1, not 0.0.0.0).
+
+  Android's platform default network security config already permits cleartext to
+  127.0.0.1/localhost on most versions, but this file makes that explicit and future-proof
+  rather than relying on undocumented default behavior. All other cleartext traffic remains
+  disabled (base-config cleartextTrafficPermitted="false"), matching the rest of the app's
+  TLS-only networking.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

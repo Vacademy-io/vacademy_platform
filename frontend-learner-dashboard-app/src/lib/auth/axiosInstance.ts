@@ -171,6 +171,10 @@ const authenticatedAxiosInstance = axios.create({
   // For example: baseURL, timeout, etc.
   headers: {
     clientId: "",
+    // Dev-only convenience: lets requests through ngrok's free-tier browser
+    // interstitial when the offline APIs are tunnelled to a local backend.
+    // Harmless for every other host (unknown headers are ignored).
+    "ngrok-skip-browser-warning": "1",
   },
 });
 

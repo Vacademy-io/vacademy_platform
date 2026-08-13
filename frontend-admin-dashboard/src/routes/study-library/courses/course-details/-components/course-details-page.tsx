@@ -19,6 +19,7 @@ import {
     FileText,
     VideoCamera,
     Translate,
+    CloudArrowDown,
 } from '@phosphor-icons/react';
 import {
     DropdownMenu,
@@ -45,6 +46,7 @@ import {
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TranslateCourseDialog } from './translate-course-dialog';
+import { OfflineSettingsDialog } from './OfflineSettingsDialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CourseDetailsFormValues, courseDetailsSchema } from './course-details-schema';
@@ -341,6 +343,8 @@ export const CourseDetailsPage = () => {
     const courseId = searchParams.courseId ?? '';
     // "Translate course" action (Phase 1 i18n) — scoped to the selected batch.
     const [isTranslateDialogOpen, setIsTranslateDialogOpen] = useState(false);
+    // Course-wide offline-download settings dialog (header button).
+    const [isOfflineSettingsOpen, setIsOfflineSettingsOpen] = useState(false);
 
     const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
@@ -1456,6 +1460,24 @@ export const CourseDetailsPage = () => {
                                                     onOpenChange={setIsTranslateDialogOpen}
                                                     packageSessionId={packageSessionIds}
                                                     courseId={effectiveCourseId}
+                                                />
+                                            </>
+                                        )}
+                                        {canEdit && effectiveCourseId && (
+                                            <>
+                                                <MyButton
+                                                    type="button"
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() => setIsOfflineSettingsOpen(true)}
+                                                >
+                                                    <CloudArrowDown size={16} />
+                                                    Offline settings
+                                                </MyButton>
+                                                <OfflineSettingsDialog
+                                                    open={isOfflineSettingsOpen}
+                                                    onOpenChange={setIsOfflineSettingsOpen}
+                                                    packageId={effectiveCourseId}
                                                 />
                                             </>
                                         )}

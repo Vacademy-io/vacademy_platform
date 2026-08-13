@@ -109,6 +109,9 @@ import { TokenKey, Authority } from '@/constants/auth/tokens';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import { ChapterDripConditionDialog } from './ChapterDripConditionDialog';
+import { OfflineAvailabilityDialog } from './OfflineAvailabilityDialog';
+import { OfflineTelemetryCard } from './OfflineTelemetryCard';
+import { WifiSlash } from '@phosphor-icons/react';
 import { AddSubjectForm } from '../subjects/-components/add-subject.tsx/add-subject-form';
 import { AddModulesForm } from '../subjects/modules/-components/add-modules.tsx/add-modules-form';
 import { AddChapterForm } from '../subjects/modules/chapters/-components/chapter-material/add-chapters/add-chapter-form';
@@ -128,6 +131,7 @@ import { CopyContentLineageBadge } from './CopyContentLineageBadge';
 import { BulkUploadDialogButton } from '@/components/common/study-library/bulk-content-uploading/bulk-upload-dialog-button';
 import { BatchChatPanel } from '@/components/chat/BatchChatPanel';
 import { getNotificationSettings } from '@/services/notification-settings';
+import { getOfflineAccessSettings } from '@/services/offline-access';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -505,6 +509,21 @@ export const CourseStructureDetails = ({
     // Chat is OFF by default — only show the Discussion tab when an institute has explicitly enabled it.
     const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
 
+    // Downloads tab follows the institute OFFLINE_ACCESS_SETTING: enabling offline
+    // access surfaces the tab automatically (no Display Settings trip needed);
+    // an explicit per-role hide in Display Settings still wins via the normal
+    // role-config filter. Only hide once the setting has loaded and is off —
+    // never on loading/error — so the strip doesn't flicker.
+    const offlineAccessQuery = useQuery({
+        queryKey: ['offline-access-settings'],
+        queryFn: getOfflineAccessSettings,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+    });
+    const isOfflineAccessDisabled = offlineAccessQuery.data
+        ? offlineAccessQuery.data.enabled !== true
+        : false;
+
     // Ensure selected tab is visible per role display settings; otherwise, switch to default/first visible
     useEffect(() => {
         if (!roleDisplay?.courseDetails?.tabs) return;
@@ -612,6 +631,19 @@ export const CourseStructureDetails = ({
     const [dripConditionsEnabled, setDripConditionsEnabled] = useState(false);
     const [dripConditions, setDripConditions] = useState<any[]>([]);
     const [loadingDripConditions, setLoadingDripConditions] = useState(false);
+
+    // Chapter offline-availability dialog state
+    const [chapterOfflineDialog, setChapterOfflineDialog] = useState<{
+        open: boolean;
+        chapterId: string | null;
+        chapterName: string | null;
+    }>({ open: false, chapterId: null, chapterName: null });
+    const handleOpenChapterOfflineDialog = (chapterId: string, chapterName: string) => {
+        setChapterOfflineDialog({ open: true, chapterId, chapterName });
+    };
+    const handleCloseChapterOfflineDialog = () => {
+        setChapterOfflineDialog({ open: false, chapterId: null, chapterName: null });
+    };
 
     // Navigation state for loose view
     const [currentNavigationLevel, setCurrentNavigationLevel] = useState<
@@ -2266,6 +2298,20 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
+                                                                                                                                            {true && (
+                                                                                                                                                <DropdownMenuItem
+                                                                                                                                                    onClick={(e) => {
+                                                                                                                                                        e.stopPropagation();
+                                                                                                                                                        handleOpenChapterOfflineDialog(
+                                                                                                                                                            ch.chapter.id,
+                                                                                                                                                            ch.chapter.chapter_name
+                                                                                                                                                        );
+                                                                                                                                                    }}
+                                                                                                                                                >
+                                                                                                                                                    <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                                                                                                    Offline Availability
+                                                                                                                                                </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
                                                                                 )}
@@ -2908,6 +2954,20 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
+                                                                                                                                            {true && (
+                                                                                                                                                <DropdownMenuItem
+                                                                                                                                                    onClick={(e) => {
+                                                                                                                                                        e.stopPropagation();
+                                                                                                                                                        handleOpenChapterOfflineDialog(
+                                                                                                                                                            ch.chapter.id,
+                                                                                                                                                            ch.chapter.chapter_name
+                                                                                                                                                        );
+                                                                                                                                                    }}
+                                                                                                                                                >
+                                                                                                                                                    <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                                                                                                    Offline Availability
+                                                                                                                                                </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
                                                                                 )}
@@ -3421,6 +3481,20 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
+                                                                                                                                            {true && (
+                                                                                                                                                <DropdownMenuItem
+                                                                                                                                                    onClick={(e) => {
+                                                                                                                                                        e.stopPropagation();
+                                                                                                                                                        handleOpenChapterOfflineDialog(
+                                                                                                                                                            ch.chapter.id,
+                                                                                                                                                            ch.chapter.chapter_name
+                                                                                                                                                        );
+                                                                                                                                                    }}
+                                                                                                                                                >
+                                                                                                                                                    <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                                                                                                    Offline Availability
+                                                                                                                                                </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
                                                                                 )}
@@ -3712,7 +3786,7 @@ export const CourseStructureDetails = ({
             </div>
         ),
         [TabType.REPORTS]: batchPackageSessionId ? (
-            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+            <div className="space-y-4 rounded-md bg-white p-4 text-sm text-gray-600 shadow-sm">
                 <BatchReports packageSessionId={batchPackageSessionId} courseId={courseId} />
             </div>
         ) : (
@@ -3727,6 +3801,15 @@ export const CourseStructureDetails = ({
                 packageId={courseId}
                 packageSessionId={batchPackageSessionId ?? ''}
             />
+        ),
+        [TabType.DOWNLOADS]: batchPackageSessionId ? (
+            <div className="space-y-4 rounded-md bg-white p-4 text-sm text-gray-600 shadow-sm">
+                <OfflineTelemetryCard packageSessionId={batchPackageSessionId} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its offline downloads.
+            </div>
         ),
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">
@@ -4290,6 +4373,20 @@ export const CourseStructureDetails = ({
                                                                     Drip Condition
                                                                 </DropdownMenuItem>
                                                             )}
+                                                            {true && (
+                                                                <DropdownMenuItem
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenChapterOfflineDialog(
+                                                                            ch.chapter.id,
+                                                                            ch.chapter.chapter_name
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                    Offline Availability
+                                                                </DropdownMenuItem>
+                                                            )}
                                                             {canDeleteAllowed && (
                                                             <DropdownMenuItem
                                                                 onClick={(e) => {
@@ -4451,6 +4548,20 @@ export const CourseStructureDetails = ({
                                                                         className="mr-2 text-purple-600"
                                                                     />
                                                                     Drip Condition
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            {true && (
+                                                                <DropdownMenuItem
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenChapterOfflineDialog(
+                                                                            ch.chapter.id,
+                                                                            ch.chapter.chapter_name
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                    Offline Availability
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {canDeleteAllowed && (
@@ -4619,6 +4730,20 @@ export const CourseStructureDetails = ({
                                                                             className="mr-2 text-purple-600"
                                                                         />
                                                                         Drip Condition
+                                                                    </DropdownMenuItem>
+                                                                )}
+                                                                {true && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleOpenChapterOfflineDialog(
+                                                                                ch.chapter.id,
+                                                                                ch.chapter.chapter_name
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <WifiSlash size={14} className="mr-2 text-primary-500" />
+                                                                        Offline Availability
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {canDeleteAllowed && (
@@ -4854,11 +4979,28 @@ export const CourseStructureDetails = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isChatEnabled, selectedTab]);
 
+    // Same for Downloads: if offline access is (or becomes) disabled while the
+    // Downloads tab is open — including a stale localStorage selection — move off it.
+    useEffect(() => {
+        if (selectedTab === TabType.DOWNLOADS && isOfflineAccessDisabled) {
+            setSelectedTab(TabType.OUTLINE);
+            localStorage.setItem(getStorageKey(), TabType.OUTLINE);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOfflineAccessDisabled, selectedTab]);
+
     // Compute final visible/reordered tabs once for rendering below.
     // Discussion is handled separately (gated on chat-enabled) and conditionally
     // appended after the role/settings reorder pipeline below.
     const finalTabs = (() => {
         let reorderedTabs = tabs.filter((tab) => tab.value !== TabType.DISCUSSION);
+
+        // Offline access off (confirmed) → the Downloads tab is meaningless; hide it
+        // regardless of role config. When on, it stays in the pipeline and the
+        // role-config visibility below applies as usual.
+        if (isOfflineAccessDisabled) {
+            reorderedTabs = reorderedTabs.filter((tab) => tab.value !== TabType.DOWNLOADS);
+        }
 
         const details = roleDisplay?.courseDetails;
         if (details?.tabs && details.tabs.length > 0) {
@@ -5144,6 +5286,18 @@ export const CourseStructureDetails = ({
                         }))
                     )}
             />
+
+            {/* Chapter Offline Availability Dialog */}
+            {chapterOfflineDialog.open && batchPackageSessionId && (
+                <OfflineAvailabilityDialog
+                    open={chapterOfflineDialog.open}
+                    onClose={handleCloseChapterOfflineDialog}
+                    sourceType="CHAPTER"
+                    sourceId={chapterOfflineDialog.chapterId ?? ''}
+                    packageSessionId={batchPackageSessionId}
+                    nodeName={chapterOfflineDialog.chapterName ?? 'Chapter'}
+                />
+            )}
         </div>
     );
 };

@@ -214,6 +214,11 @@ public class LearnerTrackingService {
         if (activityLogDTO.getPercentageWatched() != null) {
             activityLog.setPercentageWatched(activityLogDTO.getPercentageWatched());
         }
+        // Offline sync replay (offline plan, Part A4): this entity was loaded
+        // fresh via findById, so the constructor's propagation never ran --
+        // without this line, an offline-replayed update would still stamp
+        // last_seen_at as if the learner were online right now.
+        activityLog.setOfflineReplay(activityLogDTO.isOfflineReplay());
     }
 
     private void validateActivityLogDTO(ActivityLogDTO dto, boolean isDocument) {

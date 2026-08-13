@@ -64,6 +64,14 @@ export interface OtaCheckResponse {
  * Only runs on Android/iOS — returns no-update on web/electron.
  */
 export async function checkForOtaUpdate(): Promise<OtaCheckResponse> {
+  // Local-dev escape hatch: a bundle built with VITE_DISABLE_OTA=true never
+  // self-updates. Without this, the OTA check replaces a locally-built debug
+  // bundle with the production one ~20s after every launch, silently undoing
+  // whatever is being tested on-device. Never set in production builds.
+  if (import.meta.env.VITE_DISABLE_OTA === "true") {
+    return { update_available: false };
+  }
+
   const platform = Capacitor.getPlatform();
   if (platform !== "android" && platform !== "ios") {
     return { update_available: false };

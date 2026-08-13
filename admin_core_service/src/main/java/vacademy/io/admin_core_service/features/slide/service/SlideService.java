@@ -9,11 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSessionMapping;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
+import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.learner_offline.service.OfflineManifestVersionService;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.common.constants.ValidStatusListConstants;
 import vacademy.io.admin_core_service.features.slide.dto.*;
@@ -61,6 +64,8 @@ public class SlideService {
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
     private final CopiedSlideStatusResolver copiedSlideStatusResolver;
+    private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
+    private final OfflineManifestVersionService offlineManifestVersionService;
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
@@ -89,6 +94,7 @@ public class SlideService {
         }
         learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
                 chapterId, moduleId, subjectId, packageSessionId);
+        bumpOfflineManifest(chapterId, addDocumentSlideDTO.getStatus(), "SLIDE_UPDATED_DOCUMENT");
         return slideId;
     }
 
@@ -119,6 +125,7 @@ public class SlideService {
         }
         learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
                 chapterId, moduleId, subjectId, packageSessionId);
+        bumpOfflineManifest(chapterId, addVideoSlideDTO.getStatus(), "SLIDE_UPDATED_VIDEO");
         return slideId;
     }
 
@@ -191,6 +198,9 @@ public class SlideService {
                 addDocumentSlideDTO.getSlideOrder(), addDocumentSlideDTO.getStatus()));
         notifyIfPublished(addDocumentSlideDTO.getStatus(), addDocumentSlideDTO.isNotify(), instituteId,
                 chapterToSlides);
+        // Adds here persist straight through the repositories rather than saveSlide(),
+        // so this path needs its own bump.
+        bumpOfflineManifest(chapterId, addDocumentSlideDTO.getStatus(), "SLIDE_ADDED_DOCUMENT");
         return slide.getId();
     }
 
@@ -204,6 +214,7 @@ public class SlideService {
         ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(
                 new ChapterToSlides(chapter, slide, addVideoSlideDTO.getSlideOrder(), addVideoSlideDTO.getStatus()));
         notifyIfPublished(addVideoSlideDTO.getStatus(), addVideoSlideDTO.isNotify(), instituteId, chapterToSlides);
+        bumpOfflineManifest(chapterId, addVideoSlideDTO.getStatus(), "SLIDE_ADDED_VIDEO");
         return slide.getId();
     }
 
@@ -308,7 +319,43 @@ public class SlideService {
         if (SlideStatus.PUBLISHED.name().equals(status)) {
             slideNotificationService.sendNotificationForAddingSlide(instituteId, chapterToSlides.getChapter(), slide);
         }
+
+        // Offline plan Part A2 bump hook: PUBLISHED/DELETED transitions change
+        // what a learner's offline manifest should contain for every package
+        // session this chapter belongs to.
+        bumpOfflineManifest(chapterId, status, "SLIDE_STATUS_" + status);
         return "Slide status updated successfully";
+    }
+
+    /**
+     * Tells every offline learner of this chapter that their downloaded copy is stale.
+     *
+     * This originally only ran on PUBLISHED/DELETED *status transitions*, which missed the two
+     * things authors actually do most: editing the content of an already-published slide, and
+     * adding a new slide to a chapter. Both left the manifest version untouched, so the learner
+     * app compared versions, saw no change, and never offered "Update" — the downloaded copy
+     * silently drifted from what the teacher published.
+     *
+     * Called from the shared choke points every slide type routes through ({@link #saveSlide}
+     * for adds, {@link #updateSlide} for edits) plus the document/video/scorm update paths that
+     * use the private updateSlide overload. Keep new slide-mutating paths wired through those.
+     *
+     * Only PUBLISHED/DELETED work is announced: draft saves don't change what the manifest
+     * contains, and bumping on them would show learners an update that downloads nothing.
+     */
+    private void bumpOfflineManifest(String chapterId, String status, String reason) {
+        if (!StringUtils.hasText(chapterId) || !StringUtils.hasText(status)) {
+            return;
+        }
+        if (!SlideStatus.PUBLISHED.name().equalsIgnoreCase(status)
+                && !SlideStatus.DELETED.name().equalsIgnoreCase(status)) {
+            return;
+        }
+        List<ChapterPackageSessionMapping> mappings =
+                chapterPackageSessionMappingRepository.findByChapterIdAndStatusNotDeleted(chapterId);
+        offlineManifestVersionService.bumpAll(
+                mappings.stream().map(m -> m.getPackageSession().getId()).collect(Collectors.toList()),
+                reason);
     }
 
     @Transactional
@@ -1363,6 +1410,9 @@ public class SlideService {
         }
         slide = slideRepository.save(slide);
         saveChapterSlideMapping(chapterId, slide, slideOrder, status);
+        // Every slide type's "add" path funnels through here — a new published slide
+        // changes the offline manifest for this chapter.
+        bumpOfflineManifest(chapterId, status, "SLIDE_ADDED");
         return slide.getId();
     }
 
@@ -1412,6 +1462,9 @@ public class SlideService {
         updateChapterToSlideMapping(chapterId, slide.getId(), slideOrder, status);
         learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slide.getId(), slide.getSourceType(),
                 chapterId, moduleId, subjectId, packageSessionId);
+        // Shared edit path for question/quiz/assignment/audio slides — the content a
+        // learner already downloaded just changed.
+        bumpOfflineManifest(chapterId, status, "SLIDE_UPDATED");
         return slide;
     }
 

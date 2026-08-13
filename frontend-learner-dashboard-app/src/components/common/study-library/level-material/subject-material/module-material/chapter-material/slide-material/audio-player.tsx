@@ -6,6 +6,9 @@ import { useAudioTrackingStore } from "@/stores/study-library/audio-tracking-sto
 import { useAudioSync } from "@/hooks/study-library/useAudioSync";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { getPublicUrl } from "@/services/upload_file";
+import { Network } from "@/utils/network-plugin";
+import { resolveSlideSource } from "@/lib/offline/resolve";
+import { getUserId } from "@/constants/getUserId";
 import { safePlay } from "./utils";
 import {
     Play,
@@ -60,6 +63,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     // callbacks) can close the open segment and sync without TDZ issues.
     const saveSegmentRef = useRef<((endTime: number) => void) | null>(null);
     const syncOnUnmountRef = useRef<(() => Promise<void>) | null>(null);
+    // Offline-blob URL revoker (plan §B4) for whichever decrypted audio Blob
+    // is currently assigned to audioUrl, if any — revoked whenever a new
+    // source loads or this player unmounts.
+    const revokeAudioBlobRef = useRef<(() => void) | null>(null);
     
     // State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -87,12 +94,36 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         const loadResources = async () => {
             setIsLoading(true);
             setError(null);
+            // A previous slide's decrypted Blob (if any) is no longer needed.
+            revokeAudioBlobRef.current?.();
+            revokeAudioBlobRef.current = null;
             try {
                 let url = audioSlide.external_url;
                 if (audioSlide.source_type === "FILE" || !url) {
-                    url = await getPublicUrl(audioSlide.published_audio_file_id);
+                    // Offline-aware resolution (plan §B4): only take the
+                    // resolver path while offline, mirroring slide-material's
+                    // resolvePlaybackUrl — online always keeps today's
+                    // getPublicUrl behavior unchanged.
+                    const { connected } = await Network.getStatus();
+                    const userId = connected ? null : await getUserId();
+                    if (userId && activeItem?.id) {
+                        const result = await resolveSlideSource({
+                            userId,
+                            fileId: audioSlide.published_audio_file_id,
+                            slideId: activeItem.id,
+                            mimeType: "audio/mpeg",
+                            resolveRemoteUrl: () =>
+                                getPublicUrl(audioSlide.published_audio_file_id),
+                        });
+                        url = result.url;
+                        if (result.kind === "offline-blob" && result.revoke) {
+                            revokeAudioBlobRef.current = result.revoke;
+                        }
+                    } else {
+                        url = await getPublicUrl(audioSlide.published_audio_file_id);
+                    }
                 }
-                
+
                 if (!url) throw new Error("Could not load audio source.");
                 setAudioUrl(url);
 
@@ -109,11 +140,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         };
 
         loadResources();
-        
+
         return () => {
             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+            revokeAudioBlobRef.current?.();
+            revokeAudioBlobRef.current = null;
         };
-    }, [audioSlide]);
+    }, [audioSlide, activeItem?.id]);
 
     // Debounced sync function
     const debouncedSync = useCallback(async () => {

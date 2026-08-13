@@ -40,6 +40,9 @@ export default defineConfig({
     server: {
         host: true,
         port: 8100,
+        // Dev-only: allow ngrok tunnels so a phone on mobile data can reach the
+        // local backends through this dev server's /-service proxies.
+        allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app'],
         headers: {
             'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
         },

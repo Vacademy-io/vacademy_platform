@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.media_service.dto.OfflineAssetDetailsDTO;
+import vacademy.io.media_service.dto.OfflineAssetDetailsRequest;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.service.FileService;
 
@@ -148,6 +150,19 @@ public class InternalFileController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new FileDetailsDTO());
         }
+    }
+
+    /**
+     * Learner offline downloads (admin_core_service OfflineManifestService):
+     * size/type/checksum for a batch of files, no URL and no raw S3 key. Never
+     * returns more detail than the manifest builder needs to plan a download
+     * and let the client verify it.
+     */
+    @PostMapping("/offline-asset-details")
+    public ResponseEntity<List<OfflineAssetDetailsDTO>> getOfflineAssetDetails(
+            @RequestBody OfflineAssetDetailsRequest request) {
+        List<String> fileIds = request == null ? null : request.getFileIds();
+        return ResponseEntity.ok(fileService.getOfflineAssetDetails(fileIds));
     }
 
     @PostMapping("/upload-file-custom-key")

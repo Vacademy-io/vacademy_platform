@@ -603,6 +603,14 @@ export const WORKFLOW_TRIGGER_EVENTS = `${BASE_URL}/admin-core-service/v1/workfl
 // Institute LMS_SETTING save endpoint (kept name for back-compat with importers).
 export const INSTITUTE_SETTING_SAVE_LOCAL = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 
+// Offline access (admin): per-node rules, effective preview, devices, telemetry, discrepancies.
+export const OFFLINE_ACCESS_RULES = `${BASE_URL}/admin-core-service/admin/offline-access/v1/rules`;
+export const OFFLINE_ACCESS_EFFECTIVE = `${BASE_URL}/admin-core-service/admin/offline-access/v1/effective`;
+export const OFFLINE_ADMIN_DEVICES = `${BASE_URL}/admin-core-service/admin/offline/v1/devices`;
+export const OFFLINE_ADMIN_TELEMETRY_DOWNLOADS = `${BASE_URL}/admin-core-service/admin/offline/v1/telemetry/downloads`;
+export const OFFLINE_ADMIN_TELEMETRY_LEARNERS = `${BASE_URL}/admin-core-service/admin/offline/v1/telemetry/learners`;
+export const OFFLINE_ADMIN_DISCREPANCIES = `${BASE_URL}/admin-core-service/admin/offline/v1/discrepancies`;
+
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;
 export const TEACHER_CREATE_EDITABLE_COPY = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/create-editable-copy`;
@@ -1195,7 +1203,8 @@ export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v
 // Several treatments of ONE section, to choose between. Billed as an edit.
 export const AI_PAGE_BUILDER_SECTION = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/section`;
 // Header / footer / theme — the settings shared by every page.
-export const AI_PAGE_BUILDER_SITE_CHROME = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
+export const AI_PAGE_BUILDER_SITE_CHROME = () =>
+    `${AI_SERVICE_BASE_URL}/page-builder/v1/site-chrome`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;

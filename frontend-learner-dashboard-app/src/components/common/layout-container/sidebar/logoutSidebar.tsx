@@ -1,3 +1,4 @@
+import { useOfflineAvailable } from "@/hooks/offline/use-offline-availability";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { useNavigate } from "@tanstack/react-router";
@@ -5,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { SidebarItem } from "./sidebar-item";
 import {
   HamBurgerSidebarItemsData,
+  stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
 } from "./utils";
@@ -44,6 +46,14 @@ export const LogoutSidebar = ({
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
   );
+  // Same offline gate as the sidebar and the top-navbar dropdown: this sheet
+  // renders the same list, so without it the entry stays reachable here.
+  const offlineAvailable = useOfflineAvailable();
+  const offlineFilteredItems =
+    offlineAvailable === true
+      ? filteredHamburgerItems
+      : stripOfflineEntries(filteredHamburgerItems);
+
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(
     undefined
@@ -201,7 +211,7 @@ export const LogoutSidebar = ({
           <SidebarMenu className="space-y-1.5">
             {sidebarComponent
               ? sidebarComponent
-              : filteredHamburgerItems.map((obj, key) => (
+              : offlineFilteredItems.map((obj, key) => (
                 <div
                   key={key}
                   className="animate-slide-in-right transform transition-all duration-300"

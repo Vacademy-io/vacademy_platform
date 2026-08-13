@@ -3,6 +3,7 @@ package vacademy.io.media_service.service;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
+import vacademy.io.media_service.dto.OfflineAssetDetailsDTO;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.exceptions.FileUploadException;
@@ -58,4 +59,11 @@ public interface FileService {
     String getPublicUrl(String id);
 
     FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key) throws FileUploadException, IOException;
+
+    /**
+     * Learner-offline-download support: size/type/checksum for a batch of files
+     * (no URL, no raw S3 key). checksum is lazily populated from an S3
+     * HeadObject ETag the first time a given file is asked about here.
+     */
+    List<OfflineAssetDetailsDTO> getOfflineAssetDetails(List<String> fileIds);
 }

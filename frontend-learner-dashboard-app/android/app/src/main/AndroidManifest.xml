@@ -4,6 +4,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Offline content downloads keep running while the app is backgrounded, via a
+         dataSync foreground service (see OfflineDownloadService). Without this the
+         WebView's JS timers are frozen on background and a partial download stalls
+         until the learner reopens the app. WAKE_LOCK keeps a long transfer alive
+         through doze. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- Camera & mic for the in-app Zoom Meeting SDK (Client View) running inside
          the Capacitor WebView. Capacitor 7's BridgeWebChromeClient maps the
          WebView getUserMedia request to these runtime permissions (prompted on
@@ -34,6 +43,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/AppTheme">
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -87,5 +97,11 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <!-- Keeps offline downloads running (and visible) while the app is backgrounded. -->
+        <service
+            android:name="io.vacademy.student.app.offlinedownloads.OfflineDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 </manifest>

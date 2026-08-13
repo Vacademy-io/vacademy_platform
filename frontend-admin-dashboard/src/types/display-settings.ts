@@ -91,6 +91,7 @@ export type CourseDetailsTabId =
     | 'PULSE'
     | 'REPORTS'
     | 'CERTIFICATES'
+    | 'DOWNLOADS'
     | 'SETTINGS';
 
 export interface CourseDetailsTabConfig {

@@ -6,6 +6,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toTitleCase } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { DownloadNodeButton } from "@/components/common/offline/download-node-button";
 
 interface SubjectCardProps {
   subject: SubjectType;
@@ -16,6 +17,7 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const { getPublicUrl } = useFileUpload();
   const router = useRouter();
+  const { sessionId } = router.state.location.search as { sessionId?: string };
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (
@@ -84,6 +86,10 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
           </div>
         </div>
         
+        <div className="absolute right-2 top-2 z-10">
+          <DownloadNodeButton nodeId={subject.id} nodeType="SUBJECT" packageSessionId={sessionId} />
+        </div>
+
         {/* Progress bar at bottom */}
         <div className="absolute bottom-0 start-0 end-0 h-1 bg-neutral-200 rounded-b-xl overflow-hidden">
           <div 

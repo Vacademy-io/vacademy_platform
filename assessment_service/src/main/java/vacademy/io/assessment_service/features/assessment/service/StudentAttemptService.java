@@ -33,6 +33,7 @@ import vacademy.io.assessment_service.features.learner_assessment.service.Questi
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
+import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -54,6 +55,9 @@ public class StudentAttemptService {
 
     @Autowired
     SectionRepository sectionRepository;
+
+    @Autowired
+    QuestionRepository questionRepository;
 
     @Autowired
     AssessmentNotificationService assessmentNotificationService;
@@ -246,9 +250,15 @@ public class StudentAttemptService {
      * they answered and their responses. It iterates over the sections and questions, applying the
      * appropriate marking strategy for each question type.
      *
+     * <p>All DB access is batched up front (marking schemes, sections, existing
+     * question_wise_marks rows) and the attempt JSON is parsed once, because the
+     * previous per-question form (3+ selects and a full re-parse per question)
+     * took 20-30s per attempt during live exams and saturated the async pool.
+     * The question_wise_marks upserts are flushed in one saveAll at the end;
+     * same transaction, so commit-time visibility is unchanged.
+     *
      * @param studentAttemptOptional - The student's attempt details, wrapped in an Optional.
      * @return The total marks for the learner's attempt.
-     * @throws Exception - If any error occurs during the calculation.
      */
     public double calculateTotalMarks(Optional<StudentAttempt> studentAttemptOptional){
         try{
@@ -264,8 +274,15 @@ public class StudentAttemptService {
 
             List<String> sectionList = attemptDataParserService.extractSectionJsonStrings(attemptData);
 
+            MarksCalculationContext context = buildMarksCalculationContext(assessment, studentAttempt, sectionList,
+                    attemptData);
+
             for (String section : sectionList) {
-                totalMarks += calculateMarksForSection(section, attemptData, assessment, studentAttempt);
+                totalMarks += calculateMarksForSection(section, assessment, studentAttempt, context);
+            }
+
+            if (!context.dirtyQuestionWiseMarks.isEmpty()) {
+                questionWiseMarksService.createQuestionWiseMarks(context.dirtyQuestionWiseMarks);
             }
 
             return totalMarks;
@@ -275,49 +292,149 @@ public class StudentAttemptService {
         }
     }
 
-    private double calculateMarksForSection(String sectionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+    /** Batched lookups for one calculateTotalMarks run, keyed by questionId + "|" + sectionId. */
+    private static class MarksCalculationContext {
+        final Map<String, QuestionAssessmentSectionMappingRepository.MarkingSchemeRow> markingSchemeByQuestionAndSection = new HashMap<>();
+        final Map<String, Section> sectionById = new HashMap<>();
+        final Map<String, QuestionWiseMarks> marksRowByQuestionAndSection = new HashMap<>();
+        final Map<String, String> responseJsonByQuestionId = new HashMap<>();
+        final List<QuestionWiseMarks> dirtyQuestionWiseMarks = new ArrayList<>();
+        final Set<String> dirtyKeys = new HashSet<>();
+    }
+
+    private MarksCalculationContext buildMarksCalculationContext(Assessment assessment, StudentAttempt studentAttempt,
+                                                                 List<String> sectionList, String attemptData) {
+        MarksCalculationContext context = new MarksCalculationContext();
+
+        List<String> sectionIds = new ArrayList<>();
+        for (String sectionJson : sectionList) {
+            String sectionId = attemptDataParserService.extractSectionIdFromSectionJson(sectionJson);
+            if (sectionId != null && !sectionIds.contains(sectionId)) {
+                sectionIds.add(sectionId);
+            }
+        }
+        if (sectionIds.isEmpty()) {
+            return context;
+        }
+
+        for (QuestionAssessmentSectionMappingRepository.MarkingSchemeRow row : questionAssessmentSectionMappingRepository
+                .findMarkingSchemeRowsBySectionIds(sectionIds)) {
+            String key = row.getQuestionId() + "|" + row.getSectionId();
+            QuestionAssessmentSectionMappingRepository.MarkingSchemeRow current = context.markingSchemeByQuestionAndSection
+                    .get(key);
+            // The per-question query this replaces picked the newest row by created_at
+            // when duplicates exist; keep that tie-break.
+            if (current == null || (row.getCreatedAt() != null
+                    && (current.getCreatedAt() == null || row.getCreatedAt().after(current.getCreatedAt())))) {
+                context.markingSchemeByQuestionAndSection.put(key, row);
+            }
+        }
+
+        sectionRepository.findAllById(sectionIds).forEach(section -> context.sectionById.put(section.getId(), section));
+
+        for (QuestionWiseMarks existing : questionWiseMarksService
+                .getAllQuestionWiseMarksForAttemptId(studentAttempt.getId(), assessment.getId())) {
+            String questionId = existing.getQuestion() != null ? existing.getQuestion().getId() : null;
+            String sectionId = existing.getSectionId() != null ? existing.getSectionId()
+                    : (existing.getSection() != null ? existing.getSection().getId() : null);
+            if (questionId != null && sectionId != null) {
+                context.marksRowByQuestionAndSection.putIfAbsent(questionId + "|" + sectionId, existing);
+            }
+        }
+
+        // One parse of the whole attempt JSON. Replaces getQuestionDetails' full
+        // re-parse per question; like it, the first question node wins on duplicate
+        // ids and any parse failure degrades to "{}" per question downstream.
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(attemptData);
+            for (JsonNode section : rootNode.path(AttemptJsonConstants.sections)) {
+                for (JsonNode question : section.path(AttemptJsonConstants.questions)) {
+                    String questionId = question.path(AttemptJsonConstants.questionId).asText();
+                    if (!context.responseJsonByQuestionId.containsKey(questionId)) {
+                        context.responseJsonByQuestionId.put(questionId, objectMapper.writeValueAsString(question));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse attempt data for marks calculation: {}", e.getMessage());
+        }
+
+        return context;
+    }
+
+    private double calculateMarksForSection(String sectionJson, Assessment assessment, StudentAttempt studentAttempt,
+                                            MarksCalculationContext context) {
         double sectionMarks = 0.0;
         List<String> questionJsons = attemptDataParserService.extractQuestionJsonsFromSection(sectionJson);
 
         for (String question : questionJsons) {
-            sectionMarks += calculateMarksForQuestion(sectionJson, question, attemptData, assessment, studentAttempt);
+            sectionMarks += calculateMarksForQuestion(sectionJson, question, assessment, studentAttempt, context);
         }
 
         return sectionMarks;
     }
 
-    private double calculateMarksForQuestion(String sectionJson, String questionJson, String attemptData, Assessment assessment, StudentAttempt studentAttempt) {
+    private double calculateMarksForQuestion(String sectionJson, String questionJson, Assessment assessment,
+                                             StudentAttempt studentAttempt, MarksCalculationContext context) {
         String sectionId = attemptDataParserService.extractSectionIdFromSectionJson(sectionJson);
         String questionId = attemptDataParserService.extractQuestionIdFromQuestionJson(questionJson);
 
         String type = attemptDataParserService.extractResponseTypeFromQuestionJson(questionJson);
 
-        Optional<QuestionAssessmentSectionMapping> questionAssessmentSectionMapping =
-                questionAssessmentSectionMappingRepository.findByQuestionIdAndSectionId(questionId, sectionId);
+        QuestionAssessmentSectionMappingRepository.MarkingSchemeRow markingScheme = context.markingSchemeByQuestionAndSection
+                .get(questionId + "|" + sectionId);
 
-        if (questionAssessmentSectionMapping.isEmpty()) {
+        if (markingScheme == null) {
             return 0.0;
         }
 
-        QuestionAssessmentSectionMapping markingScheme = questionAssessmentSectionMapping.get();
-        Question questionAsked = markingScheme.getQuestion();
-        String questionWiseResponseData = getQuestionDetails(questionId, attemptData);
+        String questionWiseResponseData = context.responseJsonByQuestionId.getOrDefault(questionId, "{}");
 
         QuestionWiseBasicDetailDto questionWiseBasicDetailDto = QuestionBasedStrategyFactory.calculateMarks(
                 markingScheme.getMarkingJson(),
-                questionAsked.getAutoEvaluationJson(),
+                markingScheme.getAutoEvaluationJson(),
                 questionWiseResponseData,
                 type
         );
         double marksObtained = questionWiseBasicDetailDto.getMarks();
         String answerStatus = questionWiseBasicDetailDto.getAnswerStatus();
 
-        Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
-        if (sectionOptional.isEmpty()) throw new VacademyException("Section Not Found");
+        Section section = context.sectionById.get(sectionId);
+        if (section == null) throw new VacademyException("Section Not Found");
 
-        questionWiseMarksService.updateQuestionWiseMarksForEveryQuestion(
-                assessment, studentAttempt, questionAsked, questionWiseResponseData, attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson), answerStatus, sectionOptional.get(), marksObtained
-        );
+        Long timeTakenInSecs = attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson);
+
+        QuestionWiseMarks marksRow = context.marksRowByQuestionAndSection.get(questionId + "|" + sectionId);
+        if (marksRow != null) {
+            if (!Objects.isNull(timeTakenInSecs)) {
+                marksRow.setTimeTakenInSeconds(timeTakenInSecs);
+            }
+            if (!Objects.isNull(questionWiseResponseData)) {
+                marksRow.setResponseJson(questionWiseResponseData);
+            }
+            marksRow.setMarks(marksObtained);
+            marksRow.setSection(section);
+            marksRow.setStatus(answerStatus);
+            if (context.dirtyKeys.add(questionId + "|" + sectionId)) {
+                context.dirtyQuestionWiseMarks.add(marksRow);
+            }
+        } else {
+            // getReferenceById writes just the FK — the mapping row's existence
+            // guarantees the question exists, so the proxy is never resolved.
+            QuestionWiseMarks created = QuestionWiseMarks.builder()
+                    .assessment(assessment)
+                    .studentAttempt(studentAttempt)
+                    .question(questionRepository.getReferenceById(questionId))
+                    .timeTakenInSeconds(timeTakenInSecs)
+                    .responseJson(questionWiseResponseData)
+                    .section(section)
+                    .status(answerStatus)
+                    .marks(marksObtained).build();
+            context.marksRowByQuestionAndSection.put(questionId + "|" + sectionId, created);
+            context.dirtyKeys.add(questionId + "|" + sectionId);
+            context.dirtyQuestionWiseMarks.add(created);
+        }
 
         return marksObtained;
     }

@@ -29,12 +29,21 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Configuration
 public class ReportExportExecutorConfig {
 
-    /** Explicit default for unqualified @Async — see class comment. */
+    /**
+     * Explicit default for unqualified @Async — see class comment.
+     *
+     * <p>Sized against the live-exam recalculation load: every learner sync
+     * enqueues a marks recalc here, so at 200-1000 concurrent test-takers the
+     * enqueue rate is roughly syncs-per-minute/60 per second. 4/8 threads with
+     * the (now 20-connection) Hikari pool keeps drain rate above arrival rate;
+     * the CallerRunsPolicy below is the overload valve — past 100 queued, work
+     * degrades visibly onto Tomcat threads instead of being dropped.
+     */
     @Bean("taskExecutor")
     public ThreadPoolTaskExecutor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
         executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("default-async-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());

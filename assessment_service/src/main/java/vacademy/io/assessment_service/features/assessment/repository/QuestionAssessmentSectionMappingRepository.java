@@ -7,10 +7,39 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
 public interface QuestionAssessmentSectionMappingRepository extends CrudRepository<QuestionAssessmentSectionMapping, String> {
+
+    /**
+     * Flat row for the marks-calculation hot path: everything scoring needs
+     * (marking scheme + the question's auto-evaluation config) in one query,
+     * with no entity hydration — the mapping entity eagerly loads Question,
+     * which made per-question lookups a cascade of selects during live exams.
+     */
+    interface MarkingSchemeRow {
+        String getQuestionId();
+
+        String getSectionId();
+
+        String getMarkingJson();
+
+        String getAutoEvaluationJson();
+
+        Date getCreatedAt();
+    }
+
+    @Query(value = """
+            SELECT qasm.question_id AS "questionId", qasm.section_id AS "sectionId",
+                   qasm.marking_json AS "markingJson", qasm.created_at AS "createdAt",
+                   q.auto_evaluation_json AS "autoEvaluationJson"
+            FROM question_assessment_section_mapping qasm
+            JOIN question q ON q.id = qasm.question_id
+            WHERE qasm.section_id IN (:sectionIds)
+            """, nativeQuery = true)
+    List<MarkingSchemeRow> findMarkingSchemeRowsBySectionIds(@Param("sectionIds") List<String> sectionIds);
 
 
     @Modifying

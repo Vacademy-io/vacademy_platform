@@ -172,6 +172,11 @@ class CallDiagnostics:
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
+    # Turns where the caller got nothing answerable — including replies the MODEL
+    # wrote itself ("जी, बोलिए।"). It learns those from our own handbacks, which
+    # land in its context because aggregators.assistant() sits downstream of the
+    # gate that emits them.
+    content_free_turns: int = 0
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -677,6 +682,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "echoesTrimmed": d.echoes_trimmed,
                 "handbacks": d.handbacks,
                 "repeatEscalations": d.repeat_escalations,
+                "contentFreeTurns": d.content_free_turns,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

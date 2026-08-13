@@ -13,6 +13,7 @@ const CURATED: Record<string, string> = {
     'OPEN SANS': 'Open Sans',
     CAIRO: 'Cairo',
     'PLAYPEN SANS': 'Playpen Sans',
+    POPPINS: 'Poppins',
 };
 
 /**

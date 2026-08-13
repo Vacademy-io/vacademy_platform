@@ -21,6 +21,15 @@ export const StatCardSkeleton = () => (
     </Card>
 );
 
+/**
+ * "stack" is the tile used when stat cards sit side by side in a row of two or
+ * three. "row" is for the case where the institute's display settings left only
+ * ONE stat visible: a lone tile stretched across the full column reads as a
+ * mostly-empty box, so it lays out horizontally (icon | text | chevron) and
+ * becomes a banner instead.
+ */
+export type StatCardLayout = "stack" | "row";
+
 export const StatCard = ({
     title,
     count,
@@ -31,6 +40,7 @@ export const StatCard = ({
     iconClassName,
     cleanerIllustrationSrc,
     emptyActionLabel,
+    layout = "stack",
 }: {
     title: string;
     count: number | undefined;
@@ -46,10 +56,13 @@ export const StatCard = ({
     /** Shown instead of the title when the count is genuinely 0, turning the
      *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
     emptyActionLabel?: string;
+    /** See {@link StatCardLayout}. Defaults to the side-by-side tile. */
+    layout?: StatCardLayout;
 }) => {
     const { t } = useTranslation("dashboard");
     const isPlay = usePlayTheme();
     const isCleanerPlay = useCleanerPlayTheme();
+    const isRow = layout === "row";
 
     // Skeleton while loading — covers the count-not-yet-known (undefined/null) case
     if (isLoading) return <StatCardSkeleton />;
@@ -68,10 +81,18 @@ export const StatCard = ({
                 onClick={onClick}
                 aria-label={cardAriaLabel}
                 className={cn(
-                    "cp-card group flex h-full w-full flex-col items-start gap-3 p-4 text-start transition-transform duration-base ease-out-soft hover:-translate-y-0.5"
+                    "cp-card group flex h-full w-full gap-3 p-4 text-start transition-transform duration-base ease-out-soft hover:-translate-y-0.5",
+                    isRow
+                        ? "flex-row items-center sm:gap-4"
+                        : "flex-col items-start"
                 )}
             >
-                <div className="flex w-full items-center justify-between">
+                <div
+                    className={cn(
+                        "flex items-center",
+                        isRow ? "shrink-0" : "w-full justify-between"
+                    )}
+                >
                     {cleanerIllustrationSrc ? (
                         <img
                             src={cleanerIllustrationSrc}
@@ -84,22 +105,39 @@ export const StatCard = ({
                             <Icon size={20} weight="duotone" />
                         </span>
                     )}
+                    {!isRow && (
+                        <CaretRight
+                            size={16}
+                            className="cp-muted transition-transform duration-300 group-hover:translate-x-0.5"
+                        />
+                    )}
+                </div>
+                <div
+                    className={cn(
+                        "flex flex-col",
+                        isRow ? "min-w-0 flex-1 gap-1" : "gap-3"
+                    )}
+                >
+                    {showAction ? (
+                        <span className="cp-heading inline-flex flex-wrap items-center gap-1 text-h3 sm:text-h2">
+                            {t("statCard.getStarted")}
+                            <ArrowRight size={16} weight="bold" />
+                        </span>
+                    ) : (
+                        <span className="cp-heading block text-h3 tabular-nums sm:text-h2">
+                            {(count ?? 0).toLocaleString()}
+                        </span>
+                    )}
+                    <span className="cp-muted block text-caption font-medium">
+                        {subtitleText}
+                    </span>
+                </div>
+                {isRow && (
                     <CaretRight
                         size={16}
-                        className="cp-muted transition-transform duration-300 group-hover:translate-x-0.5"
+                        className="cp-muted shrink-0 transition-transform duration-300 group-hover:translate-x-0.5"
                     />
-                </div>
-                {showAction ? (
-                    <span className="cp-heading inline-flex flex-wrap items-center gap-1 text-h3 sm:text-h2">
-                        {t("statCard.getStarted")}
-                        <ArrowRight size={16} weight="bold" />
-                    </span>
-                ) : (
-                    <span className="cp-heading text-h3 tabular-nums sm:text-h2">
-                        {(count ?? 0).toLocaleString()}
-                    </span>
                 )}
-                <span className="cp-muted text-caption font-medium">{subtitleText}</span>
             </button>
         );
     }
@@ -132,8 +170,20 @@ export const StatCard = ({
         >
             {/* Play mode: pastel-tint card, felted icon top-left + chevron, ink text below */}
             {isPlay ? (
-                <div className="flex h-full flex-col justify-between p-3 sm:p-4">
-                    <div className="mb-3 flex items-center justify-between">
+                <div
+                    className={cn(
+                        "flex h-full p-3 sm:p-4",
+                        isRow
+                            ? "flex-row items-center gap-3 sm:gap-4"
+                            : "flex-col justify-between"
+                    )}
+                >
+                    <div
+                        className={cn(
+                            "flex items-center",
+                            isRow ? "shrink-0" : "mb-3 justify-between"
+                        )}
+                    >
                         {cleanerIllustrationSrc ? (
                             <img
                                 src={cleanerIllustrationSrc}
@@ -146,12 +196,14 @@ export const StatCard = ({
                                 <Icon size={20} weight="fill" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
                         )}
-                        <CaretRight
-                            size={16}
-                            className="text-play-ink/50 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-play-ink"
-                        />
+                        {!isRow && (
+                            <CaretRight
+                                size={16}
+                                className="text-play-ink/50 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-play-ink"
+                            />
+                        )}
                     </div>
-                    <div className="space-y-1">
+                    <div className={cn("space-y-1", isRow && "min-w-0 flex-1")}>
                         {showAction ? (
                             <div className="inline-flex items-center gap-1 text-xl font-black tracking-tight text-play-ink sm:text-2xl">
                                 {t("statCard.getStarted")}
@@ -166,12 +218,26 @@ export const StatCard = ({
                             {subtitleText}
                         </div>
                     </div>
+                    {isRow && (
+                        <CaretRight
+                            size={16}
+                            className="shrink-0 text-play-ink/50 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-play-ink"
+                        />
+                    )}
                 </div>
             ) : (
                 /* Default / Vibrant layout */
                 <>
-                    <CardContent className="p-3 sm:p-4 flex flex-col justify-between h-full relative z-10">
-                        <div className="flex items-center justify-between mb-3">
+                    <CardContent className={cn(
+                        "p-3 sm:p-4 flex h-full relative z-10",
+                        isRow
+                            ? "flex-row items-center gap-3 sm:gap-4"
+                            : "flex-col justify-between"
+                    )}>
+                        <div className={cn(
+                            "flex items-center",
+                            isRow ? "shrink-0" : "justify-between mb-3"
+                        )}>
                             <div className={cn(
                                 "p-2 bg-primary/10 rounded-md text-primary ring-1 ring-primary/20 transition-colors group-hover:bg-primary/20",
                                 "[.ui-vibrant_&]:ring-0",
@@ -179,11 +245,13 @@ export const StatCard = ({
                             )}>
                                 <Icon size={20} weight="duotone" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <CaretRight size={16}
-                                className="text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
-                            />
+                            {!isRow && (
+                                <CaretRight size={16}
+                                    className="text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
+                                />
+                            )}
                         </div>
-                        <div className="space-y-1">
+                        <div className={cn("space-y-1", isRow && "min-w-0 flex-1")}>
                             {showAction ? (
                                 // Empty: a "Get started" invitation, never a dead "0".
                                 <div className="inline-flex items-center gap-1 text-lg sm:text-xl font-bold tracking-tight text-primary">
@@ -207,6 +275,11 @@ export const StatCard = ({
                                 {subtitleText}
                             </div>
                         </div>
+                        {isRow && (
+                            <CaretRight size={16}
+                                className="shrink-0 text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
+                            />
+                        )}
                     </CardContent>
                     {/* Vibrant Decorator */}
                     <div className="absolute -bottom-6 -end-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl hidden [.ui-vibrant_&]:block group-hover:scale-150 transition-transform duration-500 pointer-events-none" />

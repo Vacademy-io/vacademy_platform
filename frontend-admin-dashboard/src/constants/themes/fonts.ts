@@ -27,6 +27,7 @@ export const FONT_CHOICES: FontChoice[] = [
     },
     { key: 'Inter', label: 'Inter', previewFamily: 'Inter, sans-serif', note: 'Admin default' },
     { key: 'Lexend', label: 'Lexend', previewFamily: 'Lexend, sans-serif' },
+    { key: 'Poppins', label: 'Poppins', previewFamily: 'Poppins, sans-serif' },
     { key: 'Work Sans', label: 'Work Sans', previewFamily: "'Work Sans', sans-serif" },
     { key: 'Open Sans', label: 'Open Sans', previewFamily: "'Open Sans', sans-serif" },
     { key: 'Cairo', label: 'Cairo', previewFamily: 'Cairo, sans-serif', note: 'Good for Arabic' },

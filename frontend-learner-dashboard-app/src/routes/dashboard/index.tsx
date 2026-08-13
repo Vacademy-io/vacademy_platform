@@ -68,6 +68,7 @@ import {
   formatSessionTimeInUserTimezone,
 } from "@/utils/timezone";
 import { StatCard } from "./-components/DashboardStatCard";
+import type { StatCardLayout } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
 import { DashboardHero } from "./-components/DashboardHero";
 import { PlayDashboardHero } from "./-components/play/PlayDashboardHero";
@@ -748,11 +749,18 @@ export function DashboardComponent() {
   // Column assignment is fixed by the redesign; institutes' saved widget
   // orders still sort widgets within their column.
 
-  const statCards = [
+  // `render` is a factory (not a prebuilt element) because the card's internal
+  // layout depends on how many cards survive the institute's flags — which is
+  // only known once this array has been filtered.
+  const statCards: Array<{
+    id: StudentDashboardWidgetConfig["id"];
+    render: (layout: StatCardLayout) => JSX.Element;
+  }> = [
     {
       id: "coursesStat" as const,
-      render: (
+      render: (layout) => (
         <StatCard
+          layout={layout}
           title={getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
           count={data?.courses}
           icon={BookOpen}
@@ -776,8 +784,9 @@ export function DashboardComponent() {
     },
     {
       id: "liveClasses" as const,
-      render: (
+      render: (layout) => (
         <StatCard
+          layout={layout}
           title={getTerminologyPlural(
             ContentTerms.LiveSession,
             SystemTerms.LiveSession
@@ -798,8 +807,9 @@ export function DashboardComponent() {
     },
     {
       id: "evaluationStat" as const,
-      render: (
+      render: (layout) => (
         <StatCard
+          layout={layout}
           title="Assessments"
           count={testAssignedCount}
           icon={Trophy}
@@ -821,6 +831,19 @@ export function DashboardComponent() {
   ]
     .filter((w) => isWidgetVisible(w.id))
     .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id));
+
+  // The stats row tracks how many cards actually survived the institute's
+  // widget flags. Hard-coding sm:grid-cols-3 left an institute that shows only
+  // one stat (e.g. Live Sessions) with a third-width card and two empty
+  // columns; a lone card becomes a full-width row instead.
+  const statGridColsClass =
+    statCards.length >= 3
+      ? "sm:grid-cols-3"
+      : statCards.length === 2
+        ? "sm:grid-cols-2"
+        : "sm:grid-cols-1";
+  const statCardLayout: StatCardLayout =
+    statCards.length === 1 ? "row" : "stack";
 
   // MAIN column (lg:col-span-2): continue learning, stats row, progress
   // insights, custom widget, commerce. Commerce is hidden for the play
@@ -846,9 +869,18 @@ export function DashboardComponent() {
         : Number.MAX_SAFE_INTEGER,
       visible: statCards.length > 0,
       render: (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2 max-sm:[.ui-cleaner-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2 max-sm:[.ui-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-3 sm:gap-4",
+            statGridColsClass,
+            // Play skins pair the cards two-up on phones; with a single card
+            // there is nothing to pair, so keep it one-up.
+            statCards.length > 1 &&
+              "max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2 max-sm:[.ui-cleaner-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2 max-sm:[.ui-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2"
+          )}
+        >
           {statCards.map((w) => (
-            <div key={w.id}>{w.render}</div>
+            <div key={w.id}>{w.render(statCardLayout)}</div>
           ))}
         </div>
       ),
@@ -943,7 +975,8 @@ export function DashboardComponent() {
       id: "thisWeekAttendance" as const,
       order: getWidgetOrder("thisWeekAttendance"),
       visible: isWidgetVisible("thisWeekAttendance"),
-      render: <AttendanceWidget />,
+      // Streak rides the gamification flag — see AttendanceWidget.
+      render: <AttendanceWidget showStreak={showGamification} />,
     },
     {
       id: "myMentors" as const,
@@ -954,6 +987,12 @@ export function DashboardComponent() {
   ]
     .filter((w) => w.visible)
     .sort((a, b) => a.order - b.order);
+
+  // With every rail widget switched off there is nothing to reserve a third of
+  // the page for. The pins panel is not a reason to keep the column: it only
+  // renders when the institute has live announcements, so it would strand an
+  // empty rail on most days — it moves to the top of the main column instead.
+  const hasRail = railWidgets.length > 0;
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden w-full dashboard-container smooth-scroll">
@@ -1042,21 +1081,51 @@ export function DashboardComponent() {
               />
             )}
 
-            {/* Main 2/3 + 1/3 layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 items-start">
-              <div className="space-y-4 lg:col-span-2 lg:space-y-6">
+            {/* Main 2/3 + 1/3 layout. The rail's third is only reserved when
+                the institute actually left rail widgets on — otherwise the
+                main column runs full width instead of stranding an empty
+                column beside it.
+
+                Widget wrappers are `empty:hidden` because several widgets
+                decide at runtime that they have nothing to show and return
+                null (no sessions in the next 24h, no memberships, reader-mode
+                commerce) — the `w.visible && w.render` filter can't see that,
+                since `w.render` is a non-null element either way. The wrapper
+                then survived as a zero-height div that still collected a
+                space-y margin, leaving a phantom gap. `display: none`
+                generates no box at all, so the margin stops applying. */}
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-4 lg:gap-6 items-start",
+                hasRail && "lg:grid-cols-3"
+              )}
+            >
+              <div
+                className={cn(
+                  "space-y-4 lg:space-y-6",
+                  hasRail && "lg:col-span-2"
+                )}
+              >
+                {/* Without a rail, announcements lead the main column */}
+                {!hasRail && <DashboardPinsPanel maxPins={3} />}
                 {mainColumnWidgets.map((w) => (
-                  <div key={w.id}>{w.render}</div>
+                  <div key={w.id} className="empty:hidden">
+                    {w.render}
+                  </div>
                 ))}
               </div>
 
-              <div className="space-y-4 lg:col-span-1 lg:space-y-6">
-                {/* Institute announcements pin to the top of the rail */}
-                <DashboardPinsPanel maxPins={3} />
-                {railWidgets.map((w) => (
-                  <div key={w.id}>{w.render}</div>
-                ))}
-              </div>
+              {hasRail && (
+                <div className="space-y-4 lg:col-span-1 lg:space-y-6">
+                  {/* Institute announcements pin to the top of the rail */}
+                  <DashboardPinsPanel maxPins={3} />
+                  {railWidgets.map((w) => (
+                    <div key={w.id} className="empty:hidden">
+                      {w.render}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Gamification (badges / XP / streak) — bottom of the main flow.

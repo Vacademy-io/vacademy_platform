@@ -26,11 +26,19 @@ public class OpenUserController {
         return ResponseEntity.ok(user);
     }
 
+    /**
+     * Look up a learner by username for the public join-link flow.
+     *
+     * <p>{@code instituteId} is optional: usernames are globally unique, and institutes
+     * served from a shared domain have no institute_domain_routing row to resolve an id
+     * from — demanding one 400'd/404'd their learners out of their own join link. Supply
+     * it to scope the lookup, omit it to match on username + portal role alone.</p>
+     */
     @GetMapping("/by-username")
     public ResponseEntity<UserDTO> findUserByUsername(
             @RequestParam String username,
             @RequestParam String portal,
-            @RequestParam String instituteId) {
+            @RequestParam(required = false) String instituteId) {
 
         Optional<UserDTO> optionalUser = userOperationService.findByUserName(username, instituteId, portal);
 

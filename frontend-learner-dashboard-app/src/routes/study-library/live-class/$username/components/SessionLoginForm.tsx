@@ -44,6 +44,23 @@ const usernameSchema = z.object({
 
 type UsernameFormValues = z.infer<typeof usernameSchema>;
 
+/**
+ * The institute to continue with after login.
+ *
+ * Prefers the one the caller already knows (domain routing resolved it). When it
+ * could not — a shared domain has no institute_domain_routing row — fall back to
+ * the access token, whose `authorities` map is keyed by institute id. Without this
+ * the learner authenticates successfully and then stalls, because every follow-up
+ * fetch is gated on having an institute.
+ */
+const resolveInstituteId = (
+  known: string | undefined,
+  tokenData: { authorities?: Record<string, unknown> } | null | undefined
+): string | undefined => {
+  if (known) return known;
+  return Object.keys(tokenData?.authorities ?? {})[0];
+};
+
 interface UserDetails {
   id: string;
   username: string;
@@ -54,7 +71,13 @@ interface UserDetails {
 
 interface SessionLoginFormProps {
   username: string;
-  instituteId: string;
+  /**
+   * Optional. Institutes served from a shared domain have no domain-routing row,
+   * so the caller genuinely cannot resolve one. The username is globally unique,
+   * so lookup works without it and the institute is read back off the JWT after
+   * login (see resolveInstituteId).
+   */
+  instituteId?: string;
   onLoginSuccess: () => void;
   /**
    * Post-login navigation override. Default keeps the original behavior
@@ -99,7 +122,9 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
         params: {
           username,
           portal: "LEARNER",
-          instituteId,
+          // Omitted entirely when unknown — the endpoint treats it as optional
+          // and matches on username + portal role instead.
+          ...(instituteId ? { instituteId } : {}),
         },
       });
       return response.data;
@@ -130,22 +155,29 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
             // Decode token to get user data
             const tokenData = getTokenDecodedData(response.data.accessToken);
             const userId = tokenData?.user;
+            const resolvedInstituteId = resolveInstituteId(
+              instituteId,
+              tokenData
+            );
 
-            if (instituteId && userId) {
+            if (resolvedInstituteId && userId) {
               identifyUser(userId, {
                 username: tokenData?.username,
                 email: tokenData?.email,
               });
 
               try {
-                await fetchAndStoreInstituteDetails(instituteId, userId);
+                await fetchAndStoreInstituteDetails(
+                  resolvedInstituteId,
+                  userId
+                );
                 getStudentDisplaySettings(true);
               } catch (error) {
                 console.error("Error fetching institute details:", error);
               }
 
               try {
-                await fetchAndStoreStudentDetails(instituteId, userId);
+                await fetchAndStoreStudentDetails(resolvedInstituteId, userId);
               } catch {
                 toast.error("Failed to fetch student details");
               }
@@ -252,8 +284,9 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
         // Decode token to get user data
         const tokenData = getTokenDecodedData(response.data.accessToken);
         const userId = tokenData?.user;
+        const resolvedInstituteId = resolveInstituteId(instituteId, tokenData);
 
-        if (instituteId && userId) {
+        if (resolvedInstituteId && userId) {
           identifyUser(userId, {
             username: tokenData?.username,
             email: tokenData?.email,
@@ -261,15 +294,15 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
 
           try {
             // Fetch and store institute details
-            await fetchAndStoreInstituteDetails(instituteId, userId);
+            await fetchAndStoreInstituteDetails(resolvedInstituteId, userId);
             getStudentDisplaySettings(true);
           } catch (error) {
             console.error("Error fetching institute details:", error);
-            
+
           }
 
           try {
-            await fetchAndStoreStudentDetails(instituteId, userId);
+            await fetchAndStoreStudentDetails(resolvedInstituteId, userId);
           } catch {
             toast.error("Failed to fetch student details");
           }

@@ -72,6 +72,38 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
         return "SEND_WHATSAPP".equalsIgnoreCase(nodeType);
     }
 
+    /**
+     * The template to send, which is normally the literal name typed in the config
+     * ("daily_reminder") but may be an expression when the message changes run to
+     * run — a class workflow that reads its weekday row picks a different template
+     * on a Sunday than on a weekday.
+     *
+     * <p>Only values that already look like an expression ({@code #...} or
+     * {@code T(...)}) are evaluated, so every node holding a literal name — which
+     * is all of them today — is passed through untouched. A name cannot begin with
+     * '#' or 'T(' in Meta's naming rules, so there is no ambiguity to resolve.</p>
+     *
+     * @return the resolved name, or null when the expression yields nothing; the
+     *         caller then sends no template rather than a wrong one.
+     */
+    private String resolveTemplateName(String configured, Map<String, Object> context) {
+        String trimmed = configured.trim();
+        if (!trimmed.startsWith("#") && !trimmed.startsWith("T(")) {
+            return configured;
+        }
+        try {
+            Object resolved = spelEvaluator.evaluate(trimmed, context);
+            if (resolved == null || !StringUtils.hasText(resolved.toString())) {
+                log.warn("templateName expression '{}' resolved to nothing — skipping send", trimmed);
+                return null;
+            }
+            return resolved.toString().trim();
+        } catch (Exception e) {
+            log.warn("Could not evaluate templateName expression '{}': {}", trimmed, e.getMessage());
+            return null;
+        }
+    }
+
     @Override
     public Map<String, Object> handle(Map<String, Object> context,
             String nodeConfigJson,
@@ -178,7 +210,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             try {
                 com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
                 if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
-                    nodeLevelTemplateName = configRoot.get("templateName").asText();
+                    nodeLevelTemplateName = resolveTemplateName(configRoot.get("templateName").asText(), context);
                 }
                 if (configRoot.has("templateVars") && configRoot.get("templateVars").isObject()) {
                     nodeLevelTemplateVars = objectMapper.convertValue(configRoot.get("templateVars"), Map.class);
@@ -365,6 +397,27 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                     }
 
                     try {
+                        // 0. Validate template. A node whose templateName is an expression can
+                        // resolve to nothing (e.g. a weekday with no configured template); the
+                        // batch map accepts a null key, so without this the request would reach
+                        // notification-service nameless and fail there instead of here.
+                        if (!StringUtils.hasText(templateName)) {
+                            log.warn("Skipping user {}: no template resolved for this node.", userId);
+                            results.add("SKIPPED: User " + userId + " - No template resolved.");
+                            skippedCount++;
+                            failedMessages.add(WhatsAppExecutionDetails.FailedMessage.builder()
+                                    .index(index)
+                                    .mobileNumber(mobileNumber)
+                                    .languageCode(languageCode)
+                                    .templateVars(new HashMap<>(templateVars != null ? templateVars : Map.of()))
+                                    .itemData(item)
+                                    .errorMessage("No template resolved")
+                                    .errorType("VALIDATION_ERROR")
+                                    .failureReason("SKIPPED")
+                                    .build());
+                            continue;
+                        }
+
                         // 1. Validate Mobile Number
                         if (!StringUtils.hasText(mobileNumber)) {
                             log.warn("Skipping user {}: mobile number is null or empty.", userId);

@@ -58,6 +58,57 @@ public class ShortLinkIntegrationService {
         }
     }
 
+    /**
+     * The short link for a source entity, creating it only the first time.
+     *
+     * <p>media_service keys these on (source, sourceId), so a workflow that runs
+     * every morning reuses the same code for a learner instead of minting a new
+     * one per send — the learner's link stays stable and the table doesn't grow
+     * a row per day.</p>
+     *
+     * @return the absolute short URL (e.g. {@code https://u.suchbliss.com/s/K7MNPQ3A}),
+     *         or null when media_service could not be reached — callers should fall
+     *         back to the long URL rather than send an empty link.
+     */
+    public String getOrCreateShortLink(String source, String sourceId, String destinationUrl,
+            String instituteId) {
+        if (destinationUrl == null || destinationUrl.isBlank()) {
+            return null;
+        }
+        CreateShortLinkRequest request = CreateShortLinkRequest.builder()
+                .source(source)
+                .sourceId(sourceId)
+                .destinationUrl(destinationUrl)
+                .instituteId(instituteId)
+                .build();
+        try {
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    mediaServiceBaseUrl,
+                    "/media-service/public/v1/short-link/get-or-create",
+                    request);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                shortUrlLogger.warn("get-or-create returned {} for {}/{}",
+                        response.getStatusCode(), source, sourceId);
+                return null;
+            }
+            com.fasterxml.jackson.databind.JsonNode node =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.getBody());
+            String absolute = node.path("absoluteUrl").asText(null);
+            if (absolute != null && !absolute.isBlank()) {
+                return absolute;
+            }
+            // Older media_service builds return only the code; resolve the host here.
+            String shortName = node.path("shortName").asText(null);
+            return shortName == null ? null : buildAbsoluteUrl(instituteId, shortName);
+        } catch (Exception e) {
+            shortUrlLogger.error("Short link get-or-create failed for {}/{}: {}",
+                    source, sourceId, e.getMessage(), e);
+            return null;
+        }
+    }
+
     private static final org.slf4j.Logger shortUrlLogger = org.slf4j.LoggerFactory.getLogger(ShortLinkIntegrationService.class);
 
     private final java.util.Map<String, String> baseUrlCache = new java.util.concurrent.ConcurrentHashMap<>();

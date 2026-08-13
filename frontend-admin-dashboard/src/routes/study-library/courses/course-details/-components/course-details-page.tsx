@@ -1821,7 +1821,7 @@ export const CourseDetailsPage = () => {
 
                                 {showOverviewMetrics &&
                                     courseDuration &&
-                                    (courseDuration.hours || courseDuration.minutes) && (
+                                    (courseDuration.hours > 0 || courseDuration.minutes > 0) && (
                                         <MetaChip
                                             icon={
                                                 <Clock size={14} className="shrink-0 text-gray-500" />

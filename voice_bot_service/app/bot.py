@@ -1473,6 +1473,21 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     return _PLACEHOLDER_RE.sub(repl, text)
 
 
+def _opening_is_substantive(opening: str, min_words: int = 4) -> bool:
+    """Does the scripted opening actually CARRY the call, or is it just a greeting?
+
+    "Hello" / "नमस्ते" answers nothing and asks nothing: the caller hears it and
+    waits, and so do we. Call 5d81ace1 sat silent for 2.1s after saying "Hello"
+    and only moved when the caller spoke a SECOND time — 5.9s to the first real
+    sentence. A full opening ("Hello, main Shreya baat kar rahi hoon Shiksha
+    Nation se…") needs no such help.
+
+    Same 4-word threshold as turntake.suppresses_opening, and for the same
+    reason: below it, a line is a greeting rather than a turn.
+    """
+    return len((opening or "").split()) >= min_words
+
+
 def _clean_opening(text: str) -> str:
     """Sanitize an authored openingLine for SPEECH. Admins paste whole script blocks
     into the field (observed live: '# VACADEMY AI – INTRODUCTION SPEECH', blank lines,
@@ -2365,12 +2380,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
-        while (time.time() - connect_t < 2.5
-               and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
+        # Hold while the caller is MID-UTTERANCE so we do not talk over them, then
+        # a short settle, capped at 2.5s. The old condition also held on
+        # `user_started_t > connect_t`, which is true forever once the caller has
+        # made a single sound — so this loop always burned the whole 2.5s. On call
+        # 5d81ace1 the caller said one word ("Hello", 0.8s), Smart Turn reported
+        # EndOfTurnState.COMPLETE at +1.4s, and we still sat mute until +2.9s
+        # before saying anything. Waiting out a ceiling we already know is
+        # irrelevant is just dead air, and dead air at the START is what makes a
+        # caller say "hello?" — which is the thing that cancels the opening.
+        _settle_secs = 0.35
+        while time.time() - connect_t < 2.5:
             if flags["substantive_t"] > connect_t + 0.05:
                 diag.greet_path = "callee_spoke_first"
                 logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
+            if not flags["user_speaking"] and (
+                    flags["user_stopped_t"] == 0.0
+                    or time.time() - flags["user_stopped_t"] >= _settle_secs):
+                break
             await asyncio.sleep(0.1)
         if opening:
             diag.greet_path = "scripted"
@@ -2396,9 +2424,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # said a bit too much is far cheaper than re-delivering the whole
             # introduction, and the played transcript (PlayedTranscriptRecorder)
             # still records the truth for the report.
-            await task.queue_frames([
+            _frames = [
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
-                TTSSpeakFrame(opening, append_to_context=False)])
+                TTSSpeakFrame(opening, append_to_context=False)]
+            # A BARE-GREETING opening leads straight into the real one. Otherwise
+            # the call stalls: on 5d81ace1 the bot said "Hello" at +2.9s, stopped
+            # 0.3s later, and then said nothing for 2.1s because it was waiting
+            # for a caller turn while the caller waited for it — first real
+            # sentence at +5.9s. Depending on the caller to restart the
+            # conversation is not a plan; a one-word greeting is not an opening.
+            if not _opening_is_substantive(opening):
+                diag.greet_path = "scripted+intro"
+                logger.info("greet: opening %r is a bare greeting — following it "
+                            "straight into the introduction corr=%s", opening[:24], corr)
+                _frames.append(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                               "[You have just said that one-word greeting and the person is "
+                               "on the line. NOW deliver your opening — who you are, your "
+                               "company, and why you are calling — exactly as your "
+                               "instructions specify, then ask your first question. Do NOT "
+                               "greet again and do not repeat that word.]"}],
+                    run_llm=True))
+            await task.queue_frames(_frames)
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

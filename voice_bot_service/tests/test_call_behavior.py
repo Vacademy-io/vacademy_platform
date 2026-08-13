@@ -2052,3 +2052,64 @@ def test_a_handback_run_is_a_fault_not_a_silent_counter():
     d2 = dg.CallDiagnostics(user_turns=15, bot_turns=15, handbacks=7,
                             answers_deleted=1, dead_air=[6.1])
     assert dg.verdict(d2)["headline"] == dg.HANDBACK_LOOP
+
+
+# ── call 5d81ace1 (2026-08-13): five seconds of nothing at the start ─────────
+# The founder set the opening line to bare "Hello" so the model would deliver the
+# introduction itself. What the caller got: their own "hello" at +0.1s, our
+# "Hello" at +2.9s, then TWO MORE SECONDS of silence, first real sentence at
+# +5.9s. Three causes stacked, all fixed here.
+def test_a_bare_greeting_opening_is_not_an_opening():
+    """A one-word opening answers nothing and asks nothing — the caller waits and
+    so do we. It must lead straight into the real introduction."""
+    for bare in ("Hello", "नमस्ते", "Hi", "Hello ji", "हेलो जी"):
+        assert not b._opening_is_substantive(bare), bare
+    for real in ("Hello, main Shreya baat kar rahi hoon Shiksha Nation se.",
+                 "Namaste, main Shreya bol rahi hoon",
+                 "Good morning, this is Shreya from Shiksha Nation"):
+        assert b._opening_is_substantive(real), real
+
+
+def test_the_greet_gate_does_not_burn_its_whole_ceiling():
+    """The extended wait held on `user_started_t > connect_t`, which is true
+    FOREVER once the caller has made one sound — so it always waited the full
+    2.5s. On 5d81ace1 the caller said one word ending at +0.85s, Smart Turn
+    reported the turn COMPLETE at +1.4s, and we still sat mute until +2.9s.
+
+    Replays both conditions over a fake clock; the caller is already speaking
+    when the gate starts, exactly as they were on that call.
+    """
+    def fire(legacy, spoke_at=0.06, spoke_until=0.85, greet_delay=0.8):
+        f = {"user_speaking": False, "user_started_t": 0.0, "user_stopped_t": 0.0}
+
+        def step(t):
+            sp = spoke_at <= t < spoke_until
+            if sp and not f["user_speaking"]:
+                f["user_started_t"] = t
+            if not sp and f["user_speaking"]:
+                f["user_stopped_t"] = t
+            f["user_speaking"] = sp
+
+        t = 0.0
+        while t < greet_delay:
+            step(t)
+            t = round(t + 0.1, 4)
+        while t < 2.5:
+            step(t)
+            if legacy:
+                if not (f["user_speaking"] or f["user_started_t"] > 0.0):
+                    break
+            elif not f["user_speaking"] and (
+                    f["user_stopped_t"] == 0.0 or t - f["user_stopped_t"] >= 0.35):
+                break
+            t = round(t + 0.1, 4)
+        return round(t, 2)
+
+    assert fire(legacy=True) == 2.5, "baseline: the old loop waited the ceiling out"
+    now = fire(legacy=False)
+    assert now < 1.6, f"still waiting too long: {now}s"
+    assert now >= 0.85, f"would talk over a caller still mid-word: {now}s"
+    # A caller who really is still talking is still waited out, to the ceiling.
+    assert fire(legacy=False, spoke_at=0.05, spoke_until=9.0) >= 2.4
+    # A silent line is untouched — plain greet delay, no extended wait at all.
+    assert fire(legacy=False, spoke_at=99, spoke_until=99) <= 0.9

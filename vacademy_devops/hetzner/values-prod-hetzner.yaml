@@ -32,6 +32,17 @@ services:
       limits:
         cpu: "2000m"
         memory: "4Gi"
+  assessment_service:
+    # CPU raised for recurring-assessment bursts (200-1000 concurrent
+    # test-takers): request 100m -> 500m, limit 1 -> 2 cores so Tomcat isn't
+    # throttled at exam start/submit spikes. Memory unchanged (heap -Xmx2560m).
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "3584Mi"
   ai_service:
     # Stays at replicaCount (2). Memory ceiling raised 3Gi -> 4Gi for Whisper /
     # image-gen headroom. CPU limit set to 1 core per request.

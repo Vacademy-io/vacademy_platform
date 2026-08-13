@@ -1,9 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface MarksDistributionChartProps {
   distribution: Array<{
@@ -16,6 +11,9 @@ interface MarksDistributionChartProps {
   totalParticipants: number;
 }
 
+// Histogram of the whole batch in 10-mark ranges; the learner's own range is
+// highlighted. Rendered bare (no card) — the report page provides the ruled
+// section heading around it.
 export function MarksDistributionChart({
   distribution,
   studentMarks,
@@ -32,7 +30,7 @@ export function MarksDistributionChart({
   for (let i = 0; i < numBuckets; i++) {
     const min = i * bucketSize;
     const max = min + bucketSize - 1;
-    buckets.push({ label: `${min}-${max}`, count: 0, min, max });
+    buckets.push({ label: `${min}–${max}`, count: 0, min, max });
   }
 
   // Fill buckets
@@ -51,54 +49,70 @@ export function MarksDistributionChart({
     studentMarks != null ? Math.floor(studentMarks / bucketSize) : -1;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Marks Distribution (All Students)
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-end gap-1" style={{ height: "128px" }}>
-          {buckets.map((bucket, i) => {
-            const heightPx = Math.max((bucket.count / maxCount) * 112, 4);
-            const isStudentBucket = i === studentBucketIndex;
+    <div>
+      <div
+        className="flex items-end gap-1.5 border-b border-border"
+        style={{ height: "136px" }}
+      >
+        {buckets.map((bucket, i) => {
+          const heightPx = Math.max((bucket.count / maxCount) * 104, 3);
+          const isStudentBucket = i === studentBucketIndex;
 
-            return (
-              <div
-                key={bucket.label}
-                className="flex-1 flex flex-col items-center justify-end h-full"
+          return (
+            <div
+              key={bucket.label}
+              className="flex h-full flex-1 flex-col items-center justify-end"
+            >
+              <span
+                className={cn(
+                  "mb-1 text-3xs tabular-nums",
+                  isStudentBucket
+                    ? "font-semibold text-primary-500"
+                    : "text-muted-foreground"
+                )}
               >
-                <span className="text-3xs text-muted-foreground mb-1">
-                  {bucket.count}
-                </span>
-                <div
-                  className={`w-full rounded-t transition-all ${
-                    isStudentBucket
-                      ? "bg-primary"
-                      : "bg-muted-foreground/20"
-                  }`}
-                  style={{ height: `${heightPx}px` }}
-                />
-                <span
-                  className={`text-3xs mt-1 ${
-                    isStudentBucket
-                      ? "font-bold text-primary"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {bucket.label}
-                  {isStudentBucket && " ★"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex gap-4 justify-center mt-3 text-xs text-muted-foreground">
-          <span>★ = Your score range</span>
-          <span>|</span>
-          <span>Total: {totalParticipants} students</span>
-        </div>
-      </CardContent>
-    </Card>
+                {bucket.count}
+              </span>
+              <div
+                className={cn(
+                  "w-full rounded-t-sm",
+                  isStudentBucket ? "bg-primary-400" : "bg-neutral-200"
+                )}
+                /* Dynamic chart geometry — height comes from live counts. */
+                style={{ height: `${heightPx}px` }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex gap-1.5">
+        {buckets.map((bucket, i) => (
+          <span
+            key={bucket.label}
+            className={cn(
+              "flex-1 text-center text-3xs tabular-nums",
+              i === studentBucketIndex
+                ? "font-semibold text-primary-500"
+                : "text-muted-foreground"
+            )}
+          >
+            {bucket.label}
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-caption text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block size-2.5 rounded-sm bg-primary-400" />
+          Your score range
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block size-2.5 rounded-sm bg-neutral-200" />
+          Rest of the batch
+        </span>
+        <span className="ms-auto tabular-nums">
+          {totalParticipants} students
+        </span>
+      </div>
+    </div>
   );
 }

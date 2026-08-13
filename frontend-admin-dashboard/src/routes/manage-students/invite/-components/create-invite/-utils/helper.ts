@@ -376,6 +376,7 @@ export function convertInviteData(
         tags: data.tags,
         showRelatedCourses: data.showRelatedCourses,
         includeInstituteLogo: data.includeInstituteLogo,
+        blendHeaderWithBackground: data.blendHeaderWithBackground,
         instituteLogoFileId: instituteLogoFileId,
         restrictToSameBatch: data.restrictToSameBatch,
         includePaymentPlans: data.includePaymentPlans,

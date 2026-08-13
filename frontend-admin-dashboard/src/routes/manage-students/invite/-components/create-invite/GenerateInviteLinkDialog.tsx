@@ -116,6 +116,7 @@ const GenerateInviteLinkDialog = ({
         defaultValues: {
             name: '',
             includeInstituteLogo: false,
+            blendHeaderWithBackground: false,
             includePaymentPlans: true,
             requireApproval: false,
             course: '',
@@ -838,6 +839,9 @@ const GenerateInviteLinkDialog = ({
                 includeInstituteLogo:
                     safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
                         ?.includeInstituteLogo || false,
+                blendHeaderWithBackground:
+                    safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
+                        ?.blendHeaderWithBackground || false,
                 includePaymentPlans:
                     safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
                         ?.includePaymentPlans ?? true,

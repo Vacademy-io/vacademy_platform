@@ -44,6 +44,7 @@ import {
   type GuestIdentity,
 } from "../-utils/guestSessionStorage";
 import { getCachedInstituteBranding } from "@/services/domain-routing";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 
 export interface InstituteBrandingInfo {
@@ -59,6 +60,10 @@ export default function LiveClassRegistrationPage() {
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
   const { data: earliestScheduleId } = useEarliestScheduleId(sessionId || "");
   const navigate = useNavigate();
+  // Logo box / name suppression come from institute_domain_routing, the same
+  // source the sidebar, login page and invite form use — the branding fetched
+  // below only carries the institute record, not these display overrides.
+  const domainRouting = useDomainRouting();
   const { setPrimaryColor } = useTheme();
   const [coverFileUrl, setCoverFileUrl] = useState<string | undefined>(
     undefined
@@ -721,6 +726,9 @@ export default function LiveClassRegistrationPage() {
             sessionDetails={sessionDetails}
             instituteName={instituteBranding.instituteName}
             instituteLogoUrl={instituteBranding.instituteLogoUrl}
+            logoWidthPx={domainRouting.logoWidthPx}
+            logoHeightPx={domainRouting.logoHeightPx}
+            hideInstituteName={domainRouting.hideInstituteName}
             glass={!!coverFileUrl}
           />
 

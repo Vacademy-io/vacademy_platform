@@ -535,6 +535,11 @@ export const CourseStructureDetails = ({
                 t.visible !== false,
             ])
         );
+        // Offline access off outranks the role config for Downloads (the tab
+        // strip filters it out below), so this scan must not pick it — otherwise
+        // it and the Downloads effect would flip selectedTab back and forth when
+        // a role also has the fallback tab hidden.
+        if (isOfflineAccessDisabled) visibilityMap.set(TabType.DOWNLOADS, false);
         // A hidden-by-default tab absent from the config counts as not visible,
         // so a stale localStorage selection of it redirects to a visible tab.
         const isCurrentVisible = visibilityMap.has(selectedTab)
@@ -563,7 +568,7 @@ export const CourseStructureDetails = ({
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [roleDisplay, selectedTab, isChatEnabled]);
+    }, [roleDisplay, selectedTab, isChatEnabled, isOfflineAccessDisabled]);
 
     // Effect to update tab selection when settings load
     useEffect(() => {

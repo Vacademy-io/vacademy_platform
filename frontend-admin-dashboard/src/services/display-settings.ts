@@ -491,7 +491,8 @@ function mergeDisplayWithDefaults(
                 { id: 'PLANNING', order: 6, visible: false },
                 { id: 'ACTIVITY', order: 7, visible: false },
                 { id: 'REPORTS', order: 8, visible: true },
-                { id: 'SETTINGS', order: 9, visible: false },
+                { id: 'DOWNLOADS', order: 9, visible: true },
+                { id: 'SETTINGS', order: 10, visible: false },
             ],
             defaultTab: 'OUTLINE' as const,
         };

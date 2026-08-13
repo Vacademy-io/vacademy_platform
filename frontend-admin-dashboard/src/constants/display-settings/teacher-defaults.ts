@@ -167,7 +167,10 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
             { id: 'PULSE', order: 9, visible: true },
             { id: 'REPORTS', order: 10, visible: true },
             { id: 'CERTIFICATES', order: 11, visible: false },
-            { id: 'SETTINGS', order: 12, visible: false },
+            // See admin-defaults: DOWNLOADS must exist in the defaults or a
+            // saved `visible: false` is stripped by mergeArrayById.
+            { id: 'DOWNLOADS', order: 12, visible: true },
+            { id: 'SETTINGS', order: 13, visible: false },
         ],
         defaultTab: 'CONTENT_STRUCTURE',
     },

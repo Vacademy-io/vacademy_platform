@@ -149,7 +149,12 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             { id: 'PULSE', order: 9, visible: true },
             { id: 'REPORTS', order: 10, visible: true },
             { id: 'CERTIFICATES', order: 11, visible: false },
-            { id: 'SETTINGS', order: 12, visible: false },
+            // Listed here (rather than left implicit) so a saved `visible: false`
+            // survives the merge-with-defaults on read/cache — ids absent from
+            // the defaults are dropped as stale. Gated at render time on the
+            // institute OFFLINE_ACCESS_SETTING master switch.
+            { id: 'DOWNLOADS', order: 12, visible: true },
+            { id: 'SETTINGS', order: 13, visible: false },
         ],
         defaultTab: 'OUTLINE',
     },

@@ -29,7 +29,11 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '@/constants/display-settings/course-details-tabs';
+import {
+    DEFAULT_HIDDEN_COURSE_DETAILS_TABS,
+    OFFLINE_GATED_COURSE_DETAILS_TABS,
+} from '@/constants/display-settings/course-details-tabs';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
@@ -236,6 +240,10 @@ export default function AdminDisplaySettings() {
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+
+    // Master switch behind the Downloads course-details tab: off locks that row
+    // to hidden here, matching what the course page renders.
+    const offlineAccessEnabled = useOfflineAccessEnabled();
 
     // Snapshot of the last loaded/saved state, used by the Discard handler in
     // the sticky unsaved-changes bar so the user can revert local edits.
@@ -1209,7 +1217,14 @@ export default function AdminDisplaySettings() {
                             }))
                             .sort((a, b) => a.order - b.order);
 
-                        return sorted.map((cfg, idx) => (
+                        return sorted.map((cfg, idx) => {
+                            // Offline access off → this tab is dead on the course
+                            // page, so show it as off and locked rather than
+                            // rewriting the role's stored preference.
+                            const offlineLocked =
+                                OFFLINE_GATED_COURSE_DETAILS_TABS.has(cfg.id) &&
+                                !offlineAccessEnabled;
+                            return (
                             <div
                                 key={cfg.id}
                                 className="flex items-center gap-3 rounded border p-3"
@@ -1237,12 +1252,21 @@ export default function AdminDisplaySettings() {
                                         <ArrowDown className="h-3 w-3" />
                                     </Button>
                                 </div>
-                                <div className="flex-1 text-sm font-medium">
-                                    {cfg.id.replace('_', ' ')}
+                                <div className="flex-1">
+                                    <div className="text-sm font-medium">
+                                        {cfg.id.replace('_', ' ')}
+                                    </div>
+                                    {offlineLocked && (
+                                        <div className="text-caption text-neutral-500">
+                                            Turned off because offline downloads are disabled for
+                                            the institute (Settings → Offline Access).
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Switch
-                                        checked={cfg.visible}
+                                        checked={offlineLocked ? false : cfg.visible}
+                                        disabled={offlineLocked}
                                         onCheckedChange={(checked) =>
                                             updateSettings((prev) => {
                                                 const prevTabs = prev.courseDetails?.tabs || [];
@@ -1285,6 +1309,7 @@ export default function AdminDisplaySettings() {
                                             checked={
                                                 settings.courseDetails?.defaultTab === cfg.id
                                             }
+                                            disabled={offlineLocked}
                                             onChange={() =>
                                                 updateSettings((prev) => ({
                                                     ...prev,
@@ -1299,7 +1324,8 @@ export default function AdminDisplaySettings() {
                                     </label>
                                 </div>
                             </div>
-                        ));
+                            );
+                        });
                     })()}
                 </CardContent>
             </Card>

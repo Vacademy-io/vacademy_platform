@@ -83,7 +83,10 @@ export default function OfflineAccessSettings() {
                                         <FormLabel>Allow offline downloads institute-wide</FormLabel>
                                         <p className="text-caption text-neutral-500">
                                             Master switch. Off zeroes out every course/batch/node
-                                            offline permission, regardless of their own settings.
+                                            offline permission, regardless of their own settings,
+                                            and hides the course Downloads tab for every role
+                                            (each role keeps its own Downloads toggle in Display
+                                            Settings for when this is back on).
                                         </p>
                                     </div>
                                     <FormControl>

@@ -99,6 +99,43 @@ public class UserAccountLedgerService {
                 null, sourceType, sourceId, invoiceId, paymentLogId, remarks);
     }
 
+    /**
+     * An obligation raised and settled in the same instant — a subscription renewal, where
+     * the learner is charged for the next period with no prior pending bill to match against.
+     *
+     * <p>Posts BOTH halves: the {@code DEBIT_ACCRUAL} for what was billed and the
+     * {@code CREDIT_PAYMENT} for what was collected. Crediting alone would inflate Total Paid
+     * against an accrual that was never raised (renewals reuse the same UserPlan, so
+     * {@code createUserPlan}'s accrual does not fire again) and drive the balance negative;
+     * skipping both — which is what renewals did — kept the balance right by accident while
+     * leaving every renewal invisible in the Transaction History and understating the
+     * learner's lifetime billing.
+     *
+     * <p>Both rows carry the PaymentLog in {@code reference_id} and are idempotent on it, so
+     * a retried webhook re-posts neither. Accrual and payment land together or not at all.
+     *
+     * @param dueDate when the charge fell due, or null for an immediate charge
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordSettledCharge(String userId, String instituteId,
+                                    BigDecimal amount, String currency,
+                                    LocalDate dueDate,
+                                    String sourceType, String sourceId,
+                                    String paymentLogId, String remarks) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (paymentLogId != null
+                && repository.existsByReferenceIdAndEventType(paymentLogId, "DEBIT_ACCRUAL")) {
+            log.debug("Skipping duplicate settled charge for paymentLog={} (user={})", paymentLogId, userId);
+            return;
+        }
+        // reference_id normally carries the PaymentLog on CREDIT rows only; putting it on the
+        // accrual too is what makes this pair replay-safe.
+        save(userId, instituteId, "DEBIT_ACCRUAL", amount, currency,
+                dueDate, sourceType, sourceId, null, paymentLogId, remarks);
+        save(userId, instituteId, "CREDIT_PAYMENT", amount, currency,
+                null, sourceType, sourceId, null, paymentLogId, remarks);
+    }
+
     /** Called when a full fee waiver is granted. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordCreditWaiver(String userId, String instituteId,

@@ -59,8 +59,12 @@ export const RecentLeadsSearchSchema = z.object({
         .optional(),
     /** Lead source type — WEBSITE / META / GOOGLE / ORGANIC / … (LeadFilterDTO.sourceType). */
     source: z.string().optional(),
-    /** Call-history filter — NOT_CALLED / CALLED / CALLED_ONCE / CALLED_TWICE_PLUS / AI_CALLED / MANUAL_CALLED. */
+    /** Call-history filter — NOT_CALLED / CALLED / CALLED_ONCE / CALLED_TWICE_PLUS /
+     *  CALLED_N_TIMES / CALLED_N_PLUS_TIMES / AI_CALLED / MANUAL_CALLED. */
     called: z.string().optional(),
+    /** Attempt count N for called=CALLED_N_TIMES / CALLED_N_PLUS_TIMES. Kept as a
+     *  string like every other param here; the page clamps it to 1–99 on read. */
+    calledCount: z.string().optional(),
 });
 
 export type RecentLeadsSearch = z.infer<typeof RecentLeadsSearchSchema>;

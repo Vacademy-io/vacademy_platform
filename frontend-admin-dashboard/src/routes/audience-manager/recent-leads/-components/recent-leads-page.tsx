@@ -56,6 +56,12 @@ import {
     ExportColumnPickerDialog,
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
+import {
+    CallHistoryFilter,
+    isCallCountFilter,
+    normalizeCallCount,
+    DEFAULT_CALL_COUNT,
+} from '@/components/shared/leads/call-history-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
@@ -84,7 +90,6 @@ import {
     ArrowCounterClockwise,
     CaretDown,
     CircleNotch,
-    Phone,
     Trash,
     UserMinus,
     UserPlus,
@@ -304,6 +309,13 @@ const RecentLeadsContent = () => {
     // Call-history filter — has this lead been call-attempted (AI or manual), and
     // how many times. Single-select; '' = no filter.
     const [callHistoryFilter, setCallHistoryFilter] = useState<string>(urlSearch.called ?? '');
+    // Attempt count for the "Called exactly N" / "Called at least N" options.
+    // Only sent when one of those is selected — every other call-history value
+    // ignores it, so it must not vary the request otherwise.
+    const [callCountValue, setCallCountValue] = useState<number>(() =>
+        urlSearch.calledCount ? normalizeCallCount(urlSearch.calledCount) : DEFAULT_CALL_COUNT
+    );
+    const callCountParam = isCallCountFilter(callHistoryFilter) ? callCountValue : undefined;
 
     // Custom-field filters — keyed by custom_field_id, each holding the selected
     // values (multi-select). Only fields the admin enabled in Lead Settings
@@ -356,6 +368,7 @@ const RecentLeadsContent = () => {
                 to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
                 source: sourceFilter || undefined,
                 called: callHistoryFilter || undefined,
+                calledCount: callCountParam ? String(callCountParam) : undefined,
             },
             replace: true,
         });
@@ -372,6 +385,7 @@ const RecentLeadsContent = () => {
         customTo,
         sourceFilter,
         callHistoryFilter,
+        callCountParam,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
     // counsellor reports; pure admins get the institute-wide roster.
@@ -503,6 +517,7 @@ const RecentLeadsContent = () => {
             counsellorFilters.join(','),
             sourceFilter,
             callHistoryFilter,
+            callCountParam,
             customFieldFiltersKey,
             page,
             pageSize,
@@ -529,6 +544,7 @@ const RecentLeadsContent = () => {
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
+                call_count_value: callCountParam,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -692,6 +708,7 @@ const RecentLeadsContent = () => {
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
+                call_count_value: callCountParam,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -729,6 +746,7 @@ const RecentLeadsContent = () => {
         setCounsellorFilters([]);
         setSourceFilter('');
         setCallHistoryFilter('');
+        setCallCountValue(DEFAULT_CALL_COUNT);
         setCustomFieldFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
@@ -1025,6 +1043,7 @@ const RecentLeadsContent = () => {
                     is_unassigned: onlyUnassigned ? true : undefined,
                     source_type: sourceFilter || undefined,
                     call_history_filter: callHistoryFilter || undefined,
+                    call_count_value: callCountParam,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1214,27 +1233,18 @@ const RecentLeadsContent = () => {
                         onChange={handleAudienceChange}
                         widthClass="w-44"
                     />
-                    <Select
-                        value={callHistoryFilter || 'ANY'}
+                    <CallHistoryFilter
+                        value={callHistoryFilter}
                         onValueChange={(v) => {
-                            setCallHistoryFilter(v === 'ANY' ? '' : v);
+                            setCallHistoryFilter(v);
                             setPage(0);
                         }}
-                    >
-                        <SelectTrigger className="h-10 w-44">
-                            <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="ANY">Call history</SelectItem>
-                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
-                            <SelectItem value="CALLED">Called (any)</SelectItem>
-                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
-                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
-                            <SelectItem value="AI_CALLED">AI called</SelectItem>
-                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
-                        </SelectContent>
-                    </Select>
+                        count={callCountValue}
+                        onCountChange={(n) => {
+                            setCallCountValue(n);
+                            setPage(0);
+                        }}
+                    />
                     {filterCustomFields.map((f) =>
                         isRangeFieldType(f.fieldType) ? (
                             <CustomFieldRangeFilter

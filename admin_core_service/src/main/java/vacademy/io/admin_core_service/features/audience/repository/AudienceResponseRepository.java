@@ -371,6 +371,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
                                              OR (tcl.user_id = ar.user_id
                                                  AND tcl.institute_id = a.institute_id)) >= 2)
+                                   -- Arbitrary-N variants of the two options above: "called
+                                   -- exactly N times" and "called N or more times". N comes from
+                                   -- :callCountValue, floored at 1 so a missing/zero value
+                                   -- degrades to the CALLED_ONCE / CALLED semantics rather than
+                                   -- matching nothing.
+                                   OR (:callHistoryFilter = 'CALLED_N_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       = GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
+                                   OR (:callHistoryFilter = 'CALLED_N_PLUS_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       >= GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
                                    OR (:callHistoryFilter = 'AI_CALLED'
                                        AND (EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl
@@ -636,6 +655,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
                                              OR (tcl.user_id = ar.user_id
                                                  AND tcl.institute_id = a.institute_id)) >= 2)
+                                   -- Arbitrary-N variants of the two options above: "called
+                                   -- exactly N times" and "called N or more times". N comes from
+                                   -- :callCountValue, floored at 1 so a missing/zero value
+                                   -- degrades to the CALLED_ONCE / CALLED semantics rather than
+                                   -- matching nothing.
+                                   OR (:callHistoryFilter = 'CALLED_N_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       = GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
+                                   OR (:callHistoryFilter = 'CALLED_N_PLUS_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       >= GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
                                    OR (:callHistoryFilter = 'AI_CALLED'
                                        AND (EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl
@@ -686,6 +724,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
                         @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
                         @Param("callHistoryFilter") String callHistoryFilter,
+                        @Param("callCountValue") Integer callCountValue,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
@@ -914,6 +953,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
                                              OR (tcl.user_id = ar.user_id
                                                  AND tcl.institute_id = a.institute_id)) >= 2)
+                                   -- Arbitrary-N variants of the two options above: "called
+                                   -- exactly N times" and "called N or more times". N comes from
+                                   -- :callCountValue, floored at 1 so a missing/zero value
+                                   -- degrades to the CALLED_ONCE / CALLED semantics rather than
+                                   -- matching nothing.
+                                   OR (:callHistoryFilter = 'CALLED_N_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       = GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
+                                   OR (:callHistoryFilter = 'CALLED_N_PLUS_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       >= GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
                                    OR (:callHistoryFilter = 'AI_CALLED'
                                        AND (EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl
@@ -1179,6 +1237,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
                                              OR (tcl.user_id = ar.user_id
                                                  AND tcl.institute_id = a.institute_id)) >= 2)
+                                   -- Arbitrary-N variants of the two options above: "called
+                                   -- exactly N times" and "called N or more times". N comes from
+                                   -- :callCountValue, floored at 1 so a missing/zero value
+                                   -- degrades to the CALLED_ONCE / CALLED semantics rather than
+                                   -- matching nothing.
+                                   OR (:callHistoryFilter = 'CALLED_N_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       = GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
+                                   OR (:callHistoryFilter = 'CALLED_N_PLUS_TIMES' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')
+                                             OR (tcl.user_id = ar.user_id
+                                                 AND tcl.institute_id = a.institute_id))
+                                       >= GREATEST(COALESCE(CAST(:callCountValue AS integer), 1), 1))
                                    OR (:callHistoryFilter = 'AI_CALLED'
                                        AND (EXISTS (
                                              SELECT 1 FROM telephony_call_log tcl
@@ -1229,6 +1306,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
                         @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
                         @Param("callHistoryFilter") String callHistoryFilter,
+                        @Param("callCountValue") Integer callCountValue,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         @Param("sortCustomFieldId") String sortCustomFieldId,

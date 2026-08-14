@@ -84,6 +84,9 @@ export interface RecentLeadsRequest {
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
     /** Call-attempt history filter (see CallHistoryFilter options). */
     call_history_filter?: string;
+    /** Attempt count N — only read when call_history_filter is CALLED_N_TIMES
+     *  ("exactly N") or CALLED_N_PLUS_TIMES ("N or more"). Omitted otherwise. */
+    call_count_value?: number;
     /**
      * Soft-delete visibility — defaults to EXCLUDE_DELETED on the backend, so deleted leads stay
      * hidden unless explicitly asked for. ONLY_DELETED backs the "Deleted leads" view that restore

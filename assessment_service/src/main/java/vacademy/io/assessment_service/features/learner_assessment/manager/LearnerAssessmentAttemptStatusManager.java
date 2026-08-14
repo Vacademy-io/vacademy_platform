@@ -67,6 +67,16 @@ public class LearnerAssessmentAttemptStatusManager {
         vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
 
         /**
+         * Attempt ids with a live-sync marks recalculation currently queued or
+         * running. During a live exam every 60s sync enqueues a full recalc; when
+         * the async pool falls behind, duplicates for the same attempt pile up in
+         * the queue doing identical work. Skipping while one is in flight loses
+         * nothing: the next sync re-enqueues with newer data, and the submit /
+         * expiry paths always run the authoritative calculation regardless.
+         */
+        private final Set<String> attemptsWithRecalcInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        /**
          * Converts the duration distribution data into a list of duration responses.
          *
          * @param durationData the duration data in JSON format
@@ -207,12 +217,22 @@ public class LearnerAssessmentAttemptStatusManager {
                         if (isManualEvaluation(assessment)) {
                                 log.debug("Skipping live-sync marks calculation for MANUAL assessment: assessmentId={}, attemptId={}",
                                                 assessmentId, attemptId);
-                        } else {
-                                // Update the student attempt asynchronously
+                        } else if (attemptsWithRecalcInFlight.add(attemptId)) {
+                                // Update the student attempt asynchronously; the in-flight guard is
+                                // released when the async run finishes (or if enqueueing itself fails,
+                                // via the catch below).
                                 studentAttemptService
-                                                .updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional.of(attempt));
+                                                .updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional.of(attempt))
+                                                .whenComplete((result, error) -> attemptsWithRecalcInFlight.remove(attemptId));
+                        } else {
+                                log.debug("Skipping duplicate live-sync marks calculation, one already in flight: attemptId={}",
+                                                attemptId);
                         }
                 } catch (Exception e) {
+                        // Release the in-flight guard: if enqueueing threw, no whenComplete
+                        // callback exists to clear it, and a leaked entry would silently stop
+                        // all future live-sync recalcs for this attempt.
+                        attemptsWithRecalcInFlight.remove(attemptId);
                         log.error("Error while updating student attempt or calculating marks: {}", e.getMessage());
                         SentryLogger.SentryEventBuilder.error(e)
                                         .withMessage("Failed to update student attempt or calculate marks")

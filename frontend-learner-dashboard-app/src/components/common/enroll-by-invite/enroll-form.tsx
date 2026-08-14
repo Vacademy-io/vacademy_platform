@@ -239,6 +239,7 @@ const EnrollByInvite = ({
     customHtml: "",
     description: "",
     includeInstituteLogo: false,
+    blendHeaderWithBackground: false,
     includePaymentPlans: false,
     instituteLogo: "",
     learningOutcome: "",
@@ -2414,6 +2415,8 @@ const EnrollByInvite = ({
           description: transformedJsonData?.description || "",
           includeInstituteLogo:
             transformedJsonData?.includeInstituteLogo || false,
+          blendHeaderWithBackground:
+            transformedJsonData?.blendHeaderWithBackground || false,
           includePaymentPlans:
             transformedJsonData?.includePaymentPlans || false,
           instituteLogo: transformedJsonData?.instituteLogo || "",
@@ -3005,8 +3008,20 @@ const EnrollByInvite = ({
     // background role is set) instead of a hardcoded gray, so an admin-set
     // page background reaches the invite flow. The header/cards stay white.
     <div className="min-h-screen w-full bg-background">
-      {/* Compact Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+      {/* Compact Header. White by default. When the invite opts into
+          `blendHeaderWithBackground`, the header and the invite title below it
+          instead take the page canvas token so logo → title → page read as one
+          themed band and only the form cards stay white. It stays OPAQUE
+          either way because it is sticky: a transparent sticky bar would let
+          the white form scroll through underneath and break the band. */}
+      <header
+        className={cn(
+          "sticky top-0 z-50",
+          courseData.blendHeaderWithBackground
+            ? "bg-background"
+            : "bg-white border-b border-gray-200"
+        )}
+      >
         <div className={`${pageContainerWidth} mx-auto px-4 sm:px-6`}>
           <div className="flex items-center justify-between h-14">
             {/* Left: Institute Branding */}
@@ -3032,6 +3047,11 @@ const EnrollByInvite = ({
                   // An institute whose logo already contains its name doesn't
                   // want it spelled out beside the mark.
                   hideInstituteName: domainRouting.hideInstituteName,
+                  // Same institute_domain_routing sizing the sidebar and login
+                  // page use — without these the mark falls back to the generic
+                  // `size` classes and ignores the tenant's configured box.
+                  logoWidthPx: domainRouting.logoWidthPx,
+                  logoHeightPx: domainRouting.logoHeightPx,
                 }}
                 size="large"
                 showName={true}
@@ -3056,9 +3076,16 @@ const EnrollByInvite = ({
         </div>
       </header>
 
-      {/* Compact Course Info Bar */}
+      {/* Compact Course Info Bar — the invite name. Follows the header's
+          surface (see above): white band by default, page canvas when blended. */}
       {currentStep === 0 && (
-        <div className="bg-white border-b border-gray-100">
+        <div
+          className={
+            courseData.blendHeaderWithBackground
+              ? "bg-background"
+              : "bg-white border-b border-gray-100"
+          }
+        >
           <div className={`${pageContainerWidth} mx-auto px-4 sm:px-6 py-4`}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {/* Course Thumbnail */}

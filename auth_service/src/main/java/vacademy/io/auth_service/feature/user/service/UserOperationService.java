@@ -192,9 +192,17 @@ public class UserOperationService {
         List<String> allowedStatuses = getAllowedStatuses(portal);
         List<String> allowedRoleNames = getValidRoleNames(portal);
 
+        // instituteId is OPTIONAL. Usernames are globally unique — findByUsername above
+        // returns at most one user — so the portal's role + status already identify a
+        // legitimate learner without it. Requiring it locked out every institute on a
+        // shared domain: with no institute_domain_routing row the caller has no id to
+        // send, and a valid learner got a 404 on their own join link. When an id IS
+        // supplied it still scopes the match, so single-tenant callers are unchanged.
+        boolean instituteScoped = instituteId != null && !instituteId.isBlank();
         boolean hasValidRole = user.getRoles() != null && user.getRoles().stream()
                 .anyMatch(ur ->
-                        ur.getInstituteId() != null && ur.getInstituteId().equals(instituteId)
+                        (!instituteScoped
+                                || (ur.getInstituteId() != null && ur.getInstituteId().equals(instituteId)))
                                 && ur.getStatus() != null && allowedStatuses.contains(ur.getStatus())
                                 && ur.getRole() != null && allowedRoleNames.contains(ur.getRole().getName())
                 );

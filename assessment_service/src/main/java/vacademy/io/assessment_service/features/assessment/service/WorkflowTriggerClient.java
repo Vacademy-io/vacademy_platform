@@ -25,7 +25,11 @@ public class WorkflowTriggerClient {
 
     private RestTemplate restTemplate;
 
-    @Value("${admin.core.service.url:http://admin-core-service:8080}")
+    // admin.core.service.baseurl is the property every deployed profile actually
+    // defines (stage/dev map it to ADMIN_CORE_SERVICE_BASE_URL). The previous key
+    // admin.core.service.url was never set anywhere, so every trigger fell back to
+    // port 8080 (real port: 8072) and connect-timed-out — losing the event.
+    @Value("${admin.core.service.baseurl:http://admin-core-service:8072}")
     private String adminCoreServiceUrl;
 
     @Value("${workflow.trigger.connect-timeout-ms:2000}")
@@ -51,7 +55,7 @@ public class WorkflowTriggerClient {
      * @param instituteId The institute scope
      * @param contextData Additional context data for the workflow
      */
-    @Async
+    @Async("workflowTriggerExecutor")
     public void triggerEvent(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
         try {
             String url = adminCoreServiceUrl + "/admin-core-service/internal/workflow/trigger";

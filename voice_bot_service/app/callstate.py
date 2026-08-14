@@ -39,9 +39,17 @@ class CallState:
     last_stop_reissue: float = 0.0
     # Last REAL transcribed words (greet gating + orphan discriminator).
     transcript_t: float = 0.0
-    # Caller VAD utterance boundaries (orphan discriminator).
+    # Caller VAD utterance boundaries (orphan discriminator). NOTE: on pipecat
+    # 1.4 these are stamped from the aggregator's TURN lifecycle, which can lag
+    # the caller's actual voice by SECONDS (a turn closes on strategy fallback,
+    # not on VAD stop). Anything that needs acoustic truth uses voice_tick_t.
     user_started_t: float = 0.0
     user_stopped_t: float = 0.0
+    # Last time the transport's VAD said voice is live RIGHT NOW (it pushes
+    # UserSpeakingFrame every 0.2s while speech is detected). Call 17be14f2:
+    # a "हेलो" whose turn stayed open 4.6s pinned the greet gate to its 2.5s
+    # ceiling — the acoustic ticks had stopped 4s earlier.
+    voice_tick_t: float = 0.0
     # When bot audio last STOPPED (dedupe scope + orphan turn-stealing guard).
     bot_stopped_t: float = 0.0
     # When the LLM began composing the CURRENT reply. A reply is "in flight"

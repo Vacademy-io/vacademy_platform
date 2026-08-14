@@ -45,7 +45,7 @@ import vacademy.io.assessment_service.features.assessment.service.export.ReportE
 import vacademy.io.assessment_service.features.assessment.service.export.ReportZipAssemblyService;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportZipExportService;
 import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
-import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
 import vacademy.io.assessment_service.features.learner_assessment.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -87,6 +87,9 @@ public class AdminExportManager {
 
     @Autowired
     LearnerReportService learnerReportService;
+
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.service.ReportPdfRenderService reportPdfRenderService;
 
     @Autowired
     AssessmentReportExportJobRepository reportExportJobRepository;
@@ -525,21 +528,12 @@ public class AdminExportManager {
         Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
         if (assessmentOptional.isEmpty()) throw new VacademyException("Assessment Not Found");
 
-        // Same branded template the learner gets — this used to call the legacy
-        // no-branding overload, so the admin download always came out in the
-        // hardcoded default palette regardless of the institute's report branding.
-        ReportBrandingDto branding = null;
-        try {
-            branding = adminCoreServiceClient.getReportBranding(instituteId);
-        } catch (Exception ignored) {
-        }
-
-        // Comparison + option distribution used to be passed as null here, so the
-        // admin's copy silently dropped rank, percentile, class average, marks
-        // distribution and section-wise comparison — i.e. everything that makes it
-        // a comparison report. Both are built the same way the learner download
-        // does it (LearnerReportService#getStudentReportPdf) so admin and learner
-        // now get a byte-identical document.
+        // Comparison used to be passed as null here, so the admin's copy
+        // silently dropped rank, percentile, class average, marks distribution
+        // and section-wise comparison — i.e. everything that makes it a
+        // comparison report. Built the same way the learner download does it
+        // (LearnerReportService#getStudentReportPdf) so admin and learner get
+        // a byte-identical document.
         StudentComparisonDto comparison = null;
         try {
             String studentUserId = studentAttemptRepository.findById(attemptId)
@@ -551,22 +545,12 @@ public class AdminExportManager {
         } catch (Exception ignored) {
         }
 
-        Map<String, Map<String, Double>> optionDistribution = null;
-        try {
-            optionDistribution = learnerReportService.computeOptionDistribution(assessmentId);
-        } catch (Exception ignored) {
-        }
-
-        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(
-                assessmentOptional.get().getName(), studentReportOverallDetailDto,
-                comparison, optionDistribution, branding);
-
-        ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-        ConverterProperties converterProperties = new ConverterProperties();
-        HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
-
-        // Return as downloadable PDF
-        byte[] pdfBytes = pdfOutputStream.toByteArray();
+        // Shared release-flow renderer (v2 report). The class context carries
+        // branding, option distribution and the full leaderboard — the source
+        // of the student name in the letterhead — so the admin download is the
+        // same professional document the learner gets, not the legacy layout.
+        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+        byte[] pdfBytes = reportPdfRenderService.render(studentReportOverallDetailDto, comparison, ctx);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)

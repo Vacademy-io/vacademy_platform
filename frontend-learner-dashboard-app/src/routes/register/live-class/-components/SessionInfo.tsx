@@ -14,6 +14,11 @@ interface SessionInfoProps {
   sessionDetails?: SessionDetailsResponse | null;
   instituteName?: string | null;
   instituteLogoUrl?: string | null;
+  /** institute_domain_routing logo box. When set, overrides the default h-9/h-10. */
+  logoWidthPx?: number | null;
+  logoHeightPx?: number | null;
+  /** institute_domain_routing.hide_institute_name — logos that embed the name. */
+  hideInstituteName?: boolean | null;
   /** Frosted panel styling for when the page renders a hero background. */
   glass?: boolean;
 }
@@ -25,8 +30,23 @@ export default function SessionInfo({
   sessionDetails,
   instituteName,
   instituteLogoUrl,
+  logoWidthPx,
+  logoHeightPx,
+  hideInstituteName,
   glass,
 }: SessionInfoProps) {
+  // Mirrors InstituteBrandingComponent: an explicit width/height from
+  // institute_domain_routing replaces the default box entirely, rather than
+  // fighting the h-9/h-10 utilities.
+  const hasCustomLogoDims =
+    typeof logoWidthPx === "number" || typeof logoHeightPx === "number";
+  const customLogoStyle = hasCustomLogoDims
+    ? {
+        width: typeof logoWidthPx === "number" ? logoWidthPx : undefined,
+        height: typeof logoHeightPx === "number" ? logoHeightPx : undefined,
+      }
+    : undefined;
+  const showInstituteName = hideInstituteName === true ? false : true;
   const getSessionTimezone = () => {
     return "timezone" in (sessionDetails || {})
       ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
@@ -85,16 +105,26 @@ export default function SessionInfo({
           <img
             src={instituteLogoUrl}
             alt={instituteName || "Institute"}
-            className="h-9 sm:h-10 w-auto object-contain"
+            className={cn(
+              "object-contain",
+              hasCustomLogoDims ? "" : "h-9 sm:h-10 w-auto"
+            )}
+            style={customLogoStyle}
           />
         ) : (
-          <div className="h-9 sm:h-10 w-9 sm:w-10 bg-primary-100 rounded-lg flex items-center justify-center">
+          <div
+            className={cn(
+              "bg-primary-100 rounded-lg flex items-center justify-center",
+              hasCustomLogoDims ? "" : "h-9 sm:h-10 w-9 sm:w-10"
+            )}
+            style={customLogoStyle}
+          >
             <span className="text-primary-500 font-bold text-base">
               {instituteName ? instituteName.charAt(0).toUpperCase() : "V"}
             </span>
           </div>
         )}
-        {instituteName && (
+        {instituteName && showInstituteName && (
           <span className="text-sm sm:text-base font-semibold text-gray-700">
             {instituteName}
           </span>

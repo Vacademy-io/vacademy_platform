@@ -2375,3 +2375,195 @@ async def test_unpoison_restores_the_topic_exemplar_it_displaced():
     rec.text.clear()
     await _reply(g, DIAG_Q)
     assert "खो देता है" in " ".join(rec.text), "the un-played diagnostic stayed banned"
+
+
+# ── call 17be14f2 (2026-08-13): the three-part opening failure ───────────────
+# 1) The caller's pre-greet "हेलो" opened a TURN whose transcript was dropped,
+#    but the turn stayed open 4.6s (closed by a 1500ms-silence fallback) — the
+#    greet gate keys on turn flags, so it burned its full 2.5s ceiling. LONG
+#    PAUSE AT START.
+# 2) When that stale turn closed, the aggregator triggered a generation with NO
+#    new user content — a reply to nothing, which re-delivered the intro.
+# 3) An absorbed "हम्म" triggered a continuation that PARAPHRASED the intro
+#    line past the 0.80 bar ("website…studies…form भरा था" -> "वेबसाइट…पढ़ाई…
+#    enquiry डाली थी", ~0.7). REPETITION.
+
+INTRO_S2 = ("मैंने देखा था कि आपने हमारी website पर अपने बच्चे की studies के "
+            "लिए एक enquiry form भरा था। ")
+INTRO_S2_PARA = ("मैंने देखा था कि आपने हमारी वेबसाइट पर अपने बच्चे की पढ़ाई "
+                 "के लिए एक enquiry डाली थी। ")
+
+
+def test_the_paraphrase_that_beat_the_gate_sits_in_the_strict_band():
+    """Pin the numbers: the continuation paraphrase escapes 0.80 but is caught
+    at 0.6, with margin both ways."""
+    import difflib
+    from app.turntake import normalize_spoken
+    r = difflib.SequenceMatcher(None, normalize_spoken(INTRO_S2),
+                                normalize_spoken(INTRO_S2_PARA)).ratio()
+    assert 0.62 < r < 0.80, f"paraphrase pair drifted out of the band: {r:.2f}"
+
+
+@pytest.mark.asyncio
+async def test_a_continuation_may_not_paraphrase_what_already_played():
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "हम्म।")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, INTRO_S2)
+    g.mark_continuation()                    # what the absorb path now does
+    rec.text.clear()
+    await _reply(g, INTRO_S2_PARA, "क्या मैं Riya जी से बात कर रही हूँ? ")
+    said = " ".join(rec.text)
+    assert "डाली थी" not in said, f"the paraphrased intro got through: {said!r}"
+    assert "Riya जी से बात" in said, "the genuinely new sentence must survive"
+
+
+@pytest.mark.asyncio
+async def test_strictness_lasts_exactly_one_response():
+    """A NORMAL reply keeps the 0.80 bar — the strict bar on every response
+    would eat legitimate reprises the 0.80 margin exists to protect."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "हाँ।")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, INTRO_S2)
+    g.mark_continuation()
+    await _reply(g, "ठीक है जी। ")           # the continuation, consumed here
+    rec.text.clear()
+    await _reply(g, INTRO_S2_PARA)           # next NORMAL response: 0.80 bar
+    assert "डाली थी" in " ".join(rec.text), "strictness leaked past one response"
+
+
+# ── RunGuard: a generation must answer something ─────────────────────────────
+class _FakeCtx:
+    def __init__(self):
+        self.messages = []
+
+    def get_messages(self):
+        return self.messages
+
+
+class _RGRec:
+    def __init__(self):
+        self.passed = []
+
+    async def push(self, frame, direction=None):
+        self.passed.append(frame)
+
+
+def _run_guard():
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    ctx = _FakeCtx()
+    rec = _RGRec()
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=d)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g, ctx, rec, d
+
+
+@pytest.mark.asyncio
+async def test_run_guard_blocks_the_stale_turn_retrigger():
+    """The exact 17be14f2 shape: greet cue runs once; a stale turn closes and
+    re-triggers with the context unchanged; the second run must not happen."""
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d = _run_guard()
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = [{"role": "system", "content": "…"},
+                    {"role": "user", "content": "[NOW deliver your opening…]"}]
+    await g.process_frame(LLMRunFrame(), D)          # the greet's run
+    assert len(rec.passed) == 1
+    await g.process_frame(LLMRunFrame(), D)          # stale-turn retrigger
+    assert len(rec.passed) == 1, "a reply-to-nothing generation was allowed"
+    assert d.empty_runs_blocked == 1
+
+
+@pytest.mark.asyncio
+async def test_run_guard_blocks_when_the_last_word_was_ours():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, _ = _run_guard()
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = [{"role": "user", "content": "हाँ"},
+                    {"role": "assistant", "content": "ठीक है Riya जी।"}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.passed == [], "generated with nothing to answer"
+
+
+@pytest.mark.asyncio
+async def test_run_guard_allows_every_real_turn():
+    """Each new caller message — including an identical short answer later in
+    the call, and the absorb cue — must run. Only sameness is blocked."""
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, _ = _run_guard()
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = [{"role": "user", "content": "हाँ जी बोलिए।"}]
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = ctx.messages + [{"role": "assistant", "content": "क्लास?"},
+                                   {"role": "user", "content": "आठवीं"}]
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = ctx.messages + [{"role": "assistant", "content": "marks?"},
+                                   {"role": "user", "content": "हाँ जी बोलिए।"}]
+    await g.process_frame(LLMRunFrame(), D)          # same words, NEW turn
+    assert len(rec.passed) == 3, "a legitimate turn was blocked"
+
+
+@pytest.mark.asyncio
+async def test_run_guard_kill_switch_and_empty_context_pass_through():
+    from pipecat.frames.frames import LLMRunFrame
+    import app.diagnostics as dg
+    ctx = _FakeCtx()
+    rec = _RGRec()
+    g = b.RunGuard(ctx, enabled=lambda: False, diag=dg.CallDiagnostics())
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMRunFrame(), D)          # empty context, disabled
+    ctx.messages = [{"role": "assistant", "content": "x"}]
+    await g.process_frame(LLMRunFrame(), D)          # disabled ⇒ everything passes
+    assert len(rec.passed) == 2
+
+
+# ── the greet must key on acoustics, not the aggregator's turn lifecycle ─────
+def test_greet_ignores_a_stale_open_turn():
+    """Fake-clock replay of 17be14f2: voice ticks stop at 0.9s but the TURN
+    never closes (its real closure came 4.6s later). v2 of the loop waited the
+    full 2.5s ceiling; the acoustic loop must fire ~1.5s."""
+    def fire(voice_until, turn_closes=None, greet_delay=0.8):
+        f = {"user_speaking": False, "user_started_t": 0.0, "voice_tick_t": 0.0}
+        settle = 0.6
+
+        def step(t):
+            # A turn only opens if there was voice at all.
+            if voice_until > 0 and t >= 0.06 and (turn_closes is None or t < turn_closes):
+                if not f["user_speaking"]:
+                    f["user_started_t"] = t
+                f["user_speaking"] = True
+            elif turn_closes is not None and t >= turn_closes:
+                f["user_speaking"] = False
+            if 0.06 <= t < voice_until:
+                f["voice_tick_t"] = t        # transport tick every step
+
+        t = 0.0
+        while t < greet_delay:
+            step(t)
+            t = round(t + 0.1, 4)
+        while t < 2.5:
+            step(t)
+            now = t
+            voiced = f["voice_tick_t"]
+            quiet = voiced == 0.0 or now - voiced >= settle
+            holds = (voiced == 0.0 and f["user_speaking"]
+                     and now - f["user_started_t"] < 1.2)
+            if quiet and not holds:
+                break
+            t = round(t + 0.1, 4)
+        return round(t, 2)
+
+    stale = fire(voice_until=0.9, turn_closes=None)      # turn never closes
+    assert stale <= 1.6, f"stale turn still pins the greet: {stale}s"
+    assert stale >= 1.4, f"fired before the settle: {stale}s"
+    # A caller genuinely still talking holds it to the ceiling.
+    assert fire(voice_until=9.0, turn_closes=None) >= 2.4
+    # A silent line fires at the plain greet delay.
+    assert fire(voice_until=0.0) <= 0.9

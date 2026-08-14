@@ -308,24 +308,17 @@ function RouteComponent() {
       {/* Main Content */}
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
-          {/* Login Form */}
-          {domainRouting.instituteId ? (
-            <SessionLoginForm
-              username={username}
-              instituteId={domainRouting.instituteId}
-              onLoginSuccess={handleLoginSuccess}
-            />
-          ) : (
-            <div className="text-center space-y-4">
-              <h2 className="text-2xl font-semibold text-gray-900">
-                Unable to Load Session
-              </h2>
-              <p className="text-gray-600">
-                Could not determine the institute for this session. Please check
-                the URL or contact support.
-              </p>
-            </div>
-          )}
+          {/* Login Form.
+              instituteId is optional: institutes served from a shared domain have
+              no domain-routing row, so it resolves to null here. The username in
+              the URL is globally unique, which is enough to look the learner up —
+              blocking on a missing institute locked those learners out of their
+              own join link. */}
+          <SessionLoginForm
+            username={username}
+            instituteId={domainRouting.instituteId ?? undefined}
+            onLoginSuccess={handleLoginSuccess}
+          />
         </div>
       </div>
 

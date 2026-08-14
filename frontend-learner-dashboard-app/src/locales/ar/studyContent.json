@@ -54,7 +54,11 @@
     "slideSidebar": {
         "slidesListLabel": "قائمة شرائح الفصل",
         "noSlidesTitle": "لا توجد شرائح متاحة",
-        "noSlidesSubtitle": "ستظهر الشرائح هنا عند إضافة المحتوى"
+        "noSlidesSubtitle": "ستظهر الشرائح هنا عند إضافة المحتوى",
+        "lockedAssessmentNotOpen": "يبدأ {{datetime}}",
+        "lockedAssessmentNotOpenNoDate": "مقفل حتى يبدأ التقييم",
+        "lockedAssessmentClosed": "أُغلق {{datetime}}",
+        "lockedAssessmentClosedNoDate": "هذا التقييم مغلق"
     },
     "slideNav": {
         "previous": "السابق",
@@ -154,7 +158,22 @@
         "beingEvaluated": "يجري تصحيح إجابتك. ستظهر النتائج فور إصدارها.",
         "attemptInProgress": "لديك محاولة قيد التقدّم. استأنف لمتابعة ما توقفت عنده.",
         "viewReport": "عرض التقرير",
-        "evaluatedCopyTitle": "النسخة المصحّحة"
+        "evaluatedCopyTitle": "النسخة المصحّحة",
+        "lockedBadge": "مقفل",
+        "notOpenYet": "لم يبدأ بعد",
+        "closed": "مغلق",
+        "availabilityLabel": "التوفر",
+        "opensLabel": "يبدأ",
+        "closesLabel": "ينتهي",
+        "closedLabel": "أُغلق",
+        "anytime": "في أي وقت",
+        "lockedUntilTitle": "هذا التقييم لم يبدأ بعد.",
+        "lockedUntilBody": "سيُفتح في {{datetime}}. يمكنك فتحه من هنا بمجرد أن يصبح مباشراً.",
+        "lockedUntilBodyNoDate": "سيُفتح بمجرد أن يصبح التقييم مباشراً.",
+        "opensIn": "يبدأ خلال {{countdown}}",
+        "closedTitle": "هذا التقييم مغلق.",
+        "closedBody": "أُغلق في {{datetime}} ولم يعد بالإمكان أداؤه.",
+        "closedBodyNoDate": "لم يعد بالإمكان أداؤه."
     },
     "splitScreen": {
         "noEmbeddedContent": "لا يوجد محتوى مضمّن",

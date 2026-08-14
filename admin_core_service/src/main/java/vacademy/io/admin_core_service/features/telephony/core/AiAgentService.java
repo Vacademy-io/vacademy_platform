@@ -199,6 +199,23 @@ public class AiAgentService {
         }
         agent.setTtsModel(engine);
 
+        // Deepgram Aura-2 is ENGLISH ONLY and does NOT refuse other scripts: probed
+        // 2026-08-13, a Devanagari sentence returned HTTP 200 with 37 KB of audio.
+        // So a Hinglish agent pointed at it produces a confident, fluent, completely
+        // wrong call — no vendor error, no fallback, nothing in the logs. Every other
+        // mis-selection in this method degrades to a working call in the wrong voice;
+        // this one cannot, so it refuses at save time instead of at 9 PM on a dial.
+        if (TtsVoiceCatalog.MODEL_DEEPGRAM.equals(engine)) {
+            String lang = agent.getLanguage() == null ? "" : agent.getLanguage().trim().toLowerCase();
+            if (!lang.isEmpty() && !lang.startsWith("en") && !lang.startsWith("english")) {
+                throw new VacademyException(
+                        "Deepgram has no Hindi voice, so it cannot be used for a '"
+                        + agent.getLanguage() + "' agent — the caller would hear Devanagari "
+                        + "read as English. Choose google, sarvam or smallest for Hindi/Hinglish, "
+                        + "or set this agent's language to English.");
+            }
+        }
+
         String voice = blankToNull(dto.getVoice());
         if (voice != null && !TtsVoiceCatalog.isVoiceOf(engine, voice)) {
             // Belongs to the other engine (or is a typo). Fall back to the engine's

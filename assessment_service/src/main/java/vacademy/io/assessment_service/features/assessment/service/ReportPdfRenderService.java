@@ -9,7 +9,10 @@ import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.render.ReportRenderResources;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
@@ -52,6 +55,9 @@ public class ReportPdfRenderService {
 
     @Autowired
     private AssessmentRepository assessmentRepository;
+
+    @Autowired
+    private StudentAttemptRepository studentAttemptRepository;
 
     @Value("${assessment.report.v2.enabled:true}")
     private boolean reportV2Enabled;
@@ -114,6 +120,18 @@ public class ReportPdfRenderService {
                 ctx.getAssessmentId(), ctx.getInstituteId(), attemptId,
                 ctx.getFullLeaderboard(), detail, totalMarks, autoEvaluated);
 
+        // The registration is the authoritative identity block (participant
+        // name, login/enrollment username, email) — the leaderboard name is
+        // only a fallback. ManyToOne registration is EAGER, so this is safe
+        // outside a transaction.
+        AssessmentUserRegistration registration = attemptId != null
+                ? studentAttemptRepository.findById(attemptId).map(StudentAttempt::getRegistration).orElse(null)
+                : null;
+        String studentName = registration != null && registration.getParticipantName() != null
+                && !registration.getParticipantName().isBlank()
+                ? registration.getParticipantName()
+                : resolveStudentName(ctx.getFullLeaderboard(), attemptId);
+
         return studentReportHtmlV2Builder.build(StudentReportHtmlV2Builder.Input.builder()
                 .assessmentName(ctx.getAssessmentName())
                 .reportDetail(detail)
@@ -122,7 +140,9 @@ public class ReportPdfRenderService {
                 .evaluationType(evaluationType)
                 .examDate(assessment != null ? assessment.getBoundStartTime() : null)
                 .assessmentDurationMinutes(assessment != null ? assessment.getDuration() : null)
-                .studentName(resolveStudentName(ctx.getFullLeaderboard(), attemptId))
+                .studentName(studentName)
+                .registrationUsername(registration != null ? registration.getUsername() : null)
+                .userEmail(registration != null ? registration.getUserEmail() : null)
                 .fullLeaderboard(ctx.getFullLeaderboard())
                 .sections(ctx.getSections())
                 .analytics(analytics)

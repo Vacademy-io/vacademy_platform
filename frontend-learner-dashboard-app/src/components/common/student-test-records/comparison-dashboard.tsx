@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,11 +6,15 @@ import { PdfDownloadButton } from "./pdf-download-button";
 import { EvaluatedReportDialog } from "./evaluated-report-dialog";
 import { AnnotatedCopyDialog } from "./annotated-copy-dialog";
 import { MarksDistributionChart } from "./marks-distribution-chart";
-import { SectionComparisonTable } from "./section-comparison-table";
+import {
+  SectionComparisonTable,
+  type SectionResponseCounts,
+} from "./section-comparison-table";
+import { PerformanceBand } from "./performance-band";
 import { MarksStatusIndicator } from "./marks-chip";
 import { formatDuration } from "@/constants/helper";
 import { parseHtmlToString } from "@/lib/utils";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getFileDetail } from "@/services/upload_file";
 import { Button } from "@/components/ui/button";
@@ -41,12 +39,8 @@ import {
 } from "./question-response-renderer";
 import {
   ChartBar,
-  ChartLineUp,
   Clock,
   ListChecks,
-  Target,
-  Timer,
-  Trophy,
   DotsThreeVertical,
   DownloadSimple,
   Eye,
@@ -88,6 +82,41 @@ function getVerdict(pct: number): {
     className:
       "border-danger-200 bg-danger-50 text-danger-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-danger [.ui-play_&]:font-black [.ui-play_&]:text-white",
   };
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+// Correct option ids for objective questions, parsed from the review DTO's
+// correct_options JSON (shape: { data: { correctOptionIds: [...] } }).
+function parseCorrectOptionIds(review: any): string[] {
+  try {
+    const correct =
+      typeof review?.correct_options === "string"
+        ? JSON.parse(review.correct_options)
+        : review?.correct_options;
+    const ids = correct?.data?.correctOptionIds;
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];
+  }
+}
+
+// Share of the batch that picked the right answer. Only meaningful for
+// single-answer objective questions — for MCQM the per-option distribution
+// can't tell us who got the full combination right.
+function classCorrectPct(
+  review: any,
+  distribution: Record<string, Record<string, number>> | null
+): number | null {
+  if (!distribution || !review?.question_id) return null;
+  if (!["MCQS", "TRUE_FALSE"].includes(review.question_type)) return null;
+  const qDist = distribution[review.question_id];
+  if (!qDist) return null;
+  const ids = parseCorrectOptionIds(review);
+  if (ids.length !== 1) return null;
+  const pct = qDist[ids[0]];
+  if (pct == null) return null;
+  return Math.min(Math.round(pct), 100);
 }
 
 interface ComparisonDashboardProps {
@@ -132,6 +161,10 @@ export function ComparisonDashboard({
   // True once the report detail confirms this is a manual attempt (has an
   // evaluated copy and/or a learner submission).
   const [isManualFromDetail, setIsManualFromDetail] = useState(false);
+  // The mount-time report detail, kept for section-wise response tallies
+  // (correct / incorrect / not answered) — independent of the lazily loaded
+  // answer review below.
+  const [detailForStats, setDetailForStats] = useState<any>(null);
 
   const isManual = isManualFromState || isManualFromDetail;
 
@@ -162,6 +195,7 @@ export function ComparisonDashboard({
           params: { assessmentId, attemptId, instituteId },
         });
         if (cancelled) return;
+        setDetailForStats(res.data);
         // The teacher's remark rides on the question's evaluator_feedback.
         const allSections = res.data?.all_sections || {};
         let remark: string | null = null;
@@ -306,6 +340,73 @@ export function ComparisonDashboard({
     }
   }, [reportDetail, assessmentId, attemptId, instituteId]);
 
+  // Section-wise correct / incorrect / not-answered tallies for the section
+  // table, mirroring the printed report. Derived from the mount-time detail;
+  // manual attempts (no per-question statuses) simply produce nothing.
+  const sectionResponseCounts = useMemo<
+    Record<string, SectionResponseCounts> | null
+  >(() => {
+    const allSections = detailForStats?.all_sections;
+    if (!allSections || typeof allSections !== "object") return null;
+    const counts: Record<string, SectionResponseCounts> = {};
+    let sawStatus = false;
+    for (const [sectionId, questions] of Object.entries(allSections)) {
+      if (!Array.isArray(questions) || questions.length === 0) continue;
+      const tally: SectionResponseCounts = {
+        correct: 0,
+        incorrect: 0,
+        unanswered: 0,
+      };
+      for (const q of questions as any[]) {
+        const status = q?.answer_status;
+        if (status === "CORRECT") tally.correct += 1;
+        else if (status === "INCORRECT" || status === "PARTIAL_CORRECT")
+          tally.incorrect += 1;
+        else tally.unanswered += 1;
+        if (status && status !== "DEFAULT") sawStatus = true;
+      }
+      counts[sectionId] = tally;
+    }
+    return sawStatus ? counts : null;
+  }, [detailForStats]);
+
+  // "Easy misses" (questions most of the class solved but you didn't) and
+  // "your expertise" (questions few solved but you did) — the two headline
+  // insights from the printed report, computed from the option distribution.
+  const reviewInsights = useMemo(() => {
+    const allSections = reportDetail?.all_sections;
+    if (!allSections || !optionDistribution) return null;
+    const sectionName = (id: string) =>
+      sectionsInfo.find((s) => s.id === id)?.name || "";
+    const easyMisses: {
+      key: string;
+      label: string;
+      section: string;
+      text: string;
+      pct: number;
+    }[] = [];
+    const expertise: typeof easyMisses = [];
+    for (const [sectionId, questions] of Object.entries(allSections)) {
+      if (!Array.isArray(questions)) continue;
+      (questions as any[]).forEach((q, idx) => {
+        const pct = classCorrectPct(q, optionDistribution);
+        if (pct == null) return;
+        const item = {
+          key: q.question_id || `${sectionId}-${idx}`,
+          label: `Q${q.question_order ?? idx + 1}`,
+          section: sectionName(sectionId),
+          text: parseHtmlToString(q.question_name || q.question_text || ""),
+          pct,
+        };
+        if (q.answer_status !== "CORRECT" && pct >= 50) easyMisses.push(item);
+        if (q.answer_status === "CORRECT" && pct <= 35) expertise.push(item);
+      });
+    }
+    easyMisses.sort((a, b) => b.pct - a.pct);
+    expertise.sort((a, b) => a.pct - b.pct);
+    return { easyMisses, expertise };
+  }, [reportDetail, optionDistribution, sectionsInfo]);
+
   if (!data) {
     return (
       <EmptyState
@@ -341,7 +442,6 @@ export function ComparisonDashboard({
     ? allSections[selectedSection]
     : undefined;
 
-  const round1 = (n: number) => Math.round(n * 10) / 10;
   const achieved = student_marks != null ? round1(student_marks) : null;
   const maxMarks =
     total_marks != null && total_marks > 0 ? round1(total_marks) : null;
@@ -353,21 +453,70 @@ export function ComparisonDashboard({
   // "Pass" mirrors the success-tier verdicts (Good / Excellent) above.
   const isPassVerdict = scorePct != null && scorePct >= 60;
 
-  // One quiet metadata line replaces the old strip of identical clock chips.
+  // One quiet metadata line under the report title.
   const metaParts = [
     start_time ? `Attempted ${formatDateTime(start_time)}` : "",
     submit_time ? `Submitted ${formatTime(submit_time)}` : "",
   ].filter(Boolean);
 
+  // Narrative summary, like the printed report's "Summary of your
+  // performance" — best and weakest section vs the class average, plus pace.
+  const sectionDeltas = ((section_wise_comparison || []) as any[])
+    .filter((s) => s.student_marks != null && s.section_average_marks != null)
+    .map((s) => ({
+      name: s.section_name,
+      delta: (s.student_marks || 0) - (s.section_average_marks || 0),
+    }));
+  const bestSection =
+    sectionDeltas.length > 1
+      ? sectionDeltas.reduce((a, b) => (b.delta > a.delta ? b : a))
+      : null;
+  const weakSection =
+    sectionDeltas.length > 1
+      ? sectionDeltas.reduce((a, b) => (b.delta < a.delta ? b : a))
+      : null;
+  const summaryItems: { lead: string; text: string }[] = [];
+  if (bestSection && bestSection.delta > 0) {
+    summaryItems.push({
+      lead: "Your strengths.",
+      text: `${bestSection.name} is your best area — about ${round1(bestSection.delta)} marks above the class average.`,
+    });
+  }
+  if (weakSection && weakSection.delta < 0) {
+    summaryItems.push({
+      lead: "Key area to work on.",
+      text: `${weakSection.name} — about ${round1(Math.abs(weakSection.delta))} marks below the class average, the largest gap on this paper.`,
+    });
+  }
+  if (
+    student_duration != null &&
+    student_duration > 0 &&
+    average_duration != null &&
+    average_duration > 0
+  ) {
+    const faster = student_duration < average_duration;
+    summaryItems.push({
+      lead: "Your pace.",
+      text: `You finished in ${formatDuration(student_duration)}, ${faster ? "ahead of" : "against"} a class average of ${formatDuration(Math.round(average_duration))}.`,
+    });
+  }
+
   return (
-    <div className="w-full space-y-6 p-4 md:p-6 lg:p-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold">{assessmentName}</h1>
-          <p className="text-sm text-muted-foreground">
-            Performance Comparison with Batch
+    <div className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-6 lg:p-8">
+      {/* Masthead — report title block, ruled like the printed report */}
+      <header className="flex flex-col justify-between gap-4 border-b-2 border-border pb-4 md:flex-row md:items-end">
+        <div className="min-w-0">
+          <p className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Individual Performance Report
           </p>
+          <h1 className="mt-1 text-h3 font-semibold text-foreground sm:text-h2">
+            {assessmentName}
+          </h1>
+          {metaParts.length > 0 && (
+            <p className="mt-1 text-caption text-muted-foreground">
+              {metaParts.join(" · ")}
+            </p>
+          )}
         </div>
         {isManual ? (
           <DropdownMenu>
@@ -447,241 +596,340 @@ export function ComparisonDashboard({
             assessmentName={assessmentName}
           />
         )}
-      </div>
+      </header>
 
-      {/* Score hero: the result leads, metadata follows as one quiet line.
-          Play mode turns it into a gold celebration band; vibrant gets the
-          primary-50 wash + top rail. Default rendering is unchanged. */}
-      <Card
-        className={cn(
-          "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft",
-          "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
-        )}
-      >
-        <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-display tabular-nums text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
+      {/* Score hero + headline stats — one ruled band, like the printed
+          report's stat boxes. Play mode keeps its gold celebration band;
+          vibrant keeps the primary wash. */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Card
+          className={cn(
+            "col-span-2 rounded-md border-t-2 border-t-primary-400 shadow-none md:col-span-1",
+            "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft",
+            "[.ui-vibrant_&]:bg-primary-50"
+          )}
+        >
+          <CardContent className="flex h-full flex-col justify-between gap-2 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground [.ui-play_&]:text-play-ink/70">
+                Your score
+              </span>
+              {isPassVerdict && (
+                <playIllustrations.Winners
+                  className="pointer-events-none hidden h-10 w-auto text-play-accent [.ui-play_&]:!block"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-h1 font-bold tabular-nums text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
                 {achieved != null ? achieved : "-"}
               </span>
               {maxMarks != null && (
-                <span className="text-title text-muted-foreground tabular-nums [.ui-play_&]:text-play-ink/60">
+                <span className="text-body tabular-nums text-muted-foreground [.ui-play_&]:text-play-ink/60">
                   / {maxMarks}
                 </span>
               )}
+              {scorePct != null && (
+                <span className="text-caption font-semibold tabular-nums text-muted-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink/80">
+                  {scorePct}%
+                </span>
+              )}
             </div>
-            {scorePct != null && (
-              <span className="text-subtitle font-semibold tabular-nums text-muted-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink/80">
-                {scorePct}%
-              </span>
-            )}
             {verdict && (
               <span
                 className={cn(
-                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold",
+                  "inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-3xs font-semibold uppercase tracking-wide",
                   verdict.className
                 )}
               >
                 {verdict.label}
               </span>
             )}
-            {isPassVerdict && (
-              <playIllustrations.Winners
-                className="pointer-events-none ms-auto hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
-                aria-hidden="true"
-              />
-            )}
-          </div>
-          {metaParts.length > 0 && (
-            <p className="text-caption text-muted-foreground [.ui-play_&]:font-medium [.ui-play_&]:text-play-ink/70">
-              {metaParts.join(" · ")}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Distinct stats: rank, percentile, accuracy, time */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          </CardContent>
+        </Card>
         <StatTile
-          icon={<Trophy size={18} weight="duotone" />}
-          label="Rank"
+          label="Class rank"
           value={student_rank ? `#${student_rank}` : "-"}
           detail={total_participants ? `of ${total_participants}` : undefined}
         />
         <StatTile
-          icon={<ChartLineUp size={18} weight="duotone" />}
           label="Percentile"
           value={
-            student_percentile != null ? `${round1(student_percentile)}%` : "-"
+            student_percentile != null ? `${round1(student_percentile)}` : "-"
           }
         />
         <StatTile
-          icon={<Target size={18} weight="duotone" />}
           label="Accuracy"
           value={
-            student_accuracy != null
-              ? `${Math.round(student_accuracy)}%`
-              : "-"
+            student_accuracy != null ? `${Math.round(student_accuracy)}%` : "-"
+          }
+          detail={
+            class_accuracy != null
+              ? `class ${Math.round(class_accuracy)}%`
+              : undefined
           }
         />
         <StatTile
-          icon={<Timer size={18} weight="duotone" />}
-          label="Time Taken"
+          label="Time taken"
           value={
             student_duration != null && student_duration > 0
               ? formatDuration(student_duration)
               : "-"
           }
+          detail={
+            average_duration != null && average_duration > 0
+              ? `class ${formatDuration(Math.round(average_duration))}`
+              : undefined
+          }
         />
       </div>
 
-      {/* Comparison Bars — horizontal cards */}
-      <div>
-        <h3 className="text-base font-bold mb-3">Your Performance vs Batch</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-5">
-              <ComparisonBar
-                label="Marks (You vs Class Avg)"
-                yourValue={student_marks}
-                avgValue={average_marks}
-                maxValue={highest_marks || 100}
-                yourLabel={`You: ${Math.round((student_marks || 0) * 10) / 10}`}
-                avgLabel={`Avg: ${Math.round((average_marks || 0) * 10) / 10}`}
-                color="bg-primary"
-              />
-            </CardContent>
-          </Card>
-          {student_duration != null && student_duration > 0 && (
-          <Card>
-            <CardContent className="pt-5">
-              <ComparisonBar
-                label="Time Taken (You vs Class Avg)"
-                yourValue={student_duration}
-                avgValue={average_duration}
-                maxValue={Math.max(student_duration || 0, average_duration || 0) * 1.2}
-                yourLabel={`You: ${formatDuration(student_duration)}`}
-                avgLabel={`Avg: ${average_duration ? formatDuration(Math.round(average_duration)) : "-"}`}
-                color="bg-blue-500"
-              />
-            </CardContent>
-          </Card>
-          )}
-          {student_accuracy != null && (
-            <Card>
-              <CardContent className="pt-5">
-                <ComparisonBar
-                  label="Accuracy (You vs Class Avg)"
-                  yourValue={student_accuracy}
-                  avgValue={class_accuracy || 0}
-                  maxValue={100}
-                  yourLabel={`You: ${Math.round(student_accuracy)}%`}
-                  avgLabel={`Avg: ${class_accuracy != null ? Math.round(class_accuracy) : "-"}%`}
-                  color="bg-emerald-500"
+      {/* Where you stand — overall score band */}
+      {maxMarks != null && achieved != null && (
+        <ReportSection
+          title={`Where you stand — overall (out of ${maxMarks})`}
+          aside={
+            total_participants ? (
+              <span className="text-3xs uppercase tracking-wide text-muted-foreground">
+                {total_participants} students
+              </span>
+            ) : undefined
+          }
+        >
+          <PerformanceBand
+            studentMarks={student_marks}
+            averageMarks={average_marks}
+            highestMarks={highest_marks}
+            lowestMarks={lowest_marks}
+            totalMarks={total_marks}
+          />
+        </ReportSection>
+      )}
+
+      {/* Narrative summary */}
+      {summaryItems.length > 0 && (
+        <ReportSection title="Summary of your performance">
+          <ul className="space-y-2">
+            {summaryItems.map((item) => (
+              <li key={item.lead} className="flex gap-2 text-body text-foreground">
+                <span
+                  className="mt-2 size-1.5 shrink-0 rounded-full bg-primary-400"
+                  aria-hidden="true"
                 />
-              </CardContent>
-            </Card>
+                <span>
+                  <span className="font-semibold">{item.lead}</span>{" "}
+                  <span className="text-neutral-600">{item.text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </ReportSection>
+      )}
+
+      {/* You vs class average */}
+      <ReportSection title="You vs class average">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-3">
+          <ComparisonBar
+            label="Marks"
+            yourValue={student_marks}
+            avgValue={average_marks}
+            maxValue={total_marks || highest_marks || 100}
+            yourLabel={`You ${round1(student_marks || 0)}`}
+            avgLabel={`Avg ${round1(average_marks || 0)}`}
+          />
+          {student_accuracy != null && (
+            <ComparisonBar
+              label="Accuracy"
+              yourValue={student_accuracy}
+              avgValue={class_accuracy || 0}
+              maxValue={100}
+              yourLabel={`You ${Math.round(student_accuracy)}%`}
+              avgLabel={`Avg ${class_accuracy != null ? Math.round(class_accuracy) : "-"}%`}
+            />
+          )}
+          {student_duration != null && student_duration > 0 && (
+            <ComparisonBar
+              label="Time taken"
+              yourValue={student_duration}
+              avgValue={average_duration}
+              maxValue={
+                Math.max(student_duration || 0, average_duration || 0) * 1.2
+              }
+              yourLabel={`You ${formatDuration(student_duration)}`}
+              avgLabel={`Avg ${average_duration ? formatDuration(Math.round(average_duration)) : "-"}`}
+            />
           )}
         </div>
-        <div className="flex gap-6 text-sm text-muted-foreground mt-3">
-          <span><strong>Highest:</strong> {highest_marks || "-"}</span>
-          <span><strong>Lowest:</strong> {lowest_marks || "-"}</span>
-          <span><strong>Participants:</strong> {total_participants || "-"}</span>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-t border-border/60 pt-3 text-caption text-muted-foreground">
+          <span>
+            Highest{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {highest_marks != null ? round1(highest_marks) : "-"}
+            </span>
+          </span>
+          <span>
+            Lowest{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {lowest_marks != null ? round1(lowest_marks) : "-"}
+            </span>
+          </span>
+          <span>
+            Participants{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {total_participants || "-"}
+            </span>
+          </span>
         </div>
-      </div>
+      </ReportSection>
 
       {/* Section-Wise Performance */}
       {section_wise_comparison && section_wise_comparison.length > 0 && (
-        <SectionComparisonTable sections={section_wise_comparison} />
+        <ReportSection title="Section-wise performance">
+          <SectionComparisonTable
+            sections={section_wise_comparison}
+            responseCounts={sectionResponseCounts}
+          />
+        </ReportSection>
       )}
 
       {/* Marks Distribution */}
       {marks_distribution && marks_distribution.length > 0 && (
-        <MarksDistributionChart
-          distribution={marks_distribution}
-          studentMarks={student_marks}
-          totalParticipants={total_participants}
-        />
+        <ReportSection title="Marks distribution — all students">
+          <MarksDistributionChart
+            distribution={marks_distribution}
+            studentMarks={student_marks}
+            totalParticipants={total_participants}
+          />
+        </ReportSection>
       )}
 
       {/* Smart Leaderboard */}
       {leaderboard && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Leaderboard (Your Position)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="text-start py-2 px-3">Rank</th>
-                    <th className="text-start py-2 px-3">Student</th>
-                    <th className="text-start py-2 px-3">Marks</th>
-                    <th className="text-start py-2 px-3">Time</th>
-                    <th className="text-start py-2 px-3">Percentile</th>
+        <ReportSection
+          title="Leaderboard — your position"
+          aside={
+            leaderboard.student_rank != null ? (
+              <span className="text-3xs uppercase tracking-wide text-muted-foreground">
+                Rank #{leaderboard.student_rank} of{" "}
+                {leaderboard.total_participants}
+              </span>
+            ) : undefined
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-body">
+              <thead>
+                <tr className="border-b-2 border-border">
+                  <th className="px-3 py-2 text-start text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Rank
+                  </th>
+                  <th className="px-3 py-2 text-start text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Student
+                  </th>
+                  <th className="px-3 py-2 text-end text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Marks
+                  </th>
+                  <th className="px-3 py-2 text-end text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Time
+                  </th>
+                  <th className="px-3 py-2 text-end text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Percentile
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboard.top_ranks?.map((entry: any) => (
+                  <LeaderboardRow
+                    key={entry.attempt_id}
+                    entry={entry}
+                    isCurrentStudent={entry.rank === leaderboard.student_rank}
+                  />
+                ))}
+                {leaderboard.has_gap && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="py-1 text-center tracking-widest text-muted-foreground"
+                    >
+                      · · ·
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.top_ranks?.map((entry: any) => (
-                    <LeaderboardRow
-                      key={entry.attempt_id}
-                      entry={entry}
-                      isCurrentStudent={entry.rank === leaderboard.student_rank}
-                    />
-                  ))}
-                  {leaderboard.has_gap && (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="text-center py-1 text-muted-foreground tracking-widest"
-                      >
-                        . . . . .
-                      </td>
-                    </tr>
-                  )}
-                  {leaderboard.surrounding_ranks?.map((entry: any) => (
-                    <LeaderboardRow
-                      key={entry.attempt_id}
-                      entry={entry}
-                      isCurrentStudent={entry.rank === leaderboard.student_rank}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-center text-xs text-muted-foreground mt-3">
-              Your rank: #{leaderboard.student_rank} of{" "}
-              {leaderboard.total_participants} students
-            </p>
-          </CardContent>
-        </Card>
+                )}
+                {leaderboard.surrounding_ranks?.map((entry: any) => (
+                  <LeaderboardRow
+                    key={entry.attempt_id}
+                    entry={entry}
+                    isCurrentStudent={entry.rank === leaderboard.student_rank}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ReportSection>
       )}
 
       {/* Answer Review — lazy loaded. Shown for MANUAL attempts too so learners
           see their per-question marks, AI/teacher feedback and criteria. */}
       {!answerReviewOpen ? (
-        <Card>
-          <CardContent className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="font-semibold text-base">Answer Review</h3>
-              <p className="text-sm text-muted-foreground">
-                View question-wise answers, correct responses, and explanations
-              </p>
-            </div>
-            <button
+        <ReportSection title="Review & practice">
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+            <p className="text-body text-muted-foreground">
+              Every question with your response, the correct answer, and how the
+              rest of the class answered.
+            </p>
+            <Button
               onClick={loadAnswerReview}
               disabled={answerReviewLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 whitespace-nowrap disabled:opacity-50"
+              className="whitespace-nowrap"
             >
-              {answerReviewLoading ? "Loading..." : "View Answer Review"}
-            </button>
-          </CardContent>
-        </Card>
+              {answerReviewLoading ? "Loading…" : "View Answer Review"}
+            </Button>
+          </div>
+        </ReportSection>
       ) : (
         <>
+          {/* Headline insights from the class-wide answer data */}
+          {reviewInsights &&
+            (reviewInsights.easyMisses.length > 0 ||
+              reviewInsights.expertise.length > 0) && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <ReportSection
+                  title={`Easy misses — ${reviewInsights.easyMisses.length || "none"}`}
+                  className="border-t-2 border-t-danger-400"
+                >
+                  {reviewInsights.easyMisses.length > 0 ? (
+                    <InsightList
+                      items={reviewInsights.easyMisses}
+                      pctSuffix="of class got it right"
+                    />
+                  ) : (
+                    <p className="text-body text-muted-foreground">
+                      You did not miss any question that most of the class
+                      answered correctly — the marks you dropped were on the
+                      harder end of the paper.
+                    </p>
+                  )}
+                </ReportSection>
+                <ReportSection
+                  title={`Your expertise — ${reviewInsights.expertise.length || "none"}`}
+                  className="border-t-2 border-t-success-400"
+                >
+                  {reviewInsights.expertise.length > 0 ? (
+                    <InsightList
+                      items={reviewInsights.expertise}
+                      pctSuffix="of class got it right"
+                    />
+                  ) : (
+                    <p className="text-body text-muted-foreground">
+                      No question yet where you beat most of the class — keep
+                      practising the tougher problems.
+                    </p>
+                  )}
+                </ReportSection>
+              </div>
+            )}
+
           {/* Section Tabs */}
           {sectionsInfo.length > 0 && (
             <Tabs
@@ -689,16 +937,16 @@ export function ComparisonDashboard({
               onValueChange={setSelectedSection}
               className="w-full"
             >
-              <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm border-b border-slate-200">
-                <TabsList className="h-auto bg-transparent p-0 w-full justify-start overflow-x-auto">
+              <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
+                <TabsList className="h-auto w-full justify-start overflow-x-auto bg-transparent p-0">
                   {sectionsInfo.map((section) => (
                     <TabsTrigger
                       key={section.id}
                       value={section.id}
-                      className="relative px-6 py-4 rounded-none border-b-2 transition-all
-                        data-[state=active]:border-slate-900 data-[state=active]:text-slate-900 data-[state=active]:font-semibold
-                        data-[state=inactive]:border-transparent data-[state=inactive]:text-slate-600
-                        hover:text-slate-900 hover:bg-slate-50"
+                      className="relative rounded-none border-b-2 px-6 py-3 text-caption font-semibold uppercase tracking-wide transition-all
+                        data-[state=active]:border-primary-500 data-[state=active]:text-foreground
+                        data-[state=inactive]:border-transparent data-[state=inactive]:text-muted-foreground
+                        hover:bg-muted/50 hover:text-foreground"
                     >
                       <span>{section.name}</span>
                     </TabsTrigger>
@@ -709,203 +957,282 @@ export function ComparisonDashboard({
           )}
 
           {/* Questions */}
-          <Card className="border-slate-200 shadow-lg">
-            <CardHeader className="border-b border-slate-100">
-              <CardTitle className="text-xl font-bold text-slate-900">Answer Review</CardTitle>
-              <CardDescription className="mt-1">Detailed analysis of your responses</CardDescription>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
+          <ReportSection
+            title="Answer review"
+            aside={
+              <span className="text-3xs uppercase tracking-wide text-muted-foreground">
+                {currentSectionQuestions?.length
+                  ? `${currentSectionQuestions.length} questions`
+                  : undefined}
+              </span>
+            }
+          >
+            <div className="space-y-5">
               {currentSectionQuestions && currentSectionQuestions.length > 0 ? (
-                currentSectionQuestions.map((review: any, index: number) => (
-                  <Card key={index} className="border-slate-200 hover:shadow-md transition-shadow">
-                    <CardHeader className="bg-slate-50 border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <CardTitle className="text-lg font-semibold text-slate-900">
-                              Question {index + 1}
-                            </CardTitle>
-                            <Badge variant="secondary" className="text-xs">
-                              {review.question_type}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-slate-700 leading-relaxed">
-                            {parseHtmlToString(review.question_name)}
-                          </div>
-                        </div>
-                        {review.time_taken_in_seconds != null && review.time_taken_in_seconds > 0 && (
-                          <div className="flex items-center gap-2 text-sm text-slate-600 bg-white px-3 py-1.5 rounded-md border border-slate-200">
-                            <Clock size={16} weight="duotone" className="text-slate-500" />
-                            <span className="font-medium">{review.time_taken_in_seconds}s</span>
-                          </div>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-5">
-                      {/* Student Response */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-semibold text-slate-700">Your Response</span>
-                          <MarksStatusIndicator
-                            mark={review.mark}
-                            answer_status={review.answer_status as "CORRECT" | "INCORRECT" | "PARTIAL_CORRECT" | "DEFAULT"}
-                          />
-                        </div>
-                        <Alert
-                          className={`border-s-4 ${
-                            review.answer_status === "CORRECT"
-                              ? "border-s-emerald-500 bg-emerald-50/50 border-emerald-200"
-                              : review.answer_status === "INCORRECT"
-                                ? "border-s-rose-500 bg-rose-50/50 border-rose-200"
-                                : review.answer_status === "PARTIAL_CORRECT"
-                                  ? "border-s-amber-500 bg-amber-50/50 border-amber-200"
-                                  : "border-s-slate-500 bg-slate-50/50 border-slate-200"
-                          }`}
+                currentSectionQuestions.map((review: any, index: number) => {
+                  const classPct = classCorrectPct(review, optionDistribution);
+                  const correctOptionIds = parseCorrectOptionIds(review);
+                  return (
+                    <div
+                      key={index}
+                      className="overflow-hidden rounded-md border border-border"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+                        <span className="inline-flex items-center rounded-sm bg-foreground px-2 py-0.5 text-caption font-semibold tabular-nums text-background">
+                          Q{review.question_order ?? index + 1}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="text-3xs font-medium uppercase tracking-wide text-muted-foreground"
                         >
-                          <AlertDescription className="text-sm text-slate-700">
-                            {review.student_response_options
-                              ? renderStudentResponse(review, questionsData)
-                              : review.mark !== 0
-                                ? `Marks awarded directly (${review.mark > 0 ? "+" : ""}${review.mark})`
-                                : "Not Attempted"}
-                          </AlertDescription>
-                        </Alert>
+                          {review.question_type}
+                        </Badge>
+                        <MarksStatusIndicator
+                          mark={review.mark}
+                          answer_status={
+                            review.answer_status as
+                              | "CORRECT"
+                              | "INCORRECT"
+                              | "PARTIAL_CORRECT"
+                              | "DEFAULT"
+                          }
+                        />
+                        <span className="ms-auto inline-flex items-center gap-3 text-caption text-muted-foreground">
+                          {classPct != null && (
+                            <span className="tabular-nums">
+                              {classPct}% of class correct
+                            </span>
+                          )}
+                          {review.time_taken_in_seconds != null &&
+                            review.time_taken_in_seconds > 0 && (
+                              <span className="inline-flex items-center gap-1 tabular-nums">
+                                <Clock size={14} weight="duotone" />
+                                {review.time_taken_in_seconds}s
+                              </span>
+                            )}
+                        </span>
                       </div>
 
-                      {/* Correct Answer */}
-                      {review.answer_status !== "CORRECT" && review.correct_options && (
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-slate-700">Correct Answer</span>
-                          <Alert className="border-s-4 border-s-emerald-500 bg-emerald-50/50 border-emerald-200">
-                            <AlertDescription className="text-sm text-slate-700">
-                              {renderCorrectAnswer(review, questionsData)}
+                      <div className="space-y-5 p-4 sm:p-5">
+                        <div className="text-body leading-relaxed text-foreground">
+                          {parseHtmlToString(review.question_name)}
+                        </div>
+
+                        {/* Student Response */}
+                        <div className="space-y-1.5">
+                          <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                            Your response
+                          </span>
+                          <Alert
+                            className={cn(
+                              "border-s-4",
+                              review.answer_status === "CORRECT"
+                                ? "border-success-200 border-s-success-500 bg-success-50"
+                                : review.answer_status === "INCORRECT"
+                                  ? "border-danger-200 border-s-danger-500 bg-danger-50"
+                                  : review.answer_status === "PARTIAL_CORRECT"
+                                    ? "border-warning-200 border-s-warning-500 bg-warning-50"
+                                    : "border-border border-s-neutral-400 bg-muted/40"
+                            )}
+                          >
+                            <AlertDescription className="text-body text-foreground">
+                              {review.student_response_options
+                                ? renderStudentResponse(review, questionsData)
+                                : review.mark !== 0
+                                  ? `Marks awarded directly (${review.mark > 0 ? "+" : ""}${review.mark})`
+                                  : "Not attempted"}
                             </AlertDescription>
                           </Alert>
                         </div>
-                      )}
 
-                      {/* Feedback + grading breakdown (AI evaluation / teacher remark) */}
-                      {(review.evaluator_feedback || review.ai_feedback || review.ai_criteria_breakdown) && (
-                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-700">Feedback</span>
-                            {(review.evaluation_source === "AI" ||
-                              review.evaluation_source === "AI_REVIEWED") && (
-                              <Badge variant="secondary" className="text-xs gap-1">
-                                <Sparkle size={12} weight="fill" />
-                                {review.evaluation_source === "AI_REVIEWED"
-                                  ? "AI-assisted, teacher-reviewed"
-                                  : "AI-assisted"}
-                              </Badge>
-                            )}
-                          </div>
-                          {(review.evaluator_feedback || review.ai_feedback) && (
-                            <Alert className="border-s-4 border-s-violet-500 bg-violet-50/50 border-violet-200">
-                              <AlertDescription className="text-sm text-slate-700 whitespace-pre-line">
-                                {review.evaluator_feedback || review.ai_feedback}
-                              </AlertDescription>
-                            </Alert>
+                        {/* Correct Answer */}
+                        {review.answer_status !== "CORRECT" &&
+                          review.correct_options && (
+                            <div className="space-y-1.5">
+                              <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                Correct answer
+                              </span>
+                              <Alert className="border-success-200 border-s-4 border-s-success-500 bg-success-50">
+                                <AlertDescription className="text-body text-foreground">
+                                  {renderCorrectAnswer(review, questionsData)}
+                                </AlertDescription>
+                              </Alert>
+                            </div>
                           )}
-                          {(() => {
-                            let criteria: any[] = [];
-                            try {
-                              criteria = review.ai_criteria_breakdown
-                                ? JSON.parse(review.ai_criteria_breakdown)
-                                : [];
-                            } catch {
-                              criteria = [];
-                            }
-                            if (!Array.isArray(criteria) || criteria.length === 0) return null;
-                            return (
-                              <div className="rounded-md border border-slate-200 overflow-hidden">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-slate-50">
-                                    <tr>
-                                      <th className="text-start p-2 text-xs font-semibold text-slate-600 uppercase">
-                                        Criteria
-                                      </th>
-                                      <th className="text-start p-2 text-xs font-semibold text-slate-600 uppercase">
-                                        Reason
-                                      </th>
-                                      <th className="text-end p-2 text-xs font-semibold text-slate-600 uppercase">
-                                        Marks
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                    {criteria.map((c: any, i: number) => (
-                                      <tr key={i}>
-                                        <td className="p-2 font-medium text-slate-800">
-                                          {c.criteria_name}
-                                        </td>
-                                        <td className="p-2 text-slate-600">{c.reason}</td>
-                                        <td className="p-2 text-end font-semibold text-slate-800">
-                                          {typeof c.marks === "number" ? c.marks.toFixed(1) : c.marks}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
 
-                      {/* Option Distribution */}
-                      {optionDistribution && review.question_id && optionDistribution[review.question_id] &&
-                        ["MCQS", "MCQM", "TRUE_FALSE"].includes(review.question_type) && (
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                          <span className="text-sm font-semibold text-slate-700">How others answered</span>
-                          <div className="space-y-1.5">
+                        {/* Feedback + grading breakdown (AI evaluation / teacher remark) */}
+                        {(review.evaluator_feedback ||
+                          review.ai_feedback ||
+                          review.ai_criteria_breakdown) && (
+                          <div className="space-y-3 border-t border-border/60 pt-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                Feedback
+                              </span>
+                              {(review.evaluation_source === "AI" ||
+                                review.evaluation_source === "AI_REVIEWED") && (
+                                <Badge
+                                  variant="secondary"
+                                  className="gap-1 text-3xs"
+                                >
+                                  <Sparkle size={12} weight="fill" />
+                                  {review.evaluation_source === "AI_REVIEWED"
+                                    ? "AI-assisted, teacher-reviewed"
+                                    : "AI-assisted"}
+                                </Badge>
+                              )}
+                            </div>
+                            {(review.evaluator_feedback || review.ai_feedback) && (
+                              <Alert className="border-info-200 border-s-4 border-s-info-500 bg-info-50">
+                                <AlertDescription className="whitespace-pre-line text-body text-foreground">
+                                  {review.evaluator_feedback || review.ai_feedback}
+                                </AlertDescription>
+                              </Alert>
+                            )}
                             {(() => {
-                              const dist = optionDistribution[review.question_id];
-                              // Find all options for this question from questionsData
-                              const questionOptions = questionsData
-                                ? Object.values(questionsData).flatMap(sq =>
-                                    sq.filter(q => q.question_id === review.question_id)
-                                      .flatMap(q => q.options_with_explanation || q.options || [])
-                                  )
-                                : [];
-
-                              return questionOptions.map((opt: any) => {
-                                const pct = dist[opt.id] || 0;
-                                return (
-                                  <div key={opt.id} className="flex items-center gap-2">
-                                    <div className="flex-1">
-                                      <div className="flex justify-between text-xs mb-0.5">
-                                        <span className="text-slate-600 truncate max-w-reg-200">
-                                          {parseHtmlToString(opt.text?.content || opt.id)}
-                                        </span>
-                                        <span className="text-slate-500 font-medium ms-2">{pct}%</span>
-                                      </div>
-                                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-full bg-slate-400 rounded-full"
-                                          style={{ width: `${Math.min(pct, 100)}%` }}
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
+                              let criteria: any[] = [];
+                              try {
+                                criteria = review.ai_criteria_breakdown
+                                  ? JSON.parse(review.ai_criteria_breakdown)
+                                  : [];
+                              } catch {
+                                criteria = [];
+                              }
+                              if (!Array.isArray(criteria) || criteria.length === 0)
+                                return null;
+                              return (
+                                <div className="overflow-hidden rounded-md border border-border">
+                                  <table className="w-full text-body">
+                                    <thead className="bg-muted/40">
+                                      <tr>
+                                        <th className="p-2 text-start text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                          Criteria
+                                        </th>
+                                        <th className="p-2 text-start text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                          Reason
+                                        </th>
+                                        <th className="p-2 text-end text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                          Marks
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/60">
+                                      {criteria.map((c: any, i: number) => (
+                                        <tr key={i}>
+                                          <td className="p-2 font-medium text-foreground">
+                                            {c.criteria_name}
+                                          </td>
+                                          <td className="p-2 text-neutral-600">
+                                            {c.reason}
+                                          </td>
+                                          <td className="p-2 text-end font-semibold tabular-nums text-foreground">
+                                            {typeof c.marks === "number"
+                                              ? c.marks.toFixed(1)
+                                              : c.marks}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              );
                             })()}
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Explanation */}
-                      {review.explanation && (
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                          <span className="text-sm font-semibold text-slate-700">Explanation</span>
-                          <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-4 leading-relaxed">
-                            {parseHtmlToString(review.explanation)}
+                        {/* Option Distribution */}
+                        {optionDistribution &&
+                          review.question_id &&
+                          optionDistribution[review.question_id] &&
+                          ["MCQS", "MCQM", "TRUE_FALSE"].includes(
+                            review.question_type
+                          ) && (
+                            <div className="space-y-2 border-t border-border/60 pt-4">
+                              <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                How the class answered
+                              </span>
+                              <div className="space-y-2">
+                                {(() => {
+                                  const dist =
+                                    optionDistribution[review.question_id];
+                                  // Find all options for this question from questionsData
+                                  const questionOptions = questionsData
+                                    ? Object.values(questionsData).flatMap((sq) =>
+                                        sq
+                                          .filter(
+                                            (q) =>
+                                              q.question_id === review.question_id
+                                          )
+                                          .flatMap(
+                                            (q) =>
+                                              q.options_with_explanation ||
+                                              q.options ||
+                                              []
+                                          )
+                                      )
+                                    : [];
+
+                                  return questionOptions.map((opt: any) => {
+                                    const pct = dist[opt.id] || 0;
+                                    const isCorrect = correctOptionIds.includes(
+                                      opt.id
+                                    );
+                                    return (
+                                      <div key={opt.id}>
+                                        <div className="mb-0.5 flex justify-between gap-2 text-caption">
+                                          <span
+                                            className={cn(
+                                              "truncate",
+                                              isCorrect
+                                                ? "font-medium text-success-700"
+                                                : "text-neutral-600"
+                                            )}
+                                          >
+                                            {parseHtmlToString(
+                                              opt.text?.content || opt.id
+                                            )}
+                                          </span>
+                                          <span className="shrink-0 font-medium tabular-nums text-muted-foreground">
+                                            {pct}%
+                                          </span>
+                                        </div>
+                                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                          <div
+                                            className={cn(
+                                              "h-full rounded-full",
+                                              isCorrect
+                                                ? "bg-success-400"
+                                                : "bg-neutral-300"
+                                            )}
+                                            /* Dynamic chart geometry — live class data. */
+                                            style={{
+                                              width: `${Math.min(pct, 100)}%`,
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* Explanation */}
+                        {review.explanation && (
+                          <div className="space-y-1.5 border-t border-border/60 pt-4">
+                            <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+                              Explanation
+                            </span>
+                            <div className="rounded-md bg-muted/40 p-4 text-body leading-relaxed text-neutral-600">
+                              {parseHtmlToString(review.explanation)}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <EmptyState
                   compact
@@ -914,8 +1241,8 @@ export function ComparisonDashboard({
                   description="Pick another section tab to review the rest of your answers."
                 />
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </ReportSection>
         </>
       )}
 
@@ -940,35 +1267,52 @@ export function ComparisonDashboard({
   );
 }
 
+// Ruled report section — uppercase letterspaced heading over a hairline, the
+// visual grammar of the printed report.
+function ReportSection({
+  title,
+  aside,
+  children,
+  className,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("rounded-md border bg-card p-4 sm:p-5", className)}>
+      <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border pb-2.5">
+        <h2 className="text-caption font-semibold uppercase tracking-widest text-neutral-600">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function StatTile({
-  icon,
   label,
   value,
   detail,
 }: {
-  icon: React.ReactNode;
   label: string;
   value: string;
   detail?: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        {icon}
+    <div className="rounded-md border border-t-2 border-t-primary-300 bg-card px-4 py-3">
+      <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+        {label}
       </div>
-      <div className="min-w-0">
-        <div className="text-3xs uppercase tracking-wide text-muted-foreground">
-          {label}
-        </div>
-        <div className="text-body font-semibold tabular-nums text-foreground">
-          {value}
-          {detail && (
-            <span className="ms-1 text-caption font-normal text-muted-foreground">
-              {detail}
-            </span>
-          )}
-        </div>
+      <div className="mt-1.5 text-title font-semibold tabular-nums text-foreground">
+        {value}
       </div>
+      {detail && (
+        <div className="mt-0.5 text-3xs text-muted-foreground">{detail}</div>
+      )}
     </div>
   );
 }
@@ -980,7 +1324,6 @@ function ComparisonBar({
   maxValue,
   yourLabel,
   avgLabel,
-  color,
 }: {
   label: string;
   yourValue: number;
@@ -988,32 +1331,74 @@ function ComparisonBar({
   maxValue: number;
   yourLabel: string;
   avgLabel: string;
-  color: string;
 }) {
   const yourPct = maxValue > 0 ? Math.min((yourValue / maxValue) * 100, 100) : 0;
   const avgPct = maxValue > 0 ? Math.min((avgValue / maxValue) * 100, 100) : 0;
 
   return (
     <div>
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
-      <div className="relative h-2 bg-muted rounded-full">
+      <div className="mb-1.5 text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="relative h-2 rounded-full bg-muted">
         {/* Your score fill */}
         <div
-          className={`absolute start-0 top-0 h-full rounded-full ${color}`}
+          className="absolute start-0 top-0 h-full rounded-full bg-primary-400"
+          /* Dynamic chart geometry — live comparison data. */
           style={{ width: `${yourPct}%` }}
         />
         {/* Average marker slit */}
         <div
-          className="absolute -top-0.5 w-0.5 h-3.5 bg-slate-800 rounded-sm"
+          className="absolute -top-1 h-4 w-0.5 rounded-sm bg-neutral-600"
           style={{ left: `${avgPct}%` }}
-          title={`Class Average: ${avgLabel}`}
+          title={`Class average: ${avgLabel}`}
         />
       </div>
-      <div className="flex justify-between text-xs mt-1">
-        <span className="font-semibold text-primary">{yourLabel}</span>
+      <div className="mt-1.5 flex justify-between text-caption tabular-nums">
+        <span className="font-semibold text-foreground">{yourLabel}</span>
         <span className="text-muted-foreground">{avgLabel}</span>
       </div>
     </div>
+  );
+}
+
+// Compact list for the easy-misses / expertise insight cards.
+function InsightList({
+  items,
+  pctSuffix,
+}: {
+  items: { key: string; label: string; section: string; text: string; pct: number }[];
+  pctSuffix: string;
+}) {
+  const shown = items.slice(0, 5);
+  return (
+    <ul className="divide-y divide-border/60">
+      {shown.map((item) => (
+        <li key={item.key} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+          <span className="inline-flex shrink-0 items-center rounded-sm bg-muted px-1.5 py-0.5 text-3xs font-semibold tabular-nums text-neutral-600">
+            {item.label}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body text-foreground">
+              {item.text}
+            </span>
+            {item.section && (
+              <span className="block text-3xs uppercase tracking-wide text-muted-foreground">
+                {item.section}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
+            {item.pct}% <span className="hidden sm:inline">{pctSuffix}</span>
+          </span>
+        </li>
+      ))}
+      {items.length > shown.length && (
+        <li className="py-2 text-caption text-muted-foreground">
+          + {items.length - shown.length} more in the answer review below
+        </li>
+      )}
+    </ul>
   );
 }
 
@@ -1024,35 +1409,56 @@ function LeaderboardRow({
   entry: any;
   isCurrentStudent: boolean;
 }) {
+  // Medal tint for the podium only; everyone else gets a quiet outline.
   const rankBadgeClass =
     entry.rank === 1
-      ? "bg-yellow-400 text-black"
+      ? "border-warning-200 bg-warning-100 text-warning-700"
       : entry.rank === 2
-        ? "bg-gray-300 text-black"
+        ? "border-neutral-200 bg-neutral-100 text-neutral-600"
         : entry.rank === 3
-          ? "bg-amber-600 text-white"
-          : "bg-muted text-muted-foreground";
+          ? "border-warning-100 bg-warning-50 text-warning-600"
+          : "border-transparent bg-transparent text-muted-foreground";
 
   return (
-    <tr className={isCurrentStudent ? "bg-orange-50 font-semibold" : ""}>
-      <td className="py-2 px-3">
-        <Badge variant="outline" className={`${rankBadgeClass} text-xs w-7 h-7 rounded-full flex items-center justify-center`}>
+    <tr
+      className={cn(
+        "border-b border-border/60 last:border-b-0",
+        isCurrentStudent && "bg-primary-50"
+      )}
+    >
+      <td className="px-3 py-2">
+        <span
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-full border text-caption font-semibold tabular-nums",
+            rankBadgeClass
+          )}
+        >
           {entry.rank}
-        </Badge>
+        </span>
       </td>
-      <td className="py-2 px-3">
-        {isCurrentStudent ? `${entry.student_name} (You)` : entry.student_name}
+      <td
+        className={cn(
+          "px-3 py-2",
+          isCurrentStudent ? "font-semibold text-foreground" : "text-foreground"
+        )}
+      >
+        {entry.student_name}
+        {isCurrentStudent && (
+          <span className="ms-2 inline-flex items-center rounded-sm bg-primary-100 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-primary-500">
+            You
+          </span>
+        )}
       </td>
-      <td className="py-2 px-3 font-medium">
-        {entry.achieved_marks != null ? Math.round(entry.achieved_marks * 10) / 10 : "-"}
+      <td className="px-3 py-2 text-end font-medium tabular-nums">
+        {entry.achieved_marks != null ? round1(entry.achieved_marks) : "-"}
       </td>
-      <td className="py-2 px-3">
+      <td className="px-3 py-2 text-end tabular-nums text-muted-foreground">
         {entry.completion_time_in_seconds
           ? formatDuration(entry.completion_time_in_seconds)
           : "-"}
       </td>
-      <td className="py-2 px-3">
-        {entry.percentile != null ? `${Math.round(entry.percentile * 10) / 10}%` : "-"}
+      <td className="px-3 py-2 text-end tabular-nums text-muted-foreground">
+        {entry.percentile != null ? `${round1(entry.percentile)}%` : "-"}
       </td>
     </tr>
   );

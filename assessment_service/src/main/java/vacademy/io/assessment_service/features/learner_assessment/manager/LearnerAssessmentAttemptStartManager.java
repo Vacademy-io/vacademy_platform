@@ -119,8 +119,20 @@ public class LearnerAssessmentAttemptStartManager {
         return sectionDtos;
     }
 
+    /**
+     * An attempt may only begin inside the assessment's own window. Both bounds
+     * are enforced here — the end bound previously was not, so an assessment
+     * whose window had closed could still be started (most visibly from an
+     * assessment slide in a course, which offers a Start button of its own).
+     * A null bound means "unbounded on that side"; no end date is stored as the
+     * 9999 sentinel, which never trips the check.
+     */
     private void verifyAssessmentStart(Assessment assessment) {
-        if (assessment.getBoundStartTime().after(new Date())) throw new VacademyException("Assessment not yet started");
+        Date now = new Date();
+        if (assessment.getBoundStartTime() != null && assessment.getBoundStartTime().after(now))
+            throw new VacademyException("Assessment not yet started");
+        if (assessment.getBoundEndTime() != null && assessment.getBoundEndTime().before(now))
+            throw new VacademyException("Assessment has ended");
     }
 
     private Optional<StudentAttempt> getLastStudentAttempt(AssessmentUserRegistration assessmentUserRegistration) {

@@ -13,6 +13,8 @@ export interface FinalCourseData {
   customHtml: string;
   description: string;
   includeInstituteLogo: boolean;
+  /** Header + invite title sit on the page/theme background instead of white. */
+  blendHeaderWithBackground: boolean;
   includePaymentPlans: boolean;
   instituteLogo: string;
   learningOutcome: string;

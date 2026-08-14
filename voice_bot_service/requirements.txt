@@ -7,7 +7,7 @@
 # runner.utils.parse_telephony_websocket, audio.turn.smart_turn.local_smart_turn_v3
 # (no extra needed; model baked into the image — see Dockerfile).
 # `local` extra deliberately absent: it drags pyaudio/portaudio (desktop only).
-pipecat-ai[silero,websocket,sarvam,google,openai]==1.4.0
+pipecat-ai[silero,websocket,sarvam,google,openai,deepgram]==1.4.0
 aiohttp>=3.9
 fastapi>=0.115
 uvicorn[standard]>=0.30

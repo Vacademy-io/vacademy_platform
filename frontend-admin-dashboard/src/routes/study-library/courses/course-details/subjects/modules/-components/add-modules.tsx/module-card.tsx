@@ -12,6 +12,7 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { OfflineAvailabilityDialog } from '@/routes/study-library/courses/course-details/-components/OfflineAvailabilityDialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 interface ModuleCardProps {
     module: ModulesWithChapters;
@@ -23,6 +24,9 @@ interface ModuleCardProps {
 export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [isOfflineDialogOpen, setIsOfflineDialogOpen] = useState(false);
+    // No Offline Availability action while the institute master switch is off —
+    // the resolver denies every node then, so the rule would be dead config.
+    const offlineAccessEnabled = useOfflineAccessEnabled();
     const router = useRouter();
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
     const { getPackageSessionId } = useInstituteDetailsStore();
@@ -117,7 +121,9 @@ export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
                         onDelete={onDelete}
                         onEdit={() => setIsEditDialogOpen(true)}
                         onOfflineAvailability={
-                            packageSessionId ? () => setIsOfflineDialogOpen(true) : undefined
+                            packageSessionId && offlineAccessEnabled
+                                ? () => setIsOfflineDialogOpen(true)
+                                : undefined
                         }
                     />
                 </div>

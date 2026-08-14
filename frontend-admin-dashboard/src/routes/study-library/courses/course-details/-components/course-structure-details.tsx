@@ -132,7 +132,7 @@ import { CopyContentLineageBadge } from './CopyContentLineageBadge';
 import { BulkUploadDialogButton } from '@/components/common/study-library/bulk-content-uploading/bulk-upload-dialog-button';
 import { BatchChatPanel } from '@/components/chat/BatchChatPanel';
 import { getNotificationSettings } from '@/services/notification-settings';
-import { getOfflineAccessSettings } from '@/services/offline-access';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -510,20 +510,18 @@ export const CourseStructureDetails = ({
     // Chat is OFF by default — only show the Discussion tab when an institute has explicitly enabled it.
     const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
 
-    // Downloads tab follows the institute OFFLINE_ACCESS_SETTING: enabling offline
-    // access surfaces the tab automatically (no Display Settings trip needed);
-    // an explicit per-role hide in Display Settings still wins via the normal
-    // role-config filter. Only hide once the setting has loaded and is off —
-    // never on loading/error — so the strip doesn't flicker.
-    const offlineAccessQuery = useQuery({
-        queryKey: ['offline-access-settings'],
-        queryFn: getOfflineAccessSettings,
-        staleTime: 5 * 60 * 1000,
-        refetchOnWindowFocus: false,
-    });
-    const isOfflineAccessDisabled = offlineAccessQuery.data
-        ? offlineAccessQuery.data.enabled !== true
-        : false;
+    // Everything offline in this view follows the institute OFFLINE_ACCESS_SETTING:
+    // the Downloads tab (enabling offline access surfaces it automatically, no
+    // Display Settings trip needed; an explicit per-role hide there still wins via
+    // the normal role-config filter) and every "Offline Availability" node action.
+    // With the master switch off the resolver returns false for every node, so any
+    // rule saved here would be dead config — hide the actions rather than let an
+    // admin write settings that cannot take effect.
+    //
+    // Unknown (loading/error) counts as ENABLED so nothing flickers into a
+    // locked-off state before the setting has actually loaded.
+    const offlineAccessEnabled = useOfflineAccessEnabled();
+    const isOfflineAccessDisabled = !offlineAccessEnabled;
 
     // Ensure selected tab is visible per role display settings; otherwise, switch to default/first visible
     useEffect(() => {
@@ -2315,7 +2313,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
-                                                                                                                                            {true && (
+                                                                                                                                            {offlineAccessEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(e) => {
                                                                                                                                                         e.stopPropagation();
@@ -2971,7 +2969,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
-                                                                                                                                            {true && (
+                                                                                                                                            {offlineAccessEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(e) => {
                                                                                                                                                         e.stopPropagation();
@@ -3498,7 +3496,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     Condition
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
-                                                                                                                                            {true && (
+                                                                                                                                            {offlineAccessEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(e) => {
                                                                                                                                                         e.stopPropagation();
@@ -3977,22 +3975,24 @@ export const CourseStructureDetails = ({
                                                             this subject at once — the resolver
                                                             walks SUBJECT -> MODULE -> CHAPTER, so
                                                             anything below still overrides it. */}
-                                                        <DropdownMenuItem
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleOpenOfflineDialog(
-                                                                    'SUBJECT',
-                                                                    subject.id,
-                                                                    subject.subject_name
-                                                                );
-                                                            }}
-                                                        >
-                                                            <WifiSlash
-                                                                size={14}
-                                                                className="mr-2 text-primary-500"
-                                                            />
-                                                            Offline Availability
-                                                        </DropdownMenuItem>
+                                                        {offlineAccessEnabled && (
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenOfflineDialog(
+                                                                        'SUBJECT',
+                                                                        subject.id,
+                                                                        subject.subject_name
+                                                                    );
+                                                                }}
+                                                            >
+                                                                <WifiSlash
+                                                                    size={14}
+                                                                    className="mr-2 text-primary-500"
+                                                                />
+                                                                Offline Availability
+                                                            </DropdownMenuItem>
+                                                        )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -4132,22 +4132,24 @@ export const CourseStructureDetails = ({
                                                                 )}
                                                                 {/* Same rule, one level down: covers every chapter in this
                                                                     module while leaving per-chapter overrides intact. */}
-                                                                <DropdownMenuItem
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleOpenOfflineDialog(
-                                                                            'MODULE',
-                                                                            mod.module.id,
-                                                                            mod.module.module_name
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <WifiSlash
-                                                                        size={14}
-                                                                        className="mr-2 text-primary-500"
-                                                                    />
-                                                                    Offline Availability
-                                                                </DropdownMenuItem>
+                                                                {offlineAccessEnabled && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleOpenOfflineDialog(
+                                                                                'MODULE',
+                                                                                mod.module.id,
+                                                                                mod.module.module_name
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <WifiSlash
+                                                                            size={14}
+                                                                            className="mr-2 text-primary-500"
+                                                                        />
+                                                                        Offline Availability
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -4289,22 +4291,24 @@ export const CourseStructureDetails = ({
                                                                 )}
                                                                 {/* Same rule, one level down: covers every chapter in this
                                                                     module while leaving per-chapter overrides intact. */}
-                                                                <DropdownMenuItem
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleOpenOfflineDialog(
-                                                                            'MODULE',
-                                                                            mod.module.id,
-                                                                            mod.module.module_name
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <WifiSlash
-                                                                        size={14}
-                                                                        className="mr-2 text-primary-500"
-                                                                    />
-                                                                    Offline Availability
-                                                                </DropdownMenuItem>
+                                                                {offlineAccessEnabled && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleOpenOfflineDialog(
+                                                                                'MODULE',
+                                                                                mod.module.id,
+                                                                                mod.module.module_name
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <WifiSlash
+                                                                            size={14}
+                                                                            className="mr-2 text-primary-500"
+                                                                        />
+                                                                        Offline Availability
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -4446,7 +4450,7 @@ export const CourseStructureDetails = ({
                                                                     Drip Condition
                                                                 </DropdownMenuItem>
                                                             )}
-                                                            {true && (
+                                                            {offlineAccessEnabled && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -4623,7 +4627,7 @@ export const CourseStructureDetails = ({
                                                                     Drip Condition
                                                                 </DropdownMenuItem>
                                                             )}
-                                                            {true && (
+                                                            {offlineAccessEnabled && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -4805,7 +4809,7 @@ export const CourseStructureDetails = ({
                                                                         Drip Condition
                                                                     </DropdownMenuItem>
                                                                 )}
-                                                                {true && (
+                                                                {offlineAccessEnabled && (
                                                                     <DropdownMenuItem
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();

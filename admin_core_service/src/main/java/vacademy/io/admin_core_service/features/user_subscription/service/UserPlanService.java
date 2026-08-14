@@ -647,31 +647,14 @@ public class UserPlanService {
                         userPlan.getId(), e.getMessage());
             }
 
-            // Ledger: credit payment for gateway-confirmed enrollment. Match on either
-            // signal — the webhook path historically only stamped payment_status=PAID
-            // (status stayed ACTIVE/INITIATED), so a SUCCESS-only filter never matched
-            // and gateway payments accrued debits with no credit ever recorded
-            // (panel showed Paid ₹0 / Due growing forever).
-            try {
-                paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
-                        .stream()
-                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus())
-                                || vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name()
-                                        .equalsIgnoreCase(pl.getPaymentStatus()))
-                        .findFirst()
-                        .ifPresent(pl -> {
-                            if (pl.getPaymentAmount() != null && pl.getPaymentAmount() > 0) {
-                                userAccountLedgerService.recordCreditPayment(
-                                        userPlan.getUserId(), enrollInvite.getInstituteId(),
-                                        java.math.BigDecimal.valueOf(pl.getPaymentAmount()),
-                                        pl.getCurrency() != null ? pl.getCurrency() : "INR",
-                                        "USER_PLAN", userPlan.getId(),
-                                        pl.getId(), null, "Gateway payment confirmed");
-                            }
-                        });
-            } catch (Exception e) {
-                logger.warn("Failed to record ledger credit for userPlan={}: {}", userPlan.getId(), e.getMessage());
-            }
+            // NOTE: the ledger CREDIT_PAYMENT used to be posted here. It has moved to
+            // PaymentLogService.recordLedgerCreditForPlanPayment(), which fires on the
+            // PaymentLog going PAID — the actual money event — instead of on activation.
+            // This method is an activation routine and returns early when the plan is
+            // already ACTIVE/PENDING, when it has no EnrollInvite, and on the stacking
+            // branch; the credit sat past all three, so only the FIRST payment of a
+            // still-pending plan was ever credited. Second fee installments and any other
+            // charge against an already-active plan posted nothing at all.
 
             // Process pending referral benefits after payment confirmation
             // This sends referrer reward emails that were deferred during enrollment

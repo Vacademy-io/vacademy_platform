@@ -89,6 +89,9 @@ public class PaymentLogService {
     private InvoiceService invoiceService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
+    @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
 
     @Autowired
@@ -260,6 +263,48 @@ public class PaymentLogService {
      * Does NOT call applicant service (different use case) or
      * applyOperationsOnFirstPayment (done by enroll flow).
      */
+    /**
+     * Credits a confirmed plan-linked payment to the learner's account ledger.
+     *
+     * <p>This belongs to the PaymentLog going PAID — the actual money event — and NOT to
+     * plan activation. It used to live inside {@code UserPlanService.applyOperationsOnFirstPayment},
+     * which is an activation routine and bails out early on three separate conditions: the
+     * plan is already ACTIVE/PENDING, it has no EnrollInvite, or it got stacked behind an
+     * existing plan. The credit sat past all three, so — exactly as the method name says —
+     * only the FIRST payment of a still-PENDING_FOR_PAYMENT plan was ever credited. Every
+     * later charge against an already-active plan (a second fee installment, any top-up)
+     * silently posted nothing, and the learner's Due never came down for it.
+     *
+     * <p>Called from both post-payment hooks so every gateway is covered: the async webhook
+     * path ({@code handlePostPaymentLogic}) and the synchronous one
+     * ({@code handlePostPaymentLogicForSyncPayment}, used by eWay/Stripe in-request
+     * confirmations). Admin invoices and donations are excluded — they carry no UserPlan and
+     * are credited by {@code InvoiceService.markAdminInvoicePaidByPaymentLog} instead.
+     *
+     * <p>Safe to call more than once: {@code recordCreditPayment} de-duplicates on the
+     * PaymentLog id, so a payment observed by several paths is credited exactly once.
+     * Best-effort — a ledger write must never cost us the enrollment or the invoice.
+     */
+    private void recordLedgerCreditForPlanPayment(PaymentLog paymentLog, String instituteId) {
+        if (paymentLog.getUserPlan() == null
+                || paymentLog.getPaymentAmount() == null
+                || paymentLog.getPaymentAmount() <= 0
+                || !StringUtils.hasText(instituteId)) {
+            return;
+        }
+        try {
+            userAccountLedgerService.recordCreditPayment(
+                    paymentLog.getUserId(), instituteId,
+                    java.math.BigDecimal.valueOf(paymentLog.getPaymentAmount()),
+                    StringUtils.hasText(paymentLog.getCurrency()) ? paymentLog.getCurrency() : "INR",
+                    "USER_PLAN", paymentLog.getUserPlan().getId(),
+                    paymentLog.getId(), null, "Payment received");
+        } catch (Exception e) {
+            log.error("Failed to record ledger credit for paymentLog={} (userPlan={}): {}",
+                    paymentLog.getId(), paymentLog.getUserPlan().getId(), e.getMessage(), e);
+        }
+    }
+
     private void handlePostPaymentLogicForSyncPayment(PaymentLog paymentLog, String instituteId) {
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
@@ -274,6 +319,8 @@ public class PaymentLogService {
             }
             return;
         }
+
+        recordLedgerCreditForPlanPayment(paymentLog, instituteId);
 
         // Single-transaction semantics: invoice generation failure propagates so
         // the original cause is preserved end-to-end (see handlePostPaymentLogic
@@ -603,6 +650,8 @@ public class PaymentLogService {
                 handleDonationPaymentConfirmation(paymentLog, instituteId);
             }
         } else {
+            recordLedgerCreditForPlanPayment(paymentLog, instituteId);
+
             log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
                     paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());

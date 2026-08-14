@@ -99,6 +99,9 @@ public class RazorpayWebHookService {
     @Autowired
     private vacademy.io.admin_core_service.features.platform_billing.service.PlatformRazorpayWebHookService platformRazorpayWebHookService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     /**
      * Processes Razorpay webhook events
      */
@@ -1276,6 +1279,27 @@ public class RazorpayWebHookService {
 
                         // 2. Allocate payment to fee bills
                         feeLedgerAllocationService.allocatePayment(orderId, amount, userPlanId);
+
+                        // 2b. Ledger: credit the money against the learner's account.
+                        // This branch settles CPO/school fee installments and is the ONLY
+                        // confirmation the account ledger gets for them — the generic
+                        // enrollment path (UserPlanService.applyOperationsOnFirstPayment)
+                        // is never reached from here. Without it the learner accrued a
+                        // DEBIT_ACCRUAL per installment and no credit ever landed, so the
+                        // side-view showed the payment nowhere in Transaction History and
+                        // Due/Past Due never came down. Best-effort: a ledger write must
+                        // never cost us the allocation or the receipt.
+                        try {
+                            userAccountLedgerService.recordCreditPayment(
+                                    paymentLog.getUserId(), instituteId,
+                                    amount,
+                                    paymentLog.getCurrency() != null ? paymentLog.getCurrency() : "INR",
+                                    "USER_PLAN", userPlanId,
+                                    orderId, null, "Fee payment received");
+                        } catch (Exception e) {
+                            log.error("Failed to record ledger credit for SCHOOL payment orderId {}: {}",
+                                    orderId, e.getMessage());
+                        }
 
                         // 3. Update UserPlan status to ACTIVE (Batch status handled as well if needed,
                         // but normally just activating plan is enough or we rely on the normal flow.

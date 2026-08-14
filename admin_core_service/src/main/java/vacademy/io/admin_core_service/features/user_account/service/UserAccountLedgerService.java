@@ -56,13 +56,45 @@ public class UserAccountLedgerService {
                 grossAmount, discountAmount);
     }
 
-    /** Called when a payment is confirmed (gateway success or manual offline). */
+    /**
+     * Reverses an obligation that was voided before any money moved — a cancelled admin
+     * invoice, a duplicated accrual. Nets out of "total accrued" rather than counting as a
+     * credit: the learner never owed it and never paid it, so booking it as a CREDIT_*
+     * (which is what the invoice-reject path did) both left the accrual standing at its
+     * full amount and reported the void as money received.
+     *
+     * @param dueDate the ORIGINAL obligation's due date, so the reversal cancels it out of
+     *                the past-due bucket as well as the total
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDebitReversal(String userId, String instituteId,
+                                    BigDecimal amount, String currency,
+                                    LocalDate dueDate,
+                                    String sourceType, String sourceId,
+                                    String invoiceId, String remarks) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return;
+        save(userId, instituteId, "DEBIT_REVERSAL", amount, currency,
+                dueDate, sourceType, sourceId, invoiceId, null, remarks);
+    }
+
+    /**
+     * Called when a payment is confirmed (gateway success or manual offline).
+     *
+     * <p>Idempotent on {@code paymentLogId}: the same payment can reach us from more than
+     * one place (the SCHOOL webhook and the enrollment-confirmation path both observe the
+     * same PaymentLog), and crediting it twice halves the learner's reported balance.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordCreditPayment(String userId, String instituteId,
                                     BigDecimal amount, String currency,
                                     String sourceType, String sourceId,
                                     String paymentLogId, String invoiceId, String remarks) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (paymentLogId != null
+                && repository.existsByReferenceIdAndEventType(paymentLogId, "CREDIT_PAYMENT")) {
+            log.debug("Skipping duplicate CREDIT_PAYMENT for paymentLog={} (user={})", paymentLogId, userId);
+            return;
+        }
         save(userId, instituteId, "CREDIT_PAYMENT", amount, currency,
                 null, sourceType, sourceId, invoiceId, paymentLogId, remarks);
     }
@@ -105,7 +137,7 @@ public class UserAccountLedgerService {
     public UserAccountSummaryDTO getSummary(String userId, String instituteId) {
         BigDecimal totalAccrued = repository.sumDebits(userId, instituteId);
         BigDecimal totalPaid    = repository.sumCredits(userId, instituteId);
-        BigDecimal overdue      = repository.sumOverdue(userId, instituteId);
+        BigDecimal pastDue      = repository.sumPastDueDebits(userId, instituteId);
 
         // Supplement with admin invoices that pre-date the ledger integration
         // (invoices with no corresponding DEBIT_ACCRUAL entry yet)
@@ -114,7 +146,15 @@ public class UserAccountLedgerService {
         if (extraAccruals != null) totalAccrued = totalAccrued.add(extraAccruals);
         if (extraPayments != null) totalPaid    = totalPaid.add(extraPayments);
 
-        BigDecimal balance      = totalAccrued.subtract(totalPaid).max(BigDecimal.ZERO);
+        // Reversals can push a net figure below zero when an obligation was voided after
+        // the money had already been recognised elsewhere — never report a negative total.
+        totalAccrued = totalAccrued.max(BigDecimal.ZERO);
+        BigDecimal balance = totalAccrued.subtract(totalPaid).max(BigDecimal.ZERO);
+
+        // Past Due = the still-unsettled slice of what was already due. Allocation is
+        // oldest-first everywhere in the product, so collected money retires past-due
+        // obligations before upcoming ones; and it can never exceed the whole balance.
+        BigDecimal overdue = pastDue.subtract(totalPaid).max(BigDecimal.ZERO).min(balance);
 
         return UserAccountSummaryDTO.builder()
                 .userId(userId)

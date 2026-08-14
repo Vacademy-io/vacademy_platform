@@ -35,6 +35,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationEv
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
@@ -402,7 +403,20 @@ public class UserPlanService {
         // of any coupon discount) — the same figure the gateway order and payment log
         // carry — not the plan's list price. Accruing the list price inflated Due by
         // the coupon amount on every discounted enrollment.
-        if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
+        //
+        // CPO is deliberately excluded. A CPO plan's obligation is accrued per installment
+        // by StudentFeePaymentGenerationService.generateFeeBills(), which every CPO
+        // enrollment path runs; the mirror's synthetic PaymentPlan carries the TOTAL
+        // contract value, so also accruing it here booked the whole fee structure twice
+        // (Total Accrued and Due both showed 2x, and no payment could ever clear it).
+        boolean cpoPlan = paymentOption != null
+                && PaymentOptionType.CPO.name().equalsIgnoreCase(paymentOption.getType());
+        if (cpoPlan) {
+            logger.info("Skipping plan-level ledger accrual for CPO UserPlan ID={} — per-installment "
+                    + "StudentFeePayment accruals are authoritative.", saved.getId());
+        }
+        if (!cpoPlan
+                && UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
                 && paymentPlan != null && paymentPlan.getActualPrice() > 0
                 && enrollInvite != null && enrollInvite.getInstituteId() != null) {
             double accrualAmount = paymentPlan.getActualPrice();

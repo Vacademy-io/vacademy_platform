@@ -358,13 +358,39 @@ public class AiCallOutcomeProcessor {
                     .map(a -> aiAgentService.parseList(a.getDispositions()))
                     .orElse(List.of());
         }
+        // A call OUR OWN diagnostics scored as broken must not close the lead.
+        //
+        // The bot ships a health verdict on the same report that carries the
+        // disposition, and it lands on this very row (diag_health / diag_faults).
+        // The classifier's signature predates diagnostics and has no health
+        // input, so a call where the agent never spoke, looped, or had nothing to
+        // say still produced a terminal disposition: measured 2026-08-14, 113 of
+        // 161 RED calls over 30 days wrote one — 41 Not_Interested and one
+        // Do_Not_Call. Those leads are closed permanently on OUR failure, and
+        // Do_Not_Call is not recoverable at all.
+        //
+        // Degrading to Incomplete puts the lead on the retry path instead, which
+        // is what the analyser itself does when it cannot judge a call
+        // (report.py: an unparseable analysis degrades to Incomplete rather than
+        // dropping the report). Scoped to faults that mean WE broke the call —
+        // not to DEAD_AIR, ANSWER_DELETED or LIKELY_MACHINE, which can be RED on
+        // a call the caller still answered perfectly well.
+        boolean untrusted = isUntrustworthyCall(r);
+        String effectiveDisposition = r.getDisposition();
+        if (untrusted) {
+            log.warn("ai-call outcome: result={} health={} faults=[{}] — call was broken on OUR side; "
+                    + "degrading disposition '{}' to Incomplete so the lead is not closed",
+                    r.getId(), r.getDiagHealth(), r.getDiagFaults(), r.getDisposition());
+            effectiveDisposition = "Incomplete";
+        }
+
         AiCallDecision decision = classifier.classify(
-                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings,
+                r.getStatus(), r.getDurationSeconds(), effectiveDisposition, priorAttempts, settings,
                 agentDispositions);
         boolean connected = isConnected(r, settings);
 
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
-                r.getId(), lead.userId(), r.getDisposition(), r.getStatus(), decision.action(), decision.reason());
+                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), decision.action(), decision.reason());
 
         applyDecision(decision, lead, r, connected);
 
@@ -374,7 +400,12 @@ public class AiCallOutcomeProcessor {
         // Only fires when a matching status exists, so it never forces a status the
         // institute hasn't defined; otherwise the lead is left as-is. Runs after
         // applyDecision so it's the authoritative status write for this outcome.
-        stampStatusFromDisposition(lead, r.getDisposition());
+        //
+        // Passed null for an untrusted call: this is the SECOND write that would
+        // stamp the bad verdict (applyDecision is the first), and degrading the
+        // classifier input alone would leave it free to write Not-Interested here
+        // anyway. stampStatusFromDisposition returns early on a null disposition.
+        stampStatusFromDisposition(lead, untrusted ? null : r.getDisposition());
 
         // Inbound: the lead dialed our AI line. Once the call log + status are settled,
         // fire LEAD_CALLED_BACK so any workflow wired to "lead called back" can react.
@@ -733,6 +764,37 @@ public class AiCallOutcomeProcessor {
     /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */
     private String normalizeKey(String s) {
         return s == null ? "" : s.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+    }
+
+    /**
+     * Faults that mean the call failed on OUR side, so its disposition is not
+     * evidence about the lead.
+     *
+     * <p>Deliberately NOT the whole RED set. {@code DEAD_AIR}, {@code ANSWER_DELETED}
+     * and {@code LIKELY_MACHINE} are frequently RED on calls the caller answered
+     * perfectly well — on the 2026-08-14 sample they were 46%, 60% and 30% of calls
+     * respectively, so treating them as untrustworthy would push most outcomes onto
+     * the retry path and re-dial leads who had a real conversation. These four mean
+     * the agent could not hold up its end at all.
+     */
+    private static final List<String> UNTRUSTWORTHY_FAULTS =
+            List.of("BOT_SILENT", "TTS_WEDGE", "HANDBACK_LOOP", "REPLY_LOOP");
+
+    /**
+     * True when the voice bot's own verdict says this call was broken by us:
+     * health RED <b>and</b> at least one {@link #UNTRUSTWORTHY_FAULTS} code.
+     *
+     * <p>Both conditions are required. RED alone is too broad (see above), and a
+     * fault code alone can be AMBER, which is a degraded-but-usable call.
+     * Absent diagnostics (older bot builds, non-VACADEMY_AI providers) read as
+     * trustworthy, preserving the prior behaviour exactly.
+     */
+    private boolean isUntrustworthyCall(AiCallResult r) {
+        if (r == null || !"RED".equalsIgnoreCase(r.getDiagHealth())) return false;
+        String faults = r.getDiagFaults();
+        if (faults == null || faults.isBlank()) return false;
+        String upper = faults.toUpperCase();
+        return UNTRUSTWORTHY_FAULTS.stream().anyMatch(upper::contains);
     }
 
     /**

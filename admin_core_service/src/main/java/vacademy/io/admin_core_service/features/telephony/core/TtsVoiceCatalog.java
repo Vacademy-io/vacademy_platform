@@ -72,6 +72,18 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_SMALLEST = "smallest";
 
     /**
+     * Deepgram Aura-2 — <b>ENGLISH ONLY</b>. Verified against the live
+     * {@code /v1/models} catalog on 2026-08-13: 102 TTS models across
+     * en/es/de/fr/nl/it/ja and <b>no Hindi at any tier</b>, nor any announced.
+     *
+     * <p>So this engine is selectable only for English-speaking agents. Pointing a
+     * Hinglish agent at it makes the voice read Devanagari as English letters —
+     * the same class of failure Rumik produced, but total rather than partial.
+     * Accent is American; Deepgram publishes no en-IN voice.
+     */
+    public static final String MODEL_DEEPGRAM = "deepgram";
+
+    /**
      * Engine stamped on a NEW agent. Existing agents are untouched — V421 pinned all
      * 17 of them to Sarvam, and they stay there until somebody changes them by hand.
      *
@@ -201,12 +213,36 @@ public final class TtsVoiceCatalog {
             v("nirupma", "female", MODEL_SMALLEST),
             v("niharika", "female", MODEL_SMALLEST));
 
+    /**
+     * Deepgram Aura-2 American-English voices, curated from the live catalog.
+     * Genders are Deepgram's own {@code metadata.tags} (feminine/masculine), NOT
+     * inferred from the mythological names — Janus and Juno are both FEMALE there,
+     * which no reading of the names would tell you. Must stay in lockstep with
+     * bot.py's _DEEPGRAM_MALE_VOICES or a male voice speaks feminine grammar.
+     */
+    private static final List<Map<String, String>> DEEPGRAM_VOICES = List.of(
+            v("aura-2-apollo-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-arcas-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-atlas-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-hermes-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-mars-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-odysseus-en", "male", MODEL_DEEPGRAM),
+            v("aura-2-asteria-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-athena-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-helena-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-hera-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-luna-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-cordelia-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-harmonia-en", "female", MODEL_DEEPGRAM),
+            v("aura-2-electra-en", "female", MODEL_DEEPGRAM));
+
     private static final Map<String, List<Map<String, String>>> BY_MODEL = Map.of(
             MODEL_SARVAM, SARVAM_VOICES,
             MODEL_RUMIK, RUMIK_VOICES,
             MODEL_GOOGLE, GOOGLE_VOICES,
             MODEL_SMALLEST, SMALLEST_VOICES,
-            MODEL_EDGE, EDGE_VOICES);
+            MODEL_EDGE, EDGE_VOICES,
+            MODEL_DEEPGRAM, DEEPGRAM_VOICES);
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {

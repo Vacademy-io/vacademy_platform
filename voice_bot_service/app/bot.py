@@ -1441,10 +1441,28 @@ _SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
 SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
                    | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
 
+# ── Deepgram Aura-2 ─────────────────────────────────────────────────────────
+# ENGLISH ONLY — the live /v1/models catalog has no Hindi voice at any tier, so
+# these are for English-speaking agents. Genders are Deepgram's own metadata
+# tags (feminine/masculine), NOT guessed from the mythological names: Janus and
+# Juno are both FEMALE here, which no reading of the names would tell you.
+# American accent only; Deepgram has no en-IN.
+_DEEPGRAM_MALE_VOICES = {
+    "aura-2-apollo-en", "aura-2-arcas-en", "aura-2-atlas-en",
+    "aura-2-hermes-en", "aura-2-mars-en", "aura-2-odysseus-en",
+}
+_DEEPGRAM_FEMALE_VOICES = {
+    "aura-2-asteria-en", "aura-2-athena-en", "aura-2-helena-en",
+    "aura-2-hera-en", "aura-2-luna-en", "aura-2-cordelia-en",
+    "aura-2-harmonia-en", "aura-2-electra-en",
+}
+DEEPGRAM_VOICES = _DEEPGRAM_MALE_VOICES | _DEEPGRAM_FEMALE_VOICES
+
 # One place where every engine's male voices land, so _voice_gender works for
 # all four. Missing a name here means a male voice speaking feminine Hindi —
 # the #1 immersion complaint from live calls.
-_MALE_VOICES |= _GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
+_MALE_VOICES |= (_GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
+                 | _DEEPGRAM_MALE_VOICES)
 
 
 def _engine_of(model: str) -> str:
@@ -1456,6 +1474,8 @@ def _engine_of(model: str) -> str:
         return "google"
     if m.startswith(("smallest", "lightning")):
         return "smallest"
+    if m.startswith(("deepgram", "aura")):
+        return "deepgram"
     return "sarvam"
 
 
@@ -1467,12 +1487,15 @@ _ENGINE_DEFAULT_VOICE = {
     # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
     "google": "hi-IN-Chirp3-HD-Achird",
     "smallest": "devansh",
+    # English-only engine; Asteria is its clear/confident female voice.
+    "deepgram": "aura-2-asteria-en",
 }
 
 
 def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
-            "smallest": SMALLEST_VOICES}.get(engine)
+            "smallest": SMALLEST_VOICES,
+            "deepgram": DEEPGRAM_VOICES}.get(engine)
 
 
 def _default_voice_for(agent) -> str:
@@ -1526,7 +1549,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES, DEEPGRAM_VOICES):
         if low in other:
             return None
     return voice

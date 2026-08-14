@@ -83,6 +83,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final UserRoleRepository userRoleRepository;
+    private final vacademy.io.admin_core_service.features.shortlink.service.ShortLinkIntegrationService shortLinkIntegrationService;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -105,6 +106,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createSessionParticipent(params);
             case "createLiveSession":
                 return createLiveSession(params);
+            case "getOrCreateShortLink":
+                return getOrCreateShortLink(params);
             case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
             case "fetchInstituteSetting":
@@ -681,6 +684,48 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      *               - sessionId: String - The session ID
      * @return Map with operation result and created participant
      */
+    /**
+     * Short, branded URL for a long destination — so a WhatsApp message carries
+     * {@code https://u.suchbliss.com/s/K7MNPQ3A} instead of a full join link.
+     *
+     * <p>Idempotent per (source, sourceId): media_service returns the existing link
+     * if there is one, so a workflow that runs every morning keeps giving a learner
+     * the same URL rather than minting a code per send.</p>
+     *
+     * <p>Returns {@code shortUrl} — inside an ITERATOR that lands on the item, so a
+     * SEND node can use {@code #item['shortUrl']}. When media_service is unreachable
+     * the destination is returned unchanged: a long link still works, an empty one
+     * does not.</p>
+     *
+     * <p>Params: {@code destinationUrl} (required), {@code source}, {@code sourceId},
+     * {@code instituteId}.</p>
+     */
+    private Map<String, Object> getOrCreateShortLink(Map<String, Object> params) {
+        String destinationUrl = params.get("destinationUrl") == null
+                ? null
+                : String.valueOf(params.get("destinationUrl"));
+        if (destinationUrl == null || destinationUrl.isBlank()) {
+            return Map.of("error", "destinationUrl is required");
+        }
+        String source = params.get("source") == null ? "WORKFLOW" : String.valueOf(params.get("source"));
+        String sourceId = params.get("sourceId") == null ? null : String.valueOf(params.get("sourceId"));
+        String instituteId = params.get("instituteId") == null ? null : String.valueOf(params.get("instituteId"));
+
+        String shortUrl = shortLinkIntegrationService.getOrCreateShortLink(
+                source, sourceId, destinationUrl, instituteId);
+
+        Map<String, Object> result = new HashMap<>();
+        if (shortUrl == null || shortUrl.isBlank()) {
+            log.warn("Short link unavailable for {}/{} — falling back to the long URL", source, sourceId);
+            result.put("shortUrl", destinationUrl);
+            result.put("shortened", false);
+        } else {
+            result.put("shortUrl", shortUrl);
+            result.put("shortened", true);
+        }
+        return result;
+    }
+
     private Map<String, Object> createSessionParticipent(Map<String, Object> params) {
         try {
             String sourceId = (String) params.get("sourceId");

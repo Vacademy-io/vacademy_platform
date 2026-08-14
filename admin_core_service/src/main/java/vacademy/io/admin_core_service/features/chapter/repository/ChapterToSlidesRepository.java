@@ -39,4 +39,11 @@ public interface ChapterToSlidesRepository extends JpaRepository<ChapterToSlides
                         """, nativeQuery = true)
         Integer findMaxSlideOrderByChapterId(@Param("chapterId") String chapterId);
 
+        /**
+         * Every live chapter placement of the given slides. A slide can sit in more
+         * than one chapter, so deleting it means clearing all of its mappings.
+         */
+        @Query("SELECT cts FROM ChapterToSlides cts WHERE cts.slide.id IN (:slideIds) AND cts.status <> 'DELETED'")
+        List<ChapterToSlides> findActiveMappingsBySlideIds(@Param("slideIds") List<String> slideIds);
+
 }

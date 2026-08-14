@@ -5,7 +5,9 @@ import { useRouter } from '@tanstack/react-router';
 import {
     ListChecks,
     ArrowSquareOut,
+    CalendarBlank,
     FileText,
+    Lock,
     Trophy,
     Users,
 } from '@phosphor-icons/react';
@@ -17,7 +19,8 @@ import {
     GET_ASSESSMENT_TOTAL_MARKS_URL,
     GET_ASSESSMENT_LISTS,
 } from '@/constants/urls';
-import { getInstituteId } from '@/constants/helper';
+import { getInstituteId, convertToLocalDateTime } from '@/constants/helper';
+import { StatusChip } from '@/components/design-system/status-chips';
 import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { MyButton } from '@/components/design-system/button';
 import AssessmentSubmissionsPanel from './assessment-submissions-panel';
@@ -45,6 +48,46 @@ interface TotalMarksResponse {
     total_achievable_marks?: number | null;
     section_wise_achievable_marks?: Record<string, number> | null;
 }
+
+/** Sentinel "never closes" end date written when the admin sets no date range. */
+const NO_EXPIRY_YEAR = 9999;
+
+/**
+ * Backend timestamps are UTC but often arrive without a zone marker; force UTC
+ * so the window is judged against the right instant.
+ */
+const toUtcDate = (raw: string | null | undefined): Date | null => {
+    if (!raw) return null;
+    const hasZone = /Z$|[+-]\d{2}:?\d{2}$/i.test(raw);
+    const date = new Date(hasZone ? raw : `${raw.replace(' ', 'T')}Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+type WindowState = 'NOT_STARTED' | 'OPEN' | 'CLOSED';
+
+/**
+ * Where the assessment sits in its own schedule. Learners can only open this
+ * slide while the window is OPEN, so the admin needs to see the same state here
+ * — otherwise a slide that looks fine in the course reads as "locked" to them.
+ */
+const resolveWindow = (
+    startRaw: string | null | undefined,
+    endRaw: string | null | undefined
+): { start: Date | null; end: Date | null; noExpiry: boolean; state: WindowState } => {
+    const start = toUtcDate(startRaw);
+    const end = toUtcDate(endRaw);
+    // UTC, and ">=": the sentinel is 9999-12-31T23:59:59.999Z, so in a timezone
+    // ahead of UTC the local year is 10000 and an equality check misses it —
+    // making an "always available" assessment advertise a Jan 1, 10000 close.
+    const noExpiry = !end || end.getUTCFullYear() >= NO_EXPIRY_YEAR;
+    const now = Date.now();
+
+    let state: WindowState = 'OPEN';
+    if (start && start.getTime() > now) state = 'NOT_STARTED';
+    else if (end && !noExpiry && end.getTime() <= now) state = 'CLOSED';
+
+    return { start, end, noExpiry, state };
+};
 
 const Stat = ({
     icon,
@@ -204,6 +247,33 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
     const submittedCount = overview?.total_attempted ?? 0;
     const participantCount = overview?.total_participants ?? 0;
 
+    // The schedule chosen when this assessment was created from the slide. It is
+    // what decides whether learners can open the slide at all.
+    const availability = resolveWindow(
+        overview?.start_date_and_time,
+        overview?.end_date_and_time
+    );
+    const availabilityChip: { text: string; status: 'SUCCESS' | 'WARNING' | 'INFO' } =
+        availability.state === 'NOT_STARTED'
+            ? { text: 'Scheduled', status: 'WARNING' }
+            : availability.state === 'CLOSED'
+              ? { text: 'Closed', status: 'INFO' }
+              : { text: 'Open', status: 'SUCCESS' };
+
+    const availabilityLabel = (() => {
+        const opens = availability.start
+            ? convertToLocalDateTime(availability.start.toISOString())
+            : null;
+        const closes =
+            availability.end && !availability.noExpiry
+                ? convertToLocalDateTime(availability.end.toISOString())
+                : null;
+        if (opens && closes) return `${opens} → ${closes}`;
+        if (opens) return `From ${opens}`;
+        if (closes) return `Until ${closes}`;
+        return 'Anytime';
+    })();
+
     return (
         <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -218,6 +288,18 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                         <h3 className="text-base font-semibold text-neutral-900">
                             {isLoading && !displayName ? 'Loading…' : displayName}
                         </h3>
+                        {/* Only once the overview actually resolved — a failed
+                            fetch must not read as a confident "Open". */}
+                        {!isLoading && overview && (
+                            <div className="mt-1.5">
+                                <StatusChip
+                                    text={availabilityChip.text}
+                                    textSize="text-xs"
+                                    status={availabilityChip.status}
+                                    showIcon={false}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -260,7 +342,25 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                             : null
                     }
                 />
+                <Stat
+                    icon={<CalendarBlank className="size-4" />}
+                    label="Available to learners"
+                    value={availabilityLabel}
+                />
             </div>
+
+            {/* Outside its window the slide is locked for learners — say so here
+                so an admin doesn't read an empty submissions list as a bug. */}
+            {availability.state !== 'OPEN' && (
+                <div className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3">
+                    <Lock className="mt-0.5 size-4 shrink-0 text-warning-600" weight="fill" />
+                    <p className="text-xs text-warning-700">
+                        {availability.state === 'NOT_STARTED'
+                            ? `This slide is locked for learners until ${availability.start ? convertToLocalDateTime(availability.start.toISOString()) : 'it opens'}.`
+                            : `This slide closed${availability.end ? ` on ${convertToLocalDateTime(availability.end.toISOString())}` : ''} — learners can no longer attempt it.`}
+                    </p>
+                </div>
+            )}
 
             {/* Assessment instructions — what participants see before they begin. */}
             <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white p-4">

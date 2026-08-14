@@ -515,6 +515,9 @@ public class WorkflowAiDraftService {
             if (!(n.getConfig() instanceof Map)) continue;
             Object tn = ((Map<String, Object>) n.getConfig()).get("templateName");
             if (!(tn instanceof String name) || name.isBlank()) continue;
+            // A run-time-chosen template (e.g. a workflow that picks by weekday) is an
+            // expression, not a name — there is nothing to look up until it executes.
+            if (name.trim().startsWith("#") || name.trim().startsWith("T(")) continue;
             try {
                 boolean found;
                 if (isEmail) {

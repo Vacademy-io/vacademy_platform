@@ -33,7 +33,7 @@ import {
 import { Route } from "..";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { convertToLocalDateTime } from "@/constants/helper";
-import { parseHtmlToString, sanitizeHtml } from "@/lib/utils";
+import { isRichTextEmpty, sanitizeHtml } from "@/lib/utils";
 import {
   calculateTimeDifference,
   calculateTimeLeft,
@@ -609,6 +609,7 @@ const AssessmentRegistrationForm = () => {
         assessmentId={data.assessment_public_dto.assessment_id}
         assessmentName={data.assessment_public_dto.assessment_name}
         instituteId={data.institute_id}
+        branding={branding}
       />
     );
 
@@ -758,7 +759,7 @@ const AssessmentRegistrationForm = () => {
               </div>
             </div>
 
-            {data.assessment_public_dto.instructions?.content && (
+            {!isRichTextEmpty(data.assessment_public_dto.instructions?.content) && (
               <div className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
                 <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-1.5">
                   <ClipboardText
@@ -768,22 +769,30 @@ const AssessmentRegistrationForm = () => {
                   />
                   Instructions
                 </h2>
-                <p className="text-sm leading-relaxed text-neutral-600 whitespace-pre-line">
-                  {parseHtmlToString(
-                    data.assessment_public_dto.instructions.content,
-                  )}
-                </p>
+                <div
+                  className="richtext-content text-sm text-neutral-600"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      data.assessment_public_dto.instructions?.content ?? "",
+                    ),
+                  }}
+                />
               </div>
             )}
 
-            {data.assessment_public_dto.about?.content && (
+            {!isRichTextEmpty(data.assessment_public_dto.about?.content) && (
               <div className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
                 <h2 className="text-sm font-semibold text-neutral-800">
                   About Assessment
                 </h2>
-                <p className="text-sm leading-relaxed text-neutral-600 whitespace-pre-line">
-                  {parseHtmlToString(data.assessment_public_dto.about.content)}
-                </p>
+                <div
+                  className="richtext-content text-sm text-neutral-600"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      data.assessment_public_dto.about?.content ?? "",
+                    ),
+                  }}
+                />
               </div>
             )}
           </div>
@@ -953,7 +962,7 @@ const AssessmentRegistrationForm = () => {
               </div>
 
               {/* Instructions */}
-              {data.assessment_public_dto.instructions?.content && (
+              {!isRichTextEmpty(data.assessment_public_dto.instructions?.content) && (
                 <div className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
                   <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-1.5">
                     <ClipboardText
@@ -963,25 +972,31 @@ const AssessmentRegistrationForm = () => {
                     />
                     Instructions
                   </h2>
-                  <p className="text-sm leading-relaxed text-neutral-600 whitespace-pre-line">
-                    {parseHtmlToString(
-                      data.assessment_public_dto.instructions.content,
-                    )}
-                  </p>
+                  <div
+                    className="richtext-content text-sm text-neutral-600"
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(
+                        data.assessment_public_dto.instructions?.content ?? "",
+                      ),
+                    }}
+                  />
                 </div>
               )}
 
               {/* About */}
-              {data.assessment_public_dto.about?.content && (
+              {!isRichTextEmpty(data.assessment_public_dto.about?.content) && (
                 <div className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
                   <h2 className="text-sm font-semibold text-neutral-800">
                     About Assessment
                   </h2>
-                  <p className="text-sm leading-relaxed text-neutral-600 whitespace-pre-line">
-                    {parseHtmlToString(
-                      data.assessment_public_dto.about.content,
-                    )}
-                  </p>
+                  <div
+                    className="richtext-content text-sm text-neutral-600"
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(
+                        data.assessment_public_dto.about?.content ?? "",
+                      ),
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -1005,19 +1020,28 @@ const AssessmentRegistrationForm = () => {
                   </p>
                 </div>
               </div>
-              {data.assessment_public_dto.registration_instructions?.content && (
+              {!isRichTextEmpty(
+                data.assessment_public_dto.registration_instructions?.content,
+              ) && (
                 <div className="mt-4 flex gap-2 rounded-xl border border-info-100 bg-info-50/50 px-3 py-2.5 text-xs text-info-700 w-full">
                   <CheckCircle
                     size={16}
                     weight="bold"
                     className="shrink-0 mt-0.5"
                   />
-                  <span className="leading-relaxed">
-                    {parseHtmlToString(
-                      data.assessment_public_dto.registration_instructions
-                        .content,
-                    )}
-                  </span>
+                  {/* Rendered as HTML (not flattened to text) so the admin's
+                      line breaks survive. `.richtext-content` is deliberately
+                      NOT used here — it hardcodes a grey body colour that would
+                      override the info-700 text of this callout. */}
+                  <div
+                    className="leading-relaxed [&_p]:my-1 [&_li]:ms-4 [&_li]:list-disc"
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(
+                        data.assessment_public_dto.registration_instructions
+                          ?.content ?? "",
+                      ),
+                    }}
+                  />
                 </div>
               )}
               <FormProvider {...form}>

@@ -30,6 +30,14 @@ interface Props {
   assessmentId: string;
   assessmentName: string;
   instituteId: string;
+  /**
+   * Branding resolved by the register page. It already merges local
+   * Preferences with the public-branding fallback, which is the only source
+   * that works for a logged-out visitor (Preferences has no InstituteDetails
+   * until after login, so useInstituteDetails() alone renders an empty logo
+   * placeholder here). Optional so the component still stands alone.
+   */
+  branding?: InstituteBranding;
 }
 
 const RESEND_COOLDOWN = 60;
@@ -39,6 +47,7 @@ const PostRegistrationOTPVerify = ({
   assessmentId,
   assessmentName,
   instituteId,
+  branding: brandingFromParent,
 }: Props) => {
   const navigate = useNavigate();
   const { data: instituteDetails } = useInstituteDetails();
@@ -49,7 +58,7 @@ const PostRegistrationOTPVerify = ({
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const branding: InstituteBranding = {
+  const branding: InstituteBranding = brandingFromParent ?? {
     instituteId: instituteDetails?.id ?? null,
     instituteName: instituteDetails?.institute_name ?? null,
     instituteLogoFileId: instituteDetails?.institute_logo_file_id ?? null,

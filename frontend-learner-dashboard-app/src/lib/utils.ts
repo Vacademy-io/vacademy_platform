@@ -246,6 +246,12 @@ export function sanitizeHtml(dirtyHtml: string): string {
   const allowedAttrsByTag: Record<string, Set<string>> = {
     a: new Set(["href", "title", "target", "rel"]),
     img: new Set(["src", "alt", "title"]),
+    // Numbering carried by the markup itself: the admin editor emits
+    // <ol start="2"> when instructions continue a list across blocks, so
+    // dropping `start` silently renumbers the list from 1. Presentational
+    // only — no script vector.
+    ol: new Set(["start", "type", "reversed"]),
+    li: new Set(["value"]),
     th: new Set(["colspan", "rowspan", "scope"]),
     td: new Set(["colspan", "rowspan"]),
     col: new Set(["span"]),

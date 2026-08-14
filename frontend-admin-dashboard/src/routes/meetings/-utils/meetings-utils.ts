@@ -1,6 +1,7 @@
 import { StatusType } from '@/components/design-system/status-chips';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { getBrowserTimezone } from '@/utils/timezone';
 import { BookingInstanceDTO, BookingInstanceStatus } from '../-types/meetings-types';
 
 /**
@@ -103,4 +104,9 @@ export const COMMON_TIMEZONES: string[] = [
     'UTC',
 ];
 
-export const browserTimezone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
+/**
+ * The admin's own zone, canonicalised. Never returns the raw `Intl` value — older ICU builds
+ * report the legacy `Asia/Calcutta`, which prod Postgres no longer resolves and which fails
+ * the request rather than degrading. See `@/utils/timezone`.
+ */
+export const browserTimezone = (): string => getBrowserTimezone();

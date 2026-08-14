@@ -19,6 +19,11 @@ import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { getInstituteId } from '@/constants/helper';
 import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment-actions';
+import {
+    AssessmentSlideCascadeOption,
+    deleteLinkedAssessmentSlides,
+    useLinkedAssessmentSlides,
+} from '@/components/common/assessment/assessment-slide-cascade';
 import { handleDeleteAssessment } from '../-services/assessment-services';
 
 export function ScheduleTestDetailsDropdownLive({
@@ -561,14 +566,41 @@ const ScheduleTestDeleteDialog = ({
     onClose: () => void;
 }) => {
     const instituteId = getInstituteId();
+    // An assessment created from a course slide is only half-deleted if the slide
+    // survives, so offer to take both — ticked by default.
+    const [alsoDeleteSlides, setAlsoDeleteSlides] = useState(true);
+    const { data: linkedSlides = [], isLoading: isLoadingLinkedSlides } =
+        useLinkedAssessmentSlides(scheduleTestContent.assessment_id);
+
     const handleDeleteAssessmentMutation = useMutation({
-        mutationFn: ({
+        mutationFn: async ({
             assessmentId,
             instituteId,
         }: {
             assessmentId: string;
             instituteId: string | undefined;
-        }) => handleDeleteAssessment(assessmentId, instituteId),
+        }) => {
+            const result = await handleDeleteAssessment(assessmentId, instituteId);
+            // After the assessment, so a failure here can't leave the assessment
+            // alive while its slides are gone. Not gated on linkedSlides being
+            // loaded — the lookup may still be in flight when Delete is clicked,
+            // and the endpoint is idempotent (returns 0 when there is nothing).
+            if (alsoDeleteSlides) {
+                try {
+                    await deleteLinkedAssessmentSlides(assessmentId);
+                } catch (slideError) {
+                    // The assessment is already gone; reporting a blanket failure
+                    // here would read as "nothing was deleted" and invite a retry
+                    // that then 404s. Report the partial outcome instead.
+                    console.error('Failed to delete linked assessment slides:', slideError);
+                    toast.warning(
+                        'Assessment deleted, but its course slides could not be removed.',
+                        { duration: 4000 }
+                    );
+                }
+            }
+            return result;
+        },
         onSuccess: async () => {
             toast.success('Assessment has been deleted successfully!', {
                 className: 'success-toast',
@@ -611,6 +643,12 @@ const ScheduleTestDeleteDialog = ({
                         Are you sure you want to delete
                         <span className="text-primary-500">&nbsp;{scheduleTestContent.name}</span>?
                     </h1>
+                    <AssessmentSlideCascadeOption
+                        linkedSlides={linkedSlides}
+                        checked={alsoDeleteSlides}
+                        onCheckedChange={setAlsoDeleteSlides}
+                        isLoading={isLoadingLinkedSlides}
+                    />
                     <div className="mt-2 flex justify-end">
                         <MyButton
                             type="button"

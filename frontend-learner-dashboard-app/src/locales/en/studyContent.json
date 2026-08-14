@@ -42,7 +42,11 @@
     "slideSidebar": {
         "slidesListLabel": "Chapter slides list",
         "noSlidesTitle": "No slides available",
-        "noSlidesSubtitle": "Slides will appear here when content is added"
+        "noSlidesSubtitle": "Slides will appear here when content is added",
+        "lockedAssessmentNotOpen": "Opens {{datetime}}",
+        "lockedAssessmentNotOpenNoDate": "Locked until the assessment goes live",
+        "lockedAssessmentClosed": "Closed {{datetime}}",
+        "lockedAssessmentClosedNoDate": "This assessment is closed"
     },
     "slideNav": {
         "previous": "Previous",
@@ -134,7 +138,22 @@
         "beingEvaluated": "Your submission is being evaluated. Results will appear once released.",
         "attemptInProgress": "You have an attempt in progress. Resume to continue where you left off.",
         "viewReport": "View Report",
-        "evaluatedCopyTitle": "Evaluated copy"
+        "evaluatedCopyTitle": "Evaluated copy",
+        "lockedBadge": "Locked",
+        "notOpenYet": "Not Open Yet",
+        "closed": "Closed",
+        "availabilityLabel": "Availability",
+        "opensLabel": "Opens",
+        "closesLabel": "Closes",
+        "closedLabel": "Closed",
+        "anytime": "Anytime",
+        "lockedUntilTitle": "This assessment isn't open yet.",
+        "lockedUntilBody": "It unlocks on {{datetime}}. You can open it from here once it goes live.",
+        "lockedUntilBodyNoDate": "It will unlock once the assessment goes live.",
+        "opensIn": "Opens in {{countdown}}",
+        "closedTitle": "This assessment is closed.",
+        "closedBody": "It closed on {{datetime}} and can no longer be attempted.",
+        "closedBodyNoDate": "It can no longer be attempted."
     },
     "splitScreen": {
         "noEmbeddedContent": "No embedded content",

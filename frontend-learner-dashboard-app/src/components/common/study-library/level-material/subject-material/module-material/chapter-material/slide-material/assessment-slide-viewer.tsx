@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Storage } from "@/utils/storage-plugin";
 import {
+  CalendarBlank,
   CheckCircle,
   Clock,
   Eye,
   FileArrowDown,
   ListChecks,
   ListNumbers,
+  Lock,
   PlayCircle,
   ArrowClockwise,
   Trophy,
@@ -20,10 +22,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
 import { Slide } from "@/hooks/study-library/use-slides";
-import { fetchAssessmentData, storeAssessmentInfo } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
+import { useAssessmentDirectory } from "@/hooks/study-library/use-assessment-windows";
+import { useNow } from "@/hooks/use-now";
+import { storeAssessmentInfo } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-import { Assessment, assessmentTypes } from "@/types/assessment";
 import { formatDuration, getInstituteId } from "@/constants/helper";
+import { formatCountdown, formatDateTime } from "@/lib/format-date";
+import { getAssessmentWindow } from "@/utils/assessment-window";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { GET_ASSESSMENT_MARKS, STUDENT_REPORT_DETAIL_URL } from "@/constants/urls";
 import { getFileDetail } from "@/services/upload_file";
@@ -101,27 +106,8 @@ interface AssessmentSlideViewerProps {
   activeItem: Slide;
 }
 
-const fetchAcrossBuckets = async (assessmentId: string): Promise<Assessment | null> => {
-  // Pull from each bucket in turn until we find a match. Each bucket is a
-  // separate paginated list; checking all three covers any state the
-  // assessment may currently be in for this learner.
-  const buckets: assessmentTypes[] = [
-    assessmentTypes.LIVE,
-    assessmentTypes.UPCOMING,
-    assessmentTypes.PAST,
-  ];
-  for (const bucket of buckets) {
-    try {
-      const response = await fetchAssessmentData(0, 50, bucket, "ASSESSMENT");
-      const content = (response?.content ?? []) as Assessment[];
-      const match = content.find((a) => a.assessment_id === assessmentId);
-      if (match) return match;
-    } catch {
-      // try next bucket
-    }
-  }
-  return null;
-};
+/** Show a live countdown only once the opening is close enough to be useful. */
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
   const { t } = useTranslation("studyContent");
@@ -134,12 +120,24 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
   const assessmentSlide = activeItem.assessment_slide;
   const assessmentId = assessmentSlide?.assessment_id;
 
-  const { data: assessment, isLoading, isError } = useQuery({
-    queryKey: ["ASSESSMENT_SLIDE_VIEWER", assessmentId, activeItem.id],
-    queryFn: () => fetchAcrossBuckets(assessmentId!),
-    enabled: Boolean(assessmentId),
-    staleTime: 30 * 1000,
-  });
+  const { data: directory, isLoading } = useAssessmentDirectory(
+    Boolean(assessmentId)
+  );
+  const assessment = assessmentId ? (directory?.get(assessmentId) ?? null) : null;
+
+  // Keep ticking while the window matters, so the slide unlocks the moment the
+  // assessment opens (and locks itself when it closes) without a reload.
+  const now = useNow(Boolean(assessment));
+  const availability = useMemo(
+    () => getAssessmentWindow(assessment, now),
+    [assessment, now]
+  );
+  const isBeforeWindow = availability.state === "NOT_STARTED";
+  const isAfterWindow = availability.state === "CLOSED";
+  const showOpeningCountdown =
+    isBeforeWindow &&
+    availability.msToStart !== null &&
+    availability.msToStart < ONE_DAY_MS;
 
   const { data: totalMarksData } = useQuery<TotalMarksResponse>({
     queryKey: ["ASSESSMENT_SLIDE_TOTAL_MARKS_LEARNER", assessmentId],
@@ -158,6 +156,36 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
   const sectionCount = totalMarksData?.section_wise_achievable_marks
     ? Object.keys(totalMarksData.section_wise_achievable_marks).length
     : null;
+
+  // One chip that reads differently depending on where we are in the window:
+  // when it opens, when it closes, or that there is no limit at all.
+  const scheduleChip = (() => {
+    if (!assessment) {
+      return { label: t("assessmentSlide.availabilityLabel"), value: null };
+    }
+    if (isBeforeWindow && availability.start) {
+      return {
+        label: t("assessmentSlide.opensLabel"),
+        value: formatDateTime(availability.start),
+      };
+    }
+    if (isAfterWindow && availability.end) {
+      return {
+        label: t("assessmentSlide.closedLabel"),
+        value: formatDateTime(availability.end),
+      };
+    }
+    if (!availability.noExpiry && availability.end) {
+      return {
+        label: t("assessmentSlide.closesLabel"),
+        value: formatDateTime(availability.end),
+      };
+    }
+    return {
+      label: t("assessmentSlide.availabilityLabel"),
+      value: t("assessmentSlide.anytime"),
+    };
+  })();
 
   const allowReattempt = assessmentSlide?.allow_reattempt !== false;
   const showResult = assessmentSlide?.show_result !== false;
@@ -180,6 +208,18 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
   const buttonState = (() => {
     if (!assessment) return { label: t("assessmentSlide.start"), disabled: true, icon: PlayCircle };
+    // The schedule outranks attempt state: an assessment that has not opened
+    // cannot be started from the slide any more than it can from the
+    // assessment tab, and assessment_service rejects the attempt anyway.
+    if (isBeforeWindow) {
+      return { label: t("assessmentSlide.notOpenYet"), disabled: true, icon: Lock };
+    }
+    // A LIVE attempt runs on its own clock, so a window that closes underneath
+    // one doesn't retroactively disable its button — leave that case exactly as
+    // it behaved before. Everything else (fresh start, re-attempt) is closed.
+    if (isAfterWindow && status !== "LIVE") {
+      return { label: t("assessmentSlide.closed"), disabled: true, icon: Lock };
+    }
     if (isInProgress) return { label: t("assessmentSlide.resume"), disabled: false, icon: ArrowClockwise };
     if (isSubmitted) {
       if (canReattempt) return { label: t("assessmentSlide.reattempt"), disabled: false, icon: ArrowClockwise };
@@ -349,14 +389,28 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
             </h2>
           </div>
         </div>
-        {assessment?.play_mode && (
-          <Badge variant="outline" className="px-2 py-0.5 text-2xs uppercase tracking-wider">
-            {assessment.play_mode}
-          </Badge>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {(isBeforeWindow || isAfterWindow) && (
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-200 bg-amber-50 px-2 py-0.5 text-2xs uppercase tracking-wider text-amber-700"
+            >
+              <Lock className="size-3" weight="fill" />
+              {t("assessmentSlide.lockedBadge")}
+            </Badge>
+          )}
+          {assessment?.play_mode && (
+            <Badge variant="outline" className="px-2 py-0.5 text-2xs uppercase tracking-wider">
+              {assessment.play_mode}
+            </Badge>
+          )}
+        </div>
       </div>
 
-      {isError && !assessment && (
+      {/* Covers both "the lists failed to load" and "this assessment isn't in
+          them" — either way the learner has no schedule to act on, so say so
+          rather than leaving a nameless card with a dead button. */}
+      {!isLoading && !assessment && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
           {t("assessmentSlide.couldNotLoadDetails")}
         </div>
@@ -389,7 +443,61 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
               : null
           }
         />
+        {/* The schedule the admin picked when creating this slide's assessment.
+            Surfaced here so the learner can see why the slide is locked. */}
+        <InfoChip
+          icon={<CalendarBlank className="size-4 text-violet-600" />}
+          label={scheduleChip.label}
+          bgClass="bg-violet-50"
+          value={scheduleChip.value}
+        />
       </div>
+
+      {/* Locked — the assessment has not opened yet. */}
+      {isBeforeWindow && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-center gap-2 text-amber-800">
+            <Lock className="size-5" weight="fill" />
+            <span className="text-sm font-semibold">
+              {t("assessmentSlide.lockedUntilTitle")}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-amber-800/80">
+            {availability.start
+              ? t("assessmentSlide.lockedUntilBody", {
+                  datetime: formatDateTime(availability.start),
+                })
+              : t("assessmentSlide.lockedUntilBodyNoDate")}
+          </p>
+          {showOpeningCountdown && availability.msToStart !== null && (
+            <p className="mt-1 text-xs font-medium text-amber-900">
+              {t("assessmentSlide.opensIn", {
+                countdown: formatCountdown(availability.msToStart),
+              })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Closed — the window has passed. Submitted learners keep their result
+          below; everyone else can no longer attempt it. */}
+      {isAfterWindow && (
+        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+          <div className="flex items-center gap-2 text-neutral-700">
+            <Lock className="size-5" weight="fill" />
+            <span className="text-sm font-semibold">
+              {t("assessmentSlide.closedTitle")}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-neutral-600">
+            {availability.end
+              ? t("assessmentSlide.closedBody", {
+                  datetime: formatDateTime(availability.end),
+                })
+              : t("assessmentSlide.closedBodyNoDate")}
+          </p>
+        </div>
+      )}
 
       {/* Status banner */}
       {isSubmitted && (

@@ -61,7 +61,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                    ds.title AS documentTitle,
                    ds.cover_file_id AS documentCoverFileId,
                    ds.type AS documentType,
-                   ds.data AS documentData,
+                   -- Legacy rows (published pre 2026-07-08) carry content only in
+                   -- published_data; fall back so this projection is never empty.
+                   COALESCE(ds.data, ds.published_data) AS documentData,
                    vs.id AS videoId,
                    vs.title AS videoTitle,
                    vs.url AS videoUrl,
@@ -425,9 +427,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'title', d.title,
                                     'type', d.type,
                                     'cover_file_id', d.cover_file_id,
-                                    'total_pages', d.total_pages,
+                                    -- Publishing before the 2026-07-08 save-lifecycle fix nulled the
+                                    -- draft columns, so ~6.5k legacy rows hold their content only in
+                                    -- published_*. Fall back so no reader ever sees a null document.
+                                    'total_pages', COALESCE(d.total_pages, d.published_document_total_pages),
                                     'published_document_total_pages', d.published_document_total_pages,
-                                    'data', d.data,
+                                    'data', COALESCE(d.data, d.published_data),
                                     'published_data', d.published_data
                                 )
                             ) AS slide_data
@@ -940,9 +945,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'title', d.title,
                                 'type', d.type,
                                 'cover_file_id', d.cover_file_id,
-                                'total_pages', d.total_pages,
+                                -- Publishing before the 2026-07-08 save-lifecycle fix nulled the
+                                -- draft columns, so ~6.5k legacy rows hold their content only in
+                                -- published_*. Fall back so no reader ever sees a null document.
+                                'total_pages', COALESCE(d.total_pages, d.published_document_total_pages),
                                 'published_document_total_pages', d.published_document_total_pages,
-                                'data', d.data,
+                                'data', COALESCE(d.data, d.published_data),
                                 'published_data', d.published_data
                             )
                         ) AS slide_data
@@ -1511,9 +1519,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'title', d.title,
                                 'type', d.type,
                                 'cover_file_id', d.cover_file_id,
-                                'total_pages', d.total_pages,
+                                -- Publishing before the 2026-07-08 save-lifecycle fix nulled the
+                                -- draft columns, so ~6.5k legacy rows hold their content only in
+                                -- published_*. Fall back so no reader ever sees a null document.
+                                'total_pages', COALESCE(d.total_pages, d.published_document_total_pages),
                                 'published_document_total_pages', d.published_document_total_pages,
-                                'data', d.data,
+                                'data', COALESCE(d.data, d.published_data),
                                 'published_data', d.published_data
                             )
                         ) AS slide_data
@@ -2322,9 +2333,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'title', d.title,
                                 'type', d.type,
                                 'cover_file_id', d.cover_file_id,
-                                'total_pages', d.total_pages,
+                                -- Publishing before the 2026-07-08 save-lifecycle fix nulled the
+                                -- draft columns, so ~6.5k legacy rows hold their content only in
+                                -- published_*. Fall back so no reader ever sees a null document.
+                                'total_pages', COALESCE(d.total_pages, d.published_document_total_pages),
                                 'published_document_total_pages', d.published_document_total_pages,
-                                'data', d.data,
+                                'data', COALESCE(d.data, d.published_data),
                                 'published_data', d.published_data
                             )
                         ) AS slide_data
@@ -3122,5 +3136,18 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     String getSlideBySlideId(
             @Param("slideId") String slideId,
             @Param("questionStatus") List<String> questionStatus);
+
+    /**
+     * Live assessment slides backed by any of the given assessment_slide rows.
+     * Used to cascade an assessment deletion into the course slides that launch
+     * it, so a deleted assessment can't leave a dead slide behind.
+     */
+    @Query("""
+                SELECT s FROM Slide s
+                WHERE s.sourceType = 'ASSESSMENT'
+                AND s.sourceId IN (:sourceIds)
+                AND s.status <> 'DELETED'
+            """)
+    List<Slide> findActiveAssessmentSlidesBySourceIds(@Param("sourceIds") List<String> sourceIds);
 
 }

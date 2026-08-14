@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_PAYMENT_COLLECTION_SUMMARY } from '@/constants/urls';
+import { getBrowserTimezoneOrUndefined } from '@/utils/timezone';
 
 export interface CollectionDailyPoint {
     /** YYYY-MM-DD in the viewer's own zone (see `browserTimeZone`), not UTC. */
@@ -60,16 +61,12 @@ export function rangeToWindow(range: CollectionRangeKey): {
 /**
  * The zone the per-day buckets should be cut in. payment_log.created_at is a UTC instant, so
  * without this the backend split days on UTC midnight and a payment taken at 00:30 IST was charted
- * under the previous day. Undefined on the rare runtime with no Intl — the backend then keeps its
- * UTC default rather than guessing.
+ * under the previous day. Undefined on the rare runtime with no Intl, or when the detected zone
+ * can't be canonicalised — the backend then keeps its UTC default rather than receiving a value
+ * its `AT TIME ZONE ?` bind would reject (that raised 511s for admins whose browser reports the
+ * legacy `Asia/Calcutta`; see @/utils/timezone).
  */
-const browserTimeZone = (): string | undefined => {
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-    } catch {
-        return undefined;
-    }
-};
+const browserTimeZone = getBrowserTimezoneOrUndefined;
 
 export async function fetchCollectionSummary(
     request: CollectionSummaryRequest

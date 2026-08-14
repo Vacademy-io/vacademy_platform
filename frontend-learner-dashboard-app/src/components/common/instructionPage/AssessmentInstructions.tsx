@@ -195,7 +195,7 @@ export const AssessmentInstructions = ({
           </div>
           {hasInstructionText ? (
             <div
-              className="prose prose-sm max-w-none text-neutral-700"
+              className="richtext-content text-sm"
               dangerouslySetInnerHTML={{ __html: cleanHtml }}
             />
           ) : attachments.length === 0 ? (

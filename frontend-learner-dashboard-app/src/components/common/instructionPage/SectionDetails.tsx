@@ -1,6 +1,6 @@
 import { StatusCheck } from "@/components/design-system/chips";
 import { SectionDto } from "@/types/assessment";
-import { parseHtmlToString } from "@/lib/utils";
+import { isRichTextEmpty, sanitizeHtml } from "@/lib/utils";
 
 export const SectionDetails = ({ section }: { section: SectionDto }) => {
   return (
@@ -11,14 +11,22 @@ export const SectionDetails = ({ section }: { section: SectionDto }) => {
         </h2>
 
         <div className="space-y-4">
-          <div className="text-sm text-gray-600">
-            <div className="font-semibold ">
-              <p className="font-bold">Section Description:</p>
+          {/* Most sections carry an empty rich-text body ("<p></p>") rather
+              than null, so a bare truthiness check would print the label over
+              nothing. */}
+          {!isRichTextEmpty(section?.description?.content) && (
+            <div className="text-sm text-gray-600">
+              <div className="font-semibold ">
+                <p className="font-bold">Section Description:</p>
+              </div>
+              <div
+                className="richtext-content"
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHtml(section?.description?.content ?? ""),
+                }}
+              />
             </div>
-            <div className="text-gray-700">
-              {parseHtmlToString(section?.description?.content)}
-            </div>
-          </div>
+          )}
 
           <div className="text-sm text-gray-600">
             <div className="mb-4">

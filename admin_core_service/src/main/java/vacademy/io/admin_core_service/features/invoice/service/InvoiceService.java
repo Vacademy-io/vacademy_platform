@@ -4053,14 +4053,20 @@ public class InvoiceService {
         invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), rejectAudit));
         invoice = invoiceRepository.save(invoice);
 
-        // Reverse the DEBIT_ACCRUAL that was posted when this invoice was raised
-        userAccountLedgerService.recordCreditAdjustment(
+        // Reverse the DEBIT_ACCRUAL that was posted when this invoice was raised. This is a
+        // DEBIT_REVERSAL, not a credit: no money moved, so the accrual has to come back OUT
+        // of "total accrued". Booking it as a CREDIT_ADJUSTMENT (as this did) left the
+        // cancelled invoice's amount standing in Total Accrued and simultaneously inflated
+        // Total Paid by the same figure. The original due date rides along so the reversal
+        // also cancels the obligation out of the past-due bucket.
+        userAccountLedgerService.recordDebitReversal(
                 invoice.getUserId(), invoice.getInstituteId(),
                 invoice.getTotalAmount(),
                 StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR",
+                invoice.getDueDate() != null ? invoice.getDueDate().toLocalDate() : null,
                 "ADMIN_INVOICE", invoice.getId(),
-                null,
-                "Invoice rejected" + (StringUtils.hasText(reason) ? ": " + reason : ""));
+                invoice.getId(),
+                "Invoice cancelled" + (StringUtils.hasText(reason) ? ": " + reason : ""));
 
         log.info("[InvoiceReject] invoiceId={} invoiceNumber={} rejectedBy={} reason={}",
                 invoiceId, invoice.getInvoiceNumber(),

@@ -35,6 +35,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationEv
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
@@ -402,7 +403,20 @@ public class UserPlanService {
         // of any coupon discount) — the same figure the gateway order and payment log
         // carry — not the plan's list price. Accruing the list price inflated Due by
         // the coupon amount on every discounted enrollment.
-        if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
+        //
+        // CPO is deliberately excluded. A CPO plan's obligation is accrued per installment
+        // by StudentFeePaymentGenerationService.generateFeeBills(), which every CPO
+        // enrollment path runs; the mirror's synthetic PaymentPlan carries the TOTAL
+        // contract value, so also accruing it here booked the whole fee structure twice
+        // (Total Accrued and Due both showed 2x, and no payment could ever clear it).
+        boolean cpoPlan = paymentOption != null
+                && PaymentOptionType.CPO.name().equalsIgnoreCase(paymentOption.getType());
+        if (cpoPlan) {
+            logger.info("Skipping plan-level ledger accrual for CPO UserPlan ID={} — per-installment "
+                    + "StudentFeePayment accruals are authoritative.", saved.getId());
+        }
+        if (!cpoPlan
+                && UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
                 && paymentPlan != null && paymentPlan.getActualPrice() > 0
                 && enrollInvite != null && enrollInvite.getInstituteId() != null) {
             double accrualAmount = paymentPlan.getActualPrice();
@@ -633,31 +647,14 @@ public class UserPlanService {
                         userPlan.getId(), e.getMessage());
             }
 
-            // Ledger: credit payment for gateway-confirmed enrollment. Match on either
-            // signal — the webhook path historically only stamped payment_status=PAID
-            // (status stayed ACTIVE/INITIATED), so a SUCCESS-only filter never matched
-            // and gateway payments accrued debits with no credit ever recorded
-            // (panel showed Paid ₹0 / Due growing forever).
-            try {
-                paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
-                        .stream()
-                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus())
-                                || vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name()
-                                        .equalsIgnoreCase(pl.getPaymentStatus()))
-                        .findFirst()
-                        .ifPresent(pl -> {
-                            if (pl.getPaymentAmount() != null && pl.getPaymentAmount() > 0) {
-                                userAccountLedgerService.recordCreditPayment(
-                                        userPlan.getUserId(), enrollInvite.getInstituteId(),
-                                        java.math.BigDecimal.valueOf(pl.getPaymentAmount()),
-                                        pl.getCurrency() != null ? pl.getCurrency() : "INR",
-                                        "USER_PLAN", userPlan.getId(),
-                                        pl.getId(), null, "Gateway payment confirmed");
-                            }
-                        });
-            } catch (Exception e) {
-                logger.warn("Failed to record ledger credit for userPlan={}: {}", userPlan.getId(), e.getMessage());
-            }
+            // NOTE: the ledger CREDIT_PAYMENT used to be posted here. It has moved to
+            // PaymentLogService.recordLedgerCreditForPlanPayment(), which fires on the
+            // PaymentLog going PAID — the actual money event — instead of on activation.
+            // This method is an activation routine and returns early when the plan is
+            // already ACTIVE/PENDING, when it has no EnrollInvite, and on the stacking
+            // branch; the credit sat past all three, so only the FIRST payment of a
+            // still-pending plan was ever credited. Second fee installments and any other
+            // charge against an already-active plan posted nothing at all.
 
             // Process pending referral benefits after payment confirmation
             // This sends referrer reward emails that were deferred during enrollment

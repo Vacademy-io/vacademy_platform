@@ -79,25 +79,29 @@ public class LearnerService {
         userDTO.setUsername(learnerDetailsEditDTO.getUserName());
         authService.updateUser(userDTO, learnerDetailsEditDTO.getUserId());
 
-        // Mirror name/email changes to any WordPress LMS the learner's
-        // courses are connected to (async, best-effort — never blocks or
-        // fails the profile edit).
-        String effectiveEmail = StringUtils.hasText(learnerDetailsEditDTO.getEmail())
-                ? learnerDetailsEditDTO.getEmail()
-                : previousEmail;
-        String effectiveFullName = StringUtils.hasText(learnerDetailsEditDTO.getFullName())
-                ? learnerDetailsEditDTO.getFullName()
-                : previousFullName;
+        syncProfileToLms(learnerDetailsEditDTO.getUserId(), previousEmail, previousFullName,
+                learnerDetailsEditDTO.getEmail(), learnerDetailsEditDTO.getFullName());
+        return "success";
+    }
+
+    /**
+     * Mirror name/email changes to any WordPress LMS the learner's courses are
+     * connected to (async, best-effort — never blocks or fails the profile edit).
+     * The LMS looks the user up by their PREVIOUS email, so callers must capture
+     * it before mutating the Student entity.
+     */
+    private void syncProfileToLms(String userId, String previousEmail, String previousFullName,
+            String newEmail, String newFullName) {
+        String effectiveEmail = StringUtils.hasText(newEmail) ? newEmail : previousEmail;
+        String effectiveFullName = StringUtils.hasText(newFullName) ? newFullName : previousFullName;
         boolean emailChanged = StringUtils.hasText(previousEmail)
                 && !previousEmail.trim().equalsIgnoreCase(effectiveEmail != null ? effectiveEmail.trim() : "");
         boolean nameChanged = !Objects.equals(
                 previousFullName != null ? previousFullName.trim() : null,
                 effectiveFullName != null ? effectiveFullName.trim() : null);
         if (emailChanged || nameChanged) {
-            learnerLmsUserSyncService.syncProfileUpdate(
-                    learnerDetailsEditDTO.getUserId(), previousEmail, effectiveEmail, effectiveFullName);
+            learnerLmsUserSyncService.syncProfileUpdate(userId, previousEmail, effectiveEmail, effectiveFullName);
         }
-        return "success";
     }
 
     public String updateFaceFileId(String faceFileId, CustomUserDetails userDetails) {
@@ -126,25 +130,55 @@ public class LearnerService {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        student.setUsername(userDTO.getUsername());
-        student.setFullName(userDTO.getFullName());
-        student.setAddressLine(userDTO.getAddressLine());
-        student.setRegion(userDTO.getRegion());
-        student.setCity(userDTO.getCity());
-        student.setPinCode(userDTO.getPinCode());
-        student.setMobileNumber(userDTO.getMobileNumber());
-        student.setDateOfBirth(userDTO.getDateOfBirth());
-        student.setGender(userDTO.getGender());
-        student.setFatherName(learnerExtraDetails.getFathersName());
-        student.setMotherName(learnerExtraDetails.getMothersName());
-        student.setParentsMobileNumber(learnerExtraDetails.getParentsMobileNumber());
-        student.setParentsEmail(learnerExtraDetails.getParentsEmail());
-        student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
-        student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
-        student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+        // Captured before mutation — the LMS sync below matches the WordPress
+        // user on their previous email.
+        String previousEmail = student.getEmail();
+        String previousFullName = student.getFullName();
+
+        if (StringUtils.hasText(userDTO.getUsername()))
+            student.setUsername(userDTO.getUsername());
+        if (StringUtils.hasText(userDTO.getEmail()))
+            student.setEmail(userDTO.getEmail());
+        if (StringUtils.hasText(userDTO.getFullName()))
+            student.setFullName(userDTO.getFullName());
+        if (StringUtils.hasText(userDTO.getAddressLine()))
+            student.setAddressLine(userDTO.getAddressLine());
+        if (StringUtils.hasText(userDTO.getRegion()))
+            student.setRegion(userDTO.getRegion());
+        if (StringUtils.hasText(userDTO.getCity()))
+            student.setCity(userDTO.getCity());
+        if (StringUtils.hasText(userDTO.getPinCode()))
+            student.setPinCode(userDTO.getPinCode());
+        if (StringUtils.hasText(userDTO.getMobileNumber()))
+            student.setMobileNumber(userDTO.getMobileNumber());
+        if (userDTO.getDateOfBirth() != null)
+            student.setDateOfBirth(userDTO.getDateOfBirth());
+        if (StringUtils.hasText(userDTO.getGender()))
+            student.setGender(userDTO.getGender());
+        if (learnerExtraDetails != null) {
+            if (StringUtils.hasText(learnerExtraDetails.getFathersName()))
+                student.setFatherName(learnerExtraDetails.getFathersName());
+            if (StringUtils.hasText(learnerExtraDetails.getMothersName()))
+                student.setMotherName(learnerExtraDetails.getMothersName());
+            if (StringUtils.hasText(learnerExtraDetails.getParentsMobileNumber()))
+                student.setParentsMobileNumber(learnerExtraDetails.getParentsMobileNumber());
+            if (StringUtils.hasText(learnerExtraDetails.getParentsEmail()))
+                student.setParentsEmail(learnerExtraDetails.getParentsEmail());
+            if (StringUtils.hasText(learnerExtraDetails.getLinkedInstituteName()))
+                student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+            if (StringUtils.hasText(learnerExtraDetails.getParentsToMotherEmail()))
+                student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
+            if (StringUtils.hasText(learnerExtraDetails.getParentsToMotherMobileNumber()))
+                student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+        }
+        // Deliberately unconditional: the edit dialog sends an empty file id to
+        // remove the learner's profile picture.
         student.setFaceFileId(userDTO.getProfilePicFileId());
 
         instituteStudentRepository.save(student);
+
+        syncProfileToLms(userDTO.getId(), previousEmail, previousFullName,
+                userDTO.getEmail(), userDTO.getFullName());
         return "done";
     }
 

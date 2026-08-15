@@ -41,6 +41,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import CallNumberVisibilityCard from './CallNumberVisibilityCard';
 import SubOrgModuleCard from './SubOrgModuleCard';
 import {
     SettingsSectionsLayout,
@@ -2403,6 +2404,8 @@ export default function TeacherDisplaySettings() {
             />
 
             <AudienceAccessCard roleName="TEACHER" roleLabel="Teacher" />
+
+            <CallNumberVisibilityCard roleName="TEACHER" roleLabel="Teacher" />
             </section>
             </SettingsSectionsLayout>
 

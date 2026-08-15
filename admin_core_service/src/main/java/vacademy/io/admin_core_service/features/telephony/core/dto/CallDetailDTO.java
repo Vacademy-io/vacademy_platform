@@ -20,8 +20,9 @@ import java.util.Map;
  *
  * <p>{@code providerDetails} is a curated, human-labeled subset safe to show to
  * any dashboard viewer. {@code rawProviderResponse} is the verbatim webhook body
- * and may contain phone numbers, so it is populated only for callers holding the
- * {@code VIEW_CALL_NUMBERS} authority (same gate as the masked numbers).
+ * and may contain phone numbers, so it is populated only for callers whose role
+ * may see full numbers (same gate as the masked numbers — see
+ * {@link vacademy.io.admin_core_service.features.telephony.core.CallNumberVisibilityService}).
  */
 @Data
 @Builder

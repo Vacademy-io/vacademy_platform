@@ -428,13 +428,10 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                 </CardContent>
             </Card>
 
-            {/* One-off disclaimer video.
-                Rendered ONLY for institutes opted into the feature. While
-                disclaimerVideoFeatureEnabled is false the card does not exist for
-                them — the feature is not advertised to institutes that are not
-                using it yet. */}
-            {settings.disclaimerVideoFeatureEnabled && (
-                <Card className="border-neutral-200 shadow-none">
+            {/* Disclaimer video. Always available here — this is where an admin
+                turns the feature on. While it is off, the per-class disclaimer
+                control stays hidden on the live-class form. */}
+            <Card className="border-neutral-200 shadow-none">
                     <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
                         <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
                             <ClipboardText size={18} />
@@ -442,16 +439,17 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                         <div className="flex-1">
                             <CardTitle className="text-base">Disclaimer Video</CardTitle>
                             <CardDescription>
-                                Played once, before a learner&apos;s very first live class — not
-                                per class and not per day. Every live class follows this one
-                                setting, including classes created automatically by a workflow.
+                                Shown before a learner joins a class they have not attended
+                                yet, and not again once they are marked present in it. One
+                                video for every live class, including classes created
+                                automatically by a workflow.
                             </CardDescription>
                         </div>
                     </CardHeader>
                     <CardContent className="border-t border-neutral-100 p-5">
                         <SettingRow
-                            title="Show a disclaimer before the first class"
-                            description="When on, learners watch the video below before joining their first live class. Once they attend a class they are never asked again."
+                            title="Show a disclaimer before joining a class"
+                            description="When on, a learner watches the video below before joining a class they have not attended yet. Marking them present retires it for that class."
                             checked={settings.disclaimerVideoEnabled}
                             onChange={(v) => togglePrimitive('disclaimerVideoEnabled', v)}
                         />
@@ -482,9 +480,8 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                                     </div>
                                 )}
                         </div>
-                    </CardContent>
-                </Card>
-            )}
+                </CardContent>
+            </Card>
 
             {/* Daily attendance default */}
             <Card className="border-neutral-200 shadow-none">

@@ -1,4 +1,5 @@
 // components/bulk-actions.tsx
+import type { ReactNode } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { CaretUpDown, XCircle } from '@phosphor-icons/react';
 import { BulkActionsMenu } from './bulk-actions-menu';
@@ -12,6 +13,11 @@ interface BulkActionsProps {
     onReset: () => void;
     // Surfaces the bulk "Accept Request" action while the Approval Status filter is active.
     showApprovalActions?: boolean;
+    /**
+     * Rendered next to the count, on the left. Used for "Select all N" — it belongs beside the
+     * count it is about, not stranded in a separate row.
+     */
+    leftSlot?: ReactNode;
 }
 
 export const BulkActions = ({
@@ -20,6 +26,7 @@ export const BulkActions = ({
     selectedStudents, // Add this
     onReset,
     showApprovalActions = false,
+    leftSlot,
 }: BulkActionsProps) => {
     //   const { toast } = useToast();
 
@@ -27,10 +34,15 @@ export const BulkActions = ({
         return null;
     }
 
+    // Full width with the count pinned left and the actions right, so the bar reads the same way
+    // wherever it sits.
     return (
-        <div className="flex items-center gap-5 text-neutral-600">
-            <div className="flex gap-1">
-                [{selectedCount}] <div>Selected</div>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 text-neutral-600">
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex gap-1">
+                    <span className="font-semibold text-primary-500">{selectedCount}</span> selected
+                </div>
+                {leftSlot}
             </div>
 
             <div className="flex items-center gap-3">

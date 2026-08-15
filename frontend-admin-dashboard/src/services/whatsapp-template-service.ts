@@ -31,6 +31,74 @@ const getAccessToken = (): string | null => {
     return null;
 };
 
+/**
+ * Pull the readable reason out of a failed response. The template endpoints answer with
+ * `{ message, hint, code }`; older platform endpoints use `{ ex }`. Falls back to the raw body so a
+ * non-JSON error page still tells you something.
+ */
+const describeFailure = async (response: Response): Promise<string> => {
+    const raw = await response.text().catch(() => '');
+    try {
+        const body = JSON.parse(raw) as { message?: string; hint?: string; ex?: string };
+        const base = body.message || body.ex;
+        if (base) return body.hint ? `${base} ${body.hint}` : base;
+    } catch {
+        /* not JSON — fall through to the raw text */
+    }
+    return raw?.trim()
+        ? `WhatsApp templates request failed (${response.status}): ${raw.slice(0, 300)}`
+        : `WhatsApp templates request failed (${response.status}).`;
+};
+
+/** notification_service returns its own DTO shape; the settings tab is written against Meta's. */
+const toMetaTemplate = (dto: {
+    id?: string;
+    name: string;
+    language?: string;
+    status?: string;
+    category?: string;
+    headerType?: string;
+    headerText?: string;
+    bodyText?: string;
+    footerText?: string;
+    buttons?: Array<{ type?: string; text?: string; url?: string; phoneNumber?: string }>;
+    createdAt?: string;
+    submittedAt?: string;
+    approvedAt?: string;
+}): MetaWhatsAppTemplate => {
+    const components: MetaWhatsAppTemplate['components'] = [];
+    if (dto.headerType && dto.headerType !== 'NONE') {
+        components.push({
+            type: 'HEADER',
+            format: dto.headerType as 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT',
+            ...(dto.headerText ? { text: dto.headerText } : {}),
+        });
+    }
+    components.push({ type: 'BODY', text: dto.bodyText || '' });
+    if (dto.footerText) components.push({ type: 'FOOTER', text: dto.footerText });
+    if (dto.buttons?.length) {
+        components.push({
+            type: 'BUTTONS',
+            buttons: dto.buttons.map((b) => ({
+                type: (b.type || 'QUICK_REPLY') as 'URL' | 'PHONE_NUMBER' | 'QUICK_REPLY',
+                text: b.text || '',
+                ...(b.url ? { url: b.url } : {}),
+                ...(b.phoneNumber ? { phone_number: b.phoneNumber } : {}),
+            })),
+        });
+    }
+    return {
+        id: dto.id || dto.name,
+        name: dto.name,
+        language: dto.language || 'en',
+        status: (dto.status || 'PENDING') as MetaWhatsAppTemplate['status'],
+        category: (dto.category || 'UTILITY') as MetaWhatsAppTemplate['category'],
+        components,
+        createdAt: dto.createdAt || '',
+        updatedAt: dto.approvedAt || dto.submittedAt || dto.createdAt || '',
+    };
+};
+
 // Service for managing WhatsApp templates and mappings
 export class WhatsAppTemplateService {
     private static instance: WhatsAppTemplateService;
@@ -65,95 +133,58 @@ export class WhatsAppTemplateService {
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to sync templates: ${response.status} ${errorText}`);
+                // The endpoint answers a failure with { message, hint } (or the platform's
+                // { ex } shape). Quote it — "Meta access token is expired" is actionable in a way
+                // that "Failed to sync templates: 400" is not.
+                throw new Error(await describeFailure(response));
             }
 
-            const result = await response.json();
-            this.metaTemplatesCache = result.templates || [];
+            // /sync answers {synced, instituteId} — it does not return the templates themselves.
+            // Reading result.templates left the cache empty on every successful sync, which is why
+            // this method only ever produced anything via its mock fallback. Fetch the list.
+            this.metaTemplatesCache = await this.fetchTemplateList(accessToken, instituteId);
             this.lastSyncTime = new Date();
 
             return this.metaTemplatesCache;
         } catch (error) {
-            return this.getMockTemplates();
+            // Previously this swallowed every failure and returned four hard-coded sample
+            // templates, so a broken sync looked like a successful one and admins picked
+            // template names that do not exist on their WABA. Fail loudly instead.
+            console.error('[whatsapp-templates] sync failed:', error);
+            throw error instanceof Error ? error : new Error('Could not sync WhatsApp templates.');
         }
     }
 
-    // Mock data for development when API is not available
-    private getMockTemplates(): MetaWhatsAppTemplate[] {
-        const mockTemplates: MetaWhatsAppTemplate[] = [
-            {
-                id: 'course_enrollment_confirmation',
-                name: 'course_enrollment_confirmation',
-                language: 'en',
-                status: 'APPROVED',
-                category: 'TRANSACTIONAL',
-                components: [
-                    {
-                        type: 'BODY',
-                        text: 'Hi {{1}}, you have been successfully enrolled in the course {{2}}. Your start date is {{3}}.'
-                    }
-                ],
-                createdAt: '2024-01-20T10:00:00Z',
-                updatedAt: '2024-01-20T10:00:00Z'
-            },
-            {
-                id: 'assignment_reminder',
-                name: 'assignment_reminder',
-                language: 'en',
-                status: 'APPROVED',
-                category: 'UTILITY',
-                components: [
-                    {
-                        type: 'BODY',
-                        text: 'Hi {{1}}, this is a reminder that your assignment {{2}} is due on {{3}}.',
-                    }
-                ],
-                createdAt: '2024-01-19T10:00:00Z',
-                updatedAt: '2024-01-19T10:00:00Z'
-            },
-            {
-                id: 'batch_completion_congratulations',
-                name: 'batch_completion_congratulations',
-                language: 'en',
-                status: 'APPROVED',
-                category: 'TRANSACTIONAL',
-                components: [
-                    {
-                        type: 'BODY',
-                        text: 'Congratulations {{1}}! You have successfully completed the {{2}} batch. Your certificate is ready for download.',
-                    }
-                ],
-                createdAt: '2024-01-18T10:00:00Z',
-                updatedAt: '2024-01-18T10:00:00Z'
-            },
-            {
-                id: 'new_batch_announcement',
-                name: 'new_batch_announcement',
-                language: 'en',
-                status: 'PENDING',
-                category: 'MARKETING',
-                components: [
-                    {
-                        type: 'BODY',
-                        text: 'Exciting news! A new batch of {{1}} is starting on {{2}}. Register now to secure your spot!',
-                    }
-                ],
-                createdAt: '2024-01-17T10:00:00Z',
-                updatedAt: '2024-01-17T10:00:00Z'
-            }
-        ];
-
-        this.metaTemplatesCache = mockTemplates;
-        this.lastSyncTime = new Date();
-        return mockTemplates;
+    /** Read this institute's stored templates (post-sync, or on their own). */
+    private async fetchTemplateList(
+        accessToken: string,
+        instituteId: string | null | undefined
+    ): Promise<MetaWhatsAppTemplate[]> {
+        const response = await fetch(
+            `${NOTIFICATION_API_BASE}/list?instituteId=${instituteId}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!response.ok) {
+            throw new Error(await describeFailure(response));
+        }
+        const list = (await response.json()) as Parameters<typeof toMetaTemplate>[0][];
+        return (Array.isArray(list) ? list : [])
+            .filter((t) => t.status !== 'DELETED')
+            .map(toMetaTemplate);
     }
 
     // Get approved templates from Meta
     async getMetaTemplates(forceRefresh = false): Promise<MetaWhatsAppTemplate[]> {
-        if (forceRefresh || this.metaTemplatesCache.length === 0) {
-            return await this.syncMetaTemplates();
+        if (!forceRefresh && this.metaTemplatesCache.length > 0) {
+            return this.metaTemplatesCache;
         }
+        const accessToken = getAccessToken();
+        if (!accessToken) {
+            throw new Error('Access token not found. Please login again.');
+        }
+        // Read the stored list rather than forcing a Meta round trip. Opening a tab should not
+        // re-poll Meta; that is what the explicit "Sync" action is for.
+        this.metaTemplatesCache = await this.fetchTemplateList(accessToken, getInstituteId());
         return this.metaTemplatesCache;
     }
 

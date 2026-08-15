@@ -45,6 +45,10 @@ import {
     getMessageTemplate,
 } from '@/services/message-template-service';
 import type { MessageTemplate } from '@/types/message-template-types';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { toast } from 'sonner';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
@@ -479,7 +483,22 @@ export function SendMessageDialog({
 
             const result = await sendAudienceMessage(campaignId, payload);
             setSendResult(result);
-            toast.success('Message sent successfully');
+            // Same reasoning as the learner bulk send: a partially failed batch reported as
+            // "sent successfully" is how recipients get silently missed. "Accepted" is also the
+            // honest word — the provider took it, delivery is confirmed separately.
+            const failedCount = result.failed ?? 0;
+            const acceptedCount = result.accepted ?? 0;
+            const totalCount = result.recipient_count ?? acceptedCount + failedCount;
+            if (acceptedCount === 0) {
+                toast.error('No messages could be sent. See the breakdown below.');
+            } else if (failedCount > 0) {
+                toast.warning(
+                    `Accepted for ${acceptedCount} of ${totalCount} — ${failedCount} failed. See the breakdown below.`,
+                    { duration: 8000 }
+                );
+            } else {
+                toast.success(`Message accepted for ${acceptedCount} recipients`);
+            }
         } catch (err: any) {
             toast.error(err?.message ?? 'Failed to send message');
         } finally {
@@ -597,21 +616,14 @@ export function SendMessageDialog({
                                 Loading templates...
                             </div>
                         ) : (
-                            <Select
+                            <TemplateSearchableSelect
+                                options={toTemplateOptions(approvedTemplates)}
                                 value={selectedTemplate?.name ?? ''}
-                                onValueChange={handleTemplateSelect}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select an approved template" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {approvedTemplates.map((t) => (
-                                        <SelectItem key={t.name} value={t.name}>
-                                            {t.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                onChange={handleTemplateSelect}
+                                placeholder="Select an approved template"
+                                emptyText="No approved template matches your search."
+                                portal={false}
+                            />
                         )}
                     </div>
 
@@ -648,25 +660,19 @@ export function SendMessageDialog({
                                 Loading templates...
                             </div>
                         ) : (
-                            <Select
+                            <TemplateSearchableSelect
+                                options={toTemplateOptions(emailTemplates, 'id')}
                                 value={selectedEmailTemplateId}
-                                onValueChange={handleEmailTemplateSelect}
+                                onChange={handleEmailTemplateSelect}
+                                placeholder="Select a template"
+                                emptyText="No template matches your search."
+                                noneOption={{
+                                    value: 'custom',
+                                    label: 'Custom — write from scratch',
+                                }}
                                 disabled={loadingTemplateContent}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a template" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="custom">
-                                        Custom — write from scratch
-                                    </SelectItem>
-                                    {emailTemplates.map((t) => (
-                                        <SelectItem key={t.id} value={t.id}>
-                                            {t.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                portal={false}
+                            />
                         )}
                         {loadingTemplateContent && (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">

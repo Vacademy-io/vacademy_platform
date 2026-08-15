@@ -32,6 +32,10 @@ import {
     type WhatsAppTemplateDTO,
 } from '@/routes/communication/whatsapp-templates/-services/template-api';
 import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
+import {
     fetchCustomFieldSetup,
     type CustomFieldSetupItem,
 } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
@@ -335,10 +339,22 @@ export const SendMessageDialog = () => {
             }
 
             setSendResult(result);
-            if (result.status === 'FAILED') {
+            // A batch routinely comes back partially failed (Meta throttling, invalid numbers,
+            // 24h-window rules). Reporting a flat "sent" for those is how a bulk send quietly
+            // misses people — report the split. "Accepted" is also the honest word: it means
+            // WhatsApp took the message, not that it reached the handset.
+            const failedCount = result.failed ?? 0;
+            const acceptedCount = result.accepted ?? 0;
+            const totalCount = result.total ?? recipients.length;
+            if (result.status === 'FAILED' || acceptedCount === 0) {
                 toast.error('Failed to send WhatsApp messages. Please try again.');
+            } else if (failedCount > 0) {
+                toast.warning(
+                    `Accepted for ${acceptedCount} of ${totalCount} — ${failedCount} failed. See the list below.`,
+                    { duration: 8000 }
+                );
             } else {
-                toast.success('WhatsApp messages sent');
+                toast.success(`WhatsApp message accepted for ${acceptedCount} recipients`);
             }
         } catch (err) {
             toast.error(
@@ -403,21 +419,16 @@ export const SendMessageDialog = () => {
                         Loading templates...
                     </div>
                 ) : (
-                    <Select
+                    <TemplateSearchableSelect
+                        options={toTemplateOptions(approvedTemplates)}
                         value={selectedTemplate?.name ?? ''}
-                        onValueChange={handleTemplateSelect}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select an approved template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {approvedTemplates.map((t) => (
-                                <SelectItem key={t.name} value={t.name}>
-                                    {t.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        onChange={handleTemplateSelect}
+                        placeholder="Select an approved template"
+                        emptyText="No approved template matches your search."
+                        // Inside a Radix Dialog: react-remove-scroll blocks scrolling on
+                        // portalled nodes, so the list must render inline.
+                        portal={false}
+                    />
                 )}
                 {!loadingTemplates && approvedTemplates.length === 0 && (
                     <p className="text-xs text-muted-foreground">

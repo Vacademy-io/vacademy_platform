@@ -34,6 +34,10 @@ import {
 } from '@/routes/communication/whatsapp-templates/-services/template-api';
 import { getMessageTemplates, getMessageTemplate } from '@/services/message-template-service';
 import type { MessageTemplate } from '@/types/message-template-types';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { sendNotification } from '@/services/unified-send-service';
 import type { UnifiedSendResponse } from '@/services/unified-send-service';
 import {
@@ -551,23 +555,16 @@ export function IndividualSendDialog({
                         Loading templates...
                     </div>
                 ) : (
-                    <Select
+                    <TemplateSearchableSelect
+                        options={toTemplateOptions(emailTemplates, 'id')}
                         value={selectedEmailTemplateId}
-                        onValueChange={handleEmailTemplateSelect}
+                        onChange={handleEmailTemplateSelect}
+                        placeholder="Select a template"
+                        emptyText="No template matches your search."
+                        noneOption={{ value: 'custom', label: 'Custom — write from scratch' }}
                         disabled={loadingTemplateContent}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="custom">Custom — write from scratch</SelectItem>
-                            {emailTemplates.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>
-                                    {t.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        portal={false}
+                    />
                 )}
                 {loadingTemplateContent && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -655,21 +652,14 @@ export function IndividualSendDialog({
                         Loading templates...
                     </div>
                 ) : (
-                    <Select
+                    <TemplateSearchableSelect
+                        options={toTemplateOptions(approvedWaTemplates)}
                         value={selectedWaTemplate?.name ?? ''}
-                        onValueChange={handleWaTemplateSelect}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select an approved template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {approvedWaTemplates.map((t) => (
-                                <SelectItem key={t.name} value={t.name}>
-                                    {t.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        onChange={handleWaTemplateSelect}
+                        placeholder="Select an approved template"
+                        emptyText="No approved template matches your search."
+                        portal={false}
+                    />
                 )}
             </div>
             <div className="space-y-2">

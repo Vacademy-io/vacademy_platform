@@ -55,7 +55,16 @@ export const MyDropdown = ({
                             <CaretRight className="size-4" />
                         </DropdownMenuSubTrigger>
                         <DropdownMenuPortal>
-                            <DropdownMenuSubContent className="z-[9999] min-w-32 rounded-lg bg-white py-2 shadow-lg">
+                            <DropdownMenuSubContent
+                                className="z-[9999] min-w-32 overflow-y-auto rounded-lg bg-white py-2 shadow-lg"
+                                collisionPadding={8}
+                                // Same reasoning as the parent menu — a long submenu near an edge
+                                // must scroll rather than overflow off-screen.
+                                style={{
+                                    maxHeight:
+                                        'var(--radix-dropdown-menu-content-available-height)',
+                                }}
+                            >
                                 {item.subItems.map((subItem) => renderMenuItem(subItem))}
                             </DropdownMenuSubContent>
                         </DropdownMenuPortal>
@@ -125,11 +134,20 @@ export const MyDropdown = ({
                 <DropdownMenuPortal container={document.getElementById('portal-root')}>
                     <DropdownMenuContent
                         className={cn(
-                            'z-[9999] mt-2 min-w-60 rounded-lg bg-white py-2 shadow focus:outline-none',
+                            'z-[9999] mt-2 min-w-60 overflow-y-auto rounded-lg bg-white py-2 shadow focus:outline-none',
                             contentClassName
                         )}
                         sideOffset={5}
                         align="start"
+                        collisionPadding={8}
+                        // Radix measures the space actually left between the trigger and the
+                        // viewport edge and publishes it as this variable. Capping the menu to it
+                        // (plus overflow-y-auto above) means a menu that opens upward from a bar at
+                        // the top of the page scrolls instead of having its first items cut off
+                        // above the fold. Genuinely dynamic — it can only be known at open time.
+                        style={{
+                            maxHeight: 'var(--radix-dropdown-menu-content-available-height)',
+                        }}
                     >
                         {dropdownList.map((item) => renderMenuItem(item))}
                     </DropdownMenuContent>

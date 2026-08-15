@@ -54,7 +54,9 @@ export const WhatsAppTemplatesTab: React.FC = () => {
             setLastSyncTime(whatsappTemplateService.getLastSyncTime());
         } catch (err) {
             console.error('Error loading WhatsApp templates:', err);
-            setError('Failed to load WhatsApp templates. Please try again.');
+            // Quote the reason the service gives us — "the Meta access token is expired" tells the
+            // admin what to fix; "please try again" sends them round the same loop.
+            setError(err instanceof Error ? err.message : 'Failed to load WhatsApp templates.');
         } finally {
             setLoading(false);
         }
@@ -80,7 +82,7 @@ export const WhatsAppTemplatesTab: React.FC = () => {
             setSuccess('WhatsApp templates synced successfully!');
         } catch (err) {
             console.error('Error syncing templates:', err);
-            setError('Failed to sync templates. Please try again.');
+            setError(err instanceof Error ? err.message : 'Failed to sync templates.');
         } finally {
             setSyncing(false);
         }

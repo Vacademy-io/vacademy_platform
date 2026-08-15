@@ -22,7 +22,9 @@ import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { UserCircle } from '@phosphor-icons/react';
 import { BulkActions } from './bulk-actions/bulk-actions';
-import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
+import { useCrossPageSelection } from '@/hooks/use-cross-page-selection';
+import { reportApiError } from '@/lib/report-api-error';
+import { MyButton } from '@/components/design-system/button';
 import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { listAccessibleSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
@@ -273,6 +275,8 @@ export const StudentsListSection = () => {
         page,
         handleSort,
         handlePageChange,
+        totalElements,
+        fetchAllMatching,
     } = useStudentTable(
         appliedFilters,
         setAppliedFilters,
@@ -301,57 +305,36 @@ export const StudentsListSection = () => {
     // Fetch lead profiles when lead system is enabled (needed for both score badge and counsellor column)
     const { profiles: leadProfiles } = useLeadProfiles(studentUserIds, leadReady);
 
-    const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
-    useEffect(() => {
-        if (studentTableData?.content) {
-            setAllPagesData((prev) => ({
-                ...prev,
-                [page]: studentTableData.content,
-            }));
-        }
-    }, [studentTableData?.content, page]);
+    // Selection spans pages: "Select all" pulls every learner matching the active filters, so a
+    // bulk action isn't capped at the ten rows on screen. (The hook remembers each visited page's
+    // rows itself, which is what the local allPagesData map used to do.)
+    const {
+        currentPageSelection,
+        onRowSelectionChange: handleRowSelectionChange,
+        selectedRows: selectedStudents,
+        selectedCount: totalSelectedCount,
+        reset: handleResetSelections,
+        selectAllMatching,
+        isSelectingAll,
+        canSelectAll,
+    } = useCrossPageSelection<StudentTable>({
+        page,
+        pageRows: studentTableData?.content ?? [],
+        getId: (student) => student.id,
+        totalElements,
+        fetchAllMatching,
+        // Changing a filter invalidates a "select all" made under the previous one.
+        resetKey: JSON.stringify(appliedFilters),
+        onError: (error) =>
+            reportApiError(error, {
+                feature: 'students-select-all',
+                fallbackMessage: 'Could not select everyone — try again.',
+            }),
+    });
 
-    const [rowSelections, setRowSelections] = useState<Record<number, Record<string, boolean>>>({});
+    const getSelectedStudents = (): StudentTable[] => selectedStudents;
 
-    const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updaterOrValue) => {
-        const newSelection =
-            typeof updaterOrValue === 'function'
-                ? updaterOrValue(rowSelections[page] || {})
-                : updaterOrValue;
-
-        setRowSelections((prev) => ({
-            ...prev,
-            [page]: newSelection,
-        }));
-    };
-
-    const handleResetSelections = () => {
-        setRowSelections({});
-    };
-
-    const getSelectedStudents = (): StudentTable[] => {
-        return Object.entries(rowSelections).flatMap(([pageNum, selections]) => {
-            const pageData = allPagesData[parseInt(pageNum)];
-            if (!pageData) return [];
-
-            console.log(pageData);
-
-            return Object.entries(selections)
-                .filter(([, isSelected]) => isSelected)
-                .map(([index]) => pageData[parseInt(index)])
-                .filter((student): student is StudentTable => student !== undefined);
-        });
-    };
-
-    const getSelectedStudentIds = (): string[] => {
-        return getSelectedStudents().map((student) => student.id);
-    };
-
-    const currentPageSelection = rowSelections[page] || {};
-    const totalSelectedCount = Object.values(rowSelections).reduce(
-        (count, pageSelection) => count + Object.keys(pageSelection).length,
-        0
-    );
+    const getSelectedStudentIds = (): string[] => selectedStudents.map((student) => student.id);
 
     // Approval actions (row-level Accept/Decline and the bulk Accept action) are shown
     // whenever the Approval Status filter (Pending for Approval / Invited) is active.
@@ -452,6 +435,44 @@ export const StudentsListSection = () => {
                         <EmptyState />
                     ) : (
                         <div className="animate-slideInRight flex flex-col gap-2">
+                            {/* The bulk-action bar sits above the table, where the eye already is
+                                after ticking the header checkbox. Below the table it was easy to
+                                miss entirely on a full page of rows. */}
+                            {totalSelectedCount > 0 && (
+                                <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                                    <BulkActions
+                                        selectedCount={totalSelectedCount}
+                                        selectedStudentIds={getSelectedStudentIds()}
+                                        selectedStudents={getSelectedStudents()}
+                                        onReset={handleResetSelections}
+                                        showApprovalActions={showApprovalActions}
+                                        leftSlot={
+                                            canSelectAll ? (
+                                                <MyButton
+                                                    buttonType="text"
+                                                    scale="small"
+                                                    disable={isSelectingAll}
+                                                    onClick={selectAllMatching}
+                                                >
+                                                    {isSelectingAll
+                                                        ? 'Selecting…'
+                                                        : `Select all ${totalElements}`}
+                                                </MyButton>
+                                            ) : (
+                                                <span className="text-caption text-neutral-500">
+                                                    all{' '}
+                                                    {getTerminologyPlural(
+                                                        RoleTerms.Learner,
+                                                        SystemTerms.Learner
+                                                    ).toLocaleLowerCase()}{' '}
+                                                    matching your filters
+                                                </span>
+                                            )
+                                        }
+                                    />
+                                </div>
+                            )}
+
                             {/* Modern table container */}
                             <div className="overflow-hidden rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 shadow-sm">
                                 <div className="max-w-full" ref={tableRef}>
@@ -643,13 +664,8 @@ export const StudentsListSection = () => {
 
                             {/* Enhanced footer with bulk actions and pagination */}
                             <div className="flex flex-col justify-between gap-2 rounded-lg border border-neutral-200/50 bg-gradient-to-r from-neutral-50/50 to-white px-3 py-2 lg:flex-row lg:items-center">
-                                <BulkActions
-                                    selectedCount={totalSelectedCount}
-                                    selectedStudentIds={getSelectedStudentIds()}
-                                    selectedStudents={getSelectedStudents()}
-                                    onReset={handleResetSelections}
-                                    showApprovalActions={showApprovalActions}
-                                />
+                                {/* Bulk actions moved to the bar above the table; this row is now
+                                    just pagination. */}
                                 <div className="flex justify-center lg:justify-end">
                                     <MyPagination
                                         currentPage={page}

@@ -16,6 +16,10 @@ import { useInstituteQuery } from '@/services/student-list-section/getInstituteD
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useAiCampaignOptions } from '@/hooks/use-ai-campaign-options';
 import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
+import {
     getQueryKeysQuery,
     getTriggerEventsCatalogQuery,
     getTemplatesByTypeQuery,
@@ -315,11 +319,12 @@ export function NodeConfigPanel() {
                             {/* Email template */}
                             <div>
                                 <Label className="text-xs">Email Template <span className="text-gray-300 text-[10px]">(optional — skip to use pre-built email from data source)</span></Label>
-                                <select
-                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    value={(data.config.templateName as string) ?? ''}
-                                    onChange={(e) => {
-                                        const templateName = e.target.value;
+                                <TemplateSearchableSelect
+                                    className="mt-1"
+                                    options={toTemplateOptions(emailTemplates ?? [])}
+                                    value={(data.config.templateName as string) || '__none__'}
+                                    onChange={(selected) => {
+                                        const templateName = selected === '__none__' ? '' : selected;
                                         const tmpl = emailTemplates?.find((t) => t.name === templateName);
                                         let templateParams = null;
                                         if (tmpl?.dynamic_parameters) {
@@ -331,14 +336,13 @@ export function NodeConfigPanel() {
                                             _templateParams: templateParams,
                                         });
                                     }}
-                                >
-                                    <option value="">No template (use data source's subject/body)</option>
-                                    {emailTemplates?.map((t) => (
-                                        <option key={t.id} value={t.name}>
-                                            {t.name} {t.subject ? `— ${t.subject}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    placeholder="No template (use data source's subject/body)"
+                                    emptyText="No email template matches your search."
+                                    noneOption={{
+                                        value: '__none__',
+                                        label: "No template (use data source's subject/body)",
+                                    }}
+                                />
                             </div>
 
                             {/* Recipient email field — for choosing which email to send to */}
@@ -532,11 +536,11 @@ export function NodeConfigPanel() {
                     <>
                         <div>
                             <Label className="text-xs">WhatsApp Template</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            <TemplateSearchableSelect
+                                className="mt-1"
+                                options={toTemplateOptions(whatsappTemplates ?? [])}
                                 value={(data.config.templateName as string) ?? ''}
-                                onChange={(e) => {
-                                    const templateName = e.target.value;
+                                onChange={(templateName) => {
                                     const tmpl = whatsappTemplates?.find((t) => t.name === templateName);
                                     let templateParams = null;
                                     if (tmpl?.dynamic_parameters) {
@@ -549,14 +553,9 @@ export function NodeConfigPanel() {
                                         _templateParams: templateParams,
                                     });
                                 }}
-                            >
-                                <option value="">Select template...</option>
-                                {whatsappTemplates?.map((t) => (
-                                    <option key={t.id} value={t.name}>
-                                        {t.name}
-                                    </option>
-                                ))}
-                            </select>
+                                placeholder="Select template..."
+                                emptyText="No WhatsApp template matches your search."
+                            />
                         </div>
                         <div>
                             <Label className="text-xs">Send WhatsApp to</Label>

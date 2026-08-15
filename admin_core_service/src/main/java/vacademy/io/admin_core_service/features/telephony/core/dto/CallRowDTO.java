@@ -11,10 +11,15 @@ import java.sql.Timestamp;
  * One row of the team calling dashboard. Provider-agnostic: AI (Aavtaar) and
  * human (Exotel/Airtel), inbound and outbound, all project to this shape.
  *
- * <p>{@code fromNumber}/{@code toNumber} are masked unless the caller holds the
- * {@code VIEW_CALL_NUMBERS} authority (see the controller). {@code leadNumber} is
- * the counterparty number (to_number on outbound, from_number on inbound),
- * masked under the same gate.
+ * <p>{@code fromNumber}/{@code toNumber} are masked unless
+ * {@link vacademy.io.admin_core_service.features.telephony.core.CallNumberVisibilityService}
+ * says this caller's role may see full numbers. {@code leadNumber} is the
+ * counterparty number (to_number on outbound, from_number on inbound), masked
+ * under the same gate.
+ *
+ * <p>A masked value ({@code *******1234}) is DISPLAY TEXT — the digits are gone.
+ * Consumers must not feed it to anything that dials, messages, or looks a person
+ * up by phone; the dashboard checks for it before seeding the lead side-sheet.
  */
 @Data
 @Builder

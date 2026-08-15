@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_CAMPAIGN_USERS } from '@/constants/urls';
+import { GET_AUDIENCE_LEAD_BY_RESPONSE_ID, GET_CAMPAIGN_USERS } from '@/constants/urls';
 import type { LeadCustomFieldFilter } from './get-lead-custom-field-values';
 
 // The backend endpoint POST /admin-core-service/v1/audience/leads accepts a
@@ -128,6 +128,24 @@ export const fetchRecentLeads = async (
     const { data } = await authenticatedAxiosInstance.post<RecentLeadsResponse>(
         GET_CAMPAIGN_USERS,
         payload
+    );
+    return data;
+};
+
+export const audienceLeadKey = (responseId: string) => ['audience-lead', responseId] as const;
+
+/**
+ * One lead by audience-response id, in the same {@link RecentLeadDetail} shape the
+ * list returns. For surfaces that hold a response id but never loaded a lead row —
+ * the Call Log, whose rows are calls — so they can feed the shared side-sheet
+ * mapper (`mapRecentLeadToStudent`) the same object the leads lists feed it, rather
+ * than a hand-rolled stub that leaves the Lead Profile tab without form answers.
+ */
+export const fetchAudienceLeadByResponseId = async (
+    responseId: string
+): Promise<RecentLeadDetail> => {
+    const { data } = await authenticatedAxiosInstance.get<RecentLeadDetail>(
+        GET_AUDIENCE_LEAD_BY_RESPONSE_ID(responseId)
     );
     return data;
 };

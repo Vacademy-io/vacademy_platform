@@ -4,9 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.telephony.core.CallDetailService;
+import vacademy.io.admin_core_service.features.telephony.core.CallNumberVisibilityService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionOptionsService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService.AppliedDisposition;
@@ -45,13 +45,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CallDashboardController {
 
-    /** Authority that unmasks phone numbers on the dashboard. Provisioned per-role in auth_service. */
-    private static final String VIEW_CALL_NUMBERS = "VIEW_CALL_NUMBERS";
-
     /** Sync export cap — large enough for routine pulls, async-job path is the v2 follow-up. */
     private static final int EXPORT_CAP = 25_000;
 
     private final CallSearchService callSearchService;
+    private final CallNumberVisibilityService callNumberVisibilityService;
     private final CallDispositionService callDispositionService;
     private final CallDispositionOptionsService callDispositionOptionsService;
     private final CallExportService callExportService;
@@ -67,7 +65,7 @@ public class CallDashboardController {
             throw new VacademyException("instituteId is required");
         }
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
-        boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
+        boolean unmask = callNumberVisibilityService.canViewFullNumbers(user, filter.getInstituteId());
         return ResponseEntity.ok(callSearchService.search(filter, user.getUserId(), unmask));
     }
 
@@ -86,7 +84,7 @@ public class CallDashboardController {
             throw new VacademyException("instituteId is required");
         }
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
+        boolean unmask = callNumberVisibilityService.canViewFullNumbers(user, instituteId);
         // Technical diagnostics ride the ADMIN role, NOT VIEW_CALL_NUMBERS. That
         // authority means "may see phone numbers"; whether someone may debug a call
         // is a different question, and coupling them left institute admins — the
@@ -189,7 +187,7 @@ public class CallDashboardController {
             throw new VacademyException("instituteId is required");
         }
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
-        boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
+        boolean unmask = callNumberVisibilityService.canViewFullNumbers(user, filter.getInstituteId());
         List<CallRowDTO> rows = callSearchService.exportRows(filter, user.getUserId(), unmask, EXPORT_CAP);
         Map<String, CallExportAiEnricher.AiRow> ai =
                 callExportAiEnricher.forCalls(rows.stream().map(CallRowDTO::getId).toList());
@@ -210,11 +208,4 @@ public class CallDashboardController {
         }
     }
 
-    private static boolean hasAuthority(CustomUserDetails user, String authority) {
-        if (user == null || user.getAuthorities() == null) return false;
-        for (GrantedAuthority a : user.getAuthorities()) {
-            if (a != null && authority.equalsIgnoreCase(a.getAuthority())) return true;
-        }
-        return false;
-    }
 }

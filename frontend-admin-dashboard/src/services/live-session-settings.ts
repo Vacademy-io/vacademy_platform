@@ -242,6 +242,30 @@ export interface LiveSessionSettings {
     defaultZoomAllowMultipleDevices: boolean;
     /** Default "add identity watermark". */
     defaultZoomWatermark: boolean;
+    /**
+     * VISIBILITY GATE for the whole disclaimer feature. Not editable in the UI —
+     * it is set per institute by us. While `false` the Disclaimer Video card is
+     * not rendered at all, so institutes that have not opted in never see the
+     * feature exists.
+     *
+     * Separate from `disclaimerVideoEnabled` on purpose: that one is the
+     * institute's own on/off switch. Gating visibility on it instead would mean
+     * that turning the disclaimer off also hid the card used to turn it back on.
+     */
+    disclaimerVideoFeatureEnabled: boolean;
+    /**
+     * The institute's own switch. When `false` the video is never shown even if a
+     * URL is still saved, so they can pause it without losing the link.
+     */
+    disclaimerVideoEnabled: boolean;
+    /**
+     * Video every learner watches once, before their FIRST live class of this
+     * institute — not per session and not per day. Blank means no disclaimer.
+     *
+     * Who has already seen it is derived from attendance: a learner marked
+     * present in any of this institute's classes is not asked again.
+     */
+    disclaimerVideoUrl: string;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -307,6 +331,11 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultZoomFocusMode: false,
     defaultZoomAllowMultipleDevices: false,
     defaultZoomWatermark: false,
+    // Hidden by default: an institute that has not been opted in must not see the
+    // feature at all, let alone have a disclaimer appear before its learners.
+    disclaimerVideoFeatureEnabled: false,
+    disclaimerVideoEnabled: false,
+    disclaimerVideoUrl: '',
 };
 
 const getInstituteId = (): string => {

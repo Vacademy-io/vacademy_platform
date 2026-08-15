@@ -18,6 +18,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
+import { MyInput } from '@/components/design-system/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -426,6 +427,64 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                     />
                 </CardContent>
             </Card>
+
+            {/* One-off disclaimer video.
+                Rendered ONLY for institutes opted into the feature. While
+                disclaimerVideoFeatureEnabled is false the card does not exist for
+                them — the feature is not advertised to institutes that are not
+                using it yet. */}
+            {settings.disclaimerVideoFeatureEnabled && (
+                <Card className="border-neutral-200 shadow-none">
+                    <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                        <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                            <ClipboardText size={18} />
+                        </div>
+                        <div className="flex-1">
+                            <CardTitle className="text-base">Disclaimer Video</CardTitle>
+                            <CardDescription>
+                                Played once, before a learner&apos;s very first live class — not
+                                per class and not per day. Every live class follows this one
+                                setting, including classes created automatically by a workflow.
+                            </CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="border-t border-neutral-100 p-5">
+                        <SettingRow
+                            title="Show a disclaimer before the first class"
+                            description="When on, learners watch the video below before joining their first live class. Once they attend a class they are never asked again."
+                            checked={settings.disclaimerVideoEnabled}
+                            onChange={(v) => togglePrimitive('disclaimerVideoEnabled', v)}
+                        />
+                        <Separator />
+                        <div className="py-4">
+                            <div className="text-sm font-medium text-neutral-800">Video link</div>
+                            <div className="mb-2 mt-0.5 text-caption text-neutral-500">
+                                YouTube or any direct video URL.
+                            </div>
+                            <MyInput
+                                inputType="text"
+                                input={settings.disclaimerVideoUrl}
+                                inputPlaceholder="https://www.youtube.com/watch?v=..."
+                                onChangeFunction={(e) =>
+                                    setSettings((prev) => ({
+                                        ...prev,
+                                        disclaimerVideoUrl: e.target.value,
+                                    }))
+                                }
+                                disabled={!settings.disclaimerVideoEnabled}
+                                className="w-full sm:w-96"
+                            />
+                            {settings.disclaimerVideoEnabled &&
+                                !settings.disclaimerVideoUrl.trim() && (
+                                    <div className="mt-1.5 text-caption text-warning-600">
+                                        No link set — nothing is shown to learners until you add
+                                        one.
+                                    </div>
+                                )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Daily attendance default */}
             <Card className="border-neutral-200 shadow-none">

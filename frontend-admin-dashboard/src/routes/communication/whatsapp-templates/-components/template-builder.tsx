@@ -1,8 +1,18 @@
 import { useState, useMemo } from 'react';
-import { ArrowLeft, Plus, Trash } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
+import { cn } from '@/lib/utils';
+import { getBackendErrorBody, reportApiError } from '@/lib/report-api-error';
 import { createTemplateDraft, updateTemplate, submitToMeta, WhatsAppTemplateDTO, TemplateButton } from '../-services/template-api';
+import {
+    normalizeTemplateName,
+    placeholderIndexes,
+    problemFields,
+    validateDraft,
+    validateForSubmit,
+    type TemplateProblem,
+} from '../-utils/template-validation';
 
 interface Props {
     template: WhatsAppTemplateDTO | null; // null = creating new
@@ -19,6 +29,11 @@ const LANGUAGES = [
     { code: 'zh_CN', label: 'Chinese (Simplified)' },
 ];
 
+const fieldClass = 'w-full mt-1 px-2 py-1.5 text-sm border rounded';
+const buttonFieldClass = 'w-full px-2 py-1 text-xs border rounded';
+/** Applied to whichever input the local check or the server pointed at. */
+const invalidClass = 'border-danger-400 bg-danger-50 focus:border-danger-500';
+
 export function TemplateBuilder({ template, onClose }: Props) {
     const isEditing = !!template?.id;
     const instituteId = getInstituteId() || '';
@@ -29,17 +44,29 @@ export function TemplateBuilder({ template, onClose }: Props) {
     const [headerType, setHeaderType] = useState(template?.headerType || 'NONE');
     const [headerText, setHeaderText] = useState(template?.headerText || '');
     const [headerSampleUrl, setHeaderSampleUrl] = useState(template?.headerSampleUrl || '');
+    const [headerSampleValues, setHeaderSampleValues] = useState<string[]>(
+        template?.headerSampleValues || []
+    );
     const [bodyText, setBodyText] = useState(template?.bodyText || '');
     const [footerText, setFooterText] = useState(template?.footerText || '');
     const [buttons, setButtons] = useState<TemplateButton[]>(template?.buttons || []);
     const [bodySampleValues, setBodySampleValues] = useState<string[]>(template?.bodySampleValues || []);
     const [bodyVariableNames, setBodyVariableNames] = useState<string[]>(template?.bodyVariableNames || []);
     const [saving, setSaving] = useState(false);
+    const [problems, setProblems] = useState<TemplateProblem[]>([]);
+    // A submit is create-then-submit. If the submit leg fails, the draft is already saved — hold on
+    // to its id so a retry updates that row instead of creating a second one and hitting the
+    // duplicate-name 409, which used to strand the admin with an invisible orphan draft.
+    const [draftId, setDraftId] = useState<string | undefined>(template?.id);
 
-    // Count placeholders in body
+    const invalidFields = useMemo(() => problemFields(problems), [problems]);
+    const isInvalid = (field: string) => invalidFields.has(field);
+
+    // How many distinct variables the body declares: {{1}} … {{N}}. Uses the highest index rather
+    // than the match count so a body that repeats {{1}} still asks for exactly one sample.
     const placeholderCount = useMemo(() => {
-        const matches = bodyText.match(/\{\{\d+}}/g);
-        return matches ? matches.length : 0;
+        const indexes = placeholderIndexes(bodyText);
+        return indexes.length ? Math.max(...indexes) : 0;
     }, [bodyText]);
 
     // Auto-adjust sample values array size
@@ -71,12 +98,16 @@ export function TemplateBuilder({ template, onClose }: Props) {
 
     const buildDTO = (): WhatsAppTemplateDTO => ({
         instituteId,
-        name: name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+        name: normalizeTemplateName(name.trim()),
         language,
         category,
         headerType,
         headerText: headerType === 'TEXT' ? headerText : undefined,
         headerSampleUrl: headerType !== 'NONE' && headerType !== 'TEXT' ? headerSampleUrl : undefined,
+        headerSampleValues:
+            headerType === 'TEXT' && headerSampleValues.some((v) => v.trim())
+                ? headerSampleValues
+                : undefined,
         bodyText,
         footerText: footerText || undefined,
         buttons: buttons.length > 0 ? buttons : undefined,
@@ -84,43 +115,98 @@ export function TemplateBuilder({ template, onClose }: Props) {
         bodyVariableNames: adjustedVarNames.some(v => v.trim()) ? adjustedVarNames : undefined,
     });
 
+    /**
+     * Put the server's verdict back on the form. The template endpoints return
+     * `{ message, hint, field, code }`, so a rejection can highlight the offending input rather than
+     * just flashing a toast the admin has to interpret.
+     */
+    const applyServerProblem = (err: unknown, feature: string, fallbackMessage: string) => {
+        const body = getBackendErrorBody(err);
+        // reportApiError shows the toast (message + hint) and logs/reports the failure.
+        const shown = reportApiError(err, { feature, fallbackMessage });
+        setProblems(body?.field ? [{ field: body.field, message: shown }] : []);
+    };
+
+    const showLocalProblems = (found: TemplateProblem[]) => {
+        setProblems(found);
+        toast.error(
+            found.length === 1
+                ? found[0]!.message
+                : `${found.length} things need fixing before this can be saved — see the list above.`
+        );
+    };
+
     const handleSaveDraft = async () => {
-        if (!name || !bodyText) { toast.error('Name and body text are required'); return; }
+        const found = validateDraft({ name, category, bodyText });
+        if (found.length > 0) { showLocalProblems(found); return; }
+
         setSaving(true);
         try {
-            if (isEditing) {
-                await updateTemplate(template!.id!, buildDTO());
-            } else {
-                await createTemplateDraft(buildDTO());
-            }
+            // Reuse the id from a previous partial attempt so re-saving updates rather than
+            // duplicating.
+            const saved = draftId
+                ? await updateTemplate(draftId, buildDTO())
+                : await createTemplateDraft(buildDTO());
+            setDraftId(saved.id);
+            setProblems([]);
             toast.success('Draft saved');
             onClose();
         } catch (err) {
-            toast.error('Failed to save');
+            applyServerProblem(err, 'whatsapp-template-save', 'Could not save the draft.');
         } finally { setSaving(false); }
     };
 
     const handleSubmit = async () => {
-        if (!name || !bodyText) { toast.error('Name and body text are required'); return; }
-        if (placeholderCount > 0 && adjustedSamples.some((s) => !s.trim())) {
-            toast.error('Fill all sample values (required by Meta for approval)');
+        const found = validateForSubmit({
+            name,
+            language,
+            category,
+            headerType,
+            headerText,
+            headerSampleUrl,
+            headerSampleValues,
+            bodyText,
+            footerText,
+            buttons,
+            bodySampleValues: adjustedSamples,
+        });
+        if (found.length > 0) { showLocalProblems(found); return; }
+
+        setSaving(true);
+        // Two calls, two different failures to report. Saving succeeds far more often than the Meta
+        // submit does, so they're reported separately — "Meta rejected the body" must never read as
+        // "could not save".
+        let id = draftId;
+        try {
+            const saved = id
+                ? await updateTemplate(id, buildDTO())
+                : await createTemplateDraft(buildDTO());
+            id = saved.id;
+            setDraftId(id);
+        } catch (err) {
+            applyServerProblem(err, 'whatsapp-template-save', 'Could not save the template.');
+            setSaving(false);
             return;
         }
-        setSaving(true);
+
         try {
-            let id = template?.id;
-            if (isEditing) {
-                await updateTemplate(id!, buildDTO());
-            } else {
-                const created = await createTemplateDraft(buildDTO());
-                id = created.id;
-            }
-            await submitToMeta(id!);
-            toast.success('Template submitted to Meta for approval!');
+            const submitted = await submitToMeta(id!);
+            setProblems([]);
+            toast.success(
+                submitted.status === 'APPROVED'
+                    ? 'Template approved by Meta and ready to use.'
+                    : 'Template submitted to Meta for approval.'
+            );
             onClose();
-        } catch (err: unknown) {
-            const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-            toast.error(msg || 'Submit failed');
+        } catch (err) {
+            // The draft is saved; only the Meta hand-off failed. Say so, or the admin re-enters
+            // everything and then collides with their own draft.
+            applyServerProblem(
+                err,
+                'whatsapp-template-submit',
+                'Meta rejected the template. Your draft has been saved.'
+            );
+            toast.info('Your draft is saved — fix the problem above and submit again.');
         } finally { setSaving(false); }
     };
 
@@ -153,19 +239,41 @@ export function TemplateBuilder({ template, onClose }: Props) {
             <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
                 {/* Builder (left) */}
                 <div className="flex-1 md:overflow-y-auto p-4 space-y-4 bg-gray-50">
+                    {/* What went wrong. Everything Meta would reject is listed at once so the admin
+                        fixes it in one pass instead of discovering problems one submit at a time. */}
+                    {problems.length > 0 && (
+                        <div className="flex items-start gap-2 rounded-md border border-danger-200 bg-danger-50 p-3"
+                            role="alert">
+                            <WarningCircle size={18} className="mt-0.5 shrink-0 text-danger-600" />
+                            <div className="min-w-0 text-sm text-danger-600">
+                                <p className="font-medium">
+                                    {problems.length === 1
+                                        ? 'This template needs a fix'
+                                        : `${problems.length} things need fixing`}
+                                </p>
+                                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                                    {problems.map((p, i) => (
+                                        <li key={`${p.field}-${i}`}>{p.message}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Meta info */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-medium text-gray-600">Template Name</label>
                             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                                 placeholder="order_confirmation"
-                                className="w-full mt-1 px-2 py-1.5 text-sm border rounded" />
+                                aria-invalid={isInvalid('name')}
+                                className={cn(fieldClass, isInvalid('name') && invalidClass)} />
                             <p className="text-[10px] text-gray-400 mt-0.5">Lowercase, underscores only</p>
                         </div>
                         <div>
                             <label className="text-xs font-medium text-gray-600">Category</label>
                             <select value={category} onChange={(e) => setCategory(e.target.value)}
-                                className="w-full mt-1 px-2 py-1.5 text-sm border rounded">
+                                className={cn(fieldClass, isInvalid('category') && invalidClass)}>
                                 <option value="MARKETING">Marketing</option>
                                 <option value="UTILITY">Utility</option>
                                 <option value="AUTHENTICATION">Authentication</option>
@@ -174,7 +282,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         <div>
                             <label className="text-xs font-medium text-gray-600">Language</label>
                             <select value={language} onChange={(e) => setLanguage(e.target.value)}
-                                className="w-full mt-1 px-2 py-1.5 text-sm border rounded">
+                                className={cn(fieldClass, isInvalid('language') && invalidClass)}>
                                 {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
                             </select>
                         </div>
@@ -184,7 +292,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                     <div className="p-3 border rounded bg-white">
                         <label className="text-xs font-semibold text-gray-600">Header</label>
                         <select value={headerType} onChange={(e) => setHeaderType(e.target.value)}
-                            className="w-full mt-1 px-2 py-1.5 text-sm border rounded">
+                            className={cn(fieldClass, isInvalid('headerType') && invalidClass)}>
                             <option value="NONE">None</option>
                             <option value="TEXT">Text</option>
                             <option value="IMAGE">Image</option>
@@ -194,12 +302,23 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         {headerType === 'TEXT' && (
                             <input type="text" value={headerText} onChange={(e) => setHeaderText(e.target.value)}
                                 placeholder="Header text (max 60 chars)" maxLength={60}
-                                className="w-full mt-2 px-2 py-1.5 text-sm border rounded" />
+                                aria-invalid={isInvalid('headerText')}
+                                className={cn(fieldClass, 'mt-2', isInvalid('headerText') && invalidClass)} />
+                        )}
+                        {/* A header variable is only reviewable by Meta with an example filled in,
+                            so the field appears as soon as one is typed. */}
+                        {headerType === 'TEXT' && placeholderIndexes(headerText).length > 0 && (
+                            <input type="text" value={headerSampleValues[0] || ''}
+                                onChange={(e) => setHeaderSampleValues([e.target.value])}
+                                placeholder="Sample value for the header variable (e.g. October)"
+                                aria-invalid={isInvalid('headerSampleValues')}
+                                className={cn(fieldClass, 'mt-2', isInvalid('headerSampleValues') && invalidClass)} />
                         )}
                         {headerType !== 'NONE' && headerType !== 'TEXT' && (
                             <input type="text" value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)}
                                 placeholder={`Sample ${headerType.toLowerCase()} URL (for Meta approval)`}
-                                className="w-full mt-2 px-2 py-1.5 text-sm border rounded" />
+                                aria-invalid={isInvalid('headerSampleUrl')}
+                                className={cn(fieldClass, 'mt-2', isInvalid('headerSampleUrl') && invalidClass)} />
                         )}
                     </div>
 
@@ -214,7 +333,8 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         </div>
                         <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)}
                             placeholder="Hello {{1}}, your order {{2}} is confirmed for {{3}}."
-                            className="w-full mt-1 px-2 py-1.5 text-sm border rounded h-24 resize-y"
+                            aria-invalid={isInvalid('bodyText')}
+                            className={cn(fieldClass, 'h-24 resize-y', isInvalid('bodyText') && invalidClass)}
                             maxLength={1024} />
                         <p className="text-[10px] text-gray-400 mt-0.5">{bodyText.length}/1024 characters</p>
 
@@ -241,7 +361,11 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                                     setBodySampleValues(arr);
                                                 }}
                                                 placeholder="Sample value (e.g. John)"
-                                                className="flex-1 min-w-0 px-2 py-1 text-xs border rounded" />
+                                                aria-invalid={isInvalid('bodySampleValues') && !val.trim()}
+                                                className={cn(
+                                                    'flex-1 min-w-0 px-2 py-1 text-xs border rounded',
+                                                    isInvalid('bodySampleValues') && !val.trim() && invalidClass
+                                                )} />
                                         </div>
                                     </div>
                                 ))}
@@ -257,7 +381,8 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         <label className="text-xs font-semibold text-gray-600">Footer (optional)</label>
                         <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)}
                             placeholder="Thank you for your business!" maxLength={60}
-                            className="w-full mt-1 px-2 py-1.5 text-sm border rounded" />
+                            aria-invalid={isInvalid('footerText')}
+                            className={cn(fieldClass, isInvalid('footerText') && invalidClass)} />
                     </div>
 
                     {/* Buttons */}
@@ -270,16 +395,31 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                         <span className="text-[10px] text-gray-400">{btn.type}</span>
                                         <input type="text" value={btn.text}
                                             onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, text: e.target.value }; setButtons(u); }}
-                                            placeholder="Button text" className="w-full px-2 py-1 text-xs border rounded" />
+                                            placeholder="Button text" maxLength={25}
+                                            aria-invalid={isInvalid(`buttons.${i}.text`)}
+                                            className={cn(buttonFieldClass, isInvalid(`buttons.${i}.text`) && invalidClass)} />
                                         {btn.type === 'URL' && (
                                             <input type="text" value={btn.url || ''}
                                                 onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, url: e.target.value }; setButtons(u); }}
-                                                placeholder="https://example.com/track/{{1}}" className="w-full px-2 py-1 text-xs border rounded" />
+                                                placeholder="https://example.com/track/{{1}}"
+                                                aria-invalid={isInvalid(`buttons.${i}.url`)}
+                                                className={cn(buttonFieldClass, isInvalid(`buttons.${i}.url`) && invalidClass)} />
+                                        )}
+                                        {/* Meta reviews a dynamic link by following a filled-in example, so a
+                                            URL with {{1}} is rejected without one. */}
+                                        {btn.type === 'URL' && placeholderIndexes(btn.url || '').length > 0 && (
+                                            <input type="text" value={btn.example?.[0] || ''}
+                                                onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, example: [e.target.value] }; setButtons(u); }}
+                                                placeholder="Sample full URL (e.g. https://example.com/track/A123)"
+                                                aria-invalid={isInvalid(`buttons.${i}.example`)}
+                                                className={cn(buttonFieldClass, isInvalid(`buttons.${i}.example`) && invalidClass)} />
                                         )}
                                         {btn.type === 'PHONE_NUMBER' && (
                                             <input type="text" value={btn.phoneNumber || ''}
                                                 onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, phoneNumber: e.target.value }; setButtons(u); }}
-                                                placeholder="+919876543210" className="w-full px-2 py-1 text-xs border rounded" />
+                                                placeholder="+919876543210"
+                                                aria-invalid={isInvalid(`buttons.${i}.phoneNumber`)}
+                                                className={cn(buttonFieldClass, isInvalid(`buttons.${i}.phoneNumber`) && invalidClass)} />
                                         )}
                                     </div>
                                     <button onClick={() => setButtons(buttons.filter((_, j) => j !== i))}

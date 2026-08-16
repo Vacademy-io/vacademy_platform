@@ -163,6 +163,22 @@ class Settings:
         default_factory=lambda: int(_env("SMALLEST_SAMPLE_RATE", "24000")))
     rumik_voice: str = field(default_factory=lambda: _env("RUMIK_VOICE", "ira"))
 
+    # ── Deepgram Aura-2 ─────────────────────────────────────────────────────
+    # ENGLISH-ONLY. Verified against the live /v1/models catalog on 2026-08-13:
+    # 102 TTS models spanning en/es/de/fr/nl/it/ja and NO Hindi — not shipped,
+    # not announced. So this engine is for English-speaking agents only; a
+    # Hinglish agent (Shreya, Ameet) must never be pointed at it or the caller
+    # hears Devanagari read as English letters.
+    # Native pipecat WebsocketTTSService, so barge-in cancel comes for free.
+    # Key is env-only (NEVER in code) — the one pasted in chat on 2026-08-13
+    # must be treated as compromised and rotated, same as the Smallest key above.
+    deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY"))
+    deepgram_tts_voice: str = field(
+        default_factory=lambda: _env("DEEPGRAM_TTS_VOICE", "aura-2-asteria-en"))
+    # Aura-2 emits 24 kHz linear16; the transport resamples to 8 kHz for Plivo.
+    deepgram_tts_sample_rate: int = field(
+        default_factory=lambda: int(_env("DEEPGRAM_TTS_SAMPLE_RATE", "24000")))
+
     # Deterministic Devanagari→Latin term fixes applied to text entering Rumik.
     # Rumik reads Devanagari-transliterated English as gibberish ("लाइव क्लासेस"
     # spoken as "लव असेस" — founder calls 8e1e00ad + ae7d3069). A prompt rule

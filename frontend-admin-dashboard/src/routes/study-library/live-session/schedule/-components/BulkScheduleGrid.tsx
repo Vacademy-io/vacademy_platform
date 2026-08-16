@@ -84,6 +84,7 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { bulkSessionFormSchema, type BulkSessionForm, type BulkSessionRow } from '../-schema/bulkSchema';
 import { TIMEZONE_OPTIONS, STREAMING_OPTIONS } from '../-constants/options';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
+import { getBrowserTimezone, normalizeTimezone } from '@/utils/timezone';
 import type { PlatformKey } from '@/services/live-session-settings';
 import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
@@ -132,11 +133,7 @@ const getDefaultRowDateTime = (timeZone: string) => {
         formatTZ(new Date(), 'HH:mm', { timeZone });
         zone = timeZone;
     } catch {
-        try {
-            zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
-        } catch {
-            zone = 'Asia/Kolkata';
-        }
+        zone = getBrowserTimezone();
     }
     const now = toZonedTime(new Date(), zone);
     // Round to next 15-minute slot so the default isn't an awkward 10:07.
@@ -295,15 +292,13 @@ export function BulkScheduleGrid() {
         total: number;
     } | null>(null);
 
-    const browserTz = useMemo(() => {
-        try {
-            return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
-        } catch {
-            return 'Asia/Kolkata';
-        }
-    }, []);
+    const browserTz = useMemo(() => getBrowserTimezone(), []);
 
-    const initialTimeZone = liveSessionSettings.defaultTimeZone || browserTz;
+    // Normalized, not raw: this value is persisted to `live_session.timezone`, and the backend
+    // splices that column into `AT TIME ZONE` — an unresolvable zone (e.g. the legacy
+    // `Asia/Calcutta` that older ICU builds still report) aborts the whole query, not just its
+    // own row, taking live-session dispatch down for every institute.
+    const initialTimeZone = normalizeTimezone(liveSessionSettings.defaultTimeZone, browserTz);
     // Institute default platform, falling back to 'other' when it isn't set or
     // has since been disallowed. Used to stamp the first row and every new row.
     const initialPlatform =

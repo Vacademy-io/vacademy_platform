@@ -43,6 +43,10 @@ import {
 } from '../-types/meetings-types';
 import { browserTimezone, COMMON_TIMEZONES } from '../-utils/meetings-utils';
 import { PickedUser, UserSearchCombobox } from './user-search-combobox';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 
 /**
  * Section header used to break the long booking-page form into clearly
@@ -630,26 +634,18 @@ export const BookingPageForm = ({
                             <div className="flex flex-col gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
                                 <div className="flex flex-col gap-1.5">
                                     <Label>WhatsApp template</Label>
-                                    <Select
+                                    <TemplateSearchableSelect
+                                        options={toTemplateOptions(waTemplates)}
                                         value={waTemplateName || 'NONE'}
-                                        onValueChange={(v) =>
-                                            setWaTemplateName(v === 'NONE' ? '' : v)
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Choose an approved template" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="NONE">
-                                                No template (won’t send WhatsApp)
-                                            </SelectItem>
-                                            {waTemplates.map((t) => (
-                                                <SelectItem key={t.id} value={t.name}>
-                                                    {t.name} ({t.language})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        onChange={(v) => setWaTemplateName(v === 'NONE' ? '' : v)}
+                                        loading={waTemplatesQuery.isLoading}
+                                        placeholder="Choose an approved template"
+                                        emptyText="No approved template matches your search."
+                                        noneOption={{
+                                            value: 'NONE',
+                                            label: 'No template (won’t send WhatsApp)',
+                                        }}
+                                    />
                                     {waTemplatesQuery.isLoading && (
                                         <p className="text-caption text-neutral-500">
                                             Loading templates…

@@ -9,10 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.chatbot_flow.dto.WhatsAppTemplateDTO;
 import vacademy.io.notification_service.features.chatbot_flow.entity.WhatsAppTemplate;
+import vacademy.io.notification_service.features.chatbot_flow.exception.WhatsAppTemplateException;
 import vacademy.io.notification_service.features.chatbot_flow.repository.WhatsAppTemplateRepository;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
@@ -32,6 +34,8 @@ public class WhatsAppTemplateManagerService {
     private final InstituteInternalService instituteInternalService;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final WhatsAppTemplateValidator validator;
+    private final WhatsAppProviderErrorTranslator errorTranslator;
 
     // Pattern unused — remove to keep code clean
 
@@ -39,17 +43,22 @@ public class WhatsAppTemplateManagerService {
 
     @Transactional
     public WhatsAppTemplateDTO createDraft(WhatsAppTemplateDTO dto) {
-        // Validate name: lowercase, underscores, no spaces (Meta requirement)
-        String name = dto.getName().toLowerCase().replaceAll("[^a-z0-9_]", "_");
+        // Reject what the row itself can't hold (null name/category used to surface as an NPE or a
+        // raw DataIntegrityViolationException, both of which reached the UI as "Failed to save").
+        validator.validateForDraft(dto);
+
+        // Normalise name: lowercase, underscores, no spaces (Meta requirement)
+        String name = validator.normalizeName(dto.getName());
         String language = dto.getLanguage() != null ? dto.getLanguage() : "en";
 
         // Check for duplicate
         Optional<WhatsAppTemplate> existing = templateRepository
                 .findByInstituteIdAndNameAndLanguage(dto.getInstituteId(), name, language);
         if (existing.isPresent() && !"DELETED".equals(existing.get().getStatus())) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT,
-                    "Template '" + name + "' already exists for language '" + language + "'");
+            throw WhatsAppTemplateException.conflict("TEMPLATE_NAME_EXISTS",
+                    "A template named '" + name + "' already exists in " + language + " ("
+                            + existing.get().getStatus() + ").",
+                    "Pick a different name, or open the existing template to edit it.");
         }
 
         WhatsAppTemplate template = WhatsAppTemplate.builder()
@@ -76,9 +85,17 @@ public class WhatsAppTemplateManagerService {
     }
 
     public WhatsAppTemplateDTO getById(String id) {
-        WhatsAppTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found: " + id));
-        return toDTO(template);
+        return toDTO(requireTemplate(id));
+    }
+
+    /** 404 rather than the platform's catch-all 511, so the UI can tell "gone" from "broken". */
+    private WhatsAppTemplate requireTemplate(String id) {
+        if (id == null || id.isBlank()) {
+            throw WhatsAppTemplateException.invalid("MISSING_TEMPLATE_ID", "id",
+                    "No template id was supplied.", null);
+        }
+        return templateRepository.findById(id)
+                .orElseThrow(() -> WhatsAppTemplateException.notFound("Template " + id + " no longer exists."));
     }
 
     /**
@@ -103,15 +120,32 @@ public class WhatsAppTemplateManagerService {
 
     @Transactional
     public WhatsAppTemplateDTO update(String id, WhatsAppTemplateDTO dto) {
-        WhatsAppTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found: " + id));
+        WhatsAppTemplate template = requireTemplate(id);
 
         if (!"DRAFT".equals(template.getStatus()) && !"REJECTED".equals(template.getStatus())) {
-            throw new RuntimeException("Can only edit DRAFT or REJECTED templates");
+            throw WhatsAppTemplateException.conflict("TEMPLATE_NOT_EDITABLE",
+                    "This template is " + template.getStatus() + " and can no longer be edited.",
+                    "Once a template is with Meta its content is locked. "
+                            + "Create a new version under a different name instead.");
         }
+        validator.validateForDraft(dto);
 
-        template.setName(dto.getName().toLowerCase().replaceAll("[^a-z0-9_]", "_"));
-        template.setLanguage(dto.getLanguage());
+        // A rename can collide with a sibling template; catch it here rather than letting the
+        // unique index blow up mid-flush with an unreadable constraint message.
+        String newName = validator.normalizeName(dto.getName());
+        String newLanguage = dto.getLanguage() != null ? dto.getLanguage() : "en";
+        String currentId = template.getId();
+        templateRepository.findByInstituteIdAndNameAndLanguage(template.getInstituteId(), newName, newLanguage)
+                .filter(other -> !other.getId().equals(currentId))
+                .filter(other -> !"DELETED".equals(other.getStatus()))
+                .ifPresent(other -> {
+                    throw WhatsAppTemplateException.conflict("TEMPLATE_NAME_EXISTS",
+                            "Another template named '" + newName + "' already exists in " + newLanguage + ".",
+                            "Choose a different name for this one.");
+                });
+
+        template.setName(newName);
+        template.setLanguage(newLanguage);
         template.setCategory(dto.getCategory());
         template.setHeaderType(dto.getHeaderType());
         template.setHeaderText(dto.getHeaderText());
@@ -134,15 +168,17 @@ public class WhatsAppTemplateManagerService {
 
     @Transactional
     public void delete(String id) {
-        WhatsAppTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found: " + id));
+        WhatsAppTemplate template = requireTemplate(id);
 
-        // If submitted to Meta, delete from Meta first
+        // If submitted to Meta, delete from Meta first. A failure here is deliberately non-fatal —
+        // the local row still goes to DELETED — but it is worth surfacing, because the name stays
+        // reserved at Meta and re-creating it will fail with "already exists".
         if (template.getMetaTemplateId() != null && !"DRAFT".equals(template.getStatus())) {
             try {
                 deleteFromMeta(template);
             } catch (Exception e) {
-                log.warn("Failed to delete from Meta (continuing local delete): {}", e.getMessage());
+                log.warn("Deleted '{}' locally but Meta still has it — the name stays reserved there. Cause: {}",
+                        template.getName(), e.getMessage());
             }
         }
 
@@ -154,17 +190,27 @@ public class WhatsAppTemplateManagerService {
 
     @Transactional
     public WhatsAppTemplateDTO submitToMeta(String id) {
-        WhatsAppTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found: " + id));
+        WhatsAppTemplate template = requireTemplate(id);
 
         if (!"DRAFT".equals(template.getStatus()) && !"REJECTED".equals(template.getStatus())) {
-            throw new RuntimeException("Can only submit DRAFT or REJECTED templates");
+            String already = "PENDING".equals(template.getStatus())
+                    ? "This template is already waiting on Meta's review."
+                    : "This template is " + template.getStatus() + " and cannot be submitted again.";
+            throw WhatsAppTemplateException.conflict("TEMPLATE_NOT_SUBMITTABLE", already,
+                    "Only drafts and rejected templates can be submitted. "
+                            + "Use \"Sync Templates\" to refresh the current status from Meta.");
         }
+
+        // Everything Meta would reject for content reasons, caught before the round trip so the
+        // admin gets a specific message instead of Meta's opaque "(#100) Invalid parameter".
+        validator.validateForSubmit(template);
 
         // Resolve Meta credentials
         MetaCredentials creds = resolveMetaCredentials(template.getInstituteId());
         if (creds == null) {
-            throw new RuntimeException("Meta WhatsApp credentials not configured for this institute");
+            throw WhatsAppTemplateException.notConfigured(
+                    "WhatsApp is not connected for this institute, so the template cannot be submitted.",
+                    "Add the Meta access token and WABA id in Settings → WhatsApp, then submit again.");
         }
 
         // For media headers (IMAGE/VIDEO/DOCUMENT), Meta requires an upload
@@ -177,68 +223,82 @@ public class WhatsAppTemplateManagerService {
                 && !"NONE".equals(headerType)
                 && !"TEXT".equals(headerType);
         if (needsHandle) {
-            String sampleUrl = template.getHeaderSampleUrl();
-            if (sampleUrl == null || sampleUrl.isBlank()) {
-                throw new RuntimeException("A sample media URL is required for "
-                        + headerType + " header templates. Please upload a sample.");
-            }
             if (creds.appId == null || creds.appId.isBlank()) {
-                throw new RuntimeException("Meta app_id is not configured for this institute. "
-                        + "It is required to upload sample media for " + headerType + " header templates.");
+                throw WhatsAppTemplateException.notConfigured(
+                        "Meta app id is missing, and it is required to upload the sample "
+                                + headerType.toLowerCase() + " for this template.",
+                        "Add app_id to the Meta WhatsApp settings for this institute, "
+                                + "or switch the header to Text/None.");
             }
-            // uploadHeaderMediaToMeta throws with a descriptive message that
-            // includes Meta's response body / error subcode so admins can see
-            // exactly what went wrong (e.g. bad app_id, missing scope on the
-            // access token, unsupported file type).
-            headerHandle = uploadHeaderMediaToMeta(sampleUrl, creds, headerType);
+            // uploadHeaderMediaToMeta throws a WhatsAppTemplateException carrying Meta's own
+            // wording so admins see exactly what went wrong (bad app_id, missing token scope,
+            // unsupported file type).
+            headerHandle = uploadHeaderMediaToMeta(template.getHeaderSampleUrl(), creds, headerType);
         }
 
         // Build Meta API payload
         Map<String, Object> payload = buildMetaTemplatePayload(template, headerHandle);
 
+        String url = "https://graph.facebook.com/v22.0/" + creds.wabaId + "/message_templates";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(creds.accessToken);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+        ResponseEntity<String> response;
         try {
-            String url = "https://graph.facebook.com/v22.0/" + creds.wabaId + "/message_templates";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(creds.accessToken);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                JsonNode body = objectMapper.readTree(response.getBody());
-                String metaTemplateId = body.path("id").asText(null);
-                String metaStatus = body.path("status").asText("PENDING");
-                // Meta can re-categorise at submit (e.g. UTILITY->MARKETING) and echo the assigned
-                // category on the create response. Persist it so callers see Meta's real category,
-                // not the one we requested — otherwise a synchronous APPROVED hides the recategorisation.
-                String metaCategory = body.path("category").asText(null);
-
-                template.setMetaTemplateId(metaTemplateId);
-                template.setStatus(metaStatus.toUpperCase());
-                if (metaCategory != null && !metaCategory.isBlank()) {
-                    template.setCategory(metaCategory.toUpperCase());
-                }
-                template.setSubmittedAt(new Timestamp(System.currentTimeMillis()));
-
-                if ("APPROVED".equalsIgnoreCase(metaStatus)) {
-                    template.setApprovedAt(new Timestamp(System.currentTimeMillis()));
-                }
-
-                template = templateRepository.save(template);
-                log.info("Template submitted to Meta: name={}, status={}, metaId={}",
-                        template.getName(), template.getStatus(), metaTemplateId);
-            } else {
-                log.error("Meta template creation failed: {}", response.getBody());
-                throw new RuntimeException("Meta API returned: " + response.getStatusCode());
-            }
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to submit template to Meta: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to submit: " + e.getMessage());
+            response = restTemplate.postForEntity(url, request, String.class);
+        } catch (RestClientException e) {
+            // The important branch: Meta answers a bad template with 400 + a JSON body naming the
+            // problem. RestTemplate turns that into an exception whose message is escaped JSON, so
+            // the translator digs out error_user_msg / code / subcode and phrases it for an admin.
+            throw errorTranslator.translate("Meta", "submit template '" + template.getName() + "'", e);
         }
+
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            log.error("Meta template creation returned an unusable response: status={}, body={}",
+                    response.getStatusCode(), response.getBody());
+            throw WhatsAppTemplateException
+                    .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_EMPTY_RESPONSE",
+                            "Meta accepted the connection but returned no template details (HTTP "
+                                    + response.getStatusCode().value() + ").")
+                    .hint("Click \"Sync Templates\" to check whether it was created anyway before re-submitting.")
+                    .build();
+        }
+
+        JsonNode body;
+        try {
+            body = objectMapper.readTree(response.getBody());
+        } catch (JsonProcessingException e) {
+            throw WhatsAppTemplateException
+                    .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_BAD_RESPONSE",
+                            "Meta returned a response we could not read: " + response.getBody())
+                    .hint("Click \"Sync Templates\" to check whether the template was created.")
+                    .cause(e)
+                    .build();
+        }
+
+        String metaTemplateId = body.path("id").asText(null);
+        String metaStatus = body.path("status").asText("PENDING");
+        // Meta can re-categorise at submit (e.g. UTILITY->MARKETING) and echo the assigned
+        // category on the create response. Persist it so callers see Meta's real category,
+        // not the one we requested — otherwise a synchronous APPROVED hides the recategorisation.
+        String metaCategory = body.path("category").asText(null);
+
+        template.setMetaTemplateId(metaTemplateId);
+        template.setStatus(metaStatus.toUpperCase());
+        if (metaCategory != null && !metaCategory.isBlank()) {
+            template.setCategory(metaCategory.toUpperCase());
+        }
+        template.setSubmittedAt(new Timestamp(System.currentTimeMillis()));
+
+        if ("APPROVED".equalsIgnoreCase(metaStatus)) {
+            template.setApprovedAt(new Timestamp(System.currentTimeMillis()));
+        }
+
+        template = templateRepository.save(template);
+        log.info("Template submitted to Meta: name={}, status={}, metaId={}",
+                template.getName(), template.getStatus(), metaTemplateId);
 
         return toDTO(template);
     }
@@ -282,48 +342,63 @@ public class WhatsAppTemplateManagerService {
     private int syncFromMetaDirect(String instituteId) {
         MetaCredentials creds = resolveMetaCredentials(instituteId);
         if (creds == null) {
-            throw new RuntimeException("Meta WhatsApp credentials not configured");
+            throw WhatsAppTemplateException.notConfigured(
+                    "WhatsApp is not connected for this institute, so there is nothing to sync.",
+                    "Add the Meta access token and WABA id in Settings → WhatsApp.");
         }
 
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(creds.accessToken);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(creds.accessToken);
 
-            String url = "https://graph.facebook.com/v22.0/" + creds.wabaId
-                    + "/message_templates?limit=100&fields=name,language,status,category,components,rejected_reason";
+        String url = "https://graph.facebook.com/v22.0/" + creds.wabaId
+                + "/message_templates?limit=100&fields=name,language,status,category,components,rejected_reason";
 
-            int synced = 0;
+        int synced = 0;
 
-            // Paginate through all pages of Meta templates
-            while (url != null) {
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+        // Paginate through all pages of Meta templates
+        while (url != null) {
+            ResponseEntity<String> response;
+            try {
+                response = restTemplate.exchange(url, HttpMethod.GET,
                         new HttpEntity<>(headers), String.class);
+            } catch (RestClientException e) {
+                // An expired token is the usual cause; the translator turns Meta's code 190 into
+                // "the token is expired, update it in Settings" rather than a bare "Sync failed".
+                throw errorTranslator.translate("Meta", "sync templates", e);
+            }
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                throw new RuntimeException("Meta API returned: " + response.getStatusCode());
+                throw WhatsAppTemplateException
+                        .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_EMPTY_RESPONSE",
+                                "Meta returned no template data (HTTP " + response.getStatusCode().value() + ").")
+                        .build();
             }
 
-                JsonNode body = objectMapper.readTree(response.getBody());
-                JsonNode data = body.path("data");
-                if (!data.isArray()) break;
-
-                for (JsonNode tmpl : data) {
-                    syncSingleMetaTemplate(instituteId, tmpl);
-                    synced++;
-                }
-
-                // Follow pagination cursor if present
-                url = body.path("paging").path("next").asText(null);
+            JsonNode body;
+            try {
+                body = objectMapper.readTree(response.getBody());
+            } catch (JsonProcessingException e) {
+                throw WhatsAppTemplateException
+                        .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_BAD_RESPONSE",
+                                "Meta returned template data we could not read.")
+                        .cause(e)
+                        .build();
             }
 
-            log.info("Synced {} templates from Meta for institute {}", synced, instituteId);
-            return synced;
+            JsonNode data = body.path("data");
+            if (!data.isArray()) break;
 
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Sync failed: " + e.getMessage());
+            for (JsonNode tmpl : data) {
+                syncSingleMetaTemplate(instituteId, tmpl);
+                synced++;
+            }
+
+            // Follow pagination cursor if present
+            url = body.path("paging").path("next").asText(null);
         }
+
+        log.info("Synced {} templates from Meta for institute {}", synced, instituteId);
+        return synced;
     }
 
     private void syncSingleMetaTemplate(String instituteId, JsonNode tmpl) {
@@ -420,55 +495,68 @@ public class WhatsAppTemplateManagerService {
     private int syncFromWati(String instituteId) {
         WatiCredentials watiCreds = resolveWatiCredentials(instituteId);
         if (watiCreds == null) {
-            throw new RuntimeException("WATI WhatsApp credentials not configured");
+            throw WhatsAppTemplateException.notConfigured(
+                    "WATI is selected as this institute's WhatsApp provider but no WATI API key is configured.",
+                    "Add the WATI API key in Settings → WhatsApp, then sync again.");
         }
 
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + watiCreds.apiKey);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + watiCreds.apiKey);
 
-            int pageSize = 100;
-            int pageNumber = 1;
-            int synced = 0;
+        int pageSize = 100;
+        int pageNumber = 1;
+        int synced = 0;
 
-            // Paginate through all pages of WATI templates
-            while (true) {
-                String url = watiCreds.apiUrl + "/api/v1/getMessageTemplates?pageSize=" + pageSize
-                        + "&pageNumber=" + pageNumber;
+        // Paginate through all pages of WATI templates
+        while (true) {
+            String url = watiCreds.apiUrl + "/api/v1/getMessageTemplates?pageSize=" + pageSize
+                    + "&pageNumber=" + pageNumber;
 
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+            ResponseEntity<String> response;
+            try {
+                response = restTemplate.exchange(url, HttpMethod.GET,
                         new HttpEntity<>(headers), String.class);
+            } catch (RestClientException e) {
+                throw errorTranslator.translate("WATI", "sync templates", e);
+            }
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                throw new RuntimeException("WATI API returned: " + response.getStatusCode());
+                throw WhatsAppTemplateException
+                        .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_EMPTY_RESPONSE",
+                                "WATI returned no template data (HTTP " + response.getStatusCode().value() + ").")
+                        .build();
             }
 
-                JsonNode body = objectMapper.readTree(response.getBody());
-                // WATI returns: { "messageTemplates": [...] } or { "result": [...] }
-                JsonNode templateArray = body.path("messageTemplates");
-                if (!templateArray.isArray()) {
-                    templateArray = body.path("result");
-                }
-                if (!templateArray.isArray() || templateArray.isEmpty()) break;
-
-                for (JsonNode tmpl : templateArray) {
-                    syncSingleWatiTemplate(instituteId, tmpl);
-                    synced++;
-                }
-
-                // If we got fewer than pageSize, we've reached the last page
-                if (templateArray.size() < pageSize) break;
-                pageNumber++;
+            JsonNode body;
+            try {
+                body = objectMapper.readTree(response.getBody());
+            } catch (JsonProcessingException e) {
+                throw WhatsAppTemplateException
+                        .builder(HttpStatus.BAD_GATEWAY, "PROVIDER_BAD_RESPONSE",
+                                "WATI returned template data we could not read.")
+                        .cause(e)
+                        .build();
             }
 
-            log.info("Synced {} templates from WATI for institute {}", synced, instituteId);
-            return synced;
+            // WATI returns: { "messageTemplates": [...] } or { "result": [...] }
+            JsonNode templateArray = body.path("messageTemplates");
+            if (!templateArray.isArray()) {
+                templateArray = body.path("result");
+            }
+            if (!templateArray.isArray() || templateArray.isEmpty()) break;
 
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("WATI sync failed: " + e.getMessage());
+            for (JsonNode tmpl : templateArray) {
+                syncSingleWatiTemplate(instituteId, tmpl);
+                synced++;
+            }
+
+            // If we got fewer than pageSize, we've reached the last page
+            if (templateArray.size() < pageSize) break;
+            pageNumber++;
         }
+
+        log.info("Synced {} templates from WATI for institute {}", synced, instituteId);
+        return synced;
     }
 
     private void syncSingleWatiTemplate(String instituteId, JsonNode tmpl) {
@@ -563,6 +651,7 @@ public class WhatsAppTemplateManagerService {
     private WatiCredentials resolveWatiCredentials(String instituteId) {
         try {
             InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null || institute.getSetting() == null) return null;
             JsonNode root = objectMapper.readTree(institute.getSetting());
 
             JsonNode ws = root.path("setting")
@@ -582,8 +671,13 @@ public class WhatsAppTemplateManagerService {
             if (apiKey.isBlank()) return null;
             return new WatiCredentials(apiKey, apiUrl);
         } catch (Exception e) {
-            log.error("Failed to resolve WATI credentials: {}", e.getMessage());
-            return null;
+            log.error("Failed to resolve WATI credentials for institute {}: {}", instituteId, e.getMessage(), e);
+            throw WhatsAppTemplateException
+                    .builder(HttpStatus.BAD_GATEWAY, "SETTINGS_UNREADABLE",
+                            "Could not read this institute's WhatsApp settings.")
+                    .hint("This is a temporary problem on our side. Try again shortly.")
+                    .cause(e)
+                    .build();
         }
     }
 
@@ -611,12 +705,15 @@ public class WhatsAppTemplateManagerService {
                     mediaUrl, HttpMethod.GET, HttpEntity.EMPTY, byte[].class);
             bytes = downloadResp.getBody();
             if (bytes == null || bytes.length == 0) {
-                throw new RuntimeException("Sample media URL returned empty body: " + mediaUrl);
+                throw WhatsAppTemplateException.invalid("SAMPLE_MEDIA_EMPTY", "headerSampleUrl",
+                        "The sample " + headerType.toLowerCase() + " at " + mediaUrl + " is empty.",
+                        "Re-upload the sample file and try again.");
             }
             contentType = downloadResp.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
-        } catch (org.springframework.web.client.RestClientException e) {
-            throw new RuntimeException("Failed to download sample media from " + mediaUrl
-                    + " — make sure the URL is publicly accessible. Cause: " + e.getMessage(), e);
+        } catch (RestClientException e) {
+            throw WhatsAppTemplateException.invalid("SAMPLE_MEDIA_UNREACHABLE", "headerSampleUrl",
+                    "Could not download the sample " + headerType.toLowerCase() + " from " + mediaUrl + ".",
+                    "The URL must be publicly reachable — Meta downloads it too. Re-upload the sample file.");
         }
         if (contentType == null || contentType.isBlank()) {
             contentType = guessContentTypeFromUrl(mediaUrl, headerType);
@@ -651,21 +748,19 @@ public class WhatsAppTemplateManagerService {
             log.info("Meta resumable-upload start: status={}, body={}",
                     startResp.getStatusCode(), startResp.getBody());
             if (!startResp.getStatusCode().is2xxSuccessful() || startResp.getBody() == null) {
-                throw new RuntimeException("Meta resumable-upload start failed (" + startResp.getStatusCode() + "): "
-                        + startResp.getBody());
+                throw uploadFailed(headerType, "Meta refused to start the sample upload (HTTP "
+                        + startResp.getStatusCode().value() + "): " + startResp.getBody());
             }
             uploadSessionId = objectMapper.readTree(startResp.getBody()).path("id").asText(null);
             if (uploadSessionId == null || uploadSessionId.isBlank()) {
-                throw new RuntimeException("Meta resumable-upload start returned no session id: " + startResp.getBody());
+                throw uploadFailed(headerType,
+                        "Meta started the sample upload but returned no session id: " + startResp.getBody());
             }
-        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            // Meta returns the actual error in the response body — surface it.
-            throw new RuntimeException("Meta resumable-upload start failed: "
-                    + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
-        } catch (org.springframework.web.client.RestClientException e) {
-            throw new RuntimeException("Meta resumable-upload start network error: " + e.getMessage(), e);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new RuntimeException("Meta resumable-upload start returned invalid JSON: " + e.getMessage(), e);
+        } catch (RestClientException e) {
+            // Meta puts the real reason (bad app_id, token missing a scope) in the response body.
+            throw errorTranslator.translate("Meta", "upload the sample " + headerType.toLowerCase(), e);
+        } catch (JsonProcessingException e) {
+            throw uploadFailed(headerType, "Meta returned an unreadable response when starting the sample upload.");
         }
 
         // Step 2: upload the bytes. NOTE: this leg uses "Authorization: OAuth <token>"
@@ -683,23 +778,33 @@ public class WhatsAppTemplateManagerService {
             log.info("Meta resumable-upload bytes: status={}, body={}",
                     uploadResp.getStatusCode(), uploadResp.getBody());
             if (!uploadResp.getStatusCode().is2xxSuccessful() || uploadResp.getBody() == null) {
-                throw new RuntimeException("Meta resumable-upload bytes failed (" + uploadResp.getStatusCode() + "): "
-                        + uploadResp.getBody());
+                throw uploadFailed(headerType, "Meta rejected the sample file (HTTP "
+                        + uploadResp.getStatusCode().value() + "): " + uploadResp.getBody());
             }
             String handle = objectMapper.readTree(uploadResp.getBody()).path("h").asText(null);
             if (handle == null || handle.isBlank()) {
-                throw new RuntimeException("Meta resumable-upload returned no handle: " + uploadResp.getBody());
+                throw uploadFailed(headerType,
+                        "Meta accepted the sample file but returned no handle: " + uploadResp.getBody());
             }
             log.info("Meta resumable-upload succeeded: bytes={}, sessionId={}", bytes.length, uploadSessionId);
             return handle;
-        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            throw new RuntimeException("Meta resumable-upload bytes failed: "
-                    + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
-        } catch (org.springframework.web.client.RestClientException e) {
-            throw new RuntimeException("Meta resumable-upload bytes network error: " + e.getMessage(), e);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new RuntimeException("Meta resumable-upload bytes returned invalid JSON: " + e.getMessage(), e);
+        } catch (RestClientException e) {
+            throw errorTranslator.translate("Meta", "upload the sample " + headerType.toLowerCase(), e);
+        } catch (JsonProcessingException e) {
+            throw uploadFailed(headerType, "Meta returned an unreadable response after the sample upload.");
         }
+    }
+
+    /**
+     * Media-header uploads fail for reasons the admin can act on (wrong file type, file too large,
+     * misconfigured app id), so they are reported as a fixable problem on the sample field rather
+     * than an opaque server error.
+     */
+    private WhatsAppTemplateException uploadFailed(String headerType, String detail) {
+        return WhatsAppTemplateException.invalid("SAMPLE_MEDIA_UPLOAD_FAILED", "headerSampleUrl",
+                "Could not upload the sample " + headerType.toLowerCase() + " to Meta. " + detail,
+                "Try a smaller file in a standard format (JPG/PNG for image, MP4 for video, PDF for document). "
+                        + "The template has not been submitted.");
     }
 
     private String extractFileName(String url, String headerType) {
@@ -825,6 +930,10 @@ public class WhatsAppTemplateManagerService {
     private MetaCredentials resolveMetaCredentials(String instituteId) {
         try {
             InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null || institute.getSetting() == null) {
+                // "No settings at all" is genuinely not-configured; the callers' message is correct.
+                return null;
+            }
             JsonNode root = objectMapper.readTree(institute.getSetting());
 
             JsonNode ws = root.path("setting")
@@ -848,11 +957,22 @@ public class WhatsAppTemplateManagerService {
             // with a clearer error than Meta's subcode 2388273.
             String appId = meta.path("app_id").asText(meta.path("appId").asText(""));
 
-            if (accessToken.isBlank() || wabaId.isBlank()) return null;
+            if (accessToken.isBlank() || wabaId.isBlank()) {
+                log.warn("Institute {} has WhatsApp settings but is missing {}",
+                        instituteId, accessToken.isBlank() ? "the Meta access token" : "the WABA id");
+                return null;
+            }
             return new MetaCredentials(accessToken, wabaId, appId);
         } catch (Exception e) {
-            log.error("Failed to resolve Meta credentials: {}", e.getMessage());
-            return null;
+            // Don't collapse "couldn't read the institute" into "not configured" — telling an admin
+            // to go add credentials they already have sends them chasing the wrong thing.
+            log.error("Failed to resolve Meta credentials for institute {}: {}", instituteId, e.getMessage(), e);
+            throw WhatsAppTemplateException
+                    .builder(HttpStatus.BAD_GATEWAY, "SETTINGS_UNREADABLE",
+                            "Could not read this institute's WhatsApp settings.")
+                    .hint("This is a temporary problem on our side, not a problem with your template. Try again shortly.")
+                    .cause(e)
+                    .build();
         }
     }
 

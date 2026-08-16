@@ -505,25 +505,31 @@ const AssessmentCreateForm = () => {
                     />
                 </div>
                 {hasDateRange ? (
-                    <div className="flex flex-col gap-4 sm:flex-row">
-                        <MyInput
-                            inputType="datetime-local"
-                            label="Start date & time"
-                            required
-                            input={startDate}
-                            onChangeFunction={(e) => setStartDate(e.target.value)}
-                            size="large"
-                            className="w-full"
-                        />
-                        <MyInput
-                            inputType="datetime-local"
-                            label="End date & time"
-                            required
-                            input={endDate}
-                            onChangeFunction={(e) => setEndDate(e.target.value)}
-                            size="large"
-                            className="w-full"
-                        />
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                            <MyInput
+                                inputType="datetime-local"
+                                label="Start date & time"
+                                required
+                                input={startDate}
+                                onChangeFunction={(e) => setStartDate(e.target.value)}
+                                size="large"
+                                className="w-full"
+                            />
+                            <MyInput
+                                inputType="datetime-local"
+                                label="End date & time"
+                                required
+                                input={endDate}
+                                onChangeFunction={(e) => setEndDate(e.target.value)}
+                                size="large"
+                                className="w-full"
+                            />
+                        </div>
+                        <p className="text-xs text-neutral-500">
+                            The slide stays locked in the course outside this window — learners
+                            can only open the assessment while it is live.
+                        </p>
                     </div>
                 ) : (
                     <p className="text-xs text-neutral-500">

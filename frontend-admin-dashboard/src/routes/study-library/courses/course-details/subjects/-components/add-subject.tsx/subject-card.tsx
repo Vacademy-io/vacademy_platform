@@ -18,6 +18,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { OfflineAvailabilityDialog } from '@/routes/study-library/courses/course-details/-components/OfflineAvailabilityDialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 interface SubjectCardProps {
     subject: SubjectType;
@@ -29,6 +30,9 @@ interface SubjectCardProps {
 export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: SubjectCardProps) => {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [isOfflineDialogOpen, setIsOfflineDialogOpen] = useState(false);
+    // No Offline Availability action while the institute master switch is off —
+    // the resolver denies every node then, so the rule would be dead config.
+    const offlineAccessEnabled = useOfflineAccessEnabled();
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
     const { getPublicUrl } = useFileUpload();
     const router = useRouter();
@@ -121,7 +125,9 @@ export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: Subje
                             onDelete={onDelete}
                             onEdit={() => setIsEditDialogOpen(true)}
                             onOfflineAvailability={
-                                packageSessionId ? () => setIsOfflineDialogOpen(true) : undefined
+                                packageSessionId && offlineAccessEnabled
+                                    ? () => setIsOfflineDialogOpen(true)
+                                    : undefined
                             }
                         />
                     </div>

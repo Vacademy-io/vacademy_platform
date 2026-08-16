@@ -53,6 +53,10 @@ import { listPaymentGateways } from '@/routes/settings/-services/payment-gateway
 import { fetchWhatsAppTemplates } from '@/routes/automation/chatbot-flows/-services/chatbot-flow-api';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { MultiSelect } from '@/components/design-system/multi-select';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
 import { Loader2 } from 'lucide-react';
@@ -1627,19 +1631,23 @@ export default function ScheduleStep2() {
                                     {watch('requirePhoneVerification') && (
                                         <div className="flex flex-col gap-1">
                                             <div className="w-full sm:w-72">
-                                                <SelectField
-                                                    label="WhatsApp OTP template"
+                                                <p className="mb-1 text-sm font-medium">
+                                                    WhatsApp OTP template
+                                                </p>
+                                                <Controller
                                                     name="whatsappOtpTemplateName"
-                                                    options={approvedTemplates.map(
-                                                        (template, index) => ({
-                                                            _id: index,
-                                                            value: template.name,
-                                                            label: template.category
-                                                                ? `${template.name} (${template.category})`
-                                                                : template.name,
-                                                        })
-                                                    )}
                                                     control={control}
+                                                    render={({ field }) => (
+                                                        <TemplateSearchableSelect
+                                                            options={toTemplateOptions(
+                                                                approvedTemplates
+                                                            )}
+                                                            value={field.value ?? ''}
+                                                            onChange={field.onChange}
+                                                            placeholder="Institute default OTP template"
+                                                            emptyText="No approved template matches your search."
+                                                        />
+                                                    )}
                                                 />
                                             </div>
                                             <p className="text-sm text-neutral-500">

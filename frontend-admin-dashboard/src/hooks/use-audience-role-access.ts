@@ -24,6 +24,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { updateRoleDisplaySettingsBlob } from '@/services/role-display-settings-blob';
 
 export type AudienceAccessMode = 'DEFAULT' | 'COUNSELOR' | 'AUDIENCE_LIST';
 
@@ -44,7 +45,6 @@ export interface AudienceRoleAccessConfig {
 // and only ever touch our own field.
 const ROLE_DISPLAY_SETTING_KEY = 'ROLE_DISPLAY_SETTINGS';
 const AUDIENCE_FIELD = 'audienceRoleAccess';
-const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 const QUERY_KEY = ['audience-role-access-setting'];
 
 // Legacy setting key (the original storage location). We still read from it as
@@ -77,9 +77,7 @@ function extractSettingData(responseBody: unknown, settingKey: string): unknown 
     return undefined;
 }
 
-async function getRoleDisplaySettingsBlob(
-    instituteId: string
-): Promise<RoleDisplaySettingsBlob> {
+async function getRoleDisplaySettingsBlob(instituteId: string): Promise<RoleDisplaySettingsBlob> {
     try {
         const response = await authenticatedAxiosInstance({
             method: 'GET',
@@ -127,24 +125,19 @@ export async function fetchAudienceRoleAccess(): Promise<AudienceRoleAccessConfi
     return DEFAULTS;
 }
 
-export async function saveAudienceRoleAccess(
-    config: AudienceRoleAccessConfig
-): Promise<void> {
-    const instituteId = getCurrentInstituteId();
-    if (!instituteId) throw new Error('No institute id');
+export async function saveAudienceRoleAccess(config: AudienceRoleAccessConfig): Promise<void> {
     // Read-modify-write: pull the full ROLE_DISPLAY_SETTINGS blob, replace
     // only our field, and write it back. Preserves any existing per-role-UUID
     // display config the user (or other settings UIs) have configured.
-    const blob = await getRoleDisplaySettingsBlob(instituteId);
-    const next: RoleDisplaySettingsBlob = {
-        ...blob,
+    //
+    // Serialized via the shared writer because this blob now has a second
+    // auto-saving section on the same settings page (callNumberVisibility) —
+    // unchained, two flushes inside the debounce window would each read the
+    // pre-write blob and the later POST would drop the other card's change.
+    await updateRoleDisplaySettingsBlob((current) => ({
+        ...current,
         [AUDIENCE_FIELD]: config,
-    };
-    await authenticatedAxiosInstance.post(
-        SAVE_URL,
-        { setting_name: 'Role Display Settings', setting_data: next },
-        { params: { instituteId, settingKey: ROLE_DISPLAY_SETTING_KEY } }
-    );
+    }));
 }
 
 export function useAudienceRoleAccess() {

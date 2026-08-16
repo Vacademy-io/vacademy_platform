@@ -533,12 +533,22 @@ const InvoicesList = ({
     );
 };
 
-const LEDGER_EVENT_META: Record<string, { label: string; cls: string; isCredit: boolean }> = {
-    DEBIT_ACCRUAL:     { label: 'Invoice raised',   cls: 'bg-red-50 text-red-700 border-red-200',         isCredit: false },
-    CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',   isCredit: true  },
-    CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',      isCredit: true  },
-    CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',   isCredit: true  },
-    DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200',isCredit: false },
+/**
+ * `isCredit` drives the arrow + sign (does this line reduce what the learner owes?).
+ * `neutral` marks lines where nothing was actually collected — a reversal cancels an
+ * obligation that was raised in error, so painting it green like a real payment would
+ * read as money received.
+ */
+const LEDGER_EVENT_META: Record<
+    string,
+    { label: string; cls: string; isCredit: boolean; neutral?: boolean }
+> = {
+    DEBIT_ACCRUAL:     { label: 'Invoice raised',    cls: 'bg-red-50 text-red-700 border-red-200',          isCredit: false },
+    CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',    isCredit: true  },
+    CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',       isCredit: true  },
+    CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',    isCredit: true  },
+    DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200', isCredit: false },
+    DEBIT_REVERSAL:    { label: 'Invoice cancelled', cls: 'bg-gray-50 text-gray-600 border-gray-200',       isCredit: true, neutral: true },
 };
 
 const TransactionHistory = ({
@@ -584,6 +594,7 @@ const TransactionHistory = ({
                         label: entry.event_type,
                         cls: 'bg-gray-50 text-gray-600 border-gray-200',
                         isCredit: false,
+                        neutral: false,
                     };
                     const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
                     const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -599,7 +610,7 @@ const TransactionHistory = ({
                         <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-neutral-50">
                             <span className="mt-0.5 shrink-0">
                                 {meta.isCredit
-                                    ? <ArrowCircleUp className="size-4 text-green-600" weight="duotone" />
+                                    ? <ArrowCircleUp className={`size-4 ${meta.neutral ? 'text-neutral-400' : 'text-green-600'}`} weight="duotone" />
                                     : <ArrowCircleDown className="size-4 text-red-500" weight="duotone" />
                                 }
                             </span>
@@ -625,7 +636,7 @@ const TransactionHistory = ({
                                         {grossStr}
                                     </span>
                                 )}
-                                <span className={`text-sm font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                <span className={`text-sm font-semibold tabular-nums ${meta.neutral ? 'text-neutral-500' : meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
                                     {meta.isCredit ? '+' : '-'}{amtStr}
                                 </span>
                             </span>
@@ -711,16 +722,21 @@ export const StudentPaymentHistory = () => {
     // or invoices created before the DEBIT_ACCRUAL recording was wired up).
     // The ledger summary takes precedence once it has real data.
     const invoiceList = invoicesData || [];
+    // A cancelled invoice is a voided obligation — the learner never owed it. Counting it
+    // kept the cancelled amount sitting in "Total accrued" (and in "Due") forever.
+    const isVoidedInvoice = (inv: InvoiceDTO) =>
+        ['REJECTED', 'CANCELLED', 'CANCELED', 'VOID'].includes(String(inv.status || '').toUpperCase());
     const fallbackSummary: UserAccountSummaryDTO | null = invoiceList.length > 0
         ? (() => {
-              const currency = invoiceList[0]?.currency || 'INR';
-              const totalAccrued = invoiceList.reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
-              const totalPaid = invoiceList
+              const billable = invoiceList.filter((inv) => !isVoidedInvoice(inv));
+              const currency = billable[0]?.currency || invoiceList[0]?.currency || 'INR';
+              const totalAccrued = billable.reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
+              const totalPaid = billable
                   .filter((inv) => String(inv.status || '').toUpperCase() === 'PAID')
                   .reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
               const balance = Math.max(0, totalAccrued - totalPaid);
               const now = Date.now();
-              const overdue = invoiceList
+              const overdue = billable
                   .filter((inv) => {
                       const st = String(inv.status || '').toUpperCase();
                       const isPending = st === 'PENDING_PAYMENT' || st === 'GENERATED' || st === 'SENT';

@@ -1,15 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
 import { BASE_URL } from '@/constants/urls';
@@ -144,24 +141,17 @@ export default function EmailComposer({
                 {loadableTemplates && (
                     <div className="flex items-center gap-2">
                         <Label className="min-w-24">Templates</Label>
-                        <Select
+                        <TemplateSearchableSelect
+                            className="w-64"
+                            options={toTemplateOptions(loadableTemplates, 'id')}
                             value={selectedTemplateId}
-                            onValueChange={(v) => {
+                            onChange={(v) => {
                                 setSelectedTemplateId(v);
                                 onTemplateSelected?.(v);
                             }}
-                        >
-                            <SelectTrigger className="w-64">
-                                <SelectValue placeholder="Load a template" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {loadableTemplates.map((t) => (
-                                    <SelectItem key={t.id} value={t.id}>
-                                        {t.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                            placeholder="Load a template"
+                            emptyText="No template matches your search."
+                        />
                         {selectedTemplateId && (
                             <Button
                                 variant="outline"

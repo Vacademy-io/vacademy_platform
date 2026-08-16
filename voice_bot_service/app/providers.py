@@ -330,6 +330,27 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                                        _clamp(eff_pace, 0.5, 2.0))
             except Exception:
                 logger.exception("tts: smallest unavailable — falling back to Sarvam")
+    if model.startswith("deepgram") or model.startswith("aura"):
+        # Deepgram Aura-2 — ENGLISH ONLY (see config.deepgram_api_key). Native
+        # pipecat websocket service, so interruption cancel is handled upstream.
+        #
+        # No pace knob: Aura-2 exposes neither speaking_rate nor SSML, so
+        # eff_pace is deliberately ignored here rather than silently pretended
+        # at. An agent that needs pace control belongs on google or sarvam.
+        from pipecat.services.deepgram.tts import DeepgramTTSService
+        if not s.deepgram_api_key:
+            logger.error("tts: DEEPGRAM_API_KEY unset — falling back to Sarvam bulbul")
+        else:
+            dg_voice = (voice or s.deepgram_tts_voice).strip() or s.deepgram_tts_voice
+            try:
+                return DeepgramTTSService(
+                    api_key=s.deepgram_api_key,
+                    sample_rate=s.deepgram_tts_sample_rate,
+                    encoding="linear16",
+                    settings=DeepgramTTSService.Settings(voice=dg_voice, model=dg_voice),
+                )
+            except Exception:
+                logger.exception("tts: deepgram unavailable — falling back to Sarvam")
     if model.startswith("rumik") or model.startswith("silk"):
         if not s.rumik_api_key:
             logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul")

@@ -91,6 +91,7 @@ import { htmlHasRenderableContent } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
 import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 type SlideType = {
     id: string;
@@ -343,8 +344,12 @@ export const CourseDetailsPage = () => {
     const courseId = searchParams.courseId ?? '';
     // "Translate course" action (Phase 1 i18n) — scoped to the selected batch.
     const [isTranslateDialogOpen, setIsTranslateDialogOpen] = useState(false);
-    // Course-wide offline-download settings dialog (header button).
+    // Course-wide offline-download settings dialog (header button). The button
+    // follows the institute OFFLINE_ACCESS_SETTING master switch — with offline
+    // access off the resolver denies every node regardless of the course default,
+    // so the dialog would only let an admin save a setting that does nothing.
     const [isOfflineSettingsOpen, setIsOfflineSettingsOpen] = useState(false);
+    const offlineAccessEnabled = useOfflineAccessEnabled();
 
     const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
@@ -1463,7 +1468,7 @@ export const CourseDetailsPage = () => {
                                                 />
                                             </>
                                         )}
-                                        {canEdit && effectiveCourseId && (
+                                        {canEdit && effectiveCourseId && offlineAccessEnabled && (
                                             <>
                                                 <MyButton
                                                     type="button"

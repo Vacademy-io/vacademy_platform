@@ -62,7 +62,8 @@ function buildSearchBody(scope: CallLogScope, f: CallLogFilters, page?: number, 
         call_type: f.callType,
         provider_type: f.providerType,
         statuses: f.statuses && f.statuses.length ? f.statuses : undefined,
-        disposition_keys: f.dispositionKeys && f.dispositionKeys.length ? f.dispositionKeys : undefined,
+        disposition_keys:
+            f.dispositionKeys && f.dispositionKeys.length ? f.dispositionKeys : undefined,
         from_number: f.fromNumber || undefined,
         to_number: f.toNumber || undefined,
         lead_name: f.leadName || undefined,
@@ -300,8 +301,12 @@ export interface CallPage {
 
 // ── POST /search ───────────────────────────────────────────────────────────
 
-export const callLogSearchKey = (scope: CallLogScope, f: CallLogFilters, page: number, size: number) =>
-    ['crm-call-log-search', scope, f, page, size] as const;
+export const callLogSearchKey = (
+    scope: CallLogScope,
+    f: CallLogFilters,
+    page: number,
+    size: number
+) => ['crm-call-log-search', scope, f, page, size] as const;
 
 export async function fetchCallLog(
     scope: CallLogScope,
@@ -344,7 +349,10 @@ export interface CallMetrics {
 export const callLogMetricsKey = (scope: CallLogScope, f: CallLogFilters) =>
     ['crm-call-log-metrics', scope, f] as const;
 
-export async function fetchCallMetrics(scope: CallLogScope, f: CallLogFilters): Promise<CallMetrics> {
+export async function fetchCallMetrics(
+    scope: CallLogScope,
+    f: CallLogFilters
+): Promise<CallMetrics> {
     const { data } = await authenticatedAxiosInstance.post(
         `${CALLS_BASE}/metrics`,
         buildSearchBody(scope, f)
@@ -408,9 +416,12 @@ export async function fetchDispositionFilterOptions(
     instituteId: string
 ): Promise<DispositionOption[]> {
     try {
-        const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/dispositions/options`, {
-            params: { instituteId },
-        });
+        const { data } = await authenticatedAxiosInstance.get(
+            `${CALLS_BASE}/dispositions/options`,
+            {
+                params: { instituteId },
+            }
+        );
         if (Array.isArray(data) && data.length) return data;
     } catch (error) {
         if (!isCallLogEndpointMissing(error)) throw error;
@@ -517,9 +528,10 @@ export interface CallDetail extends CallHealthFields {
      * Full technical diagnostics for AI calls. Three ways this is null, and the
      * UI must tell them apart:
      *   1. not an AI call / recorded before diagnostics shipped → nothing to show;
-     *   2. the caller lacks VIEW_CALL_NUMBERS — the blob carries verbatim caller
-     *      utterances (`turnTaking.answersDeletedSamples`) and raw crash text, so
-     *      the backend withholds it while still sending the summary fields above;
+     *   2. the caller's role is on masked numbers — the blob carries verbatim
+     *      caller utterances (`turnTaking.answersDeletedSamples`) and raw crash
+     *      text, so the backend withholds it while still sending the summary
+     *      fields above (see {@link isMaskedNumber});
      *   3. the backend predates the field entirely.
      * Absence is never "healthy".
      */
@@ -544,7 +556,10 @@ export async function fetchCallDetail(instituteId: string, callLogId: string): P
 
 // ── GET /{id}/recording ────────────────────────────────────────────────────
 
-export async function fetchRecordingUrl(instituteId: string, callLogId: string): Promise<string | null> {
+export async function fetchRecordingUrl(
+    instituteId: string,
+    callLogId: string
+): Promise<string | null> {
     const res = await authenticatedAxiosInstance.get(`${CALLS_BASE}/${callLogId}/recording`, {
         params: { instituteId },
     });
@@ -553,6 +568,34 @@ export async function fetchRecordingUrl(instituteId: string, callLogId: string):
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Sentinel `telephony_call_log.user_id` writes when the call could not be tied to
+ * a person (the column is NOT NULL, so an unlinked call stores this literal
+ * rather than NULL — ~20% of rows). It is a truthy string, so every `if
+ * (row.user_id)` check passes for calls that have no lead behind them at all;
+ * use {@link callRowLeadUserId} instead of reading the field directly.
+ */
+export const UNLINKED_CALL_USER_ID = 'UNKNOWN';
+
+/** The row's real lead user id, or null when the call isn't linked to anyone. */
+export function callRowLeadUserId(row: Pick<CallRow, 'user_id'>): string | null {
+    const id = row.user_id?.trim();
+    return !id || id === UNLINKED_CALL_USER_ID ? null : id;
+}
+
+/**
+ * True when the backend masked this number for the caller (`*******1234`).
+ *
+ * A masked value is display-only: it must never be handed to anything that
+ * dials, messages, or looks a person up by phone, because the digits are gone.
+ * Whether numbers arrive masked is per-role and admin-configurable — Settings →
+ * Display Settings → "Call Log phone numbers" (backend:
+ * `CallNumberVisibilityService`).
+ */
+export function isMaskedNumber(value: string | null | undefined): boolean {
+    return !!value && value.includes('*');
+}
 
 /** Coerce a Jackson timestamp (epoch millis number OR ISO string) to millis. */
 export function toMillis(v: number | string | null | undefined): number | null {
@@ -568,5 +611,7 @@ export function toMillis(v: number | string | null | undefined): number | null {
  * rather than 404, so both mean "deploy pending" here.
  */
 export function isCallLogEndpointMissing(error: unknown): boolean {
-    return isAxiosError(error) && (error.response?.status === 404 || error.response?.status === 403);
+    return (
+        isAxiosError(error) && (error.response?.status === 404 || error.response?.status === 403)
+    );
 }

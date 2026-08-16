@@ -1,19 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { Eye, Plus, FileText, MessageCircle } from 'lucide-react';
+import { Eye, Plus, FileText, MessageCircle, Search as MagnifyingGlass } from 'lucide-react';
 import { MessageTemplate } from '@/types/message-template-types';
 import { templateCacheService } from '@/services/template-cache-service';
 import { toast } from 'sonner';
 import { TemplateEditor } from './shared/TemplateEditor';
+import { TemplateSearchableSelect, toTemplateOptions } from './TemplateSearchableSelect';
 
 interface TemplateSelectorProps {
     templateType: 'EMAIL' | 'WHATSAPP';
@@ -43,6 +38,15 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
     const [isOpen, setIsOpen] = useState(false);
     const [showEditor, setShowEditor] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [dialogSearch, setDialogSearch] = useState('');
+
+    const visibleTemplates = useMemo(() => {
+        const q = dialogSearch.trim().toLowerCase();
+        if (!q) return templates;
+        return templates.filter((t) =>
+            [t.name, t.subject, t.content].some((field) => field?.toLowerCase().includes(q))
+        );
+    }, [templates, dialogSearch]);
 
     const loadTemplates = async () => {
         setIsLoading(true);
@@ -150,42 +154,17 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 <Label className="text-sm font-medium">{getTemplateTypeLabel()} Template</Label>
 
                 <div className="flex items-center gap-2">
-                    <Select
+                    <TemplateSearchableSelect
+                        className="flex-1"
+                        options={toTemplateOptions(templates, 'id')}
                         value={selectedTemplate?.id || 'none'}
-                        onValueChange={handleDropdownSelect}
-                        disabled={disabled || isLoading}
-                    >
-                        <SelectTrigger className="flex-1">
-                            <SelectValue placeholder={isLoading ? 'Loading...' : placeholder}>
-                                {selectedTemplate ? (
-                                    <div className="flex items-center gap-2">
-                                        {getIcon()}
-                                        <span className="font-medium">{selectedTemplate.name}</span>
-                                    </div>
-                                ) : (
-                                    placeholder
-                                )}
-                            </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="none">No template selected</SelectItem>
-                            {templates.map((template) => (
-                                <SelectItem key={template.id} value={template.id}>
-                                    <div className="flex items-center gap-2">
-                                        {getIcon()}
-                                        <div className="flex-1">
-                                            <div className="font-medium">{template.name}</div>
-                                            {template.subject && (
-                                                <div className="text-xs text-gray-500">
-                                                    {template.subject}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        onChange={handleDropdownSelect}
+                        disabled={disabled}
+                        loading={isLoading}
+                        placeholder={placeholder}
+                        emptyText={`No ${templateType.toLowerCase()} template matches your search.`}
+                        noneOption={{ value: 'none', label: 'No template selected' }}
+                    />
 
                     {selectedTemplate && onTemplatePreview && (
                         <Button
@@ -315,12 +294,33 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                             </Button>
                         </div>
 
+                        {/* Institutes routinely have dozens of templates; scrolling a flat list to
+                            find one is the slow path. */}
+                        {!isLoading && templates.length > 0 && (
+                            <div className="border-b px-4 py-3">
+                                <div className="relative">
+                                    <MagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                                    <Input
+                                        autoFocus
+                                        value={dialogSearch}
+                                        onChange={(e) => setDialogSearch(e.target.value)}
+                                        placeholder="Search by name, subject or content…"
+                                        className="pl-9"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="max-h-96 overflow-y-auto p-4">
                             {isLoading ? (
                                 <div className="flex items-center justify-center py-8">
                                     <div className="text-sm text-gray-500">
                                         Loading templates...
                                     </div>
+                                </div>
+                            ) : templates.length > 0 && visibleTemplates.length === 0 ? (
+                                <div className="py-8 text-center text-sm text-gray-500">
+                                    No template matches “{dialogSearch}”.
                                 </div>
                             ) : templates.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -340,7 +340,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {templates.map((template) => (
+                                    {visibleTemplates.map((template) => (
                                         <div
                                             key={template.id}
                                             onClick={() => handleTemplateSelect(template)}

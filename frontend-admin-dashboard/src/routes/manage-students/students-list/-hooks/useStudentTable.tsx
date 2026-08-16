@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
-import { StudentFilterRequest } from '@/types/student-table-types';
-import { useStudentList } from '@/routes/manage-students/students-list/-services/getStudentTable';
+import { useState, useEffect, useCallback } from 'react';
+import { StudentFilterRequest, StudentTable } from '@/types/student-table-types';
+import {
+    fetchStudents,
+    useStudentList,
+} from '@/routes/manage-students/students-list/-services/getStudentTable';
 import { useStudentSidebar } from '../-context/selected-student-sidebar-context';
 
 export const useStudentTable = (
@@ -77,6 +80,26 @@ export const useStudentTable = (
         // which automatically triggers a new fetch
     };
 
+    const totalElements = studentTableData?.total_elements ?? 0;
+
+    /**
+     * Every learner matching the current filters, in one request — what "Select all" needs.
+     * Lives here rather than at the call site so it uses exactly the filters the table is showing
+     * (including the pinned package_session_id), and can never drift from them.
+     */
+    const fetchAllMatching = useCallback(async (): Promise<StudentTable[]> => {
+        if (!totalElements) return [];
+        const response = await fetchStudents({
+            pageNo: 0,
+            pageSize: totalElements,
+            filters: localAppliedFilters,
+        });
+        return response.content ?? [];
+        // localAppliedFilters is derived from appliedFilters each render; depending on the
+        // serialised form keeps this stable without re-creating on every unrelated render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [totalElements, JSON.stringify(localAppliedFilters)]);
+
     return {
         studentTableData,
         isLoading,
@@ -86,5 +109,7 @@ export const useStudentTable = (
         refetch,
         handleSort,
         handlePageChange,
+        totalElements,
+        fetchAllMatching,
     };
 };

@@ -41,6 +41,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import CallNumberVisibilityCard from './CallNumberVisibilityCard';
 import SubOrgModuleCard from './SubOrgModuleCard';
 import {
     SettingsSectionsLayout,
@@ -2394,6 +2395,13 @@ export default function CustomRoleDisplaySettings({
 
             {roleName && (
                 <AudienceAccessCard
+                    roleName={roleName.toUpperCase()}
+                    roleLabel={roleName}
+                />
+            )}
+
+            {roleName && (
+                <CallNumberVisibilityCard
                     roleName={roleName.toUpperCase()}
                     roleLabel={roleName}
                 />

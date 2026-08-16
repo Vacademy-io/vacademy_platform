@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { getTokenFromStorage,
+  getDecodedAccessTokenFromStorage,
+} from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
@@ -18,6 +20,8 @@ import {
 import { SessionDetails } from "../-types/types";
 import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { getLiveClassDisclaimer } from "@/services/live-class-disclaimer";
+import { DisclaimerVideoScreen } from "@/routes/study-library/live-class/-components/DisclaimerVideoScreen";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
 
@@ -58,6 +62,13 @@ function RouteComponent() {
     batchIds.length > 0 ? batchIds : null
   );
 
+  // Set while a disclaimer is showing, so the join can resume once it is watched.
+  const [pendingJoin, setPendingJoin] = useState<{
+    session: SessionDetails;
+    isInWaitingRoom: boolean;
+  } | null>(null);
+  const [disclaimerUrl, setDisclaimerUrl] = useState<string | null>(null);
+
   // Mark attendance mutation
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
@@ -74,7 +85,7 @@ function RouteComponent() {
   }, [authState]);
 
   // Handle navigation to a specific session
-  const handleNavigateToSession = useCallback(
+  const proceedToSession = useCallback(
     async (session: SessionDetails, isInWaitingRoom: boolean) => {
       // PRE_JOINING sessions join the live class directly during the
       // waiting-room window instead of entering the waiting-room screen.
@@ -144,6 +155,36 @@ function RouteComponent() {
       }
     },
     [navigate, markAttendance]
+  );
+
+  /**
+   * Join a class, showing the institute's disclaimer first when this learner has
+   * not been in THIS class before.
+   *
+   * The check must happen here rather than on the class screen: proceedToSession
+   * marks attendance as it joins, and once that row exists the learner counts as
+   * present, so a check made any later always answers "not required" and the
+   * video would never appear.
+   */
+  const handleNavigateToSession = useCallback(
+    async (session: SessionDetails, isInWaitingRoom: boolean) => {
+      const instituteId = Object.keys(
+        (await getDecodedAccessTokenFromStorage())?.authorities ?? {}
+      )[0];
+      if (instituteId) {
+        const disclaimer = await getLiveClassDisclaimer(
+          instituteId,
+          session.schedule_id
+        );
+        if (disclaimer.required && disclaimer.videoUrl) {
+          setPendingJoin({ session, isInWaitingRoom });
+          setDisclaimerUrl(disclaimer.videoUrl);
+          return;
+        }
+      }
+      await proceedToSession(session, isInWaitingRoom);
+    },
+    [proceedToSession]
   );
 
   // Check for active sessions and auto-navigate or show selection
@@ -256,6 +297,22 @@ function RouteComponent() {
       );
     }
   };
+
+  // A join is waiting on the disclaimer. Shown ahead of every other branch —
+  // including the loader — so the class cannot start behind it.
+  if (disclaimerUrl && pendingJoin) {
+    return (
+      <DisclaimerVideoScreen
+        videoUrl={disclaimerUrl}
+        onContinue={() => {
+          const { session, isInWaitingRoom } = pendingJoin;
+          setDisclaimerUrl(null);
+          setPendingJoin(null);
+          void proceedToSession(session, isInWaitingRoom);
+        }}
+      />
+    );
+  }
 
   // Show loading while checking auth or domain routing or sessions
   if (

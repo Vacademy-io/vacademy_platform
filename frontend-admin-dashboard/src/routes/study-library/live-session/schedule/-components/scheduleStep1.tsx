@@ -60,6 +60,11 @@ import {
     WAITING_ROOM_OPTIONS,
     WAITING_ROOM_TYPE_OPTIONS,
 } from '../-constants/options';
+import {
+    normalizeTimezone,
+    getBrowserTimezone as getNormalizedBrowserTimezone,
+    FALLBACK_TIMEZONE,
+} from '@/utils/timezone';
 import { DefaultClassLinkInput } from './DefaultClassLinkInput';
 import { LearnerButtonConfigInput } from './LearnerButtonConfigInput';
 import { ScrollArea } from '@radix-ui/react-scroll-area';
@@ -191,28 +196,16 @@ export default function ScheduleStep1() {
     const { SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
     const { showForInstitutes } = useInstituteDetailsStore();
 
-    // Helper function to get browser's timezone
+    // Browser zone, canonicalised (see `@/utils/timezone`), then narrowed to a zone the
+    // dropdown can actually display — a value absent from TIMEZONE_OPTIONS would render as
+    // an empty select even though it is a perfectly valid IANA zone.
     const getBrowserTimezone = (): string => {
-        try {
-            const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const timezoneMapping: Record<string, string> = {
-                'Asia/Calcutta': 'Asia/Kolkata', // Old name for Kolkata
-            };
-            const mappedTimezone = timezoneMapping[browserTimezone] || browserTimezone;
-
-            // Check if the detected/mapped timezone is in our available options
-            const isValidTimezone = TIMEZONE_OPTIONS.some(
-                (option) => option.value === mappedTimezone
-            );
-            if (isValidTimezone) {
-                return mappedTimezone;
-            } else {
-                return 'Asia/Kolkata';
-            }
-        } catch (error) {
-            console.error('Error detecting browser timezone:', error);
-            return 'Asia/Kolkata';
-        }
+        // getBrowserTimezone() from the helper keeps the original try/catch around the Intl
+        // lookup — calling Intl inline here would throw during render on a runtime without it.
+        const detected = getNormalizedBrowserTimezone();
+        return TIMEZONE_OPTIONS.some((option) => option.value === detected)
+            ? detected
+            : FALLBACK_TIMEZONE;
     };
 
     // Helper function to get current time in selected timezone
@@ -231,8 +224,10 @@ export default function ScheduleStep1() {
     const getDefaultValues = useCallback(() => {
         // Honor the institute-level default timezone if an admin set one in
         // settings; otherwise fall back to the admin's browser timezone.
-        const defaultTimezone =
-            liveSessionSettings.defaultTimeZone || getBrowserTimezone();
+        const defaultTimezone = normalizeTimezone(
+            liveSessionSettings.defaultTimeZone,
+            getBrowserTimezone()
+        );
         const defaultTime = getCurrentTimeInTimezone(defaultTimezone);
 
         return {

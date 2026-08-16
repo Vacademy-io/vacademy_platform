@@ -1,7 +1,5 @@
 package vacademy.io.assessment_service.features.learner_assessment.service;
 
-import com.itextpdf.html2pdf.ConverterProperties;
-import com.itextpdf.html2pdf.HtmlConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -25,7 +23,6 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentR
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
-import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.*;
 import vacademy.io.assessment_service.features.learner_assessment.dto.context.AssessmentOverviewSnapshot;
@@ -38,7 +35,6 @@ import vacademy.io.assessment_service.features.learner_assessment.repository.Que
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.io.ByteArrayOutputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -69,7 +65,7 @@ public class LearnerReportService {
     private vacademy.io.assessment_service.features.assessment.repository.CopyCheckLayoutRepository copyCheckLayoutRepository;
 
     @Autowired
-    private HtmlBuilderService htmlBuilderService;
+    private vacademy.io.assessment_service.features.assessment.service.ReportPdfRenderService reportPdfRenderService;
 
     @Autowired
     private vacademy.io.assessment_service.features.assessment.service.AiReportHtmlBuilder aiReportHtmlBuilder;
@@ -453,7 +449,7 @@ public class LearnerReportService {
      */
     public ResponseEntity<byte[]> getStudentReportPdf(CustomUserDetails user, String assessmentId,
                                                         String attemptId, String instituteId) {
-        AssessmentUserRegistration registration = validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
+        validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
 
         // Always render fresh. There IS a pre-generated PDF on the attempt
         // (report_pdf_file_id, produced at result-release time for the email
@@ -470,25 +466,15 @@ public class LearnerReportService {
 
         StudentComparisonDto comparison = self.buildComparisonData(user.getUserId(), assessmentId, attemptId, instituteId);
 
-        Map<String, Map<String, Double>> optionDist = null;
-        try {
-            optionDist = self.computeOptionDistribution(assessmentId);
-        } catch (Exception ignored) {}
-
-        // Fetch report branding (null => the builder falls back to defaults)
-        ReportBrandingDto branding = null;
-        try {
-            branding = adminCoreServiceClient.getReportBranding(instituteId);
-        } catch (Exception ignored) {}
-
-        String studentReportHtml = htmlBuilderService.generateStudentReportHtml(
-                assessmentOptional.get().getName(), reportDetail, comparison, optionDist, branding);
-
-        ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-        ConverterProperties converterProperties = new ConverterProperties();
-        HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
-
-        byte[] pdfBytes = pdfOutputStream.toByteArray();
+        // Render through the shared release-flow path (ReportPdfRenderService),
+        // not the legacy HtmlBuilderService template: the learner-initiated
+        // download must be the same v2 document the release email attaches —
+        // student name in the letterhead, band chart, insight tables — instead
+        // of the anonymous legacy layout. The class context also carries the
+        // branding, option distribution and full leaderboard the v2 builder
+        // needs, so the separate best-effort fetches above became redundant.
+        ReportClassContext ctx = loadClassContext(assessmentId, instituteId);
+        byte[] pdfBytes = reportPdfRenderService.render(reportDetail, comparison, ctx);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)

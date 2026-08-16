@@ -45,6 +45,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService mandateService;
     private final vacademy.io.admin_core_service.features.invoice.service.InvoiceService invoiceService;
     private final vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService paymentNotificatonService;
+    private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -72,12 +73,52 @@ public class RenewalPaymentService {
             paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
             paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
             paymentLogRepository.save(paymentLog);
+            recordRenewalOnLedger(paymentLog, userPlan, instituteId);
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);
         } else if (paymentStatus == PaymentStatusEnum.FAILED) {
             handleFailedRenewal(userPlan, instituteId);
         } else {
             log.info("Payment status is PENDING for orderId: {}, waiting for final status", orderId);
+        }
+    }
+
+    /**
+     * Books the renewal on the learner's account ledger as a charge raised and settled in
+     * one step.
+     *
+     * <p>Renewals were absent from the ledger entirely. Nothing was accrued (a renewal
+     * reuses the same UserPlan, so {@code createUserPlan}'s accrual never fires again) and
+     * nothing was credited, so the balance stayed right by accident while every renewal was
+     * invisible in the side-view Transaction History and the learner's lifetime billing was
+     * understated by the whole renewal history. Crediting alone would have been worse — Total
+     * Paid would climb against an accrual that was never raised.
+     *
+     * <p>Hooked into {@link #handleRenewalPaymentConfirmation} rather than at the call sites
+     * for the same reason invoicing is: every gateway funnels through it — Razorpay and
+     * Stripe webhooks, the eWay poller, and RenewalChargeService's sync autopay charge.
+     *
+     * <p>Best-effort and replay-safe: {@code recordSettledCharge} is idempotent on the
+     * PaymentLog, and a ledger failure must never cost the member their renewed access.
+     */
+    private void recordRenewalOnLedger(PaymentLog paymentLog, UserPlan userPlan, String instituteId) {
+        if (userPlan == null
+                || paymentLog.getPaymentAmount() == null
+                || paymentLog.getPaymentAmount() <= 0
+                || instituteId == null || instituteId.isBlank()) {
+            return;
+        }
+        try {
+            userAccountLedgerService.recordSettledCharge(
+                    paymentLog.getUserId(), instituteId,
+                    java.math.BigDecimal.valueOf(paymentLog.getPaymentAmount()),
+                    paymentLog.getCurrency() != null ? paymentLog.getCurrency() : "INR",
+                    null,
+                    "USER_PLAN", userPlan.getId(),
+                    paymentLog.getId(), "Subscription renewal");
+        } catch (Exception e) {
+            log.error("Renewal succeeded but ledger posting failed for paymentLog {} (userPlan {}): {}",
+                    paymentLog.getId(), userPlan.getId(), e.getMessage(), e);
         }
     }
 

@@ -117,8 +117,12 @@ public class StudentReportHtmlV2Builder {
         private final Date examDate;
         /** Assessment.duration (minutes) — the allotted time. */
         private final Integer assessmentDurationMinutes;
-        /** Resolved from the cohort leaderboard; nullable. */
+        /** Registration participant name, falling back to the cohort leaderboard; nullable. */
         private final String studentName;
+        /** Registration username — the learner's login / enrollment id; nullable. */
+        private final String registrationUsername;
+        /** Registration email; nullable. */
+        private final String userEmail;
         /** Not resolvable to a display name in this service today; nullable. */
         private final String batchName;
         /** Full cohort rows (ReportClassContext.fullLeaderboard); nullable. */
@@ -266,13 +270,21 @@ public class StudentReportHtmlV2Builder {
                     .append(esc(in.getStudentName())).append("</div>");
         }
         List<String> meta = new ArrayList<>();
+        // Identity first (reference style: "SR No: 5709 · Batch: …") — a report
+        // without who-it-belongs-to reads as anonymous boilerplate to parents.
+        if (in.getRegistrationUsername() != null && !in.getRegistrationUsername().isBlank()) {
+            meta.add("Reg. No: <b style=\"color: " + INK + ";\">" + esc(in.getRegistrationUsername()) + "</b>");
+        }
+        if (in.getUserEmail() != null && !in.getUserEmail().isBlank()) {
+            meta.add(esc(in.getUserEmail()));
+        }
+        if (in.getBatchName() != null && !in.getBatchName().isBlank()) {
+            meta.add("Batch: " + esc(in.getBatchName()));
+        }
         Date attemptDate = detail != null && detail.getStartTime() != null ? detail.getStartTime()
                 : (in.getComparison() != null ? in.getComparison().getStartTime() : null);
         if (attemptDate != null) {
             meta.add("Attempted on " + fmtDateTime(attemptDate));
-        }
-        if (in.getBatchName() != null && !in.getBatchName().isBlank()) {
-            meta.add("Batch: " + esc(in.getBatchName()));
         }
         Long timeTaken = detail != null ? detail.getCompletionTimeInSeconds() : null;
         if (!manual && timeTaken != null && timeTaken > 0) {

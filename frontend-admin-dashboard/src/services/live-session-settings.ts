@@ -242,6 +242,23 @@ export interface LiveSessionSettings {
     defaultZoomAllowMultipleDevices: boolean;
     /** Default "add identity watermark". */
     defaultZoomWatermark: boolean;
+    /**
+     * Master switch for the disclaimer video. Off for every institute by default,
+     * so nothing changes for anyone until an admin turns it on here.
+     *
+     * This is also the VISIBILITY GATE for the per-class control: the disclaimer
+     * option only appears on the live-class form while this is on, so institutes
+     * not using the feature never meet it while scheduling.
+     */
+    disclaimerVideoEnabled: boolean;
+    /**
+     * Video every learner watches once, before their FIRST live class of this
+     * institute — not per session and not per day. Blank means no disclaimer.
+     *
+     * Who has already seen it is derived from attendance: a learner marked
+     * present in any of this institute's classes is not asked again.
+     */
+    disclaimerVideoUrl: string;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -307,6 +324,10 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultZoomFocusMode: false,
     defaultZoomAllowMultipleDevices: false,
     defaultZoomWatermark: false,
+    // Off by default: no institute gets a disclaimer in front of its learners,
+    // and the per-class control stays hidden, until an admin turns this on.
+    disclaimerVideoEnabled: false,
+    disclaimerVideoUrl: '',
 };
 
 const getInstituteId = (): string => {

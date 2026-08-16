@@ -71,11 +71,22 @@ public class LeadFilterDTO {
     // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
     private String conversionStatusFilter;
     /** Call-attempt history: '' | NOT_CALLED | CALLED | CALLED_ONCE | CALLED_TWICE_PLUS
-     *  | AI_CALLED | MANUAL_CALLED. Matched via telephony_call_log by response_id,
-     *  LEAD subject_id, OR institute-scoped user_id (CDR-imported calls often carry
-     *  only the user link — same lookup the lead side-panel's call history uses).
+     *  | CALLED_N_TIMES | CALLED_N_PLUS_TIMES | AI_CALLED | MANUAL_CALLED. Matched via
+     *  telephony_call_log by response_id, LEAD subject_id, OR institute-scoped user_id
+     *  (CDR-imported calls often carry only the user link — same lookup the lead
+     *  side-panel's call history uses).
      *  AI = VACADEMY_AI/AAVTAAR; manual = everything else bar MOCK. */
     private String callHistoryFilter;
+
+    /**
+     * Attempt count for the CALLED_N_TIMES ("called exactly N times") and
+     * CALLED_N_PLUS_TIMES ("called N or more times") variants of
+     * {@link #callHistoryFilter} — the arbitrary-N generalisation of the fixed
+     * CALLED_ONCE / CALLED_TWICE_PLUS options. Ignored by every other filter value.
+     * Null or &lt; 1 falls back to 1, so a missing value degrades to the CALLED_ONCE /
+     * CALLED semantics instead of silently matching nothing.
+     */
+    private Integer callCountValue;
 
     /**
      * Soft-delete visibility: EXCLUDE_DELETED (default) | ONLY_DELETED | ALL.

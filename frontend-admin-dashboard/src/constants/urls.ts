@@ -323,6 +323,9 @@ export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience
 export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
+
+export const GET_AUDIENCE_LEAD_BY_RESPONSE_ID = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
@@ -649,6 +652,8 @@ export const UPDATE_ASSIGNMENT_ORDER = `${BASE_URL}/admin-core-service/slide/ass
 export const ADD_UPDATE_QUIZ_SLIDE = `${BASE_URL}/admin-core-service/slide/quiz-slide/add-or-update`;
 export const ADD_UPDATE_ASSIGNMENT_SLIDE = `${BASE_URL}/admin-core-service/slide/assignment-slide/add-or-update`;
 export const ADD_UPDATE_ASSESSMENT_SLIDE = `${BASE_URL}/admin-core-service/slide/assessment-slide/add-or-update`;
+// GET lists the course slides that launch an assessment; DELETE removes them all.
+export const ASSESSMENT_LINKED_SLIDES_URL = `${BASE_URL}/admin-core-service/slide/assessment-slide/linked-slides`;
 export const ADD_UPDATE_AUDIO_SLIDE = `${BASE_URL}/admin-core-service/slide/audio-slide/add-update-audio-slide`;
 export const SCORM_UPLOAD = `${BASE_URL}/admin-core-service/scorm/v1/upload`;
 export const SCORM_ADD_OR_UPDATE = `${BASE_URL}/admin-core-service/scorm/v1/add-or-update`;

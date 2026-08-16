@@ -42,7 +42,11 @@
     "slideSidebar": {
         "slidesListLabel": "अध्याय स्लाइड सूची",
         "noSlidesTitle": "कोई स्लाइड उपलब्ध नहीं",
-        "noSlidesSubtitle": "सामग्री जुड़ने पर स्लाइड यहाँ दिखाई देंगी"
+        "noSlidesSubtitle": "सामग्री जुड़ने पर स्लाइड यहाँ दिखाई देंगी",
+        "lockedAssessmentNotOpen": "{{datetime}} को शुरू",
+        "lockedAssessmentNotOpenNoDate": "मूल्यांकन लाइव होने तक लॉक",
+        "lockedAssessmentClosed": "{{datetime}} को बंद",
+        "lockedAssessmentClosedNoDate": "यह मूल्यांकन बंद हो चुका है"
     },
     "slideNav": {
         "previous": "पिछला",
@@ -134,7 +138,22 @@
         "beingEvaluated": "आपकी प्रस्तुति का मूल्यांकन किया जा रहा है। परिणाम जारी होते ही दिखाई देंगे।",
         "attemptInProgress": "आपका एक प्रयास जारी है। जहाँ छोड़ा था वहीं से जारी रखें।",
         "viewReport": "रिपोर्ट देखें",
-        "evaluatedCopyTitle": "मूल्यांकित प्रति"
+        "evaluatedCopyTitle": "मूल्यांकित प्रति",
+        "lockedBadge": "लॉक",
+        "notOpenYet": "अभी शुरू नहीं हुआ",
+        "closed": "बंद",
+        "availabilityLabel": "उपलब्धता",
+        "opensLabel": "शुरू",
+        "closesLabel": "समाप्त",
+        "closedLabel": "बंद हुआ",
+        "anytime": "कभी भी",
+        "lockedUntilTitle": "यह मूल्यांकन अभी शुरू नहीं हुआ है।",
+        "lockedUntilBody": "यह {{datetime}} को अनलॉक होगा। लाइव होने पर आप इसे यहीं से खोल सकेंगे।",
+        "lockedUntilBodyNoDate": "मूल्यांकन लाइव होते ही यह अनलॉक हो जाएगा।",
+        "opensIn": "{{countdown}} में शुरू",
+        "closedTitle": "यह मूल्यांकन बंद हो चुका है।",
+        "closedBody": "यह {{datetime}} को बंद हो गया और अब इसे नहीं दिया जा सकता।",
+        "closedBodyNoDate": "अब इसे नहीं दिया जा सकता।"
     },
     "splitScreen": {
         "noEmbeddedContent": "कोई एम्बेडेड सामग्री नहीं",

@@ -27,12 +27,16 @@ import {
 } from "@/components/ui/tooltip";
 import { BookOpen, Code, GameController } from "@phosphor-icons/react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getPublicUrl } from "@/services/upload_file";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { LockedBadge } from "@/components/drip-conditions";
+import { useAssessmentWindows } from "@/hooks/study-library/use-assessment-windows";
+import { useNow } from "@/hooks/use-now";
+import { AssessmentWindow } from "@/utils/assessment-window";
+import { formatDateTime } from "@/lib/format-date";
 import { playIllustrations } from "@/assets/play-illustrations";
 import { getSlideCompletionThreshold } from "@/constants/study-library";
 import { useTranslation } from "react-i18next";
@@ -682,6 +686,28 @@ const SlideItem = ({
   );
 };
 
+/**
+ * Tooltip text for an assessment slide locked by its schedule — says when it
+ * opens (or when it closed) so the lock never reads as an error.
+ */
+const assessmentLockMessage = (
+  assessmentWindow: AssessmentWindow,
+  t: (key: string, options?: Record<string, string>) => string
+): string => {
+  if (assessmentWindow.state === "NOT_STARTED") {
+    return assessmentWindow.start
+      ? t("slideSidebar.lockedAssessmentNotOpen", {
+          datetime: formatDateTime(assessmentWindow.start),
+        })
+      : t("slideSidebar.lockedAssessmentNotOpenNoDate");
+  }
+  return assessmentWindow.end
+    ? t("slideSidebar.lockedAssessmentClosed", {
+        datetime: formatDateTime(assessmentWindow.end),
+      })
+    : t("slideSidebar.lockedAssessmentClosedNoDate");
+};
+
 export const ChapterSidebarSlides = () => {
   const { t } = useTranslation("studyContent");
   const { activeItem, setActiveItem, items, slideEvaluations } =
@@ -698,6 +724,24 @@ export const ChapterSidebarSlides = () => {
     items.length > 0
       ? items.filter((s) => s.id !== "feedback-slide")
       : rawSlides;
+
+  // An assessment slide is only usable while its assessment is live, so the
+  // sidebar entry locks outside that window the same way the slide itself does.
+  const assessmentIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (slides ?? [])
+            .filter((slide: Slide) => slide.source_type === "ASSESSMENT")
+            .map((slide: Slide) => slide.assessment_slide?.assessment_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      ),
+    [slides]
+  );
+  // Tick so an entry unlocks on its own the moment the assessment goes live.
+  const now = useNow(assessmentIds.length > 0);
+  const assessmentWindows = useAssessmentWindows(assessmentIds, now);
 
   if (isLoading) {
     return (
@@ -746,8 +790,23 @@ export const ChapterSidebarSlides = () => {
       <div className="relative flex w-full flex-col gap-1 text-gray-600">
         {slides?.map((slide: Slide, index: number) => {
           const evaluation = slideEvaluations[slide.id];
-          const locked = evaluation ? isItemLocked(evaluation) : false;
-          const unlockMessage = evaluation?.unlockMessage ?? undefined;
+          const assessmentId =
+            slide.source_type === "ASSESSMENT"
+              ? slide.assessment_slide?.assessment_id
+              : undefined;
+          // Undefined while the assessment directory is still loading (or when
+          // the learner can't see the assessment at all) — fail open there and
+          // let the slide itself do the gating, rather than flashing a lock.
+          const assessmentWindow = assessmentId
+            ? assessmentWindows[assessmentId]
+            : undefined;
+          const assessmentLocked =
+            !!assessmentWindow && assessmentWindow.state !== "OPEN";
+          const locked =
+            (evaluation ? isItemLocked(evaluation) : false) || assessmentLocked;
+          const unlockMessage = assessmentLocked
+            ? assessmentLockMessage(assessmentWindow, t)
+            : (evaluation?.unlockMessage ?? undefined);
 
           return (
             <SlideItem

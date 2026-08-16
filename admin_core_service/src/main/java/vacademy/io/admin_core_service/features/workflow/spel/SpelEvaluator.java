@@ -23,6 +23,12 @@ import java.util.Set;
 @Component
 public class SpelEvaluator {
 
+    private final WorkflowDateFunctions dateFunctions;
+
+    public SpelEvaluator(WorkflowDateFunctions dateFunctions) {
+        this.dateFunctions = dateFunctions;
+    }
+
     /**
      * Evaluates a SpEL expression with the given context variables.
      *
@@ -56,6 +62,9 @@ public class SpelEvaluator {
         // in a node AFTER a multi-day delay would throw EL1008 and drop/abort the run.
         context.addPropertyAccessor(new MapAccessor());
         context.setVariable("ctx", contextVars);
+        // Date helpers: #dates.nextWeekday(...) lets any node compute an anchor date from config
+        // using the same strictly-next logic the DELAY node schedules against.
+        context.setVariable("dates", dateFunctions);
         if (extraVars != null) {
             extraVars.forEach(context::setVariable);
         }

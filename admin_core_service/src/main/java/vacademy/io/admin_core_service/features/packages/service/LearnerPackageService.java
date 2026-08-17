@@ -77,6 +77,7 @@ public class LearnerPackageService {
                                         userId,
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
+                                        List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                                         pageable);
                 } else {
                         learnerPackageDetail = getAllLearnerPackageDetail(learnerPackageFilterDTO, instituteId,

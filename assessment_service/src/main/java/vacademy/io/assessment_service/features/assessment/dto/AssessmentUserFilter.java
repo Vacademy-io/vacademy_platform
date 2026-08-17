@@ -26,5 +26,9 @@ public class AssessmentUserFilter {
     // Optional filter on whether the attempt has a submitted answer-sheet file
     // (manual evaluation assessments): values "SUBMITTED" / "NOT_SUBMITTED".
     private List<String> submissionStatus;
+    // Optional: which registration-form custom fields to add as extra columns in the
+    // result CSV export. null = every active field of the assessment (default), an
+    // empty list = none. Ignored by the non-export endpoints that share this filter.
+    private List<String> customFieldIds;
     private Map<String, String> sortColumns;
 }

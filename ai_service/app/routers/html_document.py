@@ -48,7 +48,8 @@ _DOC_START_RE = re.compile(r"<!doctype html|<html", re.IGNORECASE)
 
 # Content elements the admin can ask the page to include → concrete directives.
 _CONTENT_TYPE_SPECS = {
-    "notes": "STRUCTURED NOTES: clear teaching notes with headings, short explanations, concrete examples, and a 'Key Takeaways' summary.",
+    "notes": "SHORT NOTES: concise, scannable teaching notes with headings, tight bullets, and concrete examples.",
+    "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
     "flashcards": "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS (a 3D flip). Include the handful of most important cards.",
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
     "interactive_games": "INTERACTIVE GAME: a small self-contained learning game (e.g. drag-and-drop matching, click-to-reveal, memory, or a timed challenge) in inline JS — track state and give feedback. Make it genuinely playable.",

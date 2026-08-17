@@ -52,6 +52,14 @@ class ContentGenerationRequest(BaseModel):
             "language, e.g. 'English (India)', 'Hindi' — drives the TTS voice)."
         ),
     )
+    document_settings: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Course-level document settings applied to every DOCUMENT (HTML) todo. "
+            "Key: content_types — a list of enrichments to weave into each generated "
+            "document page: notes, flashcards, practical_examples, interactive_games, quiz."
+        ),
+    )
     reference_document_file_ids: Optional[list] = Field(
         default=None,
         description=(

@@ -24,6 +24,18 @@ class KbGrounding(BaseModel):
     # BLENDED — fill gaps from general knowledge, marked as outside the material.
     mode: Literal["STRICT", "BLENDED"] = "STRICT"
 
+    # REPLICATE — mirror the source: reuse its own section headings, numbering,
+    #             order and stated chapter identity (number/title/authors/
+    #             objectives). What a textbook-faithful client expects.
+    # ADAPT     — source-led, but the course may be re-titled and re-themed for
+    #             teaching flow.
+    fidelity: Literal["REPLICATE", "ADAPT"] = "REPLICATE"
+
+    # FULL       — every selected section must become at least one slide, so
+    #              nothing in the material silently disappears (longer course).
+    # HIGHLIGHTS — the model may condense closely-related sections.
+    coverage: Literal["FULL", "HIGHLIGHTS"] = "FULL"
+
 
 class GenerationOptions(BaseModel):
     """

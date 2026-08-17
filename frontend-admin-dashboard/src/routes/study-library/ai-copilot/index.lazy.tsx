@@ -239,6 +239,8 @@ function RouteComponent() {
     const [selectedModel, setSelectedModel] = useState('auto');
     const [aiVideoSettings, setAiVideoSettings] =
         useState<AiVideoSettings>(DEFAULT_AI_VIDEO_SETTINGS);
+    // Course-wide enrichments woven into every generated HTML document slide.
+    const [documentContentTypes, setDocumentContentTypes] = useState<string[]>(['notes']);
     const { uploadFile } = useFileUpload();
     const [isUploadingReferences, setIsUploadingReferences] = useState(false);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -764,6 +766,7 @@ function RouteComponent() {
             language: language || 'English',
             model: selectedModel,
             aiVideoSettings: aiVideoSettings,
+            documentContentTypes: documentContentTypes,
             referenceDocumentFileIds,
             kbGrounding,
             userId: userId,
@@ -1235,6 +1238,50 @@ function RouteComponent() {
                                 value={aiVideoSettings}
                                 onChange={setAiVideoSettings}
                             />
+
+                            {/* Document content — enrichments woven into every
+                                generated HTML document slide. */}
+                            <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                                <div className="mb-1 text-subtitle font-semibold text-neutral-600">
+                                    Document content
+                                </div>
+                                <p className="mb-2 text-caption text-neutral-400">
+                                    Woven into every generated document slide.
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { key: 'notes', label: 'Short notes' },
+                                        { key: 'summary', label: 'Summary' },
+                                        { key: 'flashcards', label: 'Flashcards' },
+                                        { key: 'quiz', label: 'Quiz' },
+                                        { key: 'practical_examples', label: 'Practical examples' },
+                                        { key: 'interactive_games', label: 'Interactive games' },
+                                    ].map((ct) => {
+                                        const on = documentContentTypes.includes(ct.key);
+                                        return (
+                                            <button
+                                                key={ct.key}
+                                                type="button"
+                                                onClick={() =>
+                                                    setDocumentContentTypes((prev) =>
+                                                        prev.includes(ct.key)
+                                                            ? prev.filter((k) => k !== ct.key)
+                                                            : [...prev, ct.key]
+                                                    )
+                                                }
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    on
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {ct.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
 
                         {/* Generate Button */}

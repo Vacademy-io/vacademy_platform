@@ -78,8 +78,16 @@ export const useContentGeneration = (
         // Knowledge base this course is grounded in, persisted at outline time.
         // Without it the content pass falls back to model knowledge and the
         // slides quietly stop matching the institute's material.
+        // fidelity/coverage ride along too (how closely the course must mirror
+        // the source, and whether every section must be covered).
         let kbGrounding:
-            | { knowledge_base_id: string; node_ids: string[]; mode: string }
+            | {
+                  knowledge_base_id: string;
+                  node_ids: string[];
+                  mode: string;
+                  fidelity?: string;
+                  coverage?: string;
+              }
             | undefined;
         try {
             const stored = sessionStorage.getItem('courseKbGrounding');
@@ -89,6 +97,30 @@ export const useContentGeneration = (
             }
         } catch (e) {
             console.warn('Failed to parse courseKbGrounding:', e);
+        }
+
+        // Course-wide document content-type enrichments (notes/flashcards/quiz/…)
+        // chosen in the wizard, persisted at outline time. Applied to every
+        // generated DOCUMENT (HTML) slide.
+        let documentContentTypes: string[] | undefined;
+        try {
+            const stored = sessionStorage.getItem('courseDocumentContentTypes');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) documentContentTypes = parsed;
+            }
+        } catch (e) {
+            console.warn('Failed to parse courseDocumentContentTypes:', e);
+        }
+
+        // The model chosen in course creation — applied to DOCUMENT slides too
+        // (persisted at outline time; 'auto' is stored as absent → server default).
+        let documentModel: string | undefined;
+        try {
+            const m = sessionStorage.getItem('courseSelectedModel');
+            if (m) documentModel = m;
+        } catch (e) {
+            console.warn('Failed to read courseSelectedModel:', e);
         }
 
         setIsGeneratingContent(true);
@@ -1081,7 +1113,9 @@ export const useContentGeneration = (
                 undefined, // generationRunId — minted inside generateContent
                 videoSettings,
                 referenceDocumentFileIds,
-                kbGrounding
+                kbGrounding,
+                documentContentTypes,
+                documentModel
             );
 
             // Mark content generation as complete (fallback)

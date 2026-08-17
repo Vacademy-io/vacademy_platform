@@ -73,7 +73,19 @@ export async function generateContent(
     referenceDocumentFileIds?: string[],
     // Knowledge base this course is built from. Each slide retrieves the
     // passages about its own topic instead of writing from model knowledge.
-    kbGrounding?: { knowledge_base_id: string; node_ids: string[]; mode: string }
+    kbGrounding?: {
+        knowledge_base_id: string;
+        node_ids: string[];
+        mode: string;
+        fidelity?: string;
+        coverage?: string;
+    },
+    // Course-wide document content-types (notes/flashcards/quiz/…) woven into
+    // every generated DOCUMENT (HTML) slide.
+    documentContentTypes?: string[],
+    // The model the user picked in course creation — applied to DOCUMENT slides
+    // too (else they default to the strong HTML model server-side).
+    documentModel?: string
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
 
@@ -118,6 +130,16 @@ export async function generateContent(
                     video_settings:
                         videoSettings && Object.keys(videoSettings).length > 0
                             ? videoSettings
+                            : undefined,
+                    document_settings:
+                        (documentContentTypes && documentContentTypes.length > 0) ||
+                        documentModel
+                            ? {
+                                  ...(documentContentTypes && documentContentTypes.length > 0
+                                      ? { content_types: documentContentTypes }
+                                      : {}),
+                                  ...(documentModel ? { model: documentModel } : {}),
+                              }
                             : undefined,
                     reference_document_file_ids:
                         referenceDocumentFileIds && referenceDocumentFileIds.length > 0
@@ -453,7 +475,10 @@ export async function generateContent(
                 language,
                 generationRunId,
                 videoSettings,
-                referenceDocumentFileIds
+                referenceDocumentFileIds,
+                kbGrounding,
+                documentContentTypes,
+                documentModel
             );
         }
 

@@ -105,7 +105,7 @@ export const HtmlSlideIframe = ({
     <iframe
       ref={iframeRef}
       title="Document"
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      sandbox="allow-scripts allow-popups"
       srcDoc={srcDoc}
       onLoad={onLoad}
       className="w-full border-0 bg-white"

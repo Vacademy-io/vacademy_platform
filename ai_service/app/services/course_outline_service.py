@@ -81,6 +81,11 @@ class CourseOutlineGenerationService:
                     institute_id=request.institute_id,
                     node_ids=grounding.node_ids,
                     mode=grounding.mode,
+                    # How closely the course must mirror the source, and whether
+                    # every source section must become a slide. Chosen in the
+                    # create-course UI; defaults replicate the material.
+                    fidelity=getattr(grounding, "fidelity", None) or "REPLICATE",
+                    coverage=getattr(grounding, "coverage", None) or "FULL",
                 )
             if not block:
                 return False
@@ -112,6 +117,12 @@ class CourseOutlineGenerationService:
         if not kb_id or not institute_id:
             return
         mode = (kb_grounding or {}).get("mode") or "STRICT"
+        # Faithful runs retrieve more passages per slide so prescribed
+        # sub-sections don't fall outside a narrow top-k and vanish.
+        faithful = (
+            ((kb_grounding or {}).get("coverage") or "FULL") == "FULL"
+            or ((kb_grounding or {}).get("fidelity") or "REPLICATE") == "REPLICATE"
+        )
 
         try:
             from ..db import db_session
@@ -141,7 +152,7 @@ class CourseOutlineGenerationService:
                     with db_session() as db:
                         grounding = await course_grounding.ground_slide(
                             db, kb_id=kb_id, institute_id=institute_id,
-                            query=query, mode=mode,
+                            query=query, mode=mode, faithful=faithful,
                         )
                 except Exception:  # noqa: BLE001
                     logger.warning("KB grounding failed for %s", todo.path, exc_info=True)
@@ -583,6 +594,7 @@ class CourseOutlineGenerationService:
         user_id: Optional[str] = None,
         language: Optional[str] = "English",
         video_settings: Optional[dict] = None,
+        document_settings: Optional[dict] = None,
         reference_document_file_ids: Optional[list] = None,
         kb_grounding: Optional[dict] = None,
     ) -> AsyncGenerator[str, None]:
@@ -758,6 +770,20 @@ class CourseOutlineGenerationService:
                         value = video_settings.get(key)
                         if value:
                             todo.metadata[key] = value
+
+            # Course-wide document content-type selection (from the wizard):
+            # inject the chosen enrichments (Notes/Flashcards/Quiz/…) onto every
+            # DOCUMENT todo so build_document_prompt weaves them into the page.
+            if document_settings:
+                _content_types = document_settings.get("content_types")
+                _doc_model = document_settings.get("model")  # wizard's explicit pick
+                for todo in content_todos:
+                    if todo.type != "DOCUMENT":
+                        continue
+                    if _content_types:
+                        todo.metadata["content_types"] = _content_types
+                    if _doc_model:
+                        todo.metadata["model"] = _doc_model
 
             # ── Parallel content generation with dependency awareness ──
             # Separate independent todos from dependent homework→solution pairs.

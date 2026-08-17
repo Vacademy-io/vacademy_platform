@@ -78,6 +78,13 @@ class ContentGenerationService:
         
         # Use the same model as outline generation
         self._content_model = "google/gemini-2.5-flash"
+        # DOCUMENT slides are now creative, self-contained HTML (rendered in an
+        # iframe) and benefit from a strong front-end model — same as the manual
+        # "AI document" authoring. gemini-2.5-flash produced visibly lower-craft
+        # pages. Overridable per-slide via todo.metadata.model. Env override:
+        # HTML_DOC_MODEL.
+        import os
+        self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "anthropic/claude-sonnet-5"
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
 
     @staticmethod
@@ -177,9 +184,10 @@ class ContentGenerationService:
             is_homework_solutions = "homework solutions" in title_lower or "assignment solutions" in title_lower
 
             language = (todo.metadata or {}).get("language", "English")
-            # Honor the model chosen at outline time (same resolution as AI_VIDEO);
-            # fall back to the service default.
-            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
+            # Honor an explicitly-injected model (e.g. the wizard's pick); else
+            # default DOCUMENT slides to the strong HTML model (claude-sonnet-5),
+            # matching the manual "AI document" craft — NOT the fast content model.
+            model = (todo.metadata or {}).get("model") or todo.model or self._html_doc_model
 
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
@@ -215,6 +223,9 @@ class ContentGenerationService:
                     include_diagrams=include_diagrams,
                     language=language,
                     reference_figures=self._document_figures_by_path.get(todo.path, []),
+                    # Course-wide document content-type selection (Notes/Flashcards/
+                    # Quiz/…), injected onto DOCUMENT todos from the wizard.
+                    content_types=(todo.metadata or {}).get("content_types"),
                 )
             
             # Generate content using the enhanced prompt and capture token usage

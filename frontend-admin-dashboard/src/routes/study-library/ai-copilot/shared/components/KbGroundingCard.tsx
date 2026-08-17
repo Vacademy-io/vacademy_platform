@@ -19,11 +19,17 @@ import {
 import type { KbTopic } from '@/routes/knowledge-base/-types/paper';
 
 export type KbGroundingMode = 'STRICT' | 'BLENDED';
+export type KbFidelity = 'REPLICATE' | 'ADAPT';
+export type KbCoverage = 'FULL' | 'HIGHLIGHTS';
 
 export interface KbGroundingValue {
     knowledge_base_id: string;
     node_ids: string[];
     mode: KbGroundingMode;
+    /** How closely the course must mirror the source's own structure/wording. */
+    fidelity?: KbFidelity;
+    /** Whether every selected section must become a slide. */
+    coverage?: KbCoverage;
 }
 
 interface KbGroundingCardProps {
@@ -49,6 +55,32 @@ const MODES: Array<{ value: KbGroundingMode; label: string; help: string }> = [
     },
 ];
 
+const FIDELITIES: Array<{ value: KbFidelity; label: string; help: string }> = [
+    {
+        value: 'REPLICATE',
+        label: 'Follow the book',
+        help: "Keeps the material's own section headings, numbering and order, and preserves stated chapter identity (number, title, authors, objectives).",
+    },
+    {
+        value: 'ADAPT',
+        label: 'Adapt for teaching',
+        help: 'The AI may re-title and re-order sections to make the course flow better.',
+    },
+];
+
+const COVERAGES: Array<{ value: KbCoverage; label: string; help: string }> = [
+    {
+        value: 'FULL',
+        label: 'Every section',
+        help: 'Every selected section becomes at least one slide, so nothing in the material is skipped. Makes longer courses.',
+    },
+    {
+        value: 'HIGHLIGHTS',
+        label: 'Highlights',
+        help: 'Closely-related sections may be condensed into fewer slides.',
+    },
+];
+
 /**
  * Build a course from material the institute already owns.
  *
@@ -70,6 +102,8 @@ export const KbGroundingCard = ({
 
     const kbId = value?.knowledge_base_id ?? '';
     const mode = value?.mode ?? 'STRICT';
+    const fidelity = value?.fidelity ?? 'REPLICATE';
+    const coverage = value?.coverage ?? 'FULL';
 
     // Load topics whenever the chosen knowledge base changes, and start with
     // everything ticked so the teacher narrows down rather than opting in to a
@@ -106,7 +140,7 @@ export const KbGroundingCard = ({
     useEffect(() => {
         if (!kbId || topics === null) return;
         const nodeIds = toSelectedNodeIds(topics, selectedLeafIds);
-        onChange({ knowledge_base_id: kbId, node_ids: nodeIds, mode });
+        onChange({ knowledge_base_id: kbId, node_ids: nodeIds, mode, fidelity, coverage });
 
         const chosenTopics = topics.filter((t) =>
             t.subtopics?.length
@@ -125,7 +159,7 @@ export const KbGroundingCard = ({
         // onChange/onStructureSuggested are recreated each render by the parent;
         // depending on them would loop.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [kbId, topics, selectedLeafIds, mode]);
+    }, [kbId, topics, selectedLeafIds, mode, fidelity, coverage]);
 
     const selectedCount = topics
         ? topics.filter((t) =>
@@ -195,6 +229,8 @@ export const KbGroundingCard = ({
                                             ? toSelectedNodeIds(topics, selectedLeafIds)
                                             : [],
                                         mode: m.value,
+                                        fidelity,
+                                        coverage,
                                     })
                                 }
                                 className={cn(
@@ -211,6 +247,76 @@ export const KbGroundingCard = ({
                     <p className="text-caption text-neutral-500">
                         {MODES.find((m) => m.value === mode)?.help}
                     </p>
+
+                    {/* How closely to follow the source, and whether every
+                        section must be covered. Defaults reproduce the material —
+                        what a textbook-faithful institute expects. */}
+                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="w-20 shrink-0 text-caption text-neutral-500">
+                                Structure
+                            </span>
+                            {FIDELITIES.map((f) => (
+                                <button
+                                    key={f.value}
+                                    type="button"
+                                    onClick={() =>
+                                        onChange({
+                                            knowledge_base_id: kbId,
+                                            node_ids: topics
+                                                ? toSelectedNodeIds(topics, selectedLeafIds)
+                                                : [],
+                                            mode,
+                                            fidelity: f.value,
+                                            coverage,
+                                        })
+                                    }
+                                    className={cn(
+                                        'rounded-full border px-3 py-1 text-caption transition-colors',
+                                        fidelity === f.value
+                                            ? 'border-primary-500 bg-primary-50 font-medium text-primary-500'
+                                            : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300'
+                                    )}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="w-20 shrink-0 text-caption text-neutral-500">
+                                Coverage
+                            </span>
+                            {COVERAGES.map((c) => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    onClick={() =>
+                                        onChange({
+                                            knowledge_base_id: kbId,
+                                            node_ids: topics
+                                                ? toSelectedNodeIds(topics, selectedLeafIds)
+                                                : [],
+                                            mode,
+                                            fidelity,
+                                            coverage: c.value,
+                                        })
+                                    }
+                                    className={cn(
+                                        'rounded-full border px-3 py-1 text-caption transition-colors',
+                                        coverage === c.value
+                                            ? 'border-primary-500 bg-primary-50 font-medium text-primary-500'
+                                            : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300'
+                                    )}
+                                >
+                                    {c.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-caption text-neutral-500">
+                            {FIDELITIES.find((f) => f.value === fidelity)?.help}{' '}
+                            {COVERAGES.find((c) => c.value === coverage)?.help}
+                        </p>
+                    </div>
 
                     {topics === null && <Skeleton className="h-24 w-full rounded-lg" />}
 

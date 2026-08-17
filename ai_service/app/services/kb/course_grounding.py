@@ -32,9 +32,22 @@ logger = logging.getLogger(__name__)
 # budget that was defined for the PDF path and never used.
 MAX_SLIDE_GROUNDING_CHARS = 12_000
 
+# Faithful runs need the passages to actually FIT: real chunks average ~1.7k
+# chars, so the 12k budget admits only ~7 of them and would silently cancel the
+# widened top-k below. ~28k chars is ≈7k tokens of grounding — comfortable for
+# the models these courses run on, and the difference between "the slide saw
+# the whole section" and "the slide saw the first third of it".
+MAX_SLIDE_GROUNDING_CHARS_FAITHFUL = 28_000
+
 # Enough passages to cover a slide's subject without burying the model. Slides
 # are narrow by construction, so recall past this adds cost, not coverage.
 SLIDE_TOP_K = 6
+
+# …except when the course must reproduce the material faithfully. Top-6 was
+# leaving whole prescribed sub-sections unretrieved (a 26-page chapter indexes
+# to ~50 passages, so 6 is ~12% of it) and the slide then read as if the source
+# never mentioned them. Fidelity runs trade prompt size for recall.
+SLIDE_TOP_K_FAITHFUL = 14
 
 # Below this a "hit" is usually a topically-adjacent paragraph rather than the
 # material the slide is about. Treating those as support is how a course ends up
@@ -76,6 +89,14 @@ def _cite(hit: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _pages(node: Dict[str, Any]) -> str:
+    """' (pages 12-18)' for a node that knows where it lives in the source."""
+    start, end = node.get("page_start"), node.get("page_end")
+    if not start:
+        return ""
+    return f"  (pages {start}-{end})" if end and end != start else f"  (page {start})"
+
+
 def outline_grounding_block(
     db: Session,
     *,
@@ -83,6 +104,8 @@ def outline_grounding_block(
     institute_id: str,
     node_ids: Optional[List[str]] = None,
     mode: str = "STRICT",
+    fidelity: str = "REPLICATE",
+    coverage: str = "FULL",
 ) -> str:
     """The prompt block that makes the outline follow the material's real shape.
 
@@ -111,6 +134,7 @@ def outline_grounding_block(
     wanted = set(node_ids or [])
 
     lines: List[str] = []
+    section_count = 0
     for topic in tree:
         children = topic.get("subtopics") or []
         # A selected parent implies all of its subtopics; otherwise keep only the
@@ -122,32 +146,65 @@ def outline_grounding_block(
         ]
         if not parent_picked and not picked_children:
             continue
-        lines.append(f"- {topic['title']}")
+        # Carry the material's REAL structure — order, page span and the section
+        # summary. Titles alone made the model re-derive a structure of its own,
+        # which is how generated courses ended up renaming/reordering a book's
+        # chapters and silently dropping sections.
+        section_count += 1
+        lines.append(f"{section_count}. {topic['title']}{_pages(topic)}")
+        if topic.get("summary"):
+            lines.append(f"      ({str(topic['summary'])[:220]})")
         for child in picked_children:
-            lines.append(f"    - {child['title']}")
+            section_count += 1
+            lines.append(f"    {section_count}. {child['title']}{_pages(child)}")
 
     if not lines:
         return ""
 
+    # Outside knowledge: STRICT keeps the course inside the material.
     rule = (
-        "Build the course ONLY from these topics. Do not add topics that are not "
+        "Build the course ONLY from these sections. Do not add topics that are not "
         "listed — the institute teaches this syllabus and anything else is noise."
         if mode == "STRICT"
-        else "Build the course primarily from these topics. You may add a small "
-        "amount of connective material where a topic would otherwise be hard to "
+        else "Build the course primarily from these sections. You may add a small "
+        "amount of connective material where a section would otherwise be hard to "
         "follow."
+    )
+
+    # Coverage: FULL guarantees every listed section becomes a slide, so nothing
+    # in the source silently disappears. HIGHLIGHTS lets the model condense.
+    coverage_rule = (
+        "COVERAGE — cover EVERY numbered section above: each one must map to at "
+        "least one slide, and a long section may split across several. Do not "
+        "merge several sections into one slide, do not skip any, and do not stop "
+        "early. Work through them IN THE ORDER LISTED — that is the order the "
+        "material teaches them."
+        if coverage == "FULL"
+        else "Cover the important sections above; you may condense closely-related "
+        "ones. Keep the material's overall order."
+    )
+
+    # Fidelity: REPLICATE mirrors the source's own headings/wording/identity.
+    fidelity_rule = (
+        "FIDELITY — this course must mirror the material, not reinterpret it. "
+        "Reuse each section's OWN heading wording for the slide titles (do not "
+        "rename, re-theme or 'improve' them), keep the material's numbering and "
+        "sequence, and preserve any chapter identity it states (chapter number, "
+        "title, authors, stated learning objectives) exactly as written."
+        if fidelity == "REPLICATE"
+        else "Give every slide a title that names its subject plainly rather than "
+        "a marketing phrase — a vague title retrieves vague pages."
     )
 
     return (
         f"\n\n===== COURSE MATERIAL: {kb['name']} =====\n"
         "This institute's own material has already been read and indexed. Below "
-        "is its real topic structure, in the order the material presents it — "
-        "which for a textbook is usually already a sensible teaching order.\n\n"
+        "is its real section structure, numbered in the order the material "
+        "presents it, with the pages each section occupies.\n\n"
         f"{chr(10).join(lines)}\n\n"
-        f"{rule}\n"
-        "Each slide you plan will be written from the actual pages about its "
-        "topic, so give every slide a title that names its subject plainly "
-        "rather than a marketing phrase — a vague title retrieves vague pages.\n"
+        f"{rule}\n{coverage_rule}\n{fidelity_rule}\n"
+        "Each slide will be written from the actual pages about its section, so "
+        "name each slide after the section it teaches.\n"
         "===== END COURSE MATERIAL =====\n"
     )
 
@@ -159,11 +216,15 @@ async def ground_slide(
     institute_id: str,
     query: str,
     mode: str = "STRICT",
+    faithful: bool = True,
 ) -> SlideGrounding:
     """Retrieve the material for one slide.
 
     `query` should be the slide's title plus its chapter, which is specific
     enough to retrieve the right pages and short enough to embed cheaply.
+
+    `faithful` widens recall (SLIDE_TOP_K_FAITHFUL) for courses that must
+    reproduce the material rather than summarise it.
     """
     result = SlideGrounding()
     if not query.strip():
@@ -186,7 +247,7 @@ async def ground_slide(
             kb_id=kb_id,
             institute_id=institute_id,
             query=query,
-            top_k=SLIDE_TOP_K,
+            top_k=SLIDE_TOP_K_FAITHFUL if faithful else SLIDE_TOP_K,
             similarity_threshold=threshold,
         )
     except Exception:  # noqa: BLE001
@@ -199,6 +260,8 @@ async def ground_slide(
 
     result.top_similarity = float(hits[0].get("similarity_score") or 0)
 
+    # Widened top-k is pointless if the budget then truncates it back down.
+    budget = MAX_SLIDE_GROUNDING_CHARS_FAITHFUL if faithful else MAX_SLIDE_GROUNDING_CHARS
     parts: List[str] = []
     used = 0
     for hit in hits:
@@ -209,7 +272,7 @@ async def ground_slide(
         header = f"[{hit.get('source_title') or 'Material'}"
         header += f", p. {page}]" if page else "]"
         block = f"{header}\n{text}"
-        if used + len(block) > MAX_SLIDE_GROUNDING_CHARS:
+        if used + len(block) > budget:
             break
         parts.append(block)
         used += len(block)
@@ -242,9 +305,16 @@ def slide_prompt_block(grounding: SlideGrounding, mode: str = "STRICT") -> str:
 
     rule = (
         "Write this slide ONLY from the passages above. Use their definitions, "
-        "notation, symbols and worked examples exactly as written — the students "
-        "have this material in front of them and different notation is worse "
-        "than no slide. If the passages do not cover something, leave it out."
+        "notation, symbols, headings and worked examples exactly as written — the "
+        "students have this material in front of them and different notation is "
+        "worse than no slide. If the passages do not cover something, leave it "
+        "out.\n"
+        "NEVER introduce specifics the passages do not state: no named tests, "
+        "scales, instruments, acronyms, cut-off values, statistics, dates, "
+        "citations or invented case studies. A shorter slide that matches the "
+        "material is correct; a fuller slide containing anything you added is "
+        "wrong and will be rejected. Cover what the passages DO say completely — "
+        "do not summarise away their lists, steps or classifications."
         if mode == "STRICT"
         else "Write this slide primarily from the passages above, matching their "
         "notation and terminology. You may add brief connective explanation, but "

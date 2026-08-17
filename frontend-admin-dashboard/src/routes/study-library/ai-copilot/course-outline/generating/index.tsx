@@ -776,6 +776,29 @@ export function RouteComponent() {
                     sessionStorage.removeItem('courseVideoSettings');
                 }
 
+                // Course-wide document content-type enrichments — must survive
+                // to the content step (same write-or-remove discipline).
+                if (
+                    Array.isArray(courseConfig.documentContentTypes) &&
+                    courseConfig.documentContentTypes.length > 0
+                ) {
+                    sessionStorage.setItem(
+                        'courseDocumentContentTypes',
+                        JSON.stringify(courseConfig.documentContentTypes)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseDocumentContentTypes');
+                }
+
+                // The model chosen in course creation must reach DOCUMENT content
+                // generation too (not just the outline). 'auto' → absent → the
+                // server picks the strong HTML default (claude-sonnet-5).
+                if (courseConfig.model && courseConfig.model !== 'auto') {
+                    sessionStorage.setItem('courseSelectedModel', courseConfig.model);
+                } else {
+                    sessionStorage.removeItem('courseSelectedModel');
+                }
+
                 // Reference-PDF fileIds must survive to the content step too
                 // (figure embedding). Same write-or-remove discipline.
                 if (

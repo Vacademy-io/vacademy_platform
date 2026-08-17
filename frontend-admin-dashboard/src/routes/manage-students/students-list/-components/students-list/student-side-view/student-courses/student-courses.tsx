@@ -71,11 +71,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         type: 'PROGRESS',
         page: progressPage,
         size: ITEMS_PER_PAGE,
-        // ACTIVE only. The admin endpoint defaults to ACTIVE + INACTIVE when no status
-        // is sent, so a soft-cancelled (deactivated) enrollment would otherwise keep
-        // rendering here as though the learner still had live access. Those rows are
-        // picked up by the Past section instead — see getPastLearnerPackages.
-        status: ['ACTIVE'],
         levelIds,
         packageSessionIds,
     });
@@ -160,10 +155,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ['GET_LEARNER_PACKAGES'] });
-        // The "Cancelled Member" badge reads a separate plans query with a 60s
-        // staleTime; without this it keeps showing the pre-cancel state until that
-        // expires, so a just-cancelled learner looks untouched.
-        queryClient.invalidateQueries({ queryKey: ['learner-plans-for-cancel-badge'] });
     };
 
     const handleCourseClick = (course: PackageDetailDTO) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { CaretDown, CaretRight, MagnifyingGlass, Warning, X } from '@phosphor-icons/react';
+import { CaretRight, MagnifyingGlass, Warning, X } from '@phosphor-icons/react';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { MyTable } from '@/components/design-system/table';
@@ -16,11 +16,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { cn, convertCapitalToTitleCase } from '@/lib/utils';
+import { convertCapitalToTitleCase } from '@/lib/utils';
 
 import { fetchStudents } from '@/routes/manage-students/students-list/-services/getStudentTable';
 import { fetchStudentSubjectsProgress } from '@/routes/manage-students/students-list/-services/getStudentSubjects';
@@ -305,84 +306,44 @@ export default function LearnerProgressReports({
             {
                 accessorKey: 'full_name',
                 header: learnerTerm,
-                size: 300,
+                size: 260,
                 cell: ({ row }) => {
-                    const isOpen = expandedUserId === row.original.user_id;
                     const name = row.original.full_name || `Unnamed ${learnerTerm.toLowerCase()}`;
                     return (
-                        <button
-                            type="button"
-                            onClick={() => setExpandedUserId(isOpen ? null : row.original.user_id)}
-                            className="flex w-full items-center gap-2.5 py-1 text-left"
-                            aria-expanded={isOpen}
-                        >
-                            <span
-                                className={cn(
-                                    'shrink-0 transition-transform',
-                                    isOpen ? 'text-primary-500' : 'text-neutral-400'
-                                )}
-                            >
-                                {isOpen ? (
-                                    <CaretDown className="size-4" weight="bold" />
-                                ) : (
-                                    <CaretRight className="size-4" weight="bold" />
-                                )}
-                            </span>
-                            <span
-                                className={cn(
-                                    'flex size-8 shrink-0 items-center justify-center rounded-full text-caption font-semibold',
-                                    isOpen
-                                        ? 'bg-primary-100 text-primary-600'
-                                        : 'bg-neutral-100 text-neutral-600'
-                                )}
-                            >
+                        // max-w-xs bounds the cell: MyTable's <table> is auto-layout,
+                        // so the width hint alone lets a long name stretch the column
+                        // (and push the rest off-screen). A hard max makes truncate bite.
+                        <div className="flex max-w-xs items-center gap-2.5 py-1">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-caption font-semibold text-neutral-600">
                                 {initials(name)}
                             </span>
                             <span className="flex min-w-0 flex-col">
-                                <span
-                                    className={cn(
-                                        'truncate text-body font-semibold',
-                                        isOpen ? 'text-primary-600' : 'text-neutral-800'
-                                    )}
-                                >
+                                <span className="truncate text-body font-semibold text-neutral-800">
                                     {name}
                                 </span>
                                 <span className="truncate text-2xs text-neutral-500">
                                     {row.original.email || row.original.username || '—'}
                                 </span>
                             </span>
-                        </button>
+                        </div>
                     );
                 },
             },
             {
-                accessorKey: 'enrollment_number',
-                header: 'Enrolment no.',
-                size: 130,
-                cell: ({ row }) => (
-                    <span className="text-caption text-neutral-600">
-                        {row.original.enrollment_number || '—'}
-                    </span>
-                ),
-            },
-            {
                 accessorKey: 'coursePercentage',
                 header: `${courseTerm} progress`,
-                size: 220,
+                size: 190,
                 cell: ({ row }) =>
                     row.original.isProgressLoading ? (
-                        <div className="h-2 w-full max-w-40 animate-pulse rounded-full bg-neutral-100" />
+                        <div className="h-1.5 w-full max-w-36 animate-pulse rounded-full bg-neutral-100" />
                     ) : (
-                        <ProfileMiniBar
-                            value={row.original.coursePercentage}
-                            className="max-w-44"
-                        />
+                        <ProfileMiniBar value={row.original.coursePercentage} />
                     ),
             },
             {
                 id: 'status',
                 header: 'Status',
-                size: 150,
+                size: 140,
                 cell: ({ row }) => {
                     if (row.original.isProgressLoading) {
                         return <span className="text-caption text-neutral-400">Loading…</span>;
@@ -393,8 +354,8 @@ export default function LearnerProgressReports({
             },
             {
                 id: 'content',
-                header: 'Content covered',
-                size: 220,
+                header: 'Chapters',
+                size: 110,
                 cell: ({ row }) => {
                     const { chaptersDone, chaptersTotal } = contentCounts(row.original.subjects);
                     if (row.original.isProgressLoading) {
@@ -402,14 +363,35 @@ export default function LearnerProgressReports({
                     }
                     return (
                         <span className="text-caption text-neutral-600">
-                            {chaptersDone}/{chaptersTotal} chapters
-                            {chaptersTotal === 0 ? '' : ' completed'}
+                            {chaptersDone}/{chaptersTotal}
                         </span>
                     );
                 },
             },
+            {
+                id: 'details',
+                header: '',
+                size: 120,
+                cell: ({ row }) => (
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setExpandedUserId(row.original.user_id)}
+                    >
+                        View
+                        <CaretRight className="size-3" weight="bold" />
+                    </MyButton>
+                ),
+            },
         ],
-        [expandedUserId, learnerTerm, courseTerm]
+        [learnerTerm, courseTerm]
+    );
+
+    /** The learner whose breakdown drawer is open. */
+    const openLearner = useMemo(
+        () => rows.find((row) => row.user_id === expandedUserId) ?? null,
+        [rows, expandedUserId]
     );
 
     /** Course / session / level pickers — standalone (Learning Reports) mode. */
@@ -602,7 +584,13 @@ export default function LearnerProgressReports({
                 <div className="space-y-4">
                     {/* No scroll wrapper here — MyTable owns its own capped,
                         auto-overflow container with a sticky header; nesting a
-                        second scroll container clips the first row under it. */}
+                        second scroll container clips the first row under it.
+
+                        The breakdown is deliberately NOT an in-table expanded row:
+                        MyTable pins the <table> to a fixed pixel width and scrolls
+                        it horizontally, so a colSpan panel inherits that overflow
+                        and its labels get clipped as the columns scroll. A drawer
+                        also matches the learner side-view, which is itself a drawer. */}
                     <div className="rounded-lg bg-white">
                         <MyTable<LearnerProgressRow>
                             data={tableData}
@@ -610,14 +598,6 @@ export default function LearnerProgressReports({
                             isLoading={isLearnersLoading}
                             error={null}
                             currentPage={page}
-                            renderExpandedRow={(row) =>
-                                row.user_id === expandedUserId ? (
-                                    <LearnerProgressBreakdown
-                                        subjects={row.subjects}
-                                        isLoading={row.isProgressLoading}
-                                    />
-                                ) : null
-                            }
                         />
                     </div>
                     {(studentPage?.total_pages ?? 0) > 1 && (
@@ -629,6 +609,55 @@ export default function LearnerProgressReports({
                     )}
                 </div>
             )}
+
+            {/* Per-learner breakdown drawer — the same surface the learner
+                side-view Progress panel uses, so it has room for the full
+                subject / module / chapter tree without clipping. */}
+            <Sheet
+                open={Boolean(openLearner)}
+                onOpenChange={(open) => !open && setExpandedUserId(null)}
+            >
+                <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-2xl">
+                    {openLearner && (
+                        <>
+                            <SheetHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white px-5 py-4 text-left">
+                                <SheetTitle className="flex items-center gap-3">
+                                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-caption font-semibold text-primary-600">
+                                        {initials(openLearner.full_name || '?')}
+                                    </span>
+                                    <span className="flex min-w-0 flex-col">
+                                        <span className="truncate text-subtitle font-semibold text-neutral-800">
+                                            {openLearner.full_name ||
+                                                `Unnamed ${learnerTerm.toLowerCase()}`}
+                                        </span>
+                                        <span className="truncate text-caption font-regular text-neutral-500">
+                                            {openLearner.email || openLearner.username || '—'}
+                                        </span>
+                                    </span>
+                                </SheetTitle>
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    <StatusChip
+                                        status={
+                                            completionStatus(openLearner.coursePercentage).status
+                                        }
+                                        textSize="text-caption"
+                                        text={completionStatus(openLearner.coursePercentage).label}
+                                    />
+                                    <span className="text-caption text-neutral-500">
+                                        {Math.round(openLearner.coursePercentage)}% of{' '}
+                                        {courseTerm.toLowerCase()} complete
+                                    </span>
+                                </div>
+                                <ProfileMiniBar value={openLearner.coursePercentage} label="" />
+                            </SheetHeader>
+                            <LearnerProgressBreakdown
+                                subjects={openLearner.subjects}
+                                isLoading={openLearner.isProgressLoading}
+                            />
+                        </>
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

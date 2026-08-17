@@ -23,8 +23,10 @@ import vacademy.io.assessment_service.features.assessment.dto.export.Leaderboard
 import vacademy.io.assessment_service.features.assessment.dto.export.MarkRankExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ParticipantsDetailExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportColumnsDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportItem;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportJob;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
@@ -33,6 +35,8 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibi
 import vacademy.io.assessment_service.features.assessment.enums.ReportExportJobStatus;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportItemRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportJobRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -64,11 +68,25 @@ import java.util.TimeZone;
 @lombok.extern.slf4j.Slf4j
 public class AdminExportManager {
 
+    // Fixed columns of the result CSV, before any registration-form columns.
+    private static final List<String> RESULT_EXPORT_BASE_HEADERS = List.of(
+            "Name", "Email", "Marks Obtained", "Total Marks", "Percentage", "Rank", "Duration", "Attempt Date");
+
+    // Several answer rows can exist for one field (e.g. a multi-select), so they
+    // are joined into a single cell rather than silently dropping all but one.
+    private static final String MULTI_ANSWER_SEPARATOR = "; ";
+
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
 
     @Autowired
     AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
+
+    @Autowired
+    AssessmentCustomFieldRepository assessmentCustomFieldRepository;
+
+    @Autowired
+    AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
     @Autowired
     HtmlBuilderService htmlBuilderService;
@@ -201,7 +219,7 @@ public class AdminExportManager {
         // Empty registration_source means "all sources" — used by the result
         // export feature to get every participant regardless of how they enrolled.
         if (filter.getRegistrationSource() == null || filter.getRegistrationSource().isEmpty()) {
-            return handleCaseForAllSourcesResultExport(instituteId, assessmentId);
+            return handleCaseForAllSourcesResultExport(instituteId, assessmentId, filter.getCustomFieldIds());
         }
 
         // Determine whether to fetch participants for an open or closed assessment
@@ -290,18 +308,34 @@ public class AdminExportManager {
 
     // Fetch ALL participants across every registration source and build an
     // enriched result CSV: Name, Email, Marks Obtained, Total Marks, Percentage,
-    // Rank, Duration, Attempt Date (converted to IST).
-    private ResponseEntity<byte[]> handleCaseForAllSourcesResultExport(String instituteId, String assessmentId) {
+    // Rank, Duration, Attempt Date (converted to IST), followed by one column per
+    // requested registration-form custom field — the details external participants
+    // filled in when they registered for a public assessment.
+    private ResponseEntity<byte[]> handleCaseForAllSourcesResultExport(String instituteId, String assessmentId,
+                                                                       List<String> requestedCustomFieldIds) {
         List<ParticipantsDetailsDto> participants = assessmentUserRegistrationRepository
                 .findAllEndedParticipantsForResultExport(assessmentId, instituteId);
 
+        List<ExportCustomFieldColumn> customColumns =
+                resolveExportCustomFieldColumns(assessmentId, requestedCustomFieldIds);
+
+        StringBuilder csv = new StringBuilder();
+        csv.append(String.join(",", RESULT_EXPORT_BASE_HEADERS));
+        customColumns.forEach(column -> csv.append(",").append(escapeCsvField(column.header())));
+        csv.append("\n");
+
         if (participants.isEmpty()) {
-            String emptyCsv = "Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n";
             return ResponseEntity.ok()
                     .header("Content-Disposition", "attachment; filename=\"results.csv\"")
                     .header("Content-Type", "text/plain")
-                    .body(emptyCsv.getBytes(StandardCharsets.UTF_8));
+                    .body(csv.toString().getBytes(StandardCharsets.UTF_8));
         }
+
+        // registrationId -> (customFieldId -> answer). One query for the whole
+        // assessment instead of one per participant.
+        Map<String, Map<String, String>> answersByRegistration = customColumns.isEmpty()
+                ? Map.of()
+                : loadCustomFieldAnswers(assessmentId, instituteId);
 
         // Compute total marks from section configuration.
         List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(
@@ -313,9 +347,6 @@ public class AdminExportManager {
         // Date formatter — converts UTC Date to IST for display.
         SimpleDateFormat sdf = new SimpleDateFormat("dd MMM yyyy hh:mm a");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
-
-        StringBuilder csv = new StringBuilder();
-        csv.append("Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n");
 
         // Rows arrive sorted by score DESC (ORDER BY in query) → index+1 = rank.
         for (int i = 0; i < participants.size(); i++) {
@@ -336,13 +367,140 @@ public class AdminExportManager {
                     .append(pct).append(",")
                     .append(i + 1).append(",")
                     .append(escapeCsvField(duration)).append(",")
-                    .append(escapeCsvField(attemptDate)).append("\n");
+                    .append(escapeCsvField(attemptDate));
+
+            Map<String, String> answers = answersByRegistration
+                    .getOrDefault(p.getRegistrationId(), Map.of());
+            for (ExportCustomFieldColumn column : customColumns) {
+                csv.append(",").append(escapeCsvField(answers.get(column.fieldId())));
+            }
+            csv.append("\n");
         }
 
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"results.csv\"")
                 .header("Content-Type", "text/plain")
                 .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Columns the result CSV can carry for this assessment — the fixed result
+     * columns plus every active registration-form field. Feeds the Export CSV
+     * dialog's tick-list, which starts with everything ticked.
+     */
+    public ResponseEntity<ResultExportColumnsDto> getResultExportColumns(CustomUserDetails user, String instituteId,
+                                                                         String assessmentId) {
+        // Reject an assessment that demonstrably belongs to another institute.
+        // A handful of live assessments pre-date the mapping table and have no
+        // mapping row at all — those stay exportable, scoped like the CSV itself
+        // by the institute on their registration rows.
+        if (assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId).isEmpty()
+                && assessmentInstituteMappingRepository.findTopByAssessmentId(assessmentId).isPresent()) {
+            throw new VacademyException("Assessment Not Found");
+        }
+
+        List<AssessmentCustomField> customFields = assessmentCustomFieldRepository
+                .findActiveFieldsByAssessmentId(assessmentId);
+        List<String> columnLabels = buildCustomFieldHeaders(customFields);
+
+        List<ResultExportColumnsDto.CustomFieldColumn> columns = new ArrayList<>();
+        for (int i = 0; i < customFields.size(); i++) {
+            AssessmentCustomField field = customFields.get(i);
+            columns.add(ResultExportColumnsDto.CustomFieldColumn.builder()
+                    .id(field.getId())
+                    .fieldName(field.getFieldName())
+                    .fieldKey(field.getFieldKey())
+                    .fieldType(field.getFieldType())
+                    .fieldOrder(field.getFieldOrder())
+                    .isMandatory(field.getIsMandatory())
+                    .columnLabel(columnLabels.get(i))
+                    .build());
+        }
+
+        return ResponseEntity.ok(ResultExportColumnsDto.builder()
+                .baseColumns(RESULT_EXPORT_BASE_HEADERS)
+                .customFields(columns)
+                .build());
+    }
+
+    /** One registration-form column of the CSV: which field fills it, and its header. */
+    private record ExportCustomFieldColumn(String fieldId, String header) {
+    }
+
+    /**
+     * Registration-form columns to append. A null id list means "every active
+     * field" (so an older client that doesn't send a selection still gets the
+     * full data), an empty list means the admin unticked all of them.
+     * <p>
+     * Headers are always computed over the assessment's full field list, then
+     * filtered — otherwise unticking one field could rename another's column
+     * (drop the first "Email" field and the second stops needing its "(Form 2)"
+     * suffix), and the header would no longer match what the dialog promised.
+     */
+    private List<ExportCustomFieldColumn> resolveExportCustomFieldColumns(String assessmentId,
+                                                                          List<String> requestedCustomFieldIds) {
+        if (requestedCustomFieldIds != null && requestedCustomFieldIds.isEmpty()) {
+            return List.of();
+        }
+        List<AssessmentCustomField> activeFields = assessmentCustomFieldRepository
+                .findActiveFieldsByAssessmentId(assessmentId);
+        List<String> headers = buildCustomFieldHeaders(activeFields);
+        Set<String> requested = requestedCustomFieldIds == null
+                ? null
+                : new HashSet<>(requestedCustomFieldIds);
+
+        List<ExportCustomFieldColumn> columns = new ArrayList<>();
+        for (int i = 0; i < activeFields.size(); i++) {
+            AssessmentCustomField field = activeFields.get(i);
+            if (requested == null || requested.contains(field.getId())) {
+                columns.add(new ExportCustomFieldColumn(field.getId(), headers.get(i)));
+            }
+        }
+        return columns;
+    }
+
+    /**
+     * Column titles for the custom fields, kept unique and distinct from the
+     * fixed result columns — a form asking for "Email" would otherwise produce
+     * two identically named columns and confuse the spreadsheet reader.
+     */
+    private List<String> buildCustomFieldHeaders(List<AssessmentCustomField> customFields) {
+        Set<String> used = new HashSet<>();
+        RESULT_EXPORT_BASE_HEADERS.forEach(header -> used.add(header.toLowerCase()));
+
+        List<String> headers = new ArrayList<>();
+        for (AssessmentCustomField field : customFields) {
+            String base = (field.getFieldName() != null && !field.getFieldName().isBlank())
+                    ? field.getFieldName().trim()
+                    : (field.getFieldKey() != null ? field.getFieldKey() : "Field");
+            String candidate = base;
+            if (used.contains(candidate.toLowerCase())) {
+                candidate = base + " (Form)";
+            }
+            int suffix = 2;
+            while (used.contains(candidate.toLowerCase())) {
+                candidate = base + " (Form " + suffix + ")";
+                suffix++;
+            }
+            used.add(candidate.toLowerCase());
+            headers.add(candidate);
+        }
+        return headers;
+    }
+
+    private Map<String, Map<String, String>> loadCustomFieldAnswers(String assessmentId, String instituteId) {
+        Map<String, Map<String, String>> answersByRegistration = new HashMap<>();
+        assessmentUserRegistrationRepository.findCustomFieldAnswersForAssessment(assessmentId, instituteId)
+                .forEach(row -> {
+                    if (row.getRegistrationId() == null || row.getFieldId() == null) return;
+                    String answer = row.getAnswer() != null ? row.getAnswer().trim() : "";
+                    if (answer.isEmpty()) return;
+                    answersByRegistration
+                            .computeIfAbsent(row.getRegistrationId(), key -> new HashMap<>())
+                            .merge(row.getFieldId(), answer,
+                                    (existing, incoming) -> existing + MULTI_ANSWER_SEPARATOR + incoming);
+                });
+        return answersByRegistration;
     }
 
     private String escapeCsvField(String value) {

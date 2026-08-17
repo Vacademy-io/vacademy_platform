@@ -20,12 +20,11 @@ import {
     getAdminParticipants,
     getAttemptsFileStatus,
     handleGetAssessmentTotalMarksData,
-    handleExportResultCSV,
 } from '../-services/assessment-details-services';
 import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
-import { ArrowCounterClockwise, Export } from '@phosphor-icons/react';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { AssessmentDetailsSearchComponent } from './SearchComponent';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -40,11 +39,11 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
+import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
 import { AssessmentGlobalLevelReleaseResultAssessment } from './assessment-global-level-revaluate/assessment-global-level-release-result-assessment';
-import Papa from 'papaparse';
 import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
@@ -856,42 +855,6 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         }
     };
 
-    const [isExportingCSV, setIsExportingCSV] = useState(false);
-
-    const handleExportCSV = async () => {
-        setIsExportingCSV(true);
-        try {
-            const data = await handleExportResultCSV(
-                initData?.id,
-                assessmentId,
-                assesssmentType
-            );
-            if (!data) {
-                toast.error('No data returned. Please try again.');
-                return;
-            }
-            const parsed = Papa.parse(data, { header: true, skipEmptyLines: true }).data;
-            const csv = Papa.unparse(parsed);
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute(
-                'download',
-                `results_${assessmentId}_${new Date().toLocaleDateString()}.csv`
-            );
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            toast.success('Results exported successfully.');
-        } catch {
-            toast.error('Failed to export CSV. Please try again.');
-        } finally {
-            setIsExportingCSV(false);
-        }
-    };
-
     useEffect(() => {
         const timer = setTimeout(() => {
             const fetchAllParticipants = async () => {
@@ -1068,17 +1031,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </TabsTrigger>
                     </TabsList>
                     <div className="mr-4 mt-4 flex items-center gap-2">
-                        <MyButton
-                            type="button"
-                            scale="small"
-                            buttonType="secondary"
-                            className="font-medium"
-                            onClick={handleExportCSV}
-                            disable={isExportingCSV}
-                        >
-                            <Export size={16} />
-                            {isExportingCSV ? 'Exporting…' : 'Export'}
-                        </MyButton>
+                        <AssessmentExportCsvDialog
+                            assessmentId={assessmentId}
+                            instituteId={initData?.id}
+                            assessmentType={assesssmentType}
+                        />
                         <AssessmentReportZipExportDialog
                             assessmentId={assessmentId}
                             instituteId={instituteId}

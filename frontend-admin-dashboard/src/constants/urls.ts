@@ -507,6 +507,8 @@ export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
+// Columns the result CSV can carry (fixed result columns + registration-form custom fields)
+export const GET_EXPORT_CSV_COLUMNS_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants/columns`;
 // Bulk Assessment Report Export (ZIP)
 export const REPORT_ZIP_EXPORT_INITIATE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/initiate`;
 export const REPORT_ZIP_EXPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/status`;

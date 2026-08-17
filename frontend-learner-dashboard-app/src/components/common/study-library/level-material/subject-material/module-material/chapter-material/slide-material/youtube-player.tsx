@@ -1036,7 +1036,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
       autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
-      // cc_load_policy: 0, // Hide closed captions
+      // NOTE: there is deliberately no cc_load_policy here. The API only accepts
+      // cc_load_policy=1, which FORCES captions on; there is no value that turns
+      // them off, because the default is "whatever the viewer prefers". Captions
+      // are suppressed in onPlayerReady via unloadModule instead.
       origin: getPlayerOrigin(), // Use localhost for Electron, actual origin for web
       enablejsapi: 1, // Enable JavaScript API
       playsinline: 1, // Play inline on iOS
@@ -1103,6 +1106,29 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     playerRef.current = event.target;
     setPlayer(event.target);
     setPlayerReady(true);
+
+    // Turn subtitles off.
+    //
+    // This cannot be done with playerVars: cc_load_policy only accepts 1 (force
+    // captions ON) and its default is "follow the viewer's own preference" — a
+    // Google account set to "always show captions", or an OS-level subtitle
+    // toggle. That is why the same class plays clean for most learners and
+    // captioned for one, which is how this was reported.
+    //
+    // Unloading the captions module is the only way to override that. Both names
+    // are tried because the module is "cc" on the legacy player and "captions"
+    // on the HTML5 one, and the player exposes whichever it uses. Wrapped and
+    // ignored on failure: losing this must never stop the class from playing.
+    for (const moduleName of ["captions", "cc"]) {
+      try {
+        (
+          event.target as unknown as { unloadModule?: (m: string) => void }
+        ).unloadModule?.(moduleName);
+      } catch {
+        /* module not present on this player build — nothing to unload */
+      }
+    }
+
     try {
       const vol = await event.target.getVolume();
       setVolume(typeof vol === "number" ? vol : 100);

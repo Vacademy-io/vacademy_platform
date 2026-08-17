@@ -536,6 +536,10 @@ export default function AdminDisplaySettings() {
                                 'showAddSlide',
                                 'Show "Add Slide" button (Outline & Content Structure)',
                             ],
+                            [
+                                'showLearnerProgressReport',
+                                'Show "Student Progress" tab in Reports (per-learner course progress)',
+                            ],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -549,6 +553,7 @@ export default function AdminDisplaySettings() {
                                     updateSettings((prev) => ({
                                         ...prev,
                                         coursePage: {
+                                            ...prev.coursePage,
                                             viewInviteLinks:
                                                 prev.coursePage?.viewInviteLinks ?? true,
                                             viewShortInviteLinks:
@@ -597,6 +602,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -647,6 +653,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -716,6 +723,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -753,6 +761,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -792,6 +801,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,

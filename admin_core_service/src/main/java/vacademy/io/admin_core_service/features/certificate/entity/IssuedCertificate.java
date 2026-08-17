@@ -68,6 +68,16 @@ public class IssuedCertificate {
     @Column(name = "verification_token", length = 64)
     private String verificationToken;
 
+    // The barcode's credential. Same job as verificationToken, but short enough
+    // that `<number>*<code>` fits in a Code 128 barcode that still scans at a
+    // sane print width — the full token would need a barcode ~76mm wide. 50 bits
+    // rather than 128, which is fine because the endpoint gives no oracle: a
+    // wrong code and an unknown number return the identical 404.
+    // Null on certificates issued before short codes existed; their barcodes
+    // encode the bare number and cannot verify. Re-issuing mints one.
+    @Column(name = "short_code", length = 16)
+    private String shortCode;
+
     // Captures the exact HTML used so the same PDF can be reproduced even after
     // the institute edits its template later.
     @Column(name = "template_html_snapshot", columnDefinition = "TEXT")

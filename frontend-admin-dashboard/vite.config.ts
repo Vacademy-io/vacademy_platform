@@ -445,7 +445,12 @@ export default defineConfig(({ mode }) => {
             globals: true,
             environment: 'happy-dom',
             setupFiles: '.vitest/setup',
-            include: ['**/test.{ts,tsx}'],
+            // `**/test.{ts,tsx}` came in with the vendored excalidraw setup and
+            // matches only files named literally `test.ts`, so no `*.test.ts`
+            // in this repo has ever run. Route-local tests are added
+            // explicitly rather than by widening to `src/**/*.test.*`, which
+            // would sweep in excalidraw's vendored suite and its own harness.
+            include: ['**/test.{ts,tsx}', 'src/routes/**/*.test.{ts,tsx}'],
         },
         server: {
             headers: {

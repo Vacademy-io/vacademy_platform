@@ -19,14 +19,24 @@ import type {
 // text boxes and the serializer emits a raw data URI as visible text.
 import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
 import {
+    fieldContentWidthPx,
+    MAX_TEXT_LINES,
+    TEXT_LINE_HEIGHT,
+} from '../../-utils/serialize-image-template-to-html';
+import { textFitWarning } from '../../-utils/certificate-text-fit';
+import {
     AUTO_BADGE,
+    codeAspectRatio,
     codeDisplayName,
     codeFieldName,
     codePlaceholder,
+    codeScanWarning,
     codeSizePx,
+    isCodeFieldName,
     planFromFieldNames,
     PX_PER_MM,
     type BadgeCodeType,
+    type BarcodeContent,
 } from '../../-utils/certificate-auto-badge';
 
 const SYSTEM_IMAGE_FIELDS = new Set([
@@ -65,6 +75,18 @@ interface Props {
      * of the badge, so switching QR ↔ Barcode changes what admins see it print.
      */
     badgeCodeType?: BadgeCodeType;
+    /**
+     * What a placed Barcode field encodes. Drives its aspect and the width below
+     * which it stops scanning — a verifying barcode carries about twice the
+     * payload of a bare number and needs about twice the width.
+     */
+    barcodeContent?: BarcodeContent;
+    /**
+     * Printed width of the certificate. The canvas is in pixels, but whether a
+     * code scans is a question about millimetres on paper, so the warning needs
+     * the page size to convert. Defaults to A4 landscape.
+     */
+    pageWidthMm?: number;
     /** Sample number shown inside the ghost badge. */
     sampleCertificateId?: string;
 }
@@ -72,7 +94,16 @@ interface Props {
 type DragMode =
     | { kind: 'idle' }
     | { kind: 'move'; id: string; offsetX: number; offsetY: number }
-    | { kind: 'resize'; id: string; startX: number; startY: number; w: number; h: number };
+    | {
+          kind: 'resize';
+          id: string;
+          startX: number;
+          startY: number;
+          w: number;
+          h: number;
+          /** Set for code fields, which must keep their shape to stay scannable. */
+          aspect?: number;
+      };
 
 const SCALE_PADDING_PX = 32;
 
@@ -84,6 +115,8 @@ export const CertificateVisualEditor = ({
     customImages,
     onCustomImagesChange,
     badgeCodeType = 'QR',
+    barcodeContent = 'NUMBER',
+    pageWidthMm = 297,
     sampleCertificateId = 'VA-0123-2026',
 }: Props) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +207,9 @@ export const CertificateVisualEditor = ({
             startY: e.clientY,
             w: f.position.width,
             h: f.position.height,
+            aspect: isCodeFieldName(f.fieldName)
+                ? codeAspectRatio(f.fieldName, barcodeContent)
+                : undefined,
         });
     };
 
@@ -190,10 +226,26 @@ export const CertificateVisualEditor = ({
             } else if (drag.kind === 'resize') {
                 const dx = (e.clientX - drag.startX) / scale;
                 const dy = (e.clientY - drag.startY) / scale;
-                updateFieldPos(drag.id, {
-                    width: Math.max(20, drag.w + dx),
-                    height: Math.max(16, drag.h + dy),
-                });
+                if (drag.aspect) {
+                    // Codes resize proportionally. A QR is square by
+                    // construction and a stretched one is rejected by scanners;
+                    // a squashed barcode stops scanning too. Driving both
+                    // dimensions off whichever the pointer moved further keeps
+                    // the drag feeling direct while the shape stays valid.
+                    const width = Math.max(
+                        20,
+                        Math.abs(dx) >= Math.abs(dy) ? drag.w + dx : (drag.h + dy) * drag.aspect
+                    );
+                    updateFieldPos(drag.id, {
+                        width,
+                        height: Math.max(16, width / drag.aspect),
+                    });
+                } else {
+                    updateFieldPos(drag.id, {
+                        width: Math.max(20, drag.w + dx),
+                        height: Math.max(16, drag.h + dy),
+                    });
+                }
             }
         };
         const onUp = () => setDrag({ kind: 'idle' });
@@ -397,6 +449,24 @@ export const CertificateVisualEditor = ({
                     <FloatingPropertiesPanel
                         field={selectedField}
                         isImage={isImageField(selectedField)}
+                        fitWarning={
+                            isImageField(selectedField)
+                                ? null
+                                : textFitWarning({
+                                      fieldName: selectedField.fieldName,
+                                      widthPx: fieldContentWidthPx(selectedField),
+                                      fontSizePx: selectedField.style.fontSize,
+                                      bold: selectedField.style.fontWeight === 'bold',
+                                  })
+                        }
+                        scanWarning={codeScanWarning({
+                            fieldName: selectedField.fieldName,
+                            widthPx: selectedField.position.width,
+                            heightPx: selectedField.position.height,
+                            canvasWidthPx: imageTemplate.width,
+                            canvasWidthMm: pageWidthMm,
+                            barcodeContent,
+                        })}
                         onChangeStyle={(p) => updateFieldStyle(selectedField.id, p)}
                         onChangePos={(p) => updateFieldPos(selectedField.id, p)}
                         onChangeField={(p) => updateField(selectedField.id, p)}
@@ -468,10 +538,6 @@ export const CertificateVisualEditor = ({
                                         <div
                                             className="flex size-full items-center"
                                             style={{
-                                                color: f.style.fontColor,
-                                                fontFamily: f.style.fontFamily,
-                                                fontSize: f.style.fontSize,
-                                                fontWeight: f.style.fontWeight,
                                                 justifyContent:
                                                     f.style.alignment === 'center'
                                                         ? 'center'
@@ -481,7 +547,27 @@ export const CertificateVisualEditor = ({
                                                 padding: f.style.padding,
                                             }}
                                         >
-                                            {f.displayName}
+                                            {/* Wraps and clamps exactly as the
+                                                issued certificate does, so a box
+                                                too small for a real value shows
+                                                it here rather than on the
+                                                learner's PDF. */}
+                                            <div
+                                                style={{
+                                                    width: '100%',
+                                                    color: f.style.fontColor,
+                                                    fontFamily: f.style.fontFamily,
+                                                    fontSize: f.style.fontSize,
+                                                    fontWeight: f.style.fontWeight,
+                                                    textAlign: f.style.alignment,
+                                                    lineHeight: TEXT_LINE_HEIGHT,
+                                                    maxHeight: `${MAX_TEXT_LINES * TEXT_LINE_HEIGHT}em`,
+                                                    overflow: 'hidden',
+                                                    overflowWrap: 'break-word',
+                                                }}
+                                            >
+                                                {f.displayName}
+                                            </div>
                                         </div>
                                     )}
 
@@ -577,7 +663,6 @@ export const CertificateVisualEditor = ({
                     </p>
                 )}
             </div>
-
         </div>
     );
 };
@@ -588,6 +673,8 @@ export const CertificateVisualEditor = ({
 // font/weight dropdowns, hex text-color input, individual alignment buttons,
 // background-color with Clear, Position, and Field Size groups.
 const FloatingPropertiesPanel = ({
+    scanWarning,
+    fitWarning,
     field,
     isImage,
     onChangeStyle,
@@ -597,6 +684,19 @@ const FloatingPropertiesPanel = ({
 }: {
     field: FieldMapping;
     isImage: boolean;
+    /**
+     * Why this code would not scan off the printed page, or null. Shown rather
+     * than enforced: the admin owns the design, and silently resizing a box
+     * they are dragging is worse than telling them what is wrong.
+     */
+    scanWarning: string | null;
+    /**
+     * What a realistically long value does in this box, or null. Text fields are
+     * sized against a short sample and filled with real data much later, so
+     * without this the admin only discovers the box is too tight when a learner
+     * with a long name receives a shrunken or cut-off certificate.
+     */
+    fitWarning: string | null;
     onChangeStyle: (p: Partial<FieldMapping['style']>) => void;
     onChangePos: (p: Partial<FieldMapping['position']>) => void;
     onChangeField: (p: Partial<FieldMapping>) => void;
@@ -672,6 +772,16 @@ const FloatingPropertiesPanel = ({
             {/* Panel Content */}
             <div className="p-4">
                 <div className="space-y-4">
+                    {scanWarning && (
+                        <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">
+                            {scanWarning}
+                        </div>
+                    )}
+                    {fitWarning && (
+                        <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">
+                            {fitWarning}
+                        </div>
+                    )}
                     {!isImage && (
                         <>
                             {/* Font Size — max scales with the field box so

@@ -40,6 +40,46 @@ import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 
+/**
+ * Force subtitles off on a YouTube player.
+ *
+ * There is no playerVar for this: cc_load_policy only accepts 1 ("force captions
+ * ON") and its default is to follow the VIEWER's own preference — a Google
+ * account set to "always show captions", or an OS-level subtitle toggle. That is
+ * why one learner sees subtitles on a class everyone else sees clean.
+ *
+ * Three calls because no single one is reliable across player builds:
+ *   unloadModule("captions") — HTML5 player
+ *   unloadModule("cc")       — legacy player, which names the module differently
+ *   setOption("captions", "track", {}) — selects "no track"; this is the one that
+ *                              sticks when the module has already been loaded
+ *
+ * Must be re-applied when playback starts: the captions module is frequently
+ * loaded at PLAYING, after onReady has already run, which is why suppressing it
+ * only once on ready was not enough.
+ *
+ * Entirely best-effort — every call is swallowed. A learner seeing subtitles is a
+ * blemish; a thrown error here would break their class.
+ */
+const suppressCaptions = (target: unknown) => {
+  const p = target as {
+    unloadModule?: (m: string) => void;
+    setOption?: (module: string, option: string, value: unknown) => void;
+  };
+  for (const moduleName of ["captions", "cc"]) {
+    try {
+      p?.unloadModule?.(moduleName);
+    } catch {
+      /* module absent on this build */
+    }
+    try {
+      p?.setOption?.(moduleName, "track", {});
+    } catch {
+      /* option unsupported on this build */
+    }
+  }
+};
+
 // Add the YouTube PlayerState enum to avoid window.YT references
 enum PlayerState {
   UNSTARTED = -1,
@@ -1121,27 +1161,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     setPlayer(event.target);
     setPlayerReady(true);
 
-    // Turn subtitles off.
-    //
-    // This cannot be done with playerVars: cc_load_policy only accepts 1 (force
-    // captions ON) and its default is "follow the viewer's own preference" — a
-    // Google account set to "always show captions", or an OS-level subtitle
-    // toggle. That is why the same class plays clean for most learners and
-    // captioned for one, which is how this was reported.
-    //
-    // Unloading the captions module is the only way to override that. Both names
-    // are tried because the module is "cc" on the legacy player and "captions"
-    // on the HTML5 one, and the player exposes whichever it uses. Wrapped and
-    // ignored on failure: losing this must never stop the class from playing.
-    for (const moduleName of ["captions", "cc"]) {
-      try {
-        (
-          event.target as unknown as { unloadModule?: (m: string) => void }
-        ).unloadModule?.(moduleName);
-      } catch {
-        /* module not present on this player build — nothing to unload */
-      }
-    }
+    suppressCaptions(event.target);
 
     try {
       const vol = await event.target.getVolume();
@@ -1220,40 +1240,55 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Small delay to ensure iframe is ready
       const autoplayTimeout = setTimeout(async () => {
-        const success = await safePlayerOperation(async () => {
-          const p = playerRef.current;
-          if (!p) return;
-          try {
-            await p.unMute(); // Unmute for autoplay
-          } catch (e) {
-            console.warn("unMute failed during autoplay", e);
-          }
-          await p.playVideo();
-        }, "autoplay");
+        // Keep trying for a few seconds before giving the learner a button.
+        //
+        // A browser only permits unmuted playback while the page holds a recent
+        // user gesture. Opening a class often does hold one (the tap on the class
+        // card, or "Continue to class" on the disclaimer), but the player is not
+        // always initialised in time for the first attempt to land. Retrying over
+        // ~4s catches that, and costs nothing when the first attempt works.
+        //
+        // A synthetic .click() would NOT help — the browser only counts real
+        // input, so the retry is deliberately a real playVideo() each time.
+        const ATTEMPTS = 5;
+        const GAP_MS = 800;
+        let started = false;
 
-        if (success) {
-          // Verify that video actually started playing after a short delay
-          autoplayVerifyTimeoutRef.current = setTimeout(async () => {
-            autoplayVerifyTimeoutRef.current = null;
+        for (let attempt = 0; attempt < ATTEMPTS && !started; attempt++) {
+          if (!isMountedRef.current) return;
+          const ok = await safePlayerOperation(async () => {
+            const p = playerRef.current;
+            if (!p) return;
+            try {
+              await p.unMute(); // Unmute for autoplay
+            } catch (e) {
+              console.warn("unMute failed during autoplay", e);
+            }
+            await p.playVideo();
+          }, `autoplay#${attempt + 1}`);
+
+          if (ok) {
+            await new Promise((r) => setTimeout(r, GAP_MS));
             if (!isMountedRef.current) return;
             try {
-              const playerState = await player.getPlayerState();
-              if (!isMountedRef.current) return;
-              // PlayerState.PLAYING = 1, if not playing, show manual button
-              if (playerState !== 1) {
-                setShowManualPlayButton(true);
-              } else {
-                setIsPlayed(true);
-                setShowManualPlayButton(false);
-              }
-            } catch (error) {
-              console.warn("Error checking player state after autoplay", error);
-              if (isMountedRef.current) setShowManualPlayButton(true);
+              started = (await player.getPlayerState()) === 1;
+            } catch {
+              started = false;
             }
-          }, 1000);
+          } else {
+            await new Promise((r) => setTimeout(r, GAP_MS));
+          }
+        }
+
+        if (!isMountedRef.current) return;
+        if (started) {
+          setIsPlayed(true);
+          setShowManualPlayButton(false);
         } else {
-          console.warn("Autoplay failed, showing manual play button");
-          if (isMountedRef.current) setShowManualPlayButton(true);
+          // The browser is holding playback back and only a real tap will release
+          // it. Surface the button rather than leaving a dead frame.
+          console.warn("Autoplay blocked after retries, showing manual play button");
+          setShowManualPlayButton(true);
         }
       }, 500);
 
@@ -1366,6 +1401,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const onStateChange = async (event: YouTubeEvent) => {
     if (!isMountedRef.current) return;
     if (!player || !playerRef.current) return;
+
+    // Re-assert "no subtitles" the moment playback starts. YouTube commonly loads
+    // the captions module at PLAYING rather than at ready, so suppressing it only
+    // in onPlayerReady leaves captions to reappear for viewers whose account
+    // forces them on — which is exactly what was reported.
+    if (event.data === PlayerState.PLAYING) suppressCaptions(event.target);
+
+    // Hold the last frame once the class finishes rather than letting the embed
+    // roll back to the start. A learner who leaves the tab open through the tail
+    // of the slot should see a finished class, not one that quietly began again.
+    if (event.data === PlayerState.ENDED) {
+      safePlayerOperation(async () => {
+        await playerRef.current?.pauseVideo();
+      }, "holdAtEnd");
+    }
 
     // Auto-play after seek completes (event-driven approach)
     if (shouldAutoPlayAfterSeekRef.current) {
@@ -1661,7 +1711,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Only sync if elapsed time is positive (class has started)
         if (elapsedSeconds > 0) {
           // Add a small delay to ensure the player iframe is fully initialized
-          setTimeout(() => {
+          setTimeout(async () => {
+            // The scheduled slot is routinely longer than the video — a 60-minute
+            // class carrying a 57-minute recording leaves three minutes where
+            // "elapsed since start" points PAST the end. Seeking there does not
+            // land at the end: YouTube treats an out-of-range seek as a seek to
+            // zero, so the class appears to restart itself just as it finishes.
+            // Past the end there is nothing left to sync to, so leave the player
+            // where it is and let it finish.
+            const duration = await safeGetNumber(playerRef.current?.getDuration());
+            if (duration > 0 && elapsedSeconds >= duration - 1) {
+              console.log(
+                `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`
+              );
+              return;
+            }
             // Seek to the calculated position (force it to bypass restrictions)
             seekToTimestamp(elapsedSeconds, true);
           }, 500);

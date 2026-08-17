@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.enums.LinkType;
 import vacademy.io.admin_core_service.features.live_session.enums.LiveSessionStatus;
+import vacademy.io.admin_core_service.features.live_session.util.TimezoneNormalizer;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
@@ -551,8 +552,16 @@ public class Step1Service {
 
         // New Field
         session.setAllowPlayPause(request.isAllowPlayPause());
+        // Normalize rather than store verbatim: the read queries splice this column into
+        // `AT TIME ZONE`, so an unresolvable value (older ICU clients still send the legacy
+        // `Asia/Calcutta`, which prod Postgres dropped) aborts the whole query and takes
+        // live-session dispatch down for every institute. See TimezoneNormalizer.
+        //
+        // Blank is passed through untouched rather than defaulted: the queries already treat
+        // it as "unset" via NULLIF(s.timezone, ''), so rewriting it here would convert an
+        // unset marker into an explicit zone and change what the column means.
         if (request.getTimeZone() != null)
-            session.setTimezone(request.getTimeZone());
+            session.setTimezone(TimezoneNormalizer.normalizePreservingBlank(request.getTimeZone()));
 
         // Save BBB meeting config as JSON
         if (request.getBbbConfig() != null) {

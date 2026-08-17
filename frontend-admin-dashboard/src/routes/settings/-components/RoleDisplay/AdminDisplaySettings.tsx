@@ -52,6 +52,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import CallNumberVisibilityCard from './CallNumberVisibilityCard';
 import SubOrgModuleCard from './SubOrgModuleCard';
 import {
     SettingsSectionsLayout,
@@ -535,6 +536,10 @@ export default function AdminDisplaySettings() {
                                 'showAddSlide',
                                 'Show "Add Slide" button (Outline & Content Structure)',
                             ],
+                            [
+                                'showLearnerProgressReport',
+                                'Show "Student Progress" tab in Reports (per-learner course progress)',
+                            ],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -548,6 +553,7 @@ export default function AdminDisplaySettings() {
                                     updateSettings((prev) => ({
                                         ...prev,
                                         coursePage: {
+                                            ...prev.coursePage,
                                             viewInviteLinks:
                                                 prev.coursePage?.viewInviteLinks ?? true,
                                             viewShortInviteLinks:
@@ -596,6 +602,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -646,6 +653,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -715,6 +723,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -752,6 +761,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -791,6 +801,7 @@ export default function AdminDisplaySettings() {
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -2505,6 +2516,8 @@ export default function AdminDisplaySettings() {
             />
 
             <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
+
+            <CallNumberVisibilityCard roleName="ADMIN" roleLabel="Admin" />
             </section>
             </SettingsSectionsLayout>
 

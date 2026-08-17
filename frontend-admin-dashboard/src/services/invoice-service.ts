@@ -54,7 +54,10 @@ export interface InvoiceDTO {
 
 export interface UserAccountLedgerEntryDTO {
     id: string;
-    event_type: string; // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
+    // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
+    // | DEBIT_REVERSAL (obligation voided before any money moved — cancels the accrual out
+    //   of total_accrued rather than counting as money received)
+    event_type: string;
     amount: number;
     currency: string;
     due_date: string | null;

@@ -1024,6 +1024,20 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // iOS exposes `capacitor://localhost` which YouTube rejects → Error 153.
   const getPlayerOrigin = () => getYouTubeEmbedOrigin();
 
+  /**
+   * Whether the video should start on its own.
+   *
+   * Live classes always do: the learner has already chosen to join, and being
+   * dropped onto a still frame that needs a second tap makes them late to their
+   * own class. Elsewhere the original rule stands — autoplay only when the
+   * learner is not allowed to pause, so study-library slides are unchanged.
+   *
+   * Browsers may still refuse to start audio without a gesture. That is handled,
+   * not assumed: the autoplay effect verifies the player actually reached
+   * PLAYING and falls back to a manual play button when it did not.
+   */
+  const shouldAutoPlay = isLiveStream || !allowPlayPause;
+
   const opts: YouTubeProps["opts"] = {
     height: "100%",
     width: "100%",
@@ -1035,8 +1049,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       modestbranding: 1, // Hide YouTube logo
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
-      autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
-      // cc_load_policy: 0, // Hide closed captions
+      autoplay: shouldAutoPlay ? 1 : 0, // Live classes and locked-down videos start themselves
+      // NOTE: there is deliberately no cc_load_policy here. The API only accepts
+      // cc_load_policy=1, which FORCES captions on; there is no value that turns
+      // them off, because the default is "whatever the viewer prefers". Captions
+      // are suppressed in onPlayerReady via unloadModule instead.
       origin: getPlayerOrigin(), // Use localhost for Electron, actual origin for web
       enablejsapi: 1, // Enable JavaScript API
       playsinline: 1, // Play inline on iOS
@@ -1103,6 +1120,29 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     playerRef.current = event.target;
     setPlayer(event.target);
     setPlayerReady(true);
+
+    // Turn subtitles off.
+    //
+    // This cannot be done with playerVars: cc_load_policy only accepts 1 (force
+    // captions ON) and its default is "follow the viewer's own preference" — a
+    // Google account set to "always show captions", or an OS-level subtitle
+    // toggle. That is why the same class plays clean for most learners and
+    // captioned for one, which is how this was reported.
+    //
+    // Unloading the captions module is the only way to override that. Both names
+    // are tried because the module is "cc" on the legacy player and "captions"
+    // on the HTML5 one, and the player exposes whichever it uses. Wrapped and
+    // ignored on failure: losing this must never stop the class from playing.
+    for (const moduleName of ["captions", "cc"]) {
+      try {
+        (
+          event.target as unknown as { unloadModule?: (m: string) => void }
+        ).unloadModule?.(moduleName);
+      } catch {
+        /* module not present on this player build — nothing to unload */
+      }
+    }
+
     try {
       const vol = await event.target.getVolume();
       setVolume(typeof vol === "number" ? vol : 100);
@@ -1166,10 +1206,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     };
   }, []);
 
-  // Auto-play when player is ready and allowPlayPause is false
+  // Auto-play once the player is ready — for live classes, and for videos the
+  // learner is not allowed to pause. Must agree with the `autoplay` playerVar
+  // above, so both read the same flag.
   useEffect(() => {
     if (
-      !allowPlayPause &&
+      shouldAutoPlay &&
       player &&
       playerReady &&
       !hasAutoPlayAttempted.current
@@ -1223,7 +1265,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         }
       };
     }
-  }, [allowPlayPause, player, playerReady]);
+  }, [shouldAutoPlay, player, playerReady]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {

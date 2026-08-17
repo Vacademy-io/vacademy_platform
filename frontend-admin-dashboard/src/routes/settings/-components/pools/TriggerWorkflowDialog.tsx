@@ -36,6 +36,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
@@ -491,27 +495,15 @@ export function TriggerWorkflowDialog({
                                         </button>
                                     )}
                                 </div>
-                                <Select
+                                <TemplateSearchableSelect
+                                    options={toTemplateOptions(templates)}
                                     value={selectedTemplate}
-                                    onValueChange={setSelectedTemplate}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue
-                                            placeholder={
-                                                templatesLoading
-                                                    ? 'Loading templates…'
-                                                    : 'Select a template'
-                                            }
-                                        />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {templates.map((t) => (
-                                            <SelectItem key={t.id} value={t.name}>
-                                                {t.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    onChange={setSelectedTemplate}
+                                    loading={templatesLoading}
+                                    placeholder="Select a template"
+                                    emptyText="No template matches your search."
+                                    portal={false}
+                                />
                                 {templates.length === 0 && !templatesLoading && (
                                     <p className="text-xs text-warning-600">
                                         No {channel === 'EMAIL' ? 'email' : 'WhatsApp'} templates

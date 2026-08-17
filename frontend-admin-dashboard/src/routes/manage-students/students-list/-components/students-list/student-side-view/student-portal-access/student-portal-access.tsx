@@ -32,6 +32,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { BatchPicker } from '../BatchPicker';
 import { EditCredentialsDialog } from './edit-credentials-dialog';
 import { OfflineDevicesCard } from './offline-devices-card';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -39,6 +40,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const [copiedField, setCopiedField] = useState<string>('');
     const [learnerSettings, setLearnerSettings] = useState<LearnerManagementSettings | null>(null);
+    const offlineAccessEnabled = useOfflineAccessEnabled();
 
     const userId = isSubmissionTab ? selectedStudent?.id : selectedStudent?.user_id;
     const { data: credentials, isLoading: isCredentialsLoading } = useStudentCredentails({
@@ -391,8 +393,12 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                 />
             )}
 
-            {/* Registered offline-download devices (admin view + revoke). */}
-            {!isSubmissionTab && userId && <OfflineDevicesCard userId={userId} />}
+            {/* Registered offline-download devices (admin view + revoke). Hidden
+                when the institute's offline access master switch is off — no
+                device can register while it is off, so the card is always empty. */}
+            {!isSubmissionTab && userId && offlineAccessEnabled && (
+                <OfflineDevicesCard userId={userId} />
+            )}
 
             {/* Info when no settings enabled */}
             {!learnerSettings?.allowViewPassword &&

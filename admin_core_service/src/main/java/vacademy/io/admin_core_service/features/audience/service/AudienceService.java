@@ -2994,6 +2994,7 @@ public class AudienceService {
                     customFieldMatchedIdsCsv,
                     customFieldExcludedIdsCsv,
                     filterDTO.getCallHistoryFilter(),
+                    filterDTO.getCallCountValue(),
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
                     filterDTO.getSortCustomFieldId(),
@@ -3022,6 +3023,7 @@ public class AudienceService {
                 customFieldMatchedIdsCsv,
                 customFieldExcludedIdsCsv,
                 filterDTO.getCallHistoryFilter(),
+                filterDTO.getCallCountValue(),
                 conversionStatusFilter,
                 audienceStatusFilter,
                 filterDTO.getSlaFilter(),
@@ -3391,17 +3393,72 @@ public class AudienceService {
         Audience audience = audienceRepository.findById(response.getAudienceId())
                 .orElseThrow(() -> new VacademyException("Audience not found"));
 
-        Map<String, String> customFieldValues = getCustomFieldValuesForResponse(response.getId());
+        // Values keyed by custom_field_id, plus the field DEFINITIONS behind them.
+        // Without the definitions a consumer can only label each answer with its
+        // field UUID — which is what the lead side-sheet did when it was opened
+        // from a surface that had no list row to copy metadata from (the Call
+        // Log), so the form-response card rendered nothing usable.
+        List<CustomFieldValues> cfValues = customFieldValuesRepository
+                .findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", List.of(response.getId()));
+        Map<String, String> customFieldValues = cfValues.stream()
+                .collect(Collectors.toMap(
+                        CustomFieldValues::getCustomFieldId,
+                        CustomFieldValues::getValue,
+                        (v1, v2) -> v2));
+
+        Set<String> fieldIds = cfValues.stream()
+                .map(CustomFieldValues::getCustomFieldId)
+                .collect(Collectors.toSet());
+        Map<String, CustomFields> fieldDefsById = fieldIds.isEmpty() ? Collections.emptyMap()
+                : customFieldRepository.findAllById(fieldIds).stream()
+                        .collect(Collectors.toMap(CustomFields::getId, cf -> cf, (a, b) -> a));
+        Map<String, Object> customFieldMetadata = new HashMap<>();
+        for (CustomFieldValues cfv : cfValues) {
+            CustomFields fieldDef = fieldDefsById.get(cfv.getCustomFieldId());
+            if (fieldDef == null) continue;
+            Map<String, String> meta = new HashMap<>();
+            meta.put("fieldName", fieldDef.getFieldName());
+            meta.put("fieldKey", fieldDef.getFieldKey());
+            meta.put("fieldType", fieldDef.getFieldType());
+            customFieldMetadata.put(cfv.getCustomFieldId(), meta);
+        }
+
+        // The lead's OWN identity. The parent_* columns below are the guardian —
+        // a different person — so a consumer that shows `parentName` as the lead's
+        // name prints the guardian's. Both are returned; neither substitutes.
+        UserDTO user = null;
+        if (StringUtils.hasText(response.getUserId())) {
+            try {
+                user = authService.getUsersFromAuthServiceByUserIds(List.of(response.getUserId()))
+                        .stream().filter(Objects::nonNull).findFirst().orElse(null);
+            } catch (Exception e) {
+                // Identity hydration is best-effort: the caller still gets the
+                // response, its answers and the guardian rows.
+                logger.warn("getLeadById: user hydration failed for {}: {}",
+                        response.getUserId(), e.getMessage());
+            }
+        }
 
         return LeadDetailDTO.builder()
                 .responseId(response.getId())
                 .audienceId(response.getAudienceId())
                 .campaignName(audience.getCampaignName())
                 .userId(response.getUserId())
+                .studentUserId(response.getStudentUserId())
+                .user(user)
                 .sourceType(response.getSourceType())
                 .sourceId(response.getSourceId())
                 .submittedAtLocal(response.getSubmittedAt())
                 .customFieldValues(customFieldValues)
+                .customFieldMetadata(customFieldMetadata)
+                .parentName(response.getParentName())
+                .parentEmail(response.getParentEmail())
+                .parentMobile(response.getParentMobile())
+                .overallStatus(response.getOverallStatus())
+                .conversionStatus(response.getConversionStatus())
+                .enquiryId(response.getEnquiryId())
+                .isDuplicate(response.getIsDuplicate())
+                .primaryResponseId(response.getPrimaryResponseId())
                 .build();
     }
 
@@ -3794,17 +3851,12 @@ public class AudienceService {
     /**
      * Get custom field values for a response
      */
-    private Map<String, String> getCustomFieldValuesForResponse(String responseId) {
-        List<CustomFieldValues> values = customFieldValuesRepository
-                .findBySourceTypeAndSourceId("AUDIENCE_RESPONSE", responseId);
-
-        return values.stream()
-                .collect(Collectors.toMap(
-                        CustomFieldValues::getCustomFieldId,
-                        CustomFieldValues::getValue,
-                        (v1, v2) -> v2 // In case of duplicate keys, take the latest
-                ));
-    }
+    // getCustomFieldValuesForResponse() lived here. Its only caller, getLeadById(),
+    // now needs the CustomFieldValues ENTITIES (to resolve each answer's field
+    // definition for the metadata map), so it fetches them itself and derives the
+    // same {fieldId -> value} map with the same last-wins duplicate rule. Removed
+    // rather than left behind: a second, values-only path would silently produce
+    // form answers labelled with field UUIDs.
 
     /**
      * The lead's captured form/custom fields as {label -> value} for a response —

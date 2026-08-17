@@ -18,6 +18,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
+import { MyInput } from '@/components/design-system/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -424,6 +425,61 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                                 : undefined
                         }
                     />
+                </CardContent>
+            </Card>
+
+            {/* Disclaimer video. Always available here — this is where an admin
+                turns the feature on. While it is off, the per-class disclaimer
+                control stays hidden on the live-class form. */}
+            <Card className="border-neutral-200 shadow-none">
+                    <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                        <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                            <ClipboardText size={18} />
+                        </div>
+                        <div className="flex-1">
+                            <CardTitle className="text-base">Disclaimer Video</CardTitle>
+                            <CardDescription>
+                                Shown before a learner joins a class they have not attended
+                                yet, and not again once they are marked present in it. One
+                                video for every live class, including classes created
+                                automatically by a workflow.
+                            </CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="border-t border-neutral-100 p-5">
+                        <SettingRow
+                            title="Show a disclaimer before joining a class"
+                            description="When on, a learner watches the video below before joining a class they have not attended yet. Marking them present retires it for that class."
+                            checked={settings.disclaimerVideoEnabled}
+                            onChange={(v) => togglePrimitive('disclaimerVideoEnabled', v)}
+                        />
+                        <Separator />
+                        <div className="py-4">
+                            <div className="text-sm font-medium text-neutral-800">Video link</div>
+                            <div className="mb-2 mt-0.5 text-caption text-neutral-500">
+                                YouTube or any direct video URL.
+                            </div>
+                            <MyInput
+                                inputType="text"
+                                input={settings.disclaimerVideoUrl}
+                                inputPlaceholder="https://www.youtube.com/watch?v=..."
+                                onChangeFunction={(e) =>
+                                    setSettings((prev) => ({
+                                        ...prev,
+                                        disclaimerVideoUrl: e.target.value,
+                                    }))
+                                }
+                                disabled={!settings.disclaimerVideoEnabled}
+                                className="w-full sm:w-96"
+                            />
+                            {settings.disclaimerVideoEnabled &&
+                                !settings.disclaimerVideoUrl.trim() && (
+                                    <div className="mt-1.5 text-caption text-warning-600">
+                                        No link set — nothing is shown to learners until you add
+                                        one.
+                                    </div>
+                                )}
+                        </div>
                 </CardContent>
             </Card>
 

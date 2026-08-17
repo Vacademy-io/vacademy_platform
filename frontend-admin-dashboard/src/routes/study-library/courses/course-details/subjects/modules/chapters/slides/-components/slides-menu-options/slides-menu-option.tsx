@@ -15,6 +15,7 @@ import type { DripCondition } from '@/types/course-settings';
 import { toast } from 'sonner';
 import type { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
 export const SlidesMenuOption = ({
     extraOptions = [],
@@ -33,6 +34,7 @@ export const SlidesMenuOption = ({
     const [dripConditions, setDripConditions] = useState<DripCondition[]>([]);
     const [loadingDripConditions, setLoadingDripConditions] = useState(false);
     const [dripConditionsEnabled, setDripConditionsEnabled] = useState(true);
+    const offlineAccessEnabled = useOfflineAccessEnabled();
 
     const { activeItem, items } = useContentStore();
     const router = useRouter();
@@ -69,14 +71,18 @@ export const SlidesMenuOption = ({
         loadDripConditionsSettings();
     }, []);
 
-    // Filter menu options based on drip conditions setting
+    // Filter menu options by the settings that gate them: drip conditions by the
+    // course setting, Offline Availability by the institute OFFLINE_ACCESS_SETTING
+    // master switch (with it off the resolver denies every node, so a slide rule
+    // saved here could never take effect).
     const menuOptions = useMemo<DropdownItem[]>(() => {
-        const baseOptions = getSlidesMenuOptions();
-        const filtered = dripConditionsEnabled
-            ? baseOptions
-            : baseOptions.filter((item) => item.value !== 'drip-conditions');
+        const filtered = getSlidesMenuOptions().filter((item) => {
+            if (item.value === 'drip-conditions') return dripConditionsEnabled;
+            if (item.value === 'offline-availability') return offlineAccessEnabled;
+            return true;
+        });
         return [...extraOptions, ...filtered];
-    }, [dripConditionsEnabled, extraOptions]);
+    }, [dripConditionsEnabled, offlineAccessEnabled, extraOptions]);
 
     const handleSelect = async (value: string) => {
         switch (value) {

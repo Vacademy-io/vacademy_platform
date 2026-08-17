@@ -42,6 +42,10 @@ import {
 } from '@/services/mentorship-settings';
 import { whatsappTemplateService } from '@/services/whatsapp-template-service';
 import type { MetaWhatsAppTemplate } from '@/types/message-template-types';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 
 /** Mentorship fields an admin can map a WhatsApp template variable to. '' = auto-match by name. */
 const WA_FIELD_OPTIONS: { value: string; label: string }[] = [
@@ -230,9 +234,11 @@ const WhatsappBlock = ({
                 <div className="ml-9 mt-3 space-y-3">
                     <div>
                         <Label className="text-xs text-neutral-600">Approved template</Label>
-                        <Select
+                        <TemplateSearchableSelect
+                            className="mt-1"
+                            options={toTemplateOptions(templates)}
                             value={value.template_name || undefined}
-                            onValueChange={(name) => {
+                            onChange={(name) => {
                                 const t = templates.find((x) => x.name === name);
                                 onChange({
                                     template_name: name,
@@ -240,28 +246,14 @@ const WhatsappBlock = ({
                                     variable_mapping: {},
                                 });
                             }}
-                        >
-                            <SelectTrigger className="mt-1">
-                                <SelectValue
-                                    placeholder={
-                                        loading ? 'Loading templates…' : 'Select an approved template'
-                                    }
-                                />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {templates.length === 0 ? (
-                                    <div className="px-3 py-2 text-xs text-neutral-500">
-                                        No approved WhatsApp templates found.
-                                    </div>
-                                ) : (
-                                    templates.map((t) => (
-                                        <SelectItem key={t.id} value={t.name}>
-                                            {t.name} ({t.language})
-                                        </SelectItem>
-                                    ))
-                                )}
-                            </SelectContent>
-                        </Select>
+                            loading={loading}
+                            placeholder="Select an approved template"
+                            emptyText={
+                                templates.length === 0
+                                    ? 'No approved WhatsApp templates found.'
+                                    : 'No approved template matches your search.'
+                            }
+                        />
                     </div>
 
                     {selected && tokens.length > 0 && (

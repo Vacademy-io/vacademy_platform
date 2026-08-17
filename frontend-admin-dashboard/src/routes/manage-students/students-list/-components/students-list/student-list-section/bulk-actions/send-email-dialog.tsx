@@ -31,6 +31,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { getMessageTemplates, getMessageTemplate } from '@/services/message-template-service';
 import type { MessageTemplate } from '@/types/message-template-types';
+import {
+    TemplateSearchableSelect,
+    toTemplateOptions,
+} from '@/components/templates/TemplateSearchableSelect';
 import { bulkEmailService, type BulkEmailResult } from '@/services/bulkEmailService';
 import { useDialogStore } from '../../../../-hooks/useDialogStore';
 
@@ -339,23 +343,16 @@ export const SendEmailDialog = () => {
                         Loading templates...
                     </div>
                 ) : (
-                    <Select
+                    <TemplateSearchableSelect
+                        options={toTemplateOptions(templates, 'id')}
                         value={selectedTemplateId}
-                        onValueChange={handleTemplateSelect}
+                        onChange={handleTemplateSelect}
+                        placeholder="Select a template"
+                        emptyText="No template matches your search."
+                        noneOption={{ value: 'custom', label: 'Custom — write from scratch' }}
                         disabled={loadingTemplateContent}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="custom">Custom — write from scratch</SelectItem>
-                            {templates.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>
-                                    {t.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        portal={false}
+                    />
                 )}
                 {loadingTemplateContent && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.dto.ParticipantsDetailsDto;
+import vacademy.io.assessment_service.features.assessment.dto.RegistrationCustomFieldAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListDto;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 
@@ -557,6 +558,23 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             ORDER BY sa.result_marks DESC NULLS LAST
             """, nativeQuery = true)
     List<ParticipantsDetailsDto> findAllEndedParticipantsForResultExport(
+            @Param("assessmentId") String assessmentId,
+            @Param("instituteId") String instituteId);
+
+    // Every registration-form answer given by the participants of an assessment,
+    // flattened to (registration, field, answer). The export widens each result
+    // row with these, so it is fetched in one shot rather than per participant.
+    @Query(value = """
+            SELECT cfr.assessment_registration_id AS registrationId,
+                   cfr.custom_field_id            AS fieldId,
+                   cfr.answer                     AS answer
+            FROM assessment_registration_custom_field_response_data cfr
+            JOIN assessment_user_registration aur ON aur.id = cfr.assessment_registration_id
+            WHERE aur.assessment_id = :assessmentId
+              AND aur.institute_id  = :instituteId
+              AND aur.status NOT IN ('DELETED')
+            """, nativeQuery = true)
+    List<RegistrationCustomFieldAnswerDto> findCustomFieldAnswersForAssessment(
             @Param("assessmentId") String assessmentId,
             @Param("instituteId") String instituteId);
 }

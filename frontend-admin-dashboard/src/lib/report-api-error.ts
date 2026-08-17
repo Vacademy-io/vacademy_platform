@@ -3,10 +3,22 @@ import { AxiosError } from 'axios';
 import { toast } from 'sonner';
 
 interface BackendErrorBody {
+    // Newer, purpose-built error bodies (e.g. the WhatsApp-template endpoints) put the
+    // admin-readable sentence here and the "what to do next" line in `hint`.
+    message?: string;
+    hint?: string;
+    code?: string;
+    field?: string;
+    // The platform-wide ErrorInfo(url, ex, responseCode, date) shape.
     ex?: string;
     responseCode?: string;
     url?: string;
 }
+
+export const getBackendErrorBody = (error: unknown): BackendErrorBody | undefined =>
+    error instanceof AxiosError
+        ? (error.response?.data as BackendErrorBody | undefined)
+        : undefined;
 
 export interface ReportApiErrorOptions {
     feature: string;
@@ -47,8 +59,15 @@ const warnIfSentryDisabled = () => {
 
 const extractBackendMessage = (error: unknown): string | undefined => {
     if (!(error instanceof AxiosError)) return undefined;
-    const data = error.response?.data as BackendErrorBody | undefined;
-    return data?.ex || data?.responseCode || undefined;
+    const data = getBackendErrorBody(error);
+    // `message` first: services that phrase errors for humans use it. `ex` is the legacy
+    // ErrorInfo key. `responseCode` is last because on the platform's RuntimeException branch
+    // it holds the exception text rather than a status.
+    const base = data?.message || data?.ex || data?.responseCode;
+    if (!base) return undefined;
+    // The hint is the actionable half ("Update the token in Settings → WhatsApp"). Without it
+    // the user is told what broke but not what to do, which is most of the value.
+    return data?.hint && !base.includes(data.hint) ? `${base} ${data.hint}` : base;
 };
 
 export const reportApiError = (error: unknown, options: ReportApiErrorOptions) => {

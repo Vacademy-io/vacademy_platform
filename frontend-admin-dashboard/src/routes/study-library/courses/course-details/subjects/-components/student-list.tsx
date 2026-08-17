@@ -15,7 +15,9 @@ import {
     getCustomColumns,
 } from '@/components/design-system/utils/constants/table-column-data';
 import { STUDENT_LIST_COLUMN_WIDTHS } from '@/components/design-system/utils/constants/table-layout';
-import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
+import { useCrossPageSelection } from '@/hooks/use-cross-page-selection';
+import { reportApiError } from '@/lib/report-api-error';
+import { MyButton } from '@/components/design-system/button';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { StudentListHeader } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/student-list-header';
@@ -46,9 +48,7 @@ const Students = ({
 }) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
-    const [rowSelections, setRowSelections] = useState<Record<number, Record<string, boolean>>>({});
     const tableRef = useRef<HTMLDivElement>(null);
-    const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
 
     // Prime the custom-field settings cache so getCustomColumns() (which appends the
     // custom-field columns) and the visibility readers below have data on first mount —
@@ -163,6 +163,8 @@ const Students = ({
         page,
         handleSort,
         handlePageChange,
+        totalElements,
+        fetchAllMatching,
     } = useStudentTable(appliedFilters, setAppliedFilters, [packageSessionId]);
 
     // Header Total/Active/Inactive badges. appliedFilters already pins this batch's
@@ -204,53 +206,35 @@ const Students = ({
             ? [{ id: 'enroll_invite_ids', title: getTerminology(OtherTerms.Invite, SystemTerms.Invite), filterList: invitesForFilter }]
             : []),
     ];
-    const currentPageSelection = rowSelections[page] || {};
+    // Same cross-page selection as the main Learner List: "Select all" takes every learner in this
+    // course matching the active filters, not just the page on screen.
+    const {
+        currentPageSelection,
+        onRowSelectionChange: handleRowSelectionChange,
+        selectedRows: selectedStudents,
+        selectedCount: totalSelectedCount,
+        reset: handleResetSelections,
+        selectAllMatching,
+        isSelectingAll,
+        canSelectAll,
+    } = useCrossPageSelection<StudentTable>({
+        page,
+        pageRows: studentTableData?.content ?? [],
+        getId: (student) => student.id,
+        totalElements,
+        fetchAllMatching,
+        // Changing a filter invalidates a "select all" made under the previous one.
+        resetKey: JSON.stringify(appliedFilters),
+        onError: (error) =>
+            reportApiError(error, {
+                feature: 'course-learners-select-all',
+                fallbackMessage: 'Could not select everyone — try again.',
+            }),
+    });
 
-    useEffect(() => {
-        if (studentTableData?.content) {
-            setAllPagesData((prev) => ({
-                ...prev,
-                [page]: studentTableData.content,
-            }));
-        }
-    }, [studentTableData?.content, page]);
+    const getSelectedStudents = (): StudentTable[] => selectedStudents;
 
-    const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updaterOrValue) => {
-        const newSelection =
-            typeof updaterOrValue === 'function'
-                ? updaterOrValue(rowSelections[page] || {})
-                : updaterOrValue;
-
-        setRowSelections((prev) => ({
-            ...prev,
-            [page]: newSelection,
-        }));
-    };
-
-    const handleResetSelections = () => {
-        setRowSelections({});
-    };
-
-    const getSelectedStudents = (): StudentTable[] => {
-        return Object.entries(rowSelections).flatMap(([pageNum, selections]) => {
-            const pageData = allPagesData[parseInt(pageNum)];
-            if (!pageData) return [];
-
-            return Object.entries(selections)
-                .filter(([, isSelected]) => isSelected)
-                .map(([index]) => pageData[parseInt(index)])
-                .filter((student): student is StudentTable => student !== undefined);
-        });
-    };
-
-    const getSelectedStudentIds = (): string[] => {
-        return getSelectedStudents().map((student) => student.id);
-    };
-
-    const totalSelectedCount = Object.values(rowSelections).reduce(
-        (count, pageSelection) => count + Object.keys(pageSelection).length,
-        0
-    );
+    const getSelectedStudentIds = (): string[] => selectedStudents.map((student) => student.id);
 
     return (
         <section className="flex  flex-col">
@@ -302,6 +286,36 @@ const Students = ({
                     </div>
                 ) : (
                     <div className="flex w-auto flex-col gap-5">
+                        {/* The bulk-action bar sits above the table, where the eye already is
+                            after ticking the header checkbox. */}
+                        {totalSelectedCount > 0 && (
+                            <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                                <BulkActions
+                                    selectedCount={totalSelectedCount}
+                                    selectedStudentIds={getSelectedStudentIds()}
+                                    selectedStudents={getSelectedStudents()}
+                                    onReset={handleResetSelections}
+                                    leftSlot={
+                                        canSelectAll ? (
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
+                                                disable={isSelectingAll}
+                                                onClick={selectAllMatching}
+                                            >
+                                                {isSelectingAll
+                                                    ? 'Selecting…'
+                                                    : `Select all ${totalElements}`}
+                                            </MyButton>
+                                        ) : (
+                                            <span className="text-caption text-neutral-500">
+                                                all matching your filters
+                                            </span>
+                                        )
+                                    }
+                                />
+                            </div>
+                        )}
                         <div className="relative flex h-auto">
                             <div className="overflow-hidden" ref={tableRef}>
                                 <SidebarProvider
@@ -395,12 +409,7 @@ const Students = ({
                             </div>
                         </div>
                         <div className="flex">
-                            <BulkActions
-                                selectedCount={totalSelectedCount}
-                                selectedStudentIds={getSelectedStudentIds()}
-                                selectedStudents={getSelectedStudents()}
-                                onReset={handleResetSelections}
-                            />
+                            {/* Bulk actions moved to the bar above the table. */}
                             <MyPagination
                                 currentPage={page}
                                 totalPages={studentTableData?.total_pages || 1}

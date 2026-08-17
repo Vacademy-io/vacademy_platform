@@ -17,9 +17,10 @@
  *
  * Both read `GET /v1/telephony/calls/{id}/detail`, which serves the verdict
  * (`diag_health` / `diag_faults` / `diag_headline_text`) to any dashboard viewer
- * but withholds the full `diagnostics` blob unless the caller holds
- * VIEW_CALL_NUMBERS — it carries verbatim caller speech. The sheet renders that
- * middle state explicitly instead of pretending there is no report.
+ * but withholds the full `diagnostics` blob unless the caller's role may see
+ * unmasked phone numbers (Settings → Display Settings → Call Log phone numbers)
+ * — it carries verbatim caller speech. The sheet renders that middle state
+ * explicitly instead of pretending there is no report.
  *
  * HONESTY RULES (non-negotiable, they are the whole point):
  *   • A missing verdict renders NEUTRAL, never green. Absence of data is not health.
@@ -458,7 +459,7 @@ function FaultBlock({
     code: string;
     level: string | undefined;
     d: CallDiagnostics;
-    /** Numbers exist but this role may not see them (no VIEW_CALL_NUMBERS). */
+    /** Numbers exist but this role may not see them (masked-numbers setting). */
     withheld?: boolean;
 }) {
     // WITHHELD IS NOT "NOT MEASURED". In summary-only mode `d` is empty, so every
@@ -653,7 +654,7 @@ export function CallHealthSheet({
         detail?.diag_headline_text ??
         deriveHeadlineText(faults) ??
         (health === 'GREEN' ? 'No faults detected' : null);
-    /** Verdict known, but the numbers behind it withheld (no VIEW_CALL_NUMBERS). */
+    /** Verdict known, but the numbers behind it withheld (masked-numbers setting). */
     const summaryOnly = !d && (health != null || faults.length > 0);
     const latency = d?.latency ?? {};
     const tts = d?.tts ?? {};
@@ -739,8 +740,8 @@ export function CallHealthSheet({
                         <p className="rounded-md border border-dashed border-neutral-300 p-3 text-xs text-neutral-500">
                             The numbers behind this verdict — timings, counters and the discarded
                             caller answers — are withheld for your role: they include verbatim
-                            caller speech. They need the same permission as unmasked phone numbers
-                            (VIEW_CALL_NUMBERS).
+                            caller speech. They ride the same setting as unmasked phone numbers,
+                            under Settings → Display Settings → Call Log phone numbers.
                         </p>
                     </section>
                 ) : !d ? (

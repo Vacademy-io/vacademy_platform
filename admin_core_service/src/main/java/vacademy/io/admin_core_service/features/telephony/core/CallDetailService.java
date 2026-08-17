@@ -67,8 +67,9 @@ public class CallDetailService {
     }
 
     /**
-     * @param unmask when true (caller holds VIEW_CALL_NUMBERS) the verbatim webhook
-     *               body is included; otherwise only the curated diagnostic fields.
+     * @param unmask when true (the caller's role may see full numbers — see
+     *               {@link CallNumberVisibilityService}) the verbatim webhook body is
+     *               included; otherwise only the curated diagnostic fields.
      */
     public CallDetailDTO detail(String callLogId, String instituteId, boolean unmask,
                                 boolean canSeeDiagnostics) {

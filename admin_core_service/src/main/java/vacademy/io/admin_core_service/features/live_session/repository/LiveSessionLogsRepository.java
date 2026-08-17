@@ -93,6 +93,18 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
      */
     long countByUserSourceIdAndLogType(String userSourceId, String logType);
 
+    /**
+     * Has this learner already been marked present in THIS scheduled class?
+     *
+     * <p>Scoped to the one schedule, not the institute: the disclaimer is shown for
+     * every class a learner has not been in before, and suppressed only when they
+     * are returning to the same class (a reload, or rejoining after dropping out).
+     * A learner who attended yesterday's class is still a newcomer to today's.</p>
+     */
+    boolean existsByUserSourceIdAndScheduleIdAndLogType(String userSourceId,
+                                                        String scheduleId,
+                                                        String logType);
+
     @Query("""
         SELECT l FROM LiveSessionLogs l
         WHERE l.logType = :logType

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info } from '@phosphor-icons/react';
+import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
+import { reportApiError } from '@/lib/report-api-error';
 import { listTemplates, deleteTemplate, submitToMeta, syncTemplates, WhatsAppTemplateDTO } from '../-services/template-api';
 import { getWhatsAppProviderStatus } from '@/services/whatsapp-provider-service';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
@@ -22,13 +23,24 @@ export function TemplateListPage() {
     // Meta/COMBOT can create templates via API; WATI must use WATI dashboard
     const canCreateViaApi = activeProvider === 'META' || activeProvider === 'COMBOT' || activeProvider === '';
 
+    const [loadError, setLoadError] = useState<string | null>(null);
+
     const loadTemplates = async () => {
         setLoading(true);
         try {
             const data = await listTemplates(instituteId);
             setTemplates(data);
-        } catch { toast.error('Failed to load templates'); }
-        finally { setLoading(false); }
+            setLoadError(null);
+        } catch (err) {
+            // Keep the reason on screen, not just in a toast that disappears — an empty list with
+            // no explanation reads as "you have no templates", which is a different problem.
+            setLoadError(
+                reportApiError(err, {
+                    feature: 'whatsapp-template-list',
+                    fallbackMessage: 'Could not load templates.',
+                })
+            );
+        } finally { setLoading(false); }
     };
 
     useEffect(() => {
@@ -38,33 +50,59 @@ export function TemplateListPage() {
             .catch(() => {});
     }, []);
 
+    const providerLabel = activeProvider === 'WATI' ? 'WATI' : 'Meta';
+
     const handleSync = async () => {
         setSyncing(true);
         try {
             const result = await syncTemplates(instituteId);
-            toast.success(`Synced ${result.synced} templates from Meta`);
+            toast.success(
+                result.synced > 0
+                    ? `Synced ${result.synced} template${result.synced === 1 ? '' : 's'} from ${providerLabel}`
+                    : `${providerLabel} has no templates for this account yet`
+            );
             loadTemplates();
-        } catch { toast.error('Sync failed'); }
-        finally { setSyncing(false); }
+        } catch (err) {
+            // Almost always an expired token or missing credentials — the server now says which.
+            reportApiError(err, {
+                feature: 'whatsapp-template-sync',
+                fallbackMessage: `Could not sync templates from ${providerLabel}.`,
+            });
+        } finally { setSyncing(false); }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Delete this template?')) return;
+    const handleDelete = async (t: WhatsAppTemplateDTO) => {
+        const warning = t.status === 'APPROVED' || t.status === 'PENDING'
+            ? `Delete "${t.name}"? It will also be removed from ${providerLabel}, and anything still sending it will stop working.`
+            : `Delete the draft "${t.name}"?`;
+        if (!confirm(warning)) return;
         try {
-            await deleteTemplate(id);
+            await deleteTemplate(t.id!);
             toast.success('Template deleted');
             loadTemplates();
-        } catch { toast.error('Delete failed'); }
+        } catch (err) {
+            reportApiError(err, {
+                feature: 'whatsapp-template-delete',
+                fallbackMessage: `Could not delete "${t.name}".`,
+            });
+        }
     };
 
     const handleSubmit = async (id: string) => {
         try {
-            await submitToMeta(id);
-            toast.success('Template submitted to Meta for approval');
+            const submitted = await submitToMeta(id);
+            toast.success(
+                submitted.status === 'APPROVED'
+                    ? 'Template approved by Meta and ready to use.'
+                    : 'Template submitted to Meta for approval.'
+            );
             loadTemplates();
-        } catch (err: unknown) {
-            const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-            toast.error(msg || 'Submit failed');
+        } catch (err) {
+            reportApiError(err, {
+                feature: 'whatsapp-template-submit',
+                fallbackMessage: 'Meta rejected the template.',
+                toastDuration: 8000,
+            });
         }
     };
 
@@ -188,13 +226,28 @@ export function TemplateListPage() {
 
             {loading ? (
                 <p className="text-center text-gray-400 py-8">Loading templates...</p>
+            ) : loadError ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 py-10 text-center">
+                    <WarningCircle size={24} className="text-danger-600" />
+                    <p className="max-w-md px-4 text-sm text-danger-600">{loadError}</p>
+                    <button onClick={loadTemplates}
+                        className="rounded-lg border border-danger-200 bg-white px-4 py-2 text-sm hover:bg-danger-50">
+                        Try again
+                    </button>
+                </div>
             ) : filtered.length === 0 ? (
                 <div className="text-center py-12">
-                    <p className="text-gray-400 mb-4">No templates yet. Create one or sync from Meta.</p>
-                    <button onClick={() => setIsCreating(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        Create Template
-                    </button>
+                    <p className="text-gray-400 mb-4">
+                        {templates.length === 0
+                            ? `No templates yet. Create one or sync from ${providerLabel}.`
+                            : 'No templates match your search.'}
+                    </p>
+                    {templates.length === 0 && canCreateViaApi && (
+                        <button onClick={() => setIsCreating(true)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Create Template
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -228,7 +281,7 @@ export function TemplateListPage() {
                                         </button>
                                     </>
                                 )}
-                                <button onClick={() => handleDelete(t.id!)} title="Delete"
+                                <button onClick={() => handleDelete(t)} title="Delete"
                                     className="p-2 rounded hover:bg-gray-100">
                                     <Trash size={16} className="text-red-400" />
                                 </button>

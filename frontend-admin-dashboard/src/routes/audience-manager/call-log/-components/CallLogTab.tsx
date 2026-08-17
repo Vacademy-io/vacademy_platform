@@ -57,11 +57,19 @@ import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostCo
 import { fetchCreditEstimate } from '@/services/ai-credits/get-ai-credits';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import { fetchStudentDetailsOnce } from '@/services/get-student-details';
+import {
+    audienceLeadKey,
+    fetchAudienceLeadByResponseId,
+} from '@/routes/audience-manager/list/-services/get-recent-leads';
+import { mapRecentLeadToStudent } from '@/components/shared/leads/lead-view-model';
 import type { StudentTable } from '@/types/student-table-types';
 import { TELEPHONY_CALL_STATUSES, humanizeCallStatus } from '@/hooks/use-lead-report-settings';
 import {
     applyDisposition,
     callDetailKey,
+    callRowLeadUserId,
+    isMaskedNumber,
     callLogMetricsKey,
     callLogSearchKey,
     dispositionCatalogKey,
@@ -165,23 +173,47 @@ function isDetailable(row: CallRow): boolean {
 }
 
 /**
- * Build the minimal {@link StudentTable} the shared lead side-sheet needs from a
- * call row. The sheet keys everything off `user_id` and hydrates the rest itself;
- * `_response_id` marks the selection as a lead so the Lead Profile tab opens. Cast
- * through unknown because the full StudentTable has ~90 fields the sheet lazy-loads.
+ * The instant, row-only seed for the side-sheet — enough to open it on the right
+ * person while the real lead record loads. `_response_id` marks the selection as
+ * a lead so the Lead Profile tab opens. Cast through unknown because the full
+ * StudentTable has ~90 fields the sheet lazy-loads.
+ *
+ * This is deliberately thin: a call row simply does not contain a lead. Its
+ * `lead_name` is `audience_response.parent_name` — the GUARDIAN, a different
+ * person (see the note in lead-view-model.ts) — it has no email, and its number
+ * may be masked. Everything real arrives from the hydration in `openLead`.
  */
-function callRowToLeadStudent(r: CallRow): StudentTable {
+function callRowSeedStudent(r: CallRow): StudentTable {
+    const userId = callRowLeadUserId(r);
     const student: Record<string, unknown> = {
-        id: r.user_id,
-        user_id: r.user_id,
+        id: userId,
+        user_id: userId,
         full_name: r.lead_name || '',
         email: '',
-        mobile_number: r.lead_number || '',
+        // Never the masked string: it is display text, and the Communications tab
+        // would query the timeline by it and the composer would message it.
+        mobile_number: isMaskedNumber(r.lead_number) ? '' : r.lead_number ?? '',
         status: 'INACTIVE',
         _response_id: r.response_id ?? null,
     };
     return student as unknown as StudentTable;
 }
+
+// NOTE ON SCOPE: the masked-numbers setting governs the CALL LOG surface — this
+// table, the CSV/XLSX export, the detail popover and the technical diagnostics.
+// It deliberately does NOT follow the lead into the side-sheet, which hydrates and
+// behaves exactly as it does when opened from Recent Leads / Lead List / Lead
+// Board / Follow-ups. Two reasons:
+//   1. it would be false assurance — the same number is shown unmasked on all four
+//      of those pages, so masking one panel contains nothing;
+//   2. the sheet's Overview tab seeds an EDIT form from `_response_fields`
+//      (EditLeadDetails) and writes it back, so rewriting an answer for display
+//      risks persisting `*******1234` into the lead's real phone field. Today that
+//      is prevented only by EditLeadDetails filtering phone fields with a regex
+//      identical to the one such a masking pass would use — a coincidence, not a
+//      guarantee.
+// Making the mask a real access control means applying it across every lead
+// surface, which is a deliberate product decision, not a Call Log detail.
 
 // ── Main component (contract-fixed export + props) ─────────────────────────
 
@@ -200,10 +232,72 @@ export default function CallLogTab({
     // open/close state, via a local SidebarProvider around the sheet.
     const { setSelectedStudent } = useStudentSidebar();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const openLead = (r: CallRow) => {
-        if (!r.user_id) return;
-        setSelectedStudent(callRowToLeadStudent(r), { openOverlay: false });
+    /**
+     * Open the lead behind a call row: seed the sheet from the row so it opens
+     * instantly, then replace the selection with the real lead.
+     *
+     * The replacement is the whole point. The sheet is NOT purely user-id driven —
+     * its header, quick-contact chips, Communications tab (queried by email/phone),
+     * WhatsApp/email composer and the Lead Profile tab's form-response card all read
+     * the selected object verbatim. A call row carries none of that, which is why
+     * those surfaces came up blank when opened from here.
+     *
+     * Two hydration paths, preferring the richer one:
+     *   1. the call is tied to an audience response → fetch that lead and run it
+     *      through `mapRecentLeadToStudent`, the SAME mapper Recent Leads / Lead
+     *      List / Follow-ups use, so the sheet gets an identical object (identity,
+     *      form answers + field metadata, guardian rows, campaign name);
+     *   2. no response id (a call linked to a person but to no campaign) → fall
+     *      back to the auth-service user record for at least name/email/phone.
+     * If both fail the row-derived seed stands.
+     */
+    const openLeadRef = useRef(0);
+    const openLead = async (r: CallRow) => {
+        const userId = callRowLeadUserId(r);
+        if (!userId) return;
+        const token = ++openLeadRef.current;
+        setSelectedStudent(callRowSeedStudent(r), { openOverlay: false });
         setIsSidebarOpen(true);
+
+        const apply = (student: StudentTable) => {
+            // A newer row was clicked while this was in flight — its selection wins.
+            if (openLeadRef.current !== token) return;
+            // Hydration must never take away a name we already had: if the lead's
+            // auth user couldn't be resolved the mapper yields an empty full_name,
+            // and the header would fall back from the row's name to "Unknown".
+            const named: StudentTable = student.full_name
+                ? student
+                : { ...student, full_name: r.lead_name || '' };
+            setSelectedStudent(named, { openOverlay: false });
+        };
+
+        if (r.response_id) {
+            try {
+                const lead = await queryClient.fetchQuery({
+                    queryKey: audienceLeadKey(r.response_id),
+                    queryFn: () => fetchAudienceLeadByResponseId(r.response_id as string),
+                    staleTime: 2 * 60 * 1000,
+                });
+                apply(mapRecentLeadToStudent(lead));
+                return;
+            } catch {
+                // Older backend (no single-lead read) or a deleted response —
+                // fall through to the user-record path rather than leaving the
+                // sheet on the row seed.
+            }
+        }
+
+        try {
+            const details = await fetchStudentDetailsOnce(queryClient, userId);
+            apply({
+                ...callRowSeedStudent(r),
+                full_name: details?.full_name || r.lead_name || '',
+                email: details?.email || '',
+                mobile_number: details?.mobile_number || '',
+            } as StudentTable);
+        } catch {
+            // Keep the seed.
+        }
     };
 
     // Per-call transcript + AI intelligence — hosted in a dialog, gated by a
@@ -326,238 +420,311 @@ export default function CallLogTab({
             onOpenChange={setIsSidebarOpen}
         >
             <div className="flex w-full min-w-0 flex-col gap-6">
-            {/* 1 — KPI strip */}
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-                <KpiStat label="Total calls" value={fmtNumber(metrics?.total_calls)} tone="primary" loading={metricsQuery.isLoading} />
-                <KpiStat label="Connected" value={fmtNumber(metrics?.connected_calls)} sub={fmtPct(metrics?.connect_rate)} tone="success" loading={metricsQuery.isLoading} />
-                <KpiStat label="Talk time" value={fmtTalkHm(metrics?.total_talk_seconds)} sub="h : mm" tone="warning" loading={metricsQuery.isLoading} />
-                <KpiStat label="Unique leads" value={fmtNumber(metrics?.unique_leads)} tone="info" loading={metricsQuery.isLoading} />
-                <KpiStat
-                    label="AI vs human"
-                    value={`${fmtNumber(metrics?.ai_calls)} / ${fmtNumber(metrics?.human_calls)}`}
-                    sub="AI / human"
-                    tone="default"
-                    loading={metricsQuery.isLoading}
-                />
-            </div>
-
-            {/* 2 — Worklist chips + filter bar */}
-            <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                    <ChipToggle active={chip === 'NONE'} onClick={() => setChip('NONE')} label="All calls" />
-                    <ChipToggle
-                        active={chip === 'MISSED'}
-                        onClick={() => setChip(chip === 'MISSED' ? 'NONE' : 'MISSED')}
-                        label="Missed inbound"
-                        count={metrics?.missed_inbound_due}
-                        tone="danger"
+                {/* 1 — KPI strip */}
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+                    <KpiStat
+                        label="Total calls"
+                        value={fmtNumber(metrics?.total_calls)}
+                        tone="primary"
+                        loading={metricsQuery.isLoading}
                     />
-                    <ChipToggle
-                        active={chip === 'CALLBACKS'}
-                        onClick={() => setChip(chip === 'CALLBACKS' ? 'NONE' : 'CALLBACKS')}
-                        label="Callbacks due"
-                        count={metrics?.callbacks_due}
+                    <KpiStat
+                        label="Connected"
+                        value={fmtNumber(metrics?.connected_calls)}
+                        sub={fmtPct(metrics?.connect_rate)}
+                        tone="success"
+                        loading={metricsQuery.isLoading}
+                    />
+                    <KpiStat
+                        label="Talk time"
+                        value={fmtTalkHm(metrics?.total_talk_seconds)}
+                        sub="h : mm"
                         tone="warning"
+                        loading={metricsQuery.isLoading}
                     />
-                    <div className="ml-auto flex items-center gap-2">
-                        <ExportButton scope={scope} filters={filters} disabled={rows.length === 0} />
+                    <KpiStat
+                        label="Unique leads"
+                        value={fmtNumber(metrics?.unique_leads)}
+                        tone="info"
+                        loading={metricsQuery.isLoading}
+                    />
+                    <KpiStat
+                        label="AI vs human"
+                        value={`${fmtNumber(metrics?.ai_calls)} / ${fmtNumber(metrics?.human_calls)}`}
+                        sub="AI / human"
+                        tone="default"
+                        loading={metricsQuery.isLoading}
+                    />
+                </div>
+
+                {/* 2 — Worklist chips + filter bar */}
+                <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <ChipToggle
+                            active={chip === 'NONE'}
+                            onClick={() => setChip('NONE')}
+                            label="All calls"
+                        />
+                        <ChipToggle
+                            active={chip === 'MISSED'}
+                            onClick={() => setChip(chip === 'MISSED' ? 'NONE' : 'MISSED')}
+                            label="Missed inbound"
+                            count={metrics?.missed_inbound_due}
+                            tone="danger"
+                        />
+                        <ChipToggle
+                            active={chip === 'CALLBACKS'}
+                            onClick={() => setChip(chip === 'CALLBACKS' ? 'NONE' : 'CALLBACKS')}
+                            label="Callbacks due"
+                            count={metrics?.callbacks_due}
+                            tone="warning"
+                        />
+                        <div className="ml-auto flex items-center gap-2">
+                            <ExportButton
+                                scope={scope}
+                                filters={filters}
+                                disabled={rows.length === 0}
+                            />
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex flex-wrap items-end gap-3">
-                    <FilterText label="Lead name" value={leadName} onChange={setLeadName} placeholder="Search name" />
-                    <FilterText label="Number" value={toNumber} onChange={setToNumber} placeholder="Phone digits" />
-                    <FilterSelect label="Direction" value={direction} onChange={setDirection} options={[
-                        { value: 'OUTBOUND', label: 'Outbound' },
-                        { value: 'INBOUND', label: 'Inbound' },
-                    ]} />
-                    <FilterSelect label="Type" value={callType} onChange={setCallType} options={[
-                        { value: 'HUMAN', label: 'Human' },
-                        { value: 'AI', label: 'AI' },
-                    ]} />
-                    <FilterSelect label="Provider" value={providerType} onChange={setProviderType} options={PROVIDER_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} />
-                    <FilterSelect label="Status" value={status} onChange={setStatus} options={TELEPHONY_CALL_STATUSES.map((s) => ({ value: s, label: humanizeCallStatus(s) }))} />
-                    <FilterMultiSelect
-                        label="Disposition"
-                        selected={dispositionKeys}
-                        onChange={setDispositionKeys}
-                        options={dispositionOptions.map((d) => ({
-                            value: d.disposition_key,
-                            label: d.label,
-                        }))}
-                    />
-                </div>
-            </section>
+                    <div className="flex flex-wrap items-end gap-3">
+                        <FilterText
+                            label="Lead name"
+                            value={leadName}
+                            onChange={setLeadName}
+                            placeholder="Search name"
+                        />
+                        <FilterText
+                            label="Number"
+                            value={toNumber}
+                            onChange={setToNumber}
+                            placeholder="Phone digits"
+                        />
+                        <FilterSelect
+                            label="Direction"
+                            value={direction}
+                            onChange={setDirection}
+                            options={[
+                                { value: 'OUTBOUND', label: 'Outbound' },
+                                { value: 'INBOUND', label: 'Inbound' },
+                            ]}
+                        />
+                        <FilterSelect
+                            label="Type"
+                            value={callType}
+                            onChange={setCallType}
+                            options={[
+                                { value: 'HUMAN', label: 'Human' },
+                                { value: 'AI', label: 'AI' },
+                            ]}
+                        />
+                        <FilterSelect
+                            label="Provider"
+                            value={providerType}
+                            onChange={setProviderType}
+                            options={PROVIDER_OPTIONS.map((p) => ({
+                                value: p.value,
+                                label: p.label,
+                            }))}
+                        />
+                        <FilterSelect
+                            label="Status"
+                            value={status}
+                            onChange={setStatus}
+                            options={TELEPHONY_CALL_STATUSES.map((s) => ({
+                                value: s,
+                                label: humanizeCallStatus(s),
+                            }))}
+                        />
+                        <FilterMultiSelect
+                            label="Disposition"
+                            selected={dispositionKeys}
+                            onChange={setDispositionKeys}
+                            options={dispositionOptions.map((d) => ({
+                                value: d.disposition_key,
+                                label: d.label,
+                            }))}
+                        />
+                    </div>
+                </section>
 
-            {/* 3 — Call table */}
-            <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-neutral-900">
-                        Calls
-                        {data && (
-                            <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
-                                {fmtNumber(data.total_elements)}
-                            </span>
-                        )}
-                    </h2>
-                </div>
+                {/* 3 — Call table */}
+                <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-base font-semibold text-neutral-900">
+                            Calls
+                            {data && (
+                                <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                                    {fmtNumber(data.total_elements)}
+                                </span>
+                            )}
+                        </h2>
+                    </div>
 
-                {searchQuery.isLoading ? (
-                    <LoadingBlock />
-                ) : searchQuery.isError ? (
-                    <ErrorNotice onRetry={() => searchQuery.refetch()} />
-                ) : rows.length === 0 ? (
-                    <EmptyBlock message="No calls match these filters." />
-                ) : (
-                    <>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                                        <th className="py-2 pr-3">Time</th>
-                                        <th className="py-2 pr-3">Lead</th>
-                                        <th className="py-2 pr-3">Dir</th>
-                                        <th className="py-2 pr-3">Type</th>
-                                        <th className="py-2 pr-3">Status</th>
-                                        {canSeeCallHealth && (
-                                            <th
-                                                className="py-2 pr-3"
-                                                title="Technical verdict from the AI voice agent"
-                                            >
-                                                Health
-                                            </th>
-                                        )}
-                                        <th className="py-2 pr-3 text-right">Duration</th>
-                                        <th className="py-2 pr-3">Counsellor</th>
-                                        <th className="py-2 pr-3">Disposition</th>
-                                        <th className="py-2 pr-3">Recording</th>
-                                        {intelEnabled && <th className="py-2 pr-3">AI</th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rows.map((r) => (
-                                        <tr
-                                            key={r.id}
-                                            className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
-                                        >
-                                            <td className="whitespace-nowrap py-2.5 pr-3 text-neutral-600">
-                                                {fmtDateTime(r.start_time ?? r.created_at)}
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <div className="flex flex-col">
-                                                    {r.user_id ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openLead(r)}
-                                                            className="w-fit text-left font-medium text-primary-600 hover:underline"
-                                                            title="Open lead profile"
-                                                        >
-                                                            {r.lead_name || 'View lead'}
-                                                        </button>
-                                                    ) : (
-                                                        <span className="font-medium text-neutral-900">
-                                                            {r.lead_name || '—'}
-                                                        </span>
-                                                    )}
-                                                    <span className="text-xs text-neutral-500">
-                                                        {r.lead_number || '—'}
-                                                    </span>
-                                                    {r.ivr_selection && (
-                                                        <span
-                                                            className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700"
-                                                            title="IVR option chosen"
-                                                        >
-                                                            {r.ivr_selection}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <DirectionBadge direction={r.direction} />
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <TypeBadge callType={r.call_type} />
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <StatusCell instituteId={instituteId} row={r} />
-                                            </td>
+                    {searchQuery.isLoading ? (
+                        <LoadingBlock />
+                    ) : searchQuery.isError ? (
+                        <ErrorNotice onRetry={() => searchQuery.refetch()} />
+                    ) : rows.length === 0 ? (
+                        <EmptyBlock message="No calls match these filters." />
+                    ) : (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                                            <th className="py-2 pr-3">Time</th>
+                                            <th className="py-2 pr-3">Lead</th>
+                                            <th className="py-2 pr-3">Dir</th>
+                                            <th className="py-2 pr-3">Type</th>
+                                            <th className="py-2 pr-3">Status</th>
                                             {canSeeCallHealth && (
+                                                <th
+                                                    className="py-2 pr-3"
+                                                    title="Technical verdict from the AI voice agent"
+                                                >
+                                                    Health
+                                                </th>
+                                            )}
+                                            <th className="py-2 pr-3 text-right">Duration</th>
+                                            <th className="py-2 pr-3">Counsellor</th>
+                                            <th className="py-2 pr-3">Disposition</th>
+                                            <th className="py-2 pr-3">Recording</th>
+                                            {intelEnabled && <th className="py-2 pr-3">AI</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows.map((r) => (
+                                            <tr
+                                                key={r.id}
+                                                className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                            >
+                                                <td className="whitespace-nowrap py-2.5 pr-3 text-neutral-600">
+                                                    {fmtDateTime(r.start_time ?? r.created_at)}
+                                                </td>
                                                 <td className="py-2.5 pr-3">
-                                                    <CallHealthCell
-                                                        instituteId={instituteId}
+                                                    <div className="flex flex-col">
+                                                        {/* callRowLeadUserId, not `r.user_id`: unlinked
+                                                        calls store the literal 'UNKNOWN', which is
+                                                        truthy — those rows used to offer a profile
+                                                        link that opened an empty sheet. */}
+                                                        {callRowLeadUserId(r) ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void openLead(r)}
+                                                                className="w-fit text-left font-medium text-primary-600 hover:underline"
+                                                                title="Open lead profile"
+                                                            >
+                                                                {r.lead_name || 'View lead'}
+                                                            </button>
+                                                        ) : (
+                                                            <span className="font-medium text-neutral-900">
+                                                                {r.lead_name || '—'}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-xs text-neutral-500">
+                                                            {r.lead_number || '—'}
+                                                        </span>
+                                                        {r.ivr_selection && (
+                                                            <span
+                                                                className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700"
+                                                                title="IVR option chosen"
+                                                            >
+                                                                {r.ivr_selection}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <DirectionBadge direction={r.direction} />
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <TypeBadge callType={r.call_type} />
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <StatusCell instituteId={instituteId} row={r} />
+                                                </td>
+                                                {canSeeCallHealth && (
+                                                    <td className="py-2.5 pr-3">
+                                                        <CallHealthCell
+                                                            instituteId={instituteId}
+                                                            row={r}
+                                                            onOpen={() => setHealthTarget(r)}
+                                                        />
+                                                    </td>
+                                                )}
+                                                <td className="py-2.5 pr-3 text-right text-neutral-700">
+                                                    {fmtDuration(r.duration_seconds)}
+                                                </td>
+                                                <td className="py-2.5 pr-3 text-neutral-700">
+                                                    {r.counsellor_name || '—'}
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <DispositionCell
                                                         row={r}
-                                                        onOpen={() => setHealthTarget(r)}
+                                                        labels={dispositionLabels}
+                                                        onEdit={() => setDispositionTarget(r)}
                                                     />
                                                 </td>
-                                            )}
-                                            <td className="py-2.5 pr-3 text-right text-neutral-700">
-                                                {fmtDuration(r.duration_seconds)}
-                                            </td>
-                                            <td className="py-2.5 pr-3 text-neutral-700">
-                                                {r.counsellor_name || '—'}
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <DispositionCell
-                                                    row={r}
-                                                    labels={dispositionLabels}
-                                                    onEdit={() => setDispositionTarget(r)}
-                                                />
-                                            </td>
-                                            <td className="py-2.5 pr-3">
-                                                <RecordingCell instituteId={instituteId} row={r} />
-                                            </td>
-                                            {intelEnabled && (
                                                 <td className="py-2.5 pr-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIntelTarget(r)}
-                                                        className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
-                                                        title="Transcript & AI intelligence"
-                                                    >
-                                                        <Sparkle size={14} weight="fill" />
-                                                        AI
-                                                    </button>
+                                                    <RecordingCell
+                                                        instituteId={instituteId}
+                                                        row={r}
+                                                    />
                                                 </td>
-                                            )}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        {data && data.total_pages > 1 && (
-                            <MyPagination
-                                currentPage={page}
-                                totalPages={data.total_pages}
-                                onPageChange={setPage}
-                            />
-                        )}
-                    </>
-                )}
-            </section>
+                                                {intelEnabled && (
+                                                    <td className="py-2.5 pr-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIntelTarget(r)}
+                                                            className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
+                                                            title="Transcript & AI intelligence"
+                                                        >
+                                                            <Sparkle size={14} weight="fill" />
+                                                            AI
+                                                        </button>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {data && data.total_pages > 1 && (
+                                <MyPagination
+                                    currentPage={page}
+                                    totalPages={data.total_pages}
+                                    onPageChange={setPage}
+                                />
+                            )}
+                        </>
+                    )}
+                </section>
 
-            {/* Quick-disposition dialog */}
-            <DispositionDialog
-                instituteId={instituteId}
-                call={dispositionTarget}
-                options={dispositions}
-                onClose={() => setDispositionTarget(null)}
-                onApplied={() => {
-                    setDispositionTarget(null);
-                    refreshLists();
-                }}
-            />
-
-            {/* Transcript + AI intelligence dialog (credits-gated) */}
-            <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
-
-            {/* Call health — technical post-mortem side sheet (admin-only) */}
-            {canSeeCallHealth && (
-                <CallHealthSheet
+                {/* Quick-disposition dialog */}
+                <DispositionDialog
                     instituteId={instituteId}
-                    call={healthTarget}
-                    onClose={() => setHealthTarget(null)}
+                    call={dispositionTarget}
+                    options={dispositions}
+                    onClose={() => setDispositionTarget(null)}
+                    onApplied={() => {
+                        setDispositionTarget(null);
+                        refreshLists();
+                    }}
                 />
-            )}
+
+                {/* Transcript + AI intelligence dialog (credits-gated) */}
+                <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
+
+                {/* Call health — technical post-mortem side sheet (admin-only) */}
+                {canSeeCallHealth && (
+                    <CallHealthSheet
+                        instituteId={instituteId}
+                        call={healthTarget}
+                        onClose={() => setHealthTarget(null)}
+                    />
+                )}
             </div>
 
             {/* Shared lead side-sheet — opens to the Lead Profile tab. */}
@@ -710,7 +877,11 @@ function DirectionBadge({ direction }: { direction: string }) {
                 inbound ? 'bg-info-50 text-info-700' : 'bg-neutral-100 text-neutral-600'
             )}
         >
-            {inbound ? <PhoneIncoming size={12} weight="bold" /> : <PhoneOutgoing size={12} weight="bold" />}
+            {inbound ? (
+                <PhoneIncoming size={12} weight="bold" />
+            ) : (
+                <PhoneOutgoing size={12} weight="bold" />
+            )}
             {inbound ? 'In' : 'Out'}
         </span>
     );
@@ -821,9 +992,7 @@ function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow })
                             value={d.answer_time ? fmtDateTime(d.answer_time) : '—'}
                         />
                         <DetailRow label="Duration" value={fmtDuration(d.duration_seconds)} />
-                        {d.price != null && (
-                            <DetailRow label="Cost" value={String(d.price)} />
-                        )}
+                        {d.price != null && <DetailRow label="Cost" value={String(d.price)} />}
                         {d.raw_provider_response && (
                             <details className="mt-1">
                                 <summary className="cursor-pointer text-xs text-primary-600">
@@ -858,7 +1027,7 @@ function DispositionCell({
     // Same normalization the filter matches on, so "Not_Interested" and
     // "NOT_INTERESTED" render as the one option the dropdown offers.
     const label = current
-        ? (labels.get(normalizeDispositionKey(current)) ?? humanizeCallStatus(current))
+        ? labels.get(normalizeDispositionKey(current)) ?? humanizeCallStatus(current)
         : null;
     return (
         <div className="flex items-center gap-2">
@@ -929,13 +1098,23 @@ function ExportButton({
     };
     return (
         <div className="flex items-center gap-2">
-            <MyButton buttonType="secondary" scale="small" onAsyncClick={() => run('csv')} disable={disabled}>
+            <MyButton
+                buttonType="secondary"
+                scale="small"
+                onAsyncClick={() => run('csv')}
+                disable={disabled}
+            >
                 <span className="flex items-center gap-1.5">
                     <DownloadSimple size={14} />
                     CSV
                 </span>
             </MyButton>
-            <MyButton buttonType="secondary" scale="small" onAsyncClick={() => run('xlsx')} disable={disabled}>
+            <MyButton
+                buttonType="secondary"
+                scale="small"
+                onAsyncClick={() => run('xlsx')}
+                disable={disabled}
+            >
                 <span className="flex items-center gap-1.5">
                     <DownloadSimple size={14} />
                     Excel
@@ -980,9 +1159,7 @@ function DispositionDialog({
         },
         onSuccess: (res) => {
             toast.success(
-                res.lead_status_synced
-                    ? `Saved — lead status updated`
-                    : 'Disposition saved'
+                res.lead_status_synced ? `Saved — lead status updated` : 'Disposition saved'
             );
             onApplied();
         },
@@ -1038,7 +1215,9 @@ function DispositionDialog({
                             </button>
                         ))}
                         {options.length === 0 && (
-                            <span className="text-sm text-neutral-400">No outcomes configured.</span>
+                            <span className="text-sm text-neutral-400">
+                                No outcomes configured.
+                            </span>
                         )}
                     </div>
                 </div>
@@ -1178,11 +1357,15 @@ function KpiStat({ label, value, sub, tone, loading }: KpiStatProps) {
     };
     return (
         <div className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                {label}
+            </span>
             {loading ? (
                 <span className="h-7 w-20 animate-pulse rounded bg-neutral-100" />
             ) : (
-                <span className={cn('text-2xl font-bold tracking-tight', toneClass[tone])}>{value}</span>
+                <span className={cn('text-2xl font-bold tracking-tight', toneClass[tone])}>
+                    {value}
+                </span>
             )}
             {sub && <span className="text-xs text-neutral-500">{sub}</span>}
         </div>
@@ -1197,8 +1380,8 @@ function DeployPendingNotice() {
                 The call dashboard isn&apos;t available on this server yet
             </p>
             <p className="max-w-md text-xs text-neutral-500">
-                The telephony dashboard endpoints haven&apos;t been deployed to this environment. Check
-                back after the next backend release.
+                The telephony dashboard endpoints haven&apos;t been deployed to this environment.
+                Check back after the next backend release.
             </p>
         </div>
     );
@@ -1225,6 +1408,8 @@ function LoadingBlock() {
 
 function EmptyBlock({ message }: { message: string }) {
     return (
-        <div className="flex h-32 items-center justify-center text-sm text-neutral-400">{message}</div>
+        <div className="flex h-32 items-center justify-center text-sm text-neutral-400">
+            {message}
+        </div>
     );
 }

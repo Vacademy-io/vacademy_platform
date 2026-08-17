@@ -30,7 +30,19 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # health can be re-derived across history without re-collecting anything.
 # v3 (2026-08-12): a lost sub-floor scrap ("वो।") is no longer an ANSWER_DELETED
 # — see _lost_carries_meaning.
-RULES_VERSION = 3
+# v4 (2026-08-14): the caller's own response time no longer counts as DEAD_AIR.
+# A gap measured when the CALLER starts speaking, with the bot having spoken last
+# ("both_quiet"), is the caller thinking — it is now tagged "caller_thinking" in
+# `silences` and kept out of the dead_air reservoir. It was 46.3% of dead-air
+# events and 45 of the RED-bar gaps over the 7 days to 2026-08-14. See
+# bot.set_user_speaking. Compare DEAD_AIR rates across the v3/v4 boundary with care.
+# v5 (2026-08-14): greetings/address terms and bare function words are no longer
+# ANSWER_DELETED. "Hello." x15 and "Hi." x10 were 23% of all reported losses over
+# the 7 days to 2026-08-14, and the fault fired on 60% of current-build calls while
+# ~76% of its payload was social tokens or abandoned fragments. Consent and refusal
+# are explicitly still counted — see _lost_carries_meaning. Compare ANSWER_DELETED
+# rates across the v4/v5 boundary with care.
+RULES_VERSION = 5
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -236,6 +248,12 @@ class CallDiagnostics:
     greet_path: str = ""                # "scripted" | "callee_spoke_first" | "llm"
     greet_delay_secs: Optional[float] = None
     setup_secs: Optional[float] = None
+    # The caller talked over the scripted opening and heard only part of it. The
+    # full opening is pre-appended to the model's context before it is spoken, so
+    # without a correction the model believes it delivered the whole introduction
+    # and skips ahead — see bot._greet_when_ready. Counted, not scored: it is a
+    # normal thing for a caller to do, and the correction handles it.
+    opening_truncated: int = 0
     prompt_unfilled: List[str] = field(default_factory=list)
     crash: Optional[str] = None
     transfer_requested: bool = False
@@ -343,14 +361,74 @@ _FRAG_STRIP = "।॥.,!…\"'`~()[]{}:;-–—"
 # ("वो" 1, "तो" 1, "ब" 1). The floor is set at the observed case and no wider.
 _SCRAP_MAX_CHARS = 1
 
+# Greetings, address terms and bare discourse fillers. Losing one of these costs
+# NOTHING: the model is not waiting on "Hello." and no decision turns on "Sir."
+#
+# Measured over the 109 utterances ANSWER_DELETED flagged in the 7 days to
+# 2026-08-14: 'Hello.' x15 and 'Hi.' x10 alone were 23% of every reported loss,
+# and the fault was firing on 60% of calls on the current build while ~76% of
+# what it reported was this plus abandoned fragments (below). The panel headline
+# reads "Caller answers were discarded before the agent saw them" — for a caller
+# who said hello twice.
+#
+# DELIBERATELY NOT HERE: consent and refusal. "haan"/"yes"/"nahi"/"no" live in
+# _CONSENT_OR_REFUSAL and stay meaningful, because a lost yes or a lost no is the
+# expensive case — the bot keeps pitching at someone who already declined. That
+# check runs BEFORE this one.
+_SOCIAL_TOKENS = frozenset({
+    "hello", "helo", "hallo", "hlo", "hi", "hey", "namaste", "namaskar",
+    "sir", "madam", "mam", "maam", "bhaiya", "bhai", "ji",
+    "welcome", "thanks", "thank", "thankyou", "sorry", "bye", "goodbye",
+    "hmm", "hm", "mm", "mhm", "uh", "um", "ah", "oh", "aah", "ohh",
+    "हेलो", "हैलो", "हलो", "नमस्ते", "नमस्कार", "सर", "मैम", "मैडम", "भैया",
+    "धन्यवाद", "शुक्रिया", "माफ", "हम्म", "हम", "अरे", "ओह", "आँ",
+})
+
+# Function words and sentence-openers. On their own these are the START of an
+# utterance the caller abandoned, not an answer — the STT emitted a final because
+# the caller paused, and there is nothing in it to act on. From the same corpus:
+# 'So.' x4, 'And.' x2, 'I.' x2, plus 'But.', 'Is.', 'To.', 'Our.', "That's.",
+# 'वो।', 'और।', 'क्योंकि।', 'आप।' x3.
+#
+# Kept to closed-class words ONLY. Nothing here can be an answer to a question a
+# counselling call asks — unlike 'Six.', 'BSL.' or 'विवेक।', which are single
+# words that ARE answers and must keep firing the fault.
+_FUNCTION_WORDS = frozenset({
+    "so", "and", "but", "or", "if", "is", "am", "are", "was", "were", "be",
+    "to", "of", "in", "on", "at", "for", "the", "a", "an", "that", "thats",
+    "this", "it", "its", "i", "we", "you", "he", "she", "they", "my", "our",
+    "actually", "because", "then", "also", "just", "like",
+    # _FRAG_STRIP only strips from the ENDS, so an internal apostrophe survives:
+    # "That's." normalizes to "that's", not "thats". Both spellings listed.
+    "that's", "it's", "we're", "you're", "i'm",
+    "और", "या", "पर", "लेकिन", "क्योंकि", "तो", "वो", "ये", "यह", "मैं", "हम",
+    "आप", "आपने", "उसको", "इसको", "का", "की", "के", "है", "हैं", "भी", "थोड़ा", "बस",
+})
+
+
+def _is_throwaway(words) -> bool:
+    """True when every word is a greeting/address term or a function word.
+
+    Multi-word is included so 'हाँ जी।' style pairs do not slip through as
+    "a phrase, therefore meaningful" — but any single content word in the
+    utterance makes the whole thing meaningful again.
+    """
+    return bool(words) and all(w in _SOCIAL_TOKENS or w in _FUNCTION_WORDS
+                               for w in words)
+
 
 def _lost_carries_meaning(text: str) -> bool:
     """PURE. Was this unmatched caller final worth calling a DISCARDED ANSWER?
 
     True for anything that could have changed the call: a phrase, a digit,
     consent, a refusal, a question, or a single word of more than one syllable.
-    False only for a one-character scrap — a syllable of an utterance the caller
-    abandoned, which we can neither match nor act on.
+    False for a one-character scrap, and (v5) for greetings/address terms and
+    bare function words — see _SOCIAL_TOKENS / _FUNCTION_WORDS.
+
+    ORDER IS LOAD-BEARING. Question, digit and consent/refusal are all tested
+    BEFORE the throwaway check, so "haan", "yes", "nahi", "no", "5" and "kitni?"
+    can never be filtered as noise. A lost refusal is the expensive case and
+    stays a reported loss.
     """
     raw = (text or "").strip()
     if "?" in raw or "？" in raw:
@@ -358,14 +436,19 @@ def _lost_carries_meaning(text: str) -> bool:
     words = [w for w in (s.strip(_FRAG_STRIP).casefold() for s in raw.split()) if w]
     if not words:
         return False
+    if any(any(ch.isdigit() for ch in w) for w in words):
+        return True
+    if any(w in _CONSENT_OR_REFUSAL for w in words):
+        return True
+    # Nothing here could have changed the call: "Hello.", "Sir.", "So.", "और।".
+    # Checked for one word AND for phrases, because the old "two words is a
+    # phrase, not a scrap" shortcut let "हाँ जी।" and "That's." through as
+    # meaningful losses.
+    if _is_throwaway(words):
+        return False
     if len(words) > 1:
-        return True                          # two words is a phrase, not a scrap
-    word = words[0]
-    if any(ch.isdigit() for ch in word):
-        return True
-    if word in _CONSENT_OR_REFUSAL:
-        return True
-    return len(_norm_answer(word)) > _SCRAP_MAX_CHARS
+        return True                          # a real phrase
+    return len(_norm_answer(words[0])) > _SCRAP_MAX_CHARS
 
 
 class Lost(NamedTuple):
@@ -720,6 +803,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "greetPath": d.greet_path or None,
                 "greetDelaySecs": d.greet_delay_secs,
                 "setupSecs": d.setup_secs,
+                "openingTruncated": d.opening_truncated,
             },
             "machine": {
                 "score": machine_score(d),

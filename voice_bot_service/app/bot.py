@@ -2196,6 +2196,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # greeting on live calls. So defer: add ONLY the bot-only knowledge above, plus one
     # line telling the model its own instructions own the opening.
     if len(prompt.strip()) >= 600:
+        # THE 600-CHARACTER CUT-OFF DECIDES WHO GETS THE SAFETY RULES, AND IT IS
+        # THE WRONG SIDE OF THE LINE. 600 characters is roughly four sentences, so
+        # every authored agent lands here and receives NONE of `non_negotiable` —
+        # production prompts measured 2026-08-14 were 2956, 3359, 3489, 5152 and
+        # 10078 characters. The rules reach only the built-in placeholder persona,
+        # never an agent taking real calls, although each was added after a
+        # specific live failure: a repeated question means your answer FAILED;
+        # answer direct questions first and never dodge; frustration means drop
+        # the script; if the conversation stops making sense assume you MIS-HEARD.
+        #
+        # Those four are RECOVERY rules — what to do when a call goes wrong — so
+        # they cannot contradict a script that only describes the happy path,
+        # which is what the deferral below was written to protect against.
+        #
+        # Gated OFF by default: this ships as a no-op and every existing prompt is
+        # byte-identical until SAFETY_RULES_FOR_AUTHORED=true. Placed AFTER the
+        # authoritative line so the author's script still leads and the rules read
+        # as the override they announce themselves to be.
+        #
+        # NOTE this does not resolve the already_said_rule / listen_rule conflict
+        # (never name your company again vs. name it when asked) — that needs its
+        # own carve-out, and prod call 775ac5ac is the evidence.
         lines = [
             prompt,
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
@@ -2203,6 +2225,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first at the very START of the call, your FIRST reply IS your "
             "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
+            non_negotiable if get_settings().safety_rules_for_authored else "",
             already_said_rule,
             now_line,
             greeting_rule,
@@ -2356,8 +2379,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
                 _gap = max(0.0, time.time() - _last)
-                diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
+                # THE CALLER'S OWN RESPONSE TIME IS NOT OUR DEAD AIR.
+                #
+                # This branch runs when the caller STARTS speaking, and measures
+                # backwards to whoever last stopped. When the BOT spoke last,
+                # that span is the caller thinking before they answer — a normal
+                # part of a phone conversation, not a defect.
+                #
+                # _silence_cause tags that span "both_quiet" (not ducked, no reply
+                # in flight, and bot_stopped_t >= user_stopped_t). Measured over
+                # 365 dead-air events in the 7 days to 2026-08-14, "both_quiet" at
+                # a user onset was 169 of them (46.3%) with a MEDIAN of 3.9s — i.e.
+                # squarely over the 3.5s AMBER bar — and produced 45 of the gaps
+                # past the 6s RED bar. DEAD_AIR was firing on 41% of calls, roughly
+                # half of it for callers simply taking a moment to reply.
+                #
+                # Renamed rather than dropped: the span is still recorded in
+                # `silences` (it is genuine, useful signal about how long callers
+                # take to answer this agent), it just no longer feeds the
+                # dead_air reservoir that verdict() scores.
+                #
+                # SCOPED TO THIS CALLBACK ON PURPOSE. set_bot_speaking computes the
+                # mirror gap — "the caller stopped, how long until WE spoke" — and
+                # "both_quiet" there means two bot utterances with a hole between
+                # them, which IS ours. That path is deliberately untouched.
+                if _why == "both_quiet":
+                    _why = "caller_thinking"
+                if _why != "caller_thinking":
+                    diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
                     logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
@@ -2751,6 +2801,66 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "greet again and do not repeat that word.]"}],
                     run_llm=True))
             await task.queue_frames(_frames)
+
+            # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
+            # It often does not: the caller talks over the first second, the
+            # utterance is cancelled, and the model still reads its own context as
+            # "I delivered the full introduction". already_said_rule then tells it
+            # "It has been said... Resume from the point AFTER the introduction",
+            # so it skips ahead to the next scripted step and the caller — who
+            # heard a fragment — has no idea what is being asked. That is the
+            # HANDBACK_LOOP shape: on call 3148ccd4 the caller spent the last
+            # forty-five seconds asking "मैं क्या बताऊँ?" and hung up.
+            #
+            # NoRepeatGate got this exact fix on 2026-08-13 (it holds sentences
+            # pending and rolls back the ones that never played). The opening
+            # bypasses NoRepeatGate entirely — it is injected straight into the
+            # context here — so it never received it. This is that fix, for the
+            # one utterance most likely to be interrupted.
+            #
+            # PURELY ADDITIVE, DELIBERATELY. The full opening STAYS in context: it
+            # is what stops the "no record at all" failure that cost us both a
+            # re-delivered intro and a language flip (see the note above). We only
+            # ADD a correction telling the model what the caller actually heard.
+            # Every failure mode therefore degrades to today's behaviour:
+            #   correction races the caller's turn -> model has the full opening
+            #   opening completed                  -> nothing added
+            #   nothing reached the caller         -> nothing added
+            #   watch loop times out               -> nothing added
+            # It can do nothing; it cannot do harm.
+            #
+            # Substantive openings only. The bare-greeting path above hands
+            # straight to the LLM with run_llm=True, so its played text is the
+            # greeting PLUS the model's own introduction — not the opening alone,
+            # and the length test would be meaningless.
+            if _opening_is_substantive(opening):
+                _t0 = time.time()
+                while time.time() - _t0 < 12.0:
+                    # bot_spoke_once flips in set_bot_speaking(False), so this is
+                    # exactly "the opening started and has now stopped" — whether
+                    # it finished or was cut off.
+                    if flags["bot_spoke_once"] and not flags["bot_speaking"]:
+                        break
+                    await asyncio.sleep(0.05)
+                _played = ""
+                for _e in reversed(outcome.transcript):
+                    if _e.get("role") == "assistant":
+                        _played = _e.get("text") or ""
+                        break
+                # 0.8: TTS re-chunks and normalises, so played text never matches
+                # the source exactly. Only correct on a REAL shortfall.
+                if _played and len(_played) < len(opening) * 0.8:
+                    diag.bump("opening_truncated")
+                    logger.info("greet: opening cut short — caller heard %d of %d chars "
+                                "corr=%s", len(_played), len(opening), corr)
+                    # No run_llm: the caller is mid-sentence. Forcing a generation
+                    # here would talk straight over them.
+                    await task.queue_frames([LLMMessagesAppendFrame(messages=[{
+                        "role": "user", "content":
+                        f"[You were cut off after saying only: \"{_played}\" — the caller "
+                        "did NOT hear the rest of your opening. Do not start over and do "
+                        "not re-introduce yourself, but do finish the point you were "
+                        "making before you move on.]"}])])
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

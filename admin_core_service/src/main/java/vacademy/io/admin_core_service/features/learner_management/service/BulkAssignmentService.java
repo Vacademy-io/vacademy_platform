@@ -97,6 +97,8 @@ public class BulkAssignmentService {
     private final vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService userLeadProfileService;
     private final StudentFeePaymentGenerationService studentFeePaymentGenerationService;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
+
+    private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.fee_management.service.CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
     private final FeeTypeRepository feeTypeRepository;
     private final AssignedFeeValueRepository assignedFeeValueRepository;
@@ -1784,6 +1786,23 @@ public class BulkAssignmentService {
                     vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                     vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                     vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+
+            // Ledger credit for the money just taken. Without this the Account Summary
+            // tiles (which read user_account_ledger via sumCredits) report Total Paid 0
+            // and Due at the full accrued amount, while the Fee Plan block — driven by
+            // student_fee_payment.amount_paid, updated by the allocator below — shows the
+            // real figure. Same call the side-view offline-payment path makes
+            // (CpoSideViewService.recordOfflinePayment); idempotent on the PaymentLog id.
+            if (instituteId != null) {
+                userAccountLedgerService.recordCreditPayment(
+                        userId, instituteId,
+                        amount, currency,
+                        "USER_PLAN", userPlan.getId(),
+                        paymentLogId, null, "CPO payment recorded at enrollment");
+            } else {
+                log.warn("Skipping ledger credit for CPO enrollment payment userPlan={}: no instituteId",
+                        userPlan.getId());
+            }
 
             feeLedgerAllocationService.allocatePaymentForNewLog(
                     paymentLogId, amount, userPlan.getId());

@@ -136,6 +136,62 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
                 "callbackTimeText": None}
 
 
+# Disposition labels that assert a MEETING WAS SECURED. Substring match on a
+# normalized label, because the vocabulary is per-agent and we cannot enumerate
+# it: "Demo_Booked", "Counselling_Scheduled", "Session_Booked", "Meeting_Fixed".
+_BOOKING_LABEL_HINTS = ("book", "schedul", "demo", "meeting", "appointment", "slot")
+
+
+def _drop_unevidenced_booking(analysis: Dict[str, Any], corr: str) -> None:
+    """Refuse a "we booked it" disposition the analyser's OWN evidence contradicts.
+
+    The analysis prompt specifies meetingRequested tightly — "true ONLY if the
+    caller AGREED to a scheduled meeting, demo, visit or callback at a specific
+    day/time — not vague 'maybe later'" — and asks for a concrete
+    meetingDatetimeIso alongside it. The disposition field gets no such
+    treatment: the model is handed a bare list of labels with no definitions and
+    no requirement to show evidence, and the only validation afterwards is a
+    membership check (is the label spelled right), never an evidence check.
+
+    So the same model, in the same JSON response, can return a disposition of
+    "Demo_Booked" while reporting meetingRequested=false and no datetime.
+    Observed on prod call 775ac5ac (2026-08-14): 23 seconds, the caller asked
+    "Where from?", got a pitch instead of an answer, hung up — and the lead was
+    stamped Demo_Booked. That row's own ai_summary described no demo at all.
+
+    This is the expensive direction of error. A wrongly-retried lead is
+    recoverable; a lead falsely marked as booked is not — nobody follows up,
+    and if the agent carries a booking_page_id admin_core's auto-book will
+    create a real calendar entry off it.
+
+    Only fires on a DIRECT self-contradiction: a booking-shaped label with
+    meetingRequested false AND no resolved datetime. An agent whose vocabulary
+    has a softer label ("Demo_Requested") is untouched as long as the model
+    supplied evidence for it. Degrades to Incomplete, which routes the lead to
+    retry rather than closing it — the same fallback _analyze already uses when
+    it cannot judge a call at all.
+    """
+    try:
+        label = str(analysis.get("disposition") or "")
+        norm = "".join(ch for ch in label.casefold() if ch.isalnum())
+        if not norm or not any(h in norm for h in _BOOKING_LABEL_HINTS):
+            return
+        if analysis.get("meetingRequested"):
+            return
+        if str(analysis.get("meetingDatetimeIso") or "").strip():
+            return
+        logger.warning(
+            "report: disposition %r claims a booking but the analyser reported "
+            "meetingRequested=%s and no meeting time — degrading to Incomplete "
+            "corr=%s", label, analysis.get("meetingRequested"), corr)
+        analysis["disposition"] = "Incomplete"
+        analysis["dispositionDowngradedFrom"] = label
+    except Exception:
+        # Never cost the report: an unexpected shape here must leave the
+        # analysis exactly as the model returned it.
+        logger.exception("report: booking-evidence check failed corr=%s", corr)
+
+
 def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
     """Never raises: diagnostics are a debugging aid, the report is the product."""
     try:
@@ -364,6 +420,7 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         }
     else:
         analysis = await _analyze(outcome)
+        _drop_unevidenced_booking(analysis, outcome.corr)
     agent = ctx.get("agent") or {}
 
     payload: Dict[str, Any] = {

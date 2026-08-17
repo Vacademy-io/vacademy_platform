@@ -1284,11 +1284,63 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         if (started) {
           setIsPlayed(true);
           setShowManualPlayButton(false);
-        } else {
-          // The browser is holding playback back and only a real tap will release
-          // it. Surface the button rather than leaving a dead frame.
-          console.warn("Autoplay blocked after retries, showing manual play button");
+          return;
+        }
+
+        // Still not playing, so the browser is withholding permission for SOUND.
+        // A muted start is always allowed, and the class beginning on its own
+        // matters more than the first second of audio — the learner came here to
+        // attend, not to hunt for a play button.
+        const mutedOk = await safePlayerOperation(async () => {
+          const p = playerRef.current;
+          if (!p) return;
+          await p.mute();
+          await p.playVideo();
+        }, "autoplay-muted");
+
+        await new Promise((r) => setTimeout(r, GAP_MS));
+        if (!isMountedRef.current) return;
+
+        let playingMuted = false;
+        try {
+          playingMuted = mutedOk && (await player.getPlayerState()) === 1;
+        } catch {
+          playingMuted = false;
+        }
+
+        if (!playingMuted) {
+          // Even muted playback was refused — nothing left but a real tap.
+          console.warn("Autoplay blocked even muted, showing manual play button");
           setShowManualPlayButton(true);
+          return;
+        }
+
+        setIsPlayed(true);
+        setShowManualPlayButton(false);
+
+        // Playing, but silent. Ask for sound back immediately; the learner
+        // arrived through a real tap, so this usually succeeds outright.
+        try {
+          await playerRef.current?.unMute();
+        } catch {
+          /* still withheld — handled by the listener below */
+        }
+
+        // If it is somehow still muted, restore sound on the learner's very next
+        // touch anywhere on the page. That counts as fresh input, so it always
+        // works, and it needs no button and no instruction on screen.
+        try {
+          if (await playerRef.current?.isMuted()) {
+            const restoreSound = () => {
+              playerRef.current?.unMute();
+              window.removeEventListener("pointerdown", restoreSound);
+              window.removeEventListener("keydown", restoreSound);
+            };
+            window.addEventListener("pointerdown", restoreSound, { once: true });
+            window.addEventListener("keydown", restoreSound, { once: true });
+          }
+        } catch {
+          /* isMuted unsupported on this build — leave as is */
         }
       }, 500);
 

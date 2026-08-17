@@ -22,6 +22,7 @@ import { Route as SignupIndexRouteImport } from "./routes/signup/index"
 import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
 import { Route as SalesDashboardIndexRouteImport } from "./routes/sales-dashboard/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
+import { Route as PaymentDashboardIndexRouteImport } from "./routes/payment-dashboard/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
 import { Route as ManageSuborgTeamsIndexRouteImport } from "./routes/manage-suborg-teams/index"
@@ -300,6 +301,13 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: "/planning/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaymentDashboardIndexRoute = PaymentDashboardIndexRouteImport.update({
+  id: "/payment-dashboard/",
+  path: "/payment-dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/payment-dashboard/index.lazy").then((d) => d.Route),
+)
 const MembershipStatsIndexRoute = MembershipStatsIndexRouteImport.update({
   id: "/membership-stats/",
   path: "/membership-stats/",
@@ -1852,6 +1860,7 @@ export interface FileRoutesByFullPath {
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
+  "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
@@ -2057,6 +2066,7 @@ export interface FileRoutesByTo {
   "/manage-suborg-teams": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry": typeof MembershipExpiryIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
+  "/payment-dashboard": typeof PaymentDashboardIndexRoute
   "/planning": typeof PlanningIndexRoute
   "/sales-dashboard": typeof SalesDashboardIndexRoute
   "/settings": typeof SettingsIndexRoute
@@ -2264,6 +2274,7 @@ export interface FileRoutesById {
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
+  "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
@@ -2472,6 +2483,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
     | "/membership-stats/"
+    | "/payment-dashboard/"
     | "/planning/"
     | "/sales-dashboard/"
     | "/settings/"
@@ -2677,6 +2689,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams"
     | "/membership-expiry"
     | "/membership-stats"
+    | "/payment-dashboard"
     | "/planning"
     | "/sales-dashboard"
     | "/settings"
@@ -2883,6 +2896,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
     | "/membership-stats/"
+    | "/payment-dashboard/"
     | "/planning/"
     | "/sales-dashboard/"
     | "/settings/"
@@ -3089,6 +3103,7 @@ export interface RootRouteChildren {
   ManageSuborgTeamsIndexRoute: typeof ManageSuborgTeamsIndexRoute
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
+  PaymentDashboardIndexRoute: typeof PaymentDashboardIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
   SalesDashboardIndexRoute: typeof SalesDashboardIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -3354,6 +3369,13 @@ declare module "@tanstack/react-router" {
       path: "/planning"
       fullPath: "/planning/"
       preLoaderRoute: typeof PlanningIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/payment-dashboard/": {
+      id: "/payment-dashboard/"
+      path: "/payment-dashboard"
+      fullPath: "/payment-dashboard/"
+      preLoaderRoute: typeof PaymentDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/membership-stats/": {
@@ -4739,6 +4761,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageSuborgTeamsIndexRoute: ManageSuborgTeamsIndexRoute,
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
+  PaymentDashboardIndexRoute: PaymentDashboardIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
   SalesDashboardIndexRoute: SalesDashboardIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,

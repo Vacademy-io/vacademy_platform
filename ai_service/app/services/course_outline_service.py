@@ -593,6 +593,7 @@ class CourseOutlineGenerationService:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         language: Optional[str] = "English",
+        model: Optional[str] = None,
         video_settings: Optional[dict] = None,
         document_settings: Optional[dict] = None,
         reference_document_file_ids: Optional[list] = None,
@@ -743,6 +744,12 @@ class CourseOutlineGenerationService:
                 except Exception as e:  # noqa: BLE001
                     logger.warning(f"Reference figure ingest failed (continuing): {str(e)}")
             
+            # The model the user chose for this course drives every content leg.
+            # Per-todo / per-family overrides (below) still win; when absent each
+            # content type falls back to its own tuned default.
+            if model and model != "auto":
+                self._content_generation_service._course_model = model
+
             # Inject request-level language into todo metadata if not already set
             effective_language = language or "English"
             for todo in content_todos:

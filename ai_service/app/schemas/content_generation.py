@@ -52,6 +52,15 @@ class ContentGenerationRequest(BaseModel):
             "language, e.g. 'English (India)', 'Hindi' — drives the TTS voice)."
         ),
     )
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "The LLM the user chose when creating the course. Applied to EVERY "
+            "content leg (documents, assessments, code) unless a per-todo or "
+            "per-family override says otherwise. Omit (or send nothing) to let "
+            "each content type use its own tuned default."
+        ),
+    )
     document_settings: Optional[dict] = Field(
         default=None,
         description=(

@@ -127,6 +127,9 @@ export async function generateContent(
                     institute_id: instituteId,
                     language: language,
                     generation_run_id: generationRunId,
+                    // The user's course-creation model pick — applied to every
+                    // content type unless a per-family setting overrides it.
+                    model: documentModel || undefined,
                     video_settings:
                         videoSettings && Object.keys(videoSettings).length > 0
                             ? videoSettings

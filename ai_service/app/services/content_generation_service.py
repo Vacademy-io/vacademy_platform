@@ -85,7 +85,28 @@ class ContentGenerationService:
         # HTML_DOC_MODEL.
         import os
         self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "anthropic/claude-sonnet-5"
+        # The model the user picked when creating the course. Set per run and
+        # used by EVERY content leg; the hardcoded models above are only the
+        # fallback when the user left it on "auto". Kept separate from
+        # _content_model so that stays a known-good retry target.
+        self._course_model: Optional[str] = None
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
+
+    def _model_for(self, todo=None, default: Optional[str] = None) -> str:
+        """Which model generates this slide.
+
+        Precedence: a per-todo override (injected from the wizard's per-family
+        settings) → the model the user chose for the course → the hardcoded
+        default for this kind of content. So a user's pick is honoured
+        everywhere, and the hardcode is only ever the fallback.
+        """
+        if todo is not None:
+            picked = (getattr(todo, "metadata", None) or {}).get("model") or getattr(
+                todo, "model", None
+            )
+            if picked:
+                return picked
+        return self._course_model or default or self._content_model
 
     @staticmethod
     def _video_voice_kwargs(todo: Todo) -> dict:
@@ -187,7 +208,7 @@ class ContentGenerationService:
             # Honor an explicitly-injected model (e.g. the wizard's pick); else
             # default DOCUMENT slides to the strong HTML model (claude-sonnet-5),
             # matching the manual "AI document" craft — NOT the fast content model.
-            model = (todo.metadata or {}).get("model") or todo.model or self._html_doc_model
+            model = self._model_for(todo, default=self._html_doc_model)
 
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
@@ -322,7 +343,7 @@ class ContentGenerationService:
             
             language = (todo.metadata or {}).get("language", "English")
             # Honor the model chosen at outline time; fall back to the service default.
-            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
+            model = self._model_for(todo)
             # Build assessment prompt using template similar to media-service PROMPT_TO_QUESTIONS
             assessment_prompt = ContentGenerationPrompts.build_assessment_prompt(
                 text_prompt=prompt,
@@ -1022,7 +1043,7 @@ class ContentGenerationService:
 
             code_content = await self._llm_client.generate_outline(
                 prompt=code_prompt,
-                model=self._content_model,
+                model=self._model_for(todo),
             )
 
             # Extract code language from prompt or default to python
@@ -1032,7 +1053,7 @@ class ContentGenerationService:
             layout = self._extract_layout_preference(todo.prompt) or "split-left"
 
             # Parametric per-slide charge, now that both legs succeeded.
-            self._bill_slide(tool_key="course_slide_video", todo=todo, model=self._content_model)
+            self._bill_slide(tool_key="course_slide_video", todo=todo, model=self._model_for(todo))
 
             # Format response
             return {
@@ -1141,7 +1162,7 @@ class ContentGenerationService:
             if hasattr(self._llm_client, 'generate_outline_with_usage'):
                 code_content, usage_info = await self._llm_client.generate_outline_with_usage(
                     prompt=code_prompt,
-                    model=self._content_model,
+                    model=self._model_for(todo),
                 )
                 
                 # Record token usage for content generation
@@ -1149,7 +1170,7 @@ class ContentGenerationService:
                     try:
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
-                        api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
+                        api_provider = ApiProvider.GEMINI if "gemini" in self._model_for(todo).lower() else ApiProvider.OPENAI
                         token_service.record_usage_and_deduct_credits(
                             api_provider=api_provider,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
@@ -1158,14 +1179,14 @@ class ContentGenerationService:
                             request_type=RequestType.CONTENT,
                             institute_id=self._institute_id,
                             user_id=self._user_id,
-                            model=self._content_model,
+                            model=self._model_for(todo),
                         )
                     except Exception as e:
                         logger.warning(f"Failed to record content generation token usage: {str(e)}")
             else:
                 code_content = await self._llm_client.generate_outline(
                     prompt=code_prompt,
-                    model=self._content_model,
+                    model=self._model_for(todo),
                 )
             
             # Extract code language and layout

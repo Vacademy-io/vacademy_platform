@@ -387,6 +387,25 @@ class Settings:
     # Raise ONLY if a future agent genuinely needs reasoning, and re-measure.
     # Suppress a sentence the bot has already said in this call. Off = the old
     # behaviour, in case a deployment ever needs it back in a hurry.
+    # Give an AUTHORED prompt the built-in safety rules too (`non_negotiable`).
+    #
+    # build_system_prompt branches at 600 characters: shorter prompts get the
+    # seven rules, longer ones get none of them. 600 characters is about four
+    # sentences, so every real agent takes the second branch — production prompts
+    # measured 2026-08-14 were 2956, 3359, 3489, 5152 and 10078 characters. The
+    # rules therefore reach only the built-in placeholder persona and never an
+    # agent running real calls, even though each was added after a specific
+    # live-call failure (frustration -> drop the script; conversation stops making
+    # sense -> assume you mis-heard; a repeated question means your answer failed).
+    #
+    # OFF BY DEFAULT so this deploys as a no-op: every existing agent's prompt is
+    # byte-identical until someone turns it on. Enable per deployment, watch
+    # HANDBACK_LOOP and REPLY_LOOP, and be aware the prompt grows ~1.5k characters
+    # — saturation is a known risk here (NoRepeatGate: four prompt-level fixes
+    # failed at ~16k). A per-agent switch belongs in the agent editor later; this
+    # is the env-level precursor.
+    safety_rules_for_authored: bool = field(
+        default_factory=lambda: _env("SAFETY_RULES_FOR_AUTHORED", "false").lower() == "true")
     no_repeat_enabled: bool = field(
         default_factory=lambda: _env("NO_REPEAT_ENABLED", "true").lower() == "true")
     # Drop the leading clause when a reply only parrots the caller's own answer

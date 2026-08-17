@@ -2196,6 +2196,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # greeting on live calls. So defer: add ONLY the bot-only knowledge above, plus one
     # line telling the model its own instructions own the opening.
     if len(prompt.strip()) >= 600:
+        # THE 600-CHARACTER CUT-OFF DECIDES WHO GETS THE SAFETY RULES, AND IT IS
+        # THE WRONG SIDE OF THE LINE. 600 characters is roughly four sentences, so
+        # every authored agent lands here and receives NONE of `non_negotiable` —
+        # production prompts measured 2026-08-14 were 2956, 3359, 3489, 5152 and
+        # 10078 characters. The rules reach only the built-in placeholder persona,
+        # never an agent taking real calls, although each was added after a
+        # specific live failure: a repeated question means your answer FAILED;
+        # answer direct questions first and never dodge; frustration means drop
+        # the script; if the conversation stops making sense assume you MIS-HEARD.
+        #
+        # Those four are RECOVERY rules — what to do when a call goes wrong — so
+        # they cannot contradict a script that only describes the happy path,
+        # which is what the deferral below was written to protect against.
+        #
+        # Gated OFF by default: this ships as a no-op and every existing prompt is
+        # byte-identical until SAFETY_RULES_FOR_AUTHORED=true. Placed AFTER the
+        # authoritative line so the author's script still leads and the rules read
+        # as the override they announce themselves to be.
+        #
+        # NOTE this does not resolve the already_said_rule / listen_rule conflict
+        # (never name your company again vs. name it when asked) — that needs its
+        # own carve-out, and prod call 775ac5ac is the evidence.
         lines = [
             prompt,
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
@@ -2203,6 +2225,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first at the very START of the call, your FIRST reply IS your "
             "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
+            non_negotiable if get_settings().safety_rules_for_authored else "",
             already_said_rule,
             now_line,
             greeting_rule,

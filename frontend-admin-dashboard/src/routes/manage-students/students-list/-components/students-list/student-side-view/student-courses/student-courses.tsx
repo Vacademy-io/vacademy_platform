@@ -29,7 +29,6 @@ import {
     CaretLeft,
     CaretRight,
     Funnel,
-    Prohibit,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -59,7 +58,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const [progressPage, setProgressPage] = useState(0);
     const [completedPage, setCompletedPage] = useState(0);
     const [pastPage, setPastPage] = useState(0);
-    const [inactivePage, setInactivePage] = useState(0);
 
     const levelIds = selectedLevelIds;
     const packageSessionIds = packageSessionId ? [packageSessionId] : [];
@@ -75,23 +73,9 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         size: ITEMS_PER_PAGE,
         // ACTIVE only. The admin endpoint defaults to ACTIVE + INACTIVE when no status
         // is sent, so a soft-cancelled (deactivated) enrollment would otherwise keep
-        // rendering here as though the learner still had live access. Deactivated rows
-        // get their own section below rather than disappearing.
+        // rendering here as though the learner still had live access. Those rows are
+        // picked up by the Past section instead — see getPastLearnerPackages.
         status: ['ACTIVE'],
-        levelIds,
-        packageSessionIds,
-    });
-
-    const {
-        data: inactiveCourses,
-        isLoading: isLoadingInactive,
-    } = useLearnerPackagesQuery({
-        instituteId: instituteId || '',
-        userId,
-        type: 'PROGRESS',
-        page: inactivePage,
-        size: ITEMS_PER_PAGE,
-        status: ['INACTIVE'],
         levelIds,
         packageSessionIds,
     });
@@ -144,7 +128,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         );
     }
 
-    if (isLoadingProgress || isLoadingCompleted || isLoadingPast || isLoadingInactive) {
+    if (isLoadingProgress || isLoadingCompleted || isLoadingPast) {
         return <ProfileSkeleton blocks={3} />;
     }
 
@@ -172,8 +156,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const progressCount = progressCourses?.totalElements ?? progressCourses?.content?.length ?? 0;
     const completedCount = completedCourses?.totalElements ?? completedCourses?.content?.length ?? 0;
     const pastCount = pastCourses?.totalElements ?? pastCourses?.content?.length ?? 0;
-    const inactiveCount = inactiveCourses?.totalElements ?? inactiveCourses?.content?.length ?? 0;
-    const totalCount = progressCount + completedCount + pastCount + inactiveCount;
+    const totalCount = progressCount + completedCount + pastCount;
 
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ['GET_LEARNER_PACKAGES'] });
@@ -231,13 +214,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const courseTermPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
     // When there are no courses at all, show a dedicated empty state with primary action.
-    if (
-        totalCount === 0 &&
-        !isLoadingProgress &&
-        !isLoadingCompleted &&
-        !isLoadingPast &&
-        !isLoadingInactive
-    ) {
+    if (totalCount === 0 && !isLoadingProgress && !isLoadingCompleted && !isLoadingPast) {
         return (
             <div className="flex flex-col gap-3">
                 <ProfileEmpty
@@ -270,9 +247,9 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     return (
         <div className="flex flex-col gap-3">
             {/* Hero stat grid — passive counters per handoff CoursesSection.
-                Click-to-filter has been dropped: the sections below always
+                Click-to-filter has been dropped: the 3 sections below always
                 render, so these tiles are purely orientation/status read-outs. */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-3 gap-2">
                 <ProfileHeroStat
                     label="In Progress"
                     value={progressCount}
@@ -284,12 +261,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     value={completedCount}
                     tone="success"
                     icon={CheckCircle}
-                />
-                <ProfileHeroStat
-                    label="Inactive"
-                    value={inactiveCount}
-                    tone="warning"
-                    icon={Prohibit}
                 />
                 <ProfileHeroStat
                     label="Past"
@@ -380,45 +351,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
                     return details?.session.session_name || null;
                 }}
-            />
-
-            {/* Deactivated enrollments — a soft cancel whose access window has already
-                closed flips the mapping to INACTIVE. The admin endpoint still returns
-                these (they are the record of what the learner used to have), so they get
-                their own section instead of sitting in "In Progress" looking live. */}
-            <CourseSection
-                title={`Inactive ${courseTermPlural}`}
-                icon={Prohibit}
-                courses={inactiveCourses?.content || []}
-                emptyMessage={`No inactive ${courseTermPlural.toLowerCase()}`}
-                onCourseClick={handleCourseClick}
-                getSessionName={(course) => {
-                    if (!course.package_session_id) return null;
-                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
-                    return details?.session.session_name || null;
-                }}
-                renderBadge={(course) => (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                        {course.level_name && (
-                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                {course.level_name}
-                            </span>
-                        )}
-                        <span
-                            className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium text-warning-700"
-                            title={
-                                course.expiry_date
-                                    ? `Access ended ${new Date(course.expiry_date).toLocaleDateString()}`
-                                    : 'Access deactivated'
-                            }
-                        >
-                            Inactive
-                        </span>
-                    </div>
-                )}
-                page={inactivePage}
-                totalPages={inactiveCourses?.totalPages || 0}
-                onPageChange={setInactivePage}
             />
 
             <CourseSection

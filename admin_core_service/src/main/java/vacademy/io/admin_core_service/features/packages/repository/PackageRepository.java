@@ -2011,13 +2011,16 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ARRAY[CAST(dest_l.id AS text)] AS levelIds,
                 0 AS validityInDays
             FROM student_session_institute_group_mapping ssigm
-            JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+            JOIN package_session dest_ps
+                ON dest_ps.id = COALESCE(ssigm.destination_package_session_id, ssigm.package_session_id)
             JOIN level dest_l ON dest_l.id = dest_ps.level_id
             JOIN package p ON p.id = dest_ps.package_id
             JOIN package_institute pi ON pi.package_id = p.id
             WHERE ssigm.user_id = :userId
-                AND ssigm.status = 'INVITED'
-                AND ssigm.destination_package_session_id IS NOT NULL
+                AND (
+                    (ssigm.status = 'INVITED' AND ssigm.destination_package_session_id IS NOT NULL)
+                    OR ssigm.status = 'INACTIVE'
+                )
                 AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
             GROUP BY
@@ -2032,13 +2035,16 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 SELECT COUNT(*) FROM (
                     SELECT dest_ps.id
                     FROM student_session_institute_group_mapping ssigm
-                    JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+                    JOIN package_session dest_ps
+                        ON dest_ps.id = COALESCE(ssigm.destination_package_session_id, ssigm.package_session_id)
                     JOIN level dest_l ON dest_l.id = dest_ps.level_id
                     JOIN package p ON p.id = dest_ps.package_id
                     JOIN package_institute pi ON pi.package_id = p.id
                     WHERE ssigm.user_id = :userId
-                        AND ssigm.status = 'INVITED'
-                        AND ssigm.destination_package_session_id IS NOT NULL
+                        AND (
+                            (ssigm.status = 'INVITED' AND ssigm.destination_package_session_id IS NOT NULL)
+                            OR ssigm.status = 'INACTIVE'
+                        )
                         AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
                     GROUP BY dest_ps.id

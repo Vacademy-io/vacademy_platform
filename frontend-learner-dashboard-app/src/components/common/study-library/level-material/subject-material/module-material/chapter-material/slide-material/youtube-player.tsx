@@ -1240,40 +1240,55 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Small delay to ensure iframe is ready
       const autoplayTimeout = setTimeout(async () => {
-        const success = await safePlayerOperation(async () => {
-          const p = playerRef.current;
-          if (!p) return;
-          try {
-            await p.unMute(); // Unmute for autoplay
-          } catch (e) {
-            console.warn("unMute failed during autoplay", e);
-          }
-          await p.playVideo();
-        }, "autoplay");
+        // Keep trying for a few seconds before giving the learner a button.
+        //
+        // A browser only permits unmuted playback while the page holds a recent
+        // user gesture. Opening a class often does hold one (the tap on the class
+        // card, or "Continue to class" on the disclaimer), but the player is not
+        // always initialised in time for the first attempt to land. Retrying over
+        // ~4s catches that, and costs nothing when the first attempt works.
+        //
+        // A synthetic .click() would NOT help — the browser only counts real
+        // input, so the retry is deliberately a real playVideo() each time.
+        const ATTEMPTS = 5;
+        const GAP_MS = 800;
+        let started = false;
 
-        if (success) {
-          // Verify that video actually started playing after a short delay
-          autoplayVerifyTimeoutRef.current = setTimeout(async () => {
-            autoplayVerifyTimeoutRef.current = null;
+        for (let attempt = 0; attempt < ATTEMPTS && !started; attempt++) {
+          if (!isMountedRef.current) return;
+          const ok = await safePlayerOperation(async () => {
+            const p = playerRef.current;
+            if (!p) return;
+            try {
+              await p.unMute(); // Unmute for autoplay
+            } catch (e) {
+              console.warn("unMute failed during autoplay", e);
+            }
+            await p.playVideo();
+          }, `autoplay#${attempt + 1}`);
+
+          if (ok) {
+            await new Promise((r) => setTimeout(r, GAP_MS));
             if (!isMountedRef.current) return;
             try {
-              const playerState = await player.getPlayerState();
-              if (!isMountedRef.current) return;
-              // PlayerState.PLAYING = 1, if not playing, show manual button
-              if (playerState !== 1) {
-                setShowManualPlayButton(true);
-              } else {
-                setIsPlayed(true);
-                setShowManualPlayButton(false);
-              }
-            } catch (error) {
-              console.warn("Error checking player state after autoplay", error);
-              if (isMountedRef.current) setShowManualPlayButton(true);
+              started = (await player.getPlayerState()) === 1;
+            } catch {
+              started = false;
             }
-          }, 1000);
+          } else {
+            await new Promise((r) => setTimeout(r, GAP_MS));
+          }
+        }
+
+        if (!isMountedRef.current) return;
+        if (started) {
+          setIsPlayed(true);
+          setShowManualPlayButton(false);
         } else {
-          console.warn("Autoplay failed, showing manual play button");
-          if (isMountedRef.current) setShowManualPlayButton(true);
+          // The browser is holding playback back and only a real tap will release
+          // it. Surface the button rather than leaving a dead frame.
+          console.warn("Autoplay blocked after retries, showing manual play button");
+          setShowManualPlayButton(true);
         }
       }, 500);
 
@@ -1392,6 +1407,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     // in onPlayerReady leaves captions to reappear for viewers whose account
     // forces them on — which is exactly what was reported.
     if (event.data === PlayerState.PLAYING) suppressCaptions(event.target);
+
+    // Hold the last frame once the class finishes rather than letting the embed
+    // roll back to the start. A learner who leaves the tab open through the tail
+    // of the slot should see a finished class, not one that quietly began again.
+    if (event.data === PlayerState.ENDED) {
+      safePlayerOperation(async () => {
+        await playerRef.current?.pauseVideo();
+      }, "holdAtEnd");
+    }
 
     // Auto-play after seek completes (event-driven approach)
     if (shouldAutoPlayAfterSeekRef.current) {
@@ -1687,7 +1711,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Only sync if elapsed time is positive (class has started)
         if (elapsedSeconds > 0) {
           // Add a small delay to ensure the player iframe is fully initialized
-          setTimeout(() => {
+          setTimeout(async () => {
+            // The scheduled slot is routinely longer than the video — a 60-minute
+            // class carrying a 57-minute recording leaves three minutes where
+            // "elapsed since start" points PAST the end. Seeking there does not
+            // land at the end: YouTube treats an out-of-range seek as a seek to
+            // zero, so the class appears to restart itself just as it finishes.
+            // Past the end there is nothing left to sync to, so leave the player
+            // where it is and let it finish.
+            const duration = await safeGetNumber(playerRef.current?.getDuration());
+            if (duration > 0 && elapsedSeconds >= duration - 1) {
+              console.log(
+                `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`
+              );
+              return;
+            }
             // Seek to the calculated position (force it to bypass restrictions)
             seekToTimestamp(elapsedSeconds, true);
           }, 500);

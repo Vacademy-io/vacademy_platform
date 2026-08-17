@@ -30,9 +30,11 @@ const flattenInstallments = (feeTypes: CPOFeeType[] | undefined): InstallmentRow
         if (!afv) continue;
         const installments: CPOInstallment[] = afv.installments ?? [];
         if (installments.length === 0) {
-            // Lump-sum AFV synthesizes a single virtual row keyed off the AFV id —
-            // the backend stamps SFP.iId with the AFV id in this case (see
-            // StudentFeePaymentGenerationService line ~80).
+            // Lump-sum AFV synthesizes a single virtual row keyed off the AFV id.
+            // The SFP row for a one-off fee carries i_id = null (it has no
+            // AftInstallment), so CpoEnrollmentConfigApplier resolves this id
+            // against asv_id instead — see the lump-sum alias map there. Do not
+            // switch this to an installment id: there isn't one.
             rows.push({
                 id: afv.id,
                 feeTypeName: ft.name,

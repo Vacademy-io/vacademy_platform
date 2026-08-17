@@ -2001,7 +2001,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_html_description AS courseHtmlDescriptionHtml,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
-                0 AS percentageCompleted,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
                 0 AS readTimeInMinutes,
                 0.0 AS rating,
                 dest_ps.id AS packageSessionId,
@@ -2016,6 +2016,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level dest_l ON dest_l.id = dest_ps.level_id
             JOIN package p ON p.id = dest_ps.package_id
             JOIN package_institute pi ON pi.package_id = p.id
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true
+                       OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = dest_ps.id
             WHERE ssigm.user_id = :userId
                 AND (
                     (ssigm.status = 'INVITED' AND ssigm.destination_package_session_id IS NOT NULL)
@@ -2054,6 +2063,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
+            @Param("learnerOperations") List<String> learnerOperations,
             Pageable pageable);
 
     @Query(value = """

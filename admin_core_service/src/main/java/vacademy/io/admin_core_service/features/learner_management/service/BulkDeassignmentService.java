@@ -157,6 +157,36 @@ public class BulkDeassignmentService {
         }
     }
 
+    /**
+     * Back-dated soft cancel: when the admin sets the last access date to today or earlier,
+     * the access window has already closed, so the mapping must not stay ACTIVE. Moving the
+     * expiry alone is not enough — every learner/product list filters on
+     * {@code ssigm.status}, with no expiry check, so an ACTIVE row with a past expiry keeps
+     * rendering the product as live.
+     *
+     * <p>INACTIVE rather than TERMINATED on purpose. It is the established "access lapsed but
+     * the learner stays on the roster" state (see {@code RenewalChargeService.deactivateMappings},
+     * which {@code RenewalPaymentService} reverses back to ACTIVE when payment resumes), it is
+     * denied by the ACTIVE-only content gates, and — unlike TERMINATED — it is present in the
+     * institute's {@code studentStatuses} roster, so the learner remains visible and filterable
+     * in Manage Students instead of vanishing from the list.
+     *
+     * <p>A future access date leaves the mapping ACTIVE: access genuinely continues until then,
+     * and the expiry sweep retires it on the day.
+     */
+    private void deactivateIfAccessAlreadyEnded(StudentSessionInstituteGroupMapping mapping,
+                                                Date accessTillDate) {
+        if (mapping == null || accessTillDate == null) {
+            return;
+        }
+        if (accessTillDate.toInstant().isAfter(Instant.now())) {
+            return;
+        }
+        mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
+        log.info("Soft-cancel with a past access date — marking mapping {} INACTIVE (accessTill={})",
+                mapping.getId(), accessTillDate);
+    }
+
     private void validateRequest(BulkDeassignRequestDTO request) {
         if (!StringUtils.hasText(request.getInstituteId())) {
             throw new VacademyException("institute_id is required");
@@ -257,9 +287,16 @@ public class BulkDeassignmentService {
                 String actionDesc = MODE_HARD.equals(mode)
                         ? "HARD_TERMINATED"
                         : "SOFT_CANCELED";
-                String softMessage = accessTillDate != null
-                        ? "soft-cancel (access until " + accessTillDate + ")"
-                        : "soft-cancel (access until plan expiry)";
+                String softMessage;
+                if (accessTillDate == null) {
+                    softMessage = "soft-cancel (access until plan expiry)";
+                } else if (accessTillDate.toInstant().isAfter(Instant.now())) {
+                    softMessage = "soft-cancel (access until " + accessTillDate + ")";
+                } else {
+                    // Back-dated: the access window has already closed, so this deactivates now.
+                    softMessage = "soft-cancel (access already ended " + accessTillDate
+                            + " — learner will be marked INACTIVE for this course)";
+                }
                 return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
                         .userId(userId).userEmail(userEmail)
                         .packageSessionId(packageSessionId)
@@ -283,6 +320,7 @@ public class BulkDeassignmentService {
                 // expiry so access ends on that date instead of the plan's own expiry.
                 if (!hard && accessTillDate != null) {
                     mapping.setExpiryDate(accessTillDate);
+                    deactivateIfAccessAlreadyEnded(mapping, accessTillDate);
                     studentSessionRepository.save(mapping);
                 }
                 log.info("De-assigned: userId={}, packageSession={}, userPlan={}, mode={}, accessTill={}",
@@ -300,6 +338,7 @@ public class BulkDeassignmentService {
                     // freed — the learner still occupies it until they actually expire.
                     if (accessTillDate != null) {
                         mapping.setExpiryDate(accessTillDate);
+                        deactivateIfAccessAlreadyEnded(mapping, accessTillDate);
                     }
                 }
                 studentSessionRepository.save(mapping);

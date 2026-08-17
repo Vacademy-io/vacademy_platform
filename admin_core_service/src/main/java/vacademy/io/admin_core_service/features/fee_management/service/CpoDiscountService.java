@@ -57,9 +57,19 @@ public class CpoDiscountService {
 
     private final UserPlanRepository userPlanRepository;
     private final StudentFeePaymentRepository studentFeePaymentRepository;
+    private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+    private final vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository userAccountLedgerRepository;
 
     private static final int SCALE = 2;
     private static final RoundingMode RM = RoundingMode.HALF_UP;
+
+    /**
+     * source_type for the ledger rows this service posts. Deliberately NOT
+     * STUDENT_FEE_PAYMENT: that belongs to the original obligation written by
+     * StudentFeePaymentGenerationService, and the delta arithmetic below has to be able to
+     * tell its own discount entries apart from that accrual.
+     */
+    private static final String DISCOUNT_LEDGER_SOURCE_TYPE = "CPO_DISCOUNT";
 
     // ------------------------------------------------------------------ apply
 
@@ -210,6 +220,68 @@ public class CpoDiscountService {
         recomputeAndPersist(plan, snapshot);
     }
 
+    /**
+     * Keeps the ledger's total_accrued in step with a discounted fee row, so the Account
+     * Summary tiles agree with the Fee Plan block instead of reporting the pre-discount
+     * gross. A discount voids part of an obligation before any money moves, which is exactly
+     * DEBIT_REVERSAL — it subtracts from total_accrued rather than counting as a payment.
+     *
+     * <p>Written as a DELTA, not an absolute. {@code recomputeAndPersist} re-derives every
+     * row from {@code original_amount} on each edit, so posting (original - net) every time
+     * would stack duplicate reversals on an append-only table. Instead we compare the
+     * discount owed with what has already been booked under
+     * {@link #DISCOUNT_LEDGER_SOURCE_TYPE} and post only the difference — as a reversal when
+     * the discount grew, or as a fresh accrual when it shrank (or was removed), since a
+     * reversal can never be un-posted.
+     *
+     * <p>The reversal carries the row's due date so it cancels out of the past-due bucket as
+     * well as the total. Best-effort: a ledger hiccup must not fail the discount edit itself.
+     */
+    private void syncDiscountToLedger(UserPlan plan, StudentFeePayment sfp,
+                                      BigDecimal base, BigDecimal net) {
+        try {
+            if (base == null || net == null) return;
+            String instituteId = sfp.getInstituteId();
+            if (instituteId == null || instituteId.isBlank()) {
+                log.warn("Skipping discount ledger sync for sfp={}: no instituteId", sfp.getId());
+                return;
+            }
+
+            BigDecimal owed = scale(base.subtract(net));
+            if (owed.signum() < 0) owed = BigDecimal.ZERO;
+
+            BigDecimal reversed = nz(userAccountLedgerRepository.sumBySourceAndEventType(
+                    DISCOUNT_LEDGER_SOURCE_TYPE, sfp.getId(), "DEBIT_REVERSAL"));
+            BigDecimal restored = nz(userAccountLedgerRepository.sumBySourceAndEventType(
+                    DISCOUNT_LEDGER_SOURCE_TYPE, sfp.getId(), "DEBIT_ACCRUAL"));
+            BigDecimal alreadyBooked = reversed.subtract(restored);
+
+            BigDecimal delta = scale(owed.subtract(alreadyBooked));
+            if (delta.signum() == 0) return;
+
+            // Deliberately not the .toInstant() form used elsewhere in this package:
+            // due_date is written as a java.sql.Date, and java.sql.Date.toInstant() throws
+            // UnsupportedOperationException. Re-wrapping the epoch millis works whether the
+            // instance is a java.util.Date, java.sql.Date or java.sql.Timestamp.
+            LocalDate dueDate = sfp.getDueDate() != null
+                    ? new java.sql.Date(sfp.getDueDate().getTime()).toLocalDate()
+                    : null;
+            if (delta.signum() > 0) {
+                userAccountLedgerService.recordDebitReversal(
+                        plan.getUserId(), instituteId, delta, "INR", dueDate,
+                        DISCOUNT_LEDGER_SOURCE_TYPE, sfp.getId(), null,
+                        "Discount applied to installment");
+            } else {
+                userAccountLedgerService.recordDebitAccrual(
+                        plan.getUserId(), instituteId, delta.negate(), "INR", dueDate,
+                        DISCOUNT_LEDGER_SOURCE_TYPE, sfp.getId(), null,
+                        "Discount reduced on installment");
+            }
+        } catch (Exception e) {
+            log.error("Discount ledger sync failed for sfp={}: {}", sfp.getId(), e.getMessage(), e);
+        }
+    }
+
     private void recomputeAndPersist(UserPlan plan, UserPlanDiscountJson snapshot) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(plan.getId());
         if (sfps.isEmpty()) {
@@ -218,6 +290,10 @@ public class CpoDiscountService {
         }
 
         Map<String, BigDecimal> postStep3 = new LinkedHashMap<>();
+        // The pre-discount value each row started from, kept so the ledger sync in the
+        // second pass can measure (original - net) without re-deriving it after
+        // amount_expected has already been overwritten.
+        Map<String, BigDecimal> baseById = new LinkedHashMap<>();
         BigDecimal totalPostStep3 = BigDecimal.ZERO;
 
         for (StudentFeePayment sfp : sfps) {
@@ -238,6 +314,7 @@ public class CpoDiscountService {
             if (afterOverride == null) afterOverride = afterInstDiscount;
 
             postStep3.put(sfp.getId(), afterOverride);
+            baseById.put(sfp.getId(), base);
             totalPostStep3 = totalPostStep3.add(afterOverride);
         }
 
@@ -268,6 +345,8 @@ public class CpoDiscountService {
             sfp.setAmountExpected(net);
             sfp.setStatus(recomputeStatus(sfp.getStatus(), nz(sfp.getAmountPaid()), net));
             studentFeePaymentRepository.save(sfp);
+
+            syncDiscountToLedger(plan, sfp, baseById.get(sfp.getId()), net);
 
             // Write CPO share for audit if material
             if (snapshot.getCpoDiscount() != null) {

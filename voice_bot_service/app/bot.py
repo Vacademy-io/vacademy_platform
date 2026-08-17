@@ -2778,6 +2778,66 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "greet again and do not repeat that word.]"}],
                     run_llm=True))
             await task.queue_frames(_frames)
+
+            # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
+            # It often does not: the caller talks over the first second, the
+            # utterance is cancelled, and the model still reads its own context as
+            # "I delivered the full introduction". already_said_rule then tells it
+            # "It has been said... Resume from the point AFTER the introduction",
+            # so it skips ahead to the next scripted step and the caller — who
+            # heard a fragment — has no idea what is being asked. That is the
+            # HANDBACK_LOOP shape: on call 3148ccd4 the caller spent the last
+            # forty-five seconds asking "मैं क्या बताऊँ?" and hung up.
+            #
+            # NoRepeatGate got this exact fix on 2026-08-13 (it holds sentences
+            # pending and rolls back the ones that never played). The opening
+            # bypasses NoRepeatGate entirely — it is injected straight into the
+            # context here — so it never received it. This is that fix, for the
+            # one utterance most likely to be interrupted.
+            #
+            # PURELY ADDITIVE, DELIBERATELY. The full opening STAYS in context: it
+            # is what stops the "no record at all" failure that cost us both a
+            # re-delivered intro and a language flip (see the note above). We only
+            # ADD a correction telling the model what the caller actually heard.
+            # Every failure mode therefore degrades to today's behaviour:
+            #   correction races the caller's turn -> model has the full opening
+            #   opening completed                  -> nothing added
+            #   nothing reached the caller         -> nothing added
+            #   watch loop times out               -> nothing added
+            # It can do nothing; it cannot do harm.
+            #
+            # Substantive openings only. The bare-greeting path above hands
+            # straight to the LLM with run_llm=True, so its played text is the
+            # greeting PLUS the model's own introduction — not the opening alone,
+            # and the length test would be meaningless.
+            if _opening_is_substantive(opening):
+                _t0 = time.time()
+                while time.time() - _t0 < 12.0:
+                    # bot_spoke_once flips in set_bot_speaking(False), so this is
+                    # exactly "the opening started and has now stopped" — whether
+                    # it finished or was cut off.
+                    if flags["bot_spoke_once"] and not flags["bot_speaking"]:
+                        break
+                    await asyncio.sleep(0.05)
+                _played = ""
+                for _e in reversed(outcome.transcript):
+                    if _e.get("role") == "assistant":
+                        _played = _e.get("text") or ""
+                        break
+                # 0.8: TTS re-chunks and normalises, so played text never matches
+                # the source exactly. Only correct on a REAL shortfall.
+                if _played and len(_played) < len(opening) * 0.8:
+                    diag.bump("opening_truncated")
+                    logger.info("greet: opening cut short — caller heard %d of %d chars "
+                                "corr=%s", len(_played), len(opening), corr)
+                    # No run_llm: the caller is mid-sentence. Forcing a generation
+                    # here would talk straight over them.
+                    await task.queue_frames([LLMMessagesAppendFrame(messages=[{
+                        "role": "user", "content":
+                        f"[You were cut off after saying only: \"{_played}\" — the caller "
+                        "did NOT hear the rest of your opening. Do not start over and do "
+                        "not re-introduce yourself, but do finish the point you were "
+                        "making before you move on.]"}])])
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

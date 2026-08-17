@@ -248,6 +248,12 @@ class CallDiagnostics:
     greet_path: str = ""                # "scripted" | "callee_spoke_first" | "llm"
     greet_delay_secs: Optional[float] = None
     setup_secs: Optional[float] = None
+    # The caller talked over the scripted opening and heard only part of it. The
+    # full opening is pre-appended to the model's context before it is spoken, so
+    # without a correction the model believes it delivered the whole introduction
+    # and skips ahead — see bot._greet_when_ready. Counted, not scored: it is a
+    # normal thing for a caller to do, and the correction handles it.
+    opening_truncated: int = 0
     prompt_unfilled: List[str] = field(default_factory=list)
     crash: Optional[str] = None
     transfer_requested: bool = False
@@ -797,6 +803,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "greetPath": d.greet_path or None,
                 "greetDelaySecs": d.greet_delay_secs,
                 "setupSecs": d.setup_secs,
+                "openingTruncated": d.opening_truncated,
             },
             "machine": {
                 "score": machine_score(d),

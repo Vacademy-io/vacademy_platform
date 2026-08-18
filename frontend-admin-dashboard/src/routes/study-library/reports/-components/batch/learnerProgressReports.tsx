@@ -21,7 +21,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { convertCapitalToTitleCase } from '@/lib/utils';
+import { cn, convertCapitalToTitleCase } from '@/lib/utils';
 
 import { fetchStudents } from '@/routes/manage-students/students-list/-services/getStudentTable';
 import { fetchStudentSubjectsProgress } from '@/routes/manage-students/students-list/-services/getStudentSubjects';
@@ -71,6 +71,52 @@ const completionStatus = (value: number): { status: StatusType; label: string } 
     if (value >= 40) return { status: 'INFO', label: 'In progress' };
     if (value > 0) return { status: 'WARNING', label: 'Behind' };
     return { status: 'DANGER', label: 'Not started' };
+};
+
+/**
+ * Course-progress cell.
+ *
+ * Written rather than reusing ProfileMiniBar because that bar's track is
+ * `bg-neutral-100` at `h-1.5`, which on a white row reads as nothing at all —
+ * a whole page of 0% learners looked like empty cells. Here the track is a
+ * visible `bg-neutral-200`, the fill is tone-banded, and the number always
+ * carries its own weight so progress is never conveyed by colour alone.
+ */
+const ProgressMeter = ({ value }: { value: number }) => {
+    const pct = Math.max(0, Math.min(100, value));
+    const rounded = Math.round(pct);
+    const fill =
+        pct >= 100
+            ? 'bg-success-500'
+            : pct >= 75
+              ? 'bg-success-500'
+              : pct >= 40
+                ? 'bg-primary-500'
+                : pct > 0
+                  ? 'bg-warning-500'
+                  : 'bg-transparent';
+
+    // The bar width is the datum itself — the one value that cannot be a token.
+    const barWidth = { width: `${pct}%` };
+
+    return (
+        <div className="flex max-w-56 items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200">
+                <div
+                    className={cn('h-full rounded-full transition-all duration-500', fill)}
+                    style={barWidth}
+                />
+            </div>
+            <span
+                className={cn(
+                    'w-10 shrink-0 text-right text-body font-semibold tabular-nums',
+                    rounded > 0 ? 'text-neutral-800' : 'text-neutral-400'
+                )}
+            >
+                {rounded}%
+            </span>
+        </div>
+    );
 };
 
 /** Chapters finished vs total across every subject — the "content covered" cell. */
@@ -306,15 +352,25 @@ export default function LearnerProgressReports({
             {
                 accessorKey: 'full_name',
                 header: learnerTerm,
-                size: 260,
+                size: 320,
                 cell: ({ row }) => {
                     const name = row.original.full_name || `Unnamed ${learnerTerm.toLowerCase()}`;
+                    const pct = row.original.coursePercentage;
                     return (
-                        // max-w-xs bounds the cell: MyTable's <table> is auto-layout,
+                        // max-w-sm bounds the cell: MyTable's <table> is auto-layout,
                         // so the width hint alone lets a long name stretch the column
                         // (and push the rest off-screen). A hard max makes truncate bite.
-                        <div className="flex max-w-xs items-center gap-2.5 py-1">
-                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-caption font-semibold text-neutral-600">
+                        <div className="flex max-w-sm items-center gap-3 py-0.5">
+                            <span
+                                className={cn(
+                                    'flex size-9 shrink-0 items-center justify-center rounded-full text-caption font-semibold',
+                                    pct >= 100
+                                        ? 'bg-success-100 text-success-600'
+                                        : pct > 0
+                                          ? 'bg-primary-100 text-primary-600'
+                                          : 'bg-neutral-100 text-neutral-500'
+                                )}
+                            >
                                 {initials(name)}
                             </span>
                             <span className="flex min-w-0 flex-col">
@@ -332,18 +388,18 @@ export default function LearnerProgressReports({
             {
                 accessorKey: 'coursePercentage',
                 header: `${courseTerm} progress`,
-                size: 190,
+                size: 300,
                 cell: ({ row }) =>
                     row.original.isProgressLoading ? (
-                        <div className="h-1.5 w-full max-w-36 animate-pulse rounded-full bg-neutral-100" />
+                        <div className="h-2 w-full max-w-52 animate-pulse rounded-full bg-neutral-200" />
                     ) : (
-                        <ProfileMiniBar value={row.original.coursePercentage} />
+                        <ProgressMeter value={row.original.coursePercentage} />
                     ),
             },
             {
                 id: 'status',
                 header: 'Status',
-                size: 140,
+                size: 170,
                 cell: ({ row }) => {
                     if (row.original.isProgressLoading) {
                         return <span className="text-caption text-neutral-400">Loading…</span>;
@@ -354,29 +410,41 @@ export default function LearnerProgressReports({
             },
             {
                 id: 'content',
-                header: 'Chapters',
-                size: 110,
+                header: 'Chapters done',
+                size: 150,
                 cell: ({ row }) => {
                     const { chaptersDone, chaptersTotal } = contentCounts(row.original.subjects);
                     if (row.original.isProgressLoading) {
                         return <span className="text-caption text-neutral-400">—</span>;
                     }
                     return (
-                        <span className="text-caption text-neutral-600">
-                            {chaptersDone}/{chaptersTotal}
+                        <span className="text-body tabular-nums text-neutral-700">
+                            <span
+                                className={cn(
+                                    'font-semibold',
+                                    chaptersDone > 0 ? 'text-neutral-900' : 'text-neutral-400'
+                                )}
+                            >
+                                {chaptersDone}
+                            </span>
+                            <span className="text-neutral-400"> / {chaptersTotal}</span>
                         </span>
                     );
                 },
             },
             {
-                id: 'details',
+                // NOT `details` — MyTable left-pins any column whose id is
+                // checkbox / details / full_name, which threw this action button
+                // to the front of the row.
+                id: 'rowAction',
                 header: '',
-                size: 120,
+                size: 130,
                 cell: ({ row }) => (
                     <MyButton
                         type="button"
                         buttonType="secondary"
                         scale="small"
+                        aria-label={`View progress breakdown for ${row.original.full_name}`}
                         onClick={() => setExpandedUserId(row.original.user_id)}
                     >
                         View
@@ -598,6 +666,10 @@ export default function LearnerProgressReports({
                             isLoading={isLearnersLoading}
                             error={null}
                             currentPage={page}
+                            // Whole row opens the drawer — a 40px-tall target beats
+                            // hunting for the button, and MyTable rows already carry
+                            // cursor-pointer. The View button stays as the affordance.
+                            onCellClick={(row) => setExpandedUserId(row.user_id)}
                         />
                     </div>
                     {(studentPage?.total_pages ?? 0) > 1 && (

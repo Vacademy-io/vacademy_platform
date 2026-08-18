@@ -1064,20 +1064,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // iOS exposes `capacitor://localhost` which YouTube rejects → Error 153.
   const getPlayerOrigin = () => getYouTubeEmbedOrigin();
 
-  /**
-   * Whether the video should start on its own.
-   *
-   * Live classes always do: the learner has already chosen to join, and being
-   * dropped onto a still frame that needs a second tap makes them late to their
-   * own class. Elsewhere the original rule stands — autoplay only when the
-   * learner is not allowed to pause, so study-library slides are unchanged.
-   *
-   * Browsers may still refuse to start audio without a gesture. That is handled,
-   * not assumed: the autoplay effect verifies the player actually reached
-   * PLAYING and falls back to a manual play button when it did not.
-   */
-  const shouldAutoPlay = isLiveStream || !allowPlayPause;
-
   const opts: YouTubeProps["opts"] = {
     height: "100%",
     width: "100%",
@@ -1089,7 +1075,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       modestbranding: 1, // Hide YouTube logo
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
-      autoplay: shouldAutoPlay ? 1 : 0, // Live classes and locked-down videos start themselves
+      autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
       // NOTE: there is deliberately no cc_load_policy here. The API only accepts
       // cc_load_policy=1, which FORCES captions on; there is no value that turns
       // them off, because the default is "whatever the viewer prefers". Captions
@@ -1226,12 +1212,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     };
   }, []);
 
-  // Auto-play once the player is ready — for live classes, and for videos the
-  // learner is not allowed to pause. Must agree with the `autoplay` playerVar
-  // above, so both read the same flag.
+  // Auto-play when player is ready and allowPlayPause is false
   useEffect(() => {
     if (
-      shouldAutoPlay &&
+      !allowPlayPause &&
       player &&
       playerReady &&
       !hasAutoPlayAttempted.current
@@ -1285,7 +1269,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         }
       };
     }
-  }, [shouldAutoPlay, player, playerReady]);
+  }, [allowPlayPause, player, playerReady]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {

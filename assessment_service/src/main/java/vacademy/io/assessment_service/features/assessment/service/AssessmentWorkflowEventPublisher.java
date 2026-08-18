@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentReattemptRequest;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -37,6 +38,7 @@ public class AssessmentWorkflowEventPublisher {
     public static final String ASSESSMENT_RESULT_RELEASED = "ASSESSMENT_RESULT_RELEASED";
     public static final String ASSESSMENT_REMINDER_BEFORE_START = "ASSESSMENT_REMINDER_BEFORE_START";
     public static final String ASSESSMENT_REATTEMPT_GRANTED = "ASSESSMENT_REATTEMPT_GRANTED";
+    public static final String ASSESSMENT_REATTEMPT_REQUESTED = "ASSESSMENT_REATTEMPT_REQUESTED";
 
     @Autowired
     WorkflowTriggerClient workflowTriggerClient;
@@ -277,6 +279,48 @@ public class AssessmentWorkflowEventPublisher {
                 log.warn("Failed to emit ASSESSMENT_REATTEMPT_GRANTED for assessment {}: {}",
                         assessment.getId(), e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Fires ASSESSMENT_REATTEMPT_REQUESTED when a learner asks for another attempt or more time.
+     *
+     * <p>This is the admin-facing half of the reattempt loop. ASSESSMENT_REATTEMPT_GRANTED tells
+     * the learner they have another try; this one tells staff a learner is waiting — which is the
+     * event worth wiring to email / WhatsApp / push, because the learner raising it is usually
+     * locked out of a paper right now and the answer is time-critical.
+     *
+     * <p>Emitted even when the learner has no registration row: they may be asking precisely
+     * because they could not get into the assessment, and that is the case most worth escalating.
+     */
+    public void publishReattemptRequested(AssessmentReattemptRequest request, Assessment assessment,
+                                          AssessmentUserRegistration registration) {
+        if (request == null || request.getInstituteId() == null) {
+            return;
+        }
+        try {
+            String instituteId = request.getInstituteId();
+            Map<String, Object> ctx = assessment != null
+                    ? contextBuilder.forAssessment(assessment, instituteId)
+                    : new HashMap<>();
+            if (registration != null) {
+                putRegistrant(ctx, registration);
+                putIfPresent(ctx, "attemptsAllowed", registration.getReattemptCount());
+                putIfPresent(ctx, "attemptsRemaining", attemptsRemaining(registration));
+            } else {
+                // No registration to read contact details from, but the workflow still needs to
+                // know who asked.
+                putIfPresent(ctx, "userId", request.getUserId());
+            }
+            putIfPresent(ctx, "requestId", request.getId());
+            putIfPresent(ctx, "requestType", request.getRequestType());
+            putIfPresent(ctx, "requestReason", request.getReason());
+            putIfPresent(ctx, "requestStatus", request.getStatus());
+            putIfPresent(ctx, "attemptId", request.getAttemptId());
+            emit(ASSESSMENT_REATTEMPT_REQUESTED, request.getAssessmentId(), instituteId, ctx);
+        } catch (Exception e) {
+            log.warn("Failed to emit ASSESSMENT_REATTEMPT_REQUESTED for assessment {}: {}",
+                    request.getAssessmentId(), e.getMessage());
         }
     }
 

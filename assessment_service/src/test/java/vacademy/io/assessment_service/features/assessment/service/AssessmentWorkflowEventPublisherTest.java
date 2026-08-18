@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentReattemptRequest;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -278,6 +279,71 @@ class AssessmentWorkflowEventPublisherTest {
 
         assertThat(capturedContexts()).hasSize(1);
         assertThat(capturedContexts().get(0)).containsEntry("userId", "user-1");
+    }
+
+    // ---------------------------------------------------------------- REATTEMPT_REQUESTED
+
+    @Test
+    void reattemptRequested_carriesTheReasonAndRequestIdSoStaffCanActOnIt() {
+        Assessment assessment = assessment();
+        AssessmentUserRegistration registration = registration("reg-1", "user-1", assessment);
+        registration.setReattemptCount(3);
+        registration.setStudentAttempts(new HashSet<>(List.of(attempt("att-1", registration))));
+
+        publisher.publishReattemptRequested(request("req-1", "Power cut mid-paper"), assessment,
+                registration);
+
+        assertThat(capturedEventNames()).containsExactly("ASSESSMENT_REATTEMPT_REQUESTED");
+        assertThat(capturedContexts().get(0))
+                .containsEntry("requestId", "req-1")
+                .containsEntry("requestReason", "Power cut mid-paper")
+                .containsEntry("requestType", AssessmentReattemptRequest.TYPE_REATTEMPT)
+                .containsEntry("requestStatus", AssessmentReattemptRequest.STATUS_PENDING)
+                .containsEntry("studentEmail", "user-1@example.com")
+                .containsEntry("attemptsRemaining", 2);
+    }
+
+    /**
+     * A learner with no registration row is the case most worth escalating — they may be asking
+     * precisely because they could not get into the paper — so the emit must still happen.
+     */
+    @Test
+    void reattemptRequested_stillEmitsWhenTheLearnerHasNoRegistrationRow() {
+        publisher.publishReattemptRequested(request("req-2", "Could not open the test"),
+                assessment(), null);
+
+        assertThat(capturedEventNames()).containsExactly("ASSESSMENT_REATTEMPT_REQUESTED");
+        assertThat(capturedContexts().get(0)).containsEntry("userId", "user-1");
+    }
+
+    /** A request raised for an assessment that cannot be loaded must not lose the event. */
+    @Test
+    void reattemptRequested_emitsEvenWithoutTheAssessmentEntity() {
+        publisher.publishReattemptRequested(request("req-3", "Ran out of time"), null, null);
+
+        assertThat(capturedEventNames()).containsExactly("ASSESSMENT_REATTEMPT_REQUESTED");
+        assertThat(capturedContexts().get(0)).containsEntry("requestId", "req-3");
+    }
+
+    @Test
+    void reattemptRequested_neverPropagatesATriggerFailureIntoTheRequestFlow() {
+        doThrow(new RuntimeException("workflow engine down"))
+                .when(client).triggerEvent(anyString(), anyString(), anyString(), any());
+
+        publisher.publishReattemptRequested(request("req-4", "Device died"), assessment(), null);
+        // No exception escaping is the assertion — a learner's request must still be saved.
+    }
+
+    private AssessmentReattemptRequest request(String id, String reason) {
+        AssessmentReattemptRequest request = new AssessmentReattemptRequest();
+        request.setId(id);
+        request.setAssessmentId("assessment-1");
+        request.setInstituteId("institute-1");
+        request.setUserId("user-1");
+        request.setRequestType(AssessmentReattemptRequest.TYPE_REATTEMPT);
+        request.setStatus(AssessmentReattemptRequest.STATUS_PENDING);
+        request.setReason(reason);
+        return request;
     }
 
     // ------------------------------------------------------------------ REATTEMPT_GRANTED

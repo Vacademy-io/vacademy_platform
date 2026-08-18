@@ -1,12 +1,14 @@
 import { Money } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { resolveGatewayBranding } from '@/routes/settings/-constants/payment-gateway-branding';
+import { resolveGatewayLogo } from '@/routes/settings/-constants/payment-gateway-logos';
 
 /**
- * Payment-gateway brandmark shown wherever a payment method appears. The branding (label, mark,
- * colour) comes from the shared source of truth that lives with Institute Settings → Payment
- * Gateways (`payment-gateway-branding`), so what shows here matches what the institute configures
- * there. `vendor` is the free-form `payment_log.vendor` string.
+ * Payment-gateway brandmark shown wherever a payment method appears. Gateways we have an official
+ * logo for (`payment-gateway-logos`) render that logo on a neutral chip; anything else falls back to
+ * the letter badge from the shared branding source of truth that lives with Institute Settings →
+ * Payment Gateways (`payment-gateway-branding`), so what shows here matches what the institute
+ * configures there. `vendor` is the free-form `payment_log.vendor` string.
  */
 
 interface GatewayBadgeProps {
@@ -27,8 +29,10 @@ export function GatewayBadge({
     className,
 }: GatewayBadgeProps) {
     const meta = resolveGatewayBranding(vendor);
+    const Logo = resolveGatewayLogo(vendor);
     const isOffline = meta.mark === '';
     const box = size === 'sm' ? 'size-6 text-caption' : 'size-7 text-body';
+    const glyphSize = size === 'sm' ? 13 : 15;
 
     return (
         <span className={cn('flex min-w-0 items-center gap-2', className)}>
@@ -36,12 +40,19 @@ export function GatewayBadge({
                 className={cn(
                     'flex shrink-0 items-center justify-center rounded-md border font-semibold',
                     box,
-                    meta.badgeClass
+                    // A real logo carries its own brand colour, so it sits on a neutral chip.
+                    Logo ? 'border-neutral-200 bg-white' : meta.badgeClass
                 )}
                 title={meta.label}
                 aria-label={meta.label}
             >
-                {isOffline ? <Money size={size === 'sm' ? 13 : 15} weight="duotone" /> : meta.mark}
+                {Logo ? (
+                    <Logo size={glyphSize} />
+                ) : isOffline ? (
+                    <Money size={glyphSize} weight="duotone" />
+                ) : (
+                    meta.mark
+                )}
             </span>
             {showLabel && (
                 <span className="min-w-0">

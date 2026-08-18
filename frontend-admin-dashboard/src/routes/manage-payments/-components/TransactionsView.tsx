@@ -26,6 +26,9 @@ import { computePaymentSummary, summarizeBucketAmount } from '../-utils/paymentS
 
 const PAGE_SIZE = 20;
 
+/** Header actions (Send reminders / Record payment) are hidden until the flows are ready. */
+const SHOW_HEADER_ACTIONS = false;
+
 /** Map a KPI card / segment to the payment_status value(s) it filters the table down to. */
 const STATUS_FOR_KEY: Record<Exclude<SummaryStatusKey, 'total'>, string> = {
     paid: 'PAID',
@@ -351,24 +354,28 @@ export function TransactionsView() {
                             <DownloadSimple size={16} />
                             Export
                         </MyButton>
-                        <MyButton
-                            buttonType="secondary"
-                            scale="medium"
-                            onClick={() => setRemindersOpen(true)}
-                            className="gap-2"
-                        >
-                            <EnvelopeSimple size={16} />
-                            Send reminders
-                        </MyButton>
-                        <MyButton
-                            buttonType="primary"
-                            scale="medium"
-                            onClick={() => setRecordOpen(true)}
-                            className="gap-2"
-                        >
-                            <Plus size={16} />
-                            Record payment
-                        </MyButton>
+                        {SHOW_HEADER_ACTIONS && (
+                            <>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => setRemindersOpen(true)}
+                                    className="gap-2"
+                                >
+                                    <EnvelopeSimple size={16} />
+                                    Send reminders
+                                </MyButton>
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="medium"
+                                    onClick={() => setRecordOpen(true)}
+                                    className="gap-2"
+                                >
+                                    <Plus size={16} />
+                                    Record payment
+                                </MyButton>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -504,13 +511,17 @@ export function TransactionsView() {
                 />
 
                 {/* Header action modals */}
-                <SendRemindersModal
-                    open={remindersOpen}
-                    onOpenChange={setRemindersOpen}
-                    pendingCount={paymentSummary.pending.count}
-                    failedCount={paymentSummary.failed.count}
-                />
-                <RecordPaymentModal open={recordOpen} onOpenChange={setRecordOpen} />
+                {SHOW_HEADER_ACTIONS && (
+                    <>
+                        <SendRemindersModal
+                            open={remindersOpen}
+                            onOpenChange={setRemindersOpen}
+                            pendingCount={paymentSummary.pending.count}
+                            failedCount={paymentSummary.failed.count}
+                        />
+                        <RecordPaymentModal open={recordOpen} onOpenChange={setRecordOpen} />
+                    </>
+                )}
             </div>
         </StudentSidebarProvider>
     );

@@ -12,6 +12,7 @@ import {
     type InstituteUser,
 } from '@/routes/manage-institute/teams/-services/institute-users-service';
 import { useCreateMentor } from '../-hooks/use-mentorship';
+import { MentorProfileFields, type MentorProfileValues } from './MentorProfileFields';
 
 interface AddMentorDialogProps {
     instituteId: string;
@@ -39,6 +40,11 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
     const [photoUrl, setPhotoUrl] = useState<string | null>(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [profile, setProfile] = useState<MentorProfileValues>({
+        expertiseTags: [],
+        maxMentees: '',
+        isDiscoverable: false,
+    });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const createMentor = useCreateMentor();
@@ -70,6 +76,7 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
         setBio('');
         setPhotoFileId(null);
         setPhotoUrl(null);
+        setProfile({ expertiseTags: [], maxMentees: '', isDiscoverable: false });
     };
 
     const pick = async (m: InstituteUser) => {
@@ -124,6 +131,10 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                 title,
                 bio,
                 profile_image_file_id: photoFileId || undefined,
+                expertise_tags: profile.expertiseTags,
+                max_mentees:
+                    profile.maxMentees.trim() === '' ? undefined : Number(profile.maxMentees),
+                is_discoverable: profile.isDiscoverable,
             });
             toast.success('Mentor added');
             reset();
@@ -282,6 +293,7 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                             inputType="text"
                             inputPlaceholder={selected.full_name || 'Display name'}
                             label="Display name"
+                            className="sm:w-full"
                         />
                         <MyInput
                             input={title}
@@ -289,6 +301,7 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                             inputType="text"
                             inputPlaceholder="e.g. Senior Career Mentor"
                             label="Title"
+                            className="sm:w-full"
                         />
                         <MyInput
                             input={bio}
@@ -296,7 +309,10 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                             inputType="text"
                             inputPlaceholder="Short bio (optional)"
                             label="Bio"
+                            className="sm:w-full"
                         />
+
+                        <MentorProfileFields values={profile} onChange={setProfile} />
                     </>
                 )}
             </div>

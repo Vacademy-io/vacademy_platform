@@ -57,7 +57,10 @@ public class MentorAssignmentService {
                 .findByIdAndInstituteIdAndStatusNot(req.getMentorId(), req.getInstituteId(), MentorStatus.DELETED.name())
                 .orElseThrow(() -> new VacademyException("Mentor not found"));
 
-        int assigned = 0, skipped = 0;
+        int assigned = 0, skipped = 0, capacityFull = 0;
+        // Capacity is checked against live load and the rows queued so far, so a single
+        // over-sized request can't push a mentor past max_mentees.
+        int load = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
         List<MentorStudentAssignment> toSave = new ArrayList<>();
         for (String studentUserId : distinctNonBlank(req.getStudentUserIds())) {
             boolean exists = assignmentRepository
@@ -68,8 +71,13 @@ public class MentorAssignmentService {
                 skipped++;
                 continue;
             }
+            if (MentorService.atCapacity(mentor.getMaxMentees(), load)) {
+                capacityFull++;
+                continue;
+            }
             toSave.add(newAssignment(req.getInstituteId(), mentor, studentUserId,
                     AssignmentMethod.MANUAL, req.getPackageSessionId(), user));
+            load++;
             assigned++;
         }
         if (!toSave.isEmpty()) {
@@ -82,7 +90,8 @@ public class MentorAssignmentService {
             afterCommit(() -> studentIds.forEach(sid ->
                     mentorshipNotificationService.notifyAssignment(instituteId, sid, mentorUserId, mentorName)));
         }
-        return AssignmentResultDTO.builder().assigned(assigned).skipped(skipped).build();
+        return AssignmentResultDTO.builder()
+                .assigned(assigned).skipped(skipped).capacityFull(capacityFull).build();
     }
 
     @Transactional
@@ -115,23 +124,32 @@ public class MentorAssignmentService {
                     .forEach(a -> pairs.add(pairKey(a.getMentorId(), a.getStudentUserId())));
         }
 
-        int assigned = 0, skipped = 0;
+        int assigned = 0, skipped = 0, capacityFull = 0;
         List<MentorStudentAssignment> toSave = new ArrayList<>();
         for (String studentUserId : students) {
             // Candidate mentors this student isn't already linked to; pick the lightest.
+            // A mentor at max_mentees is out of the running entirely.
             Mentor chosen = null;
+            boolean someCandidateWasFull = false;
             int best = Integer.MAX_VALUE;
             for (Mentor m : mentors) {
                 if (pairs.contains(pairKey(m.getId(), studentUserId))) continue;
                 int l = load.getOrDefault(m.getId(), 0);
+                if (MentorService.atCapacity(m.getMaxMentees(), l)) {
+                    someCandidateWasFull = true;
+                    continue;
+                }
                 if (l < best) {
                     best = l;
                     chosen = m;
                 }
             }
             if (chosen == null) {
-                // Already assigned to every mentor in the group.
-                skipped++;
+                // Nobody could take them. Report capacity whenever it was part of the
+                // reason — that's the half an admin can fix (raise a limit, add a mentor);
+                // "already assigned to all of them" needs no action.
+                if (someCandidateWasFull) capacityFull++;
+                else skipped++;
                 continue;
             }
             toSave.add(newAssignment(req.getInstituteId(), chosen, studentUserId,
@@ -150,7 +168,8 @@ public class MentorAssignmentService {
                     mentorshipNotificationService.notifyAssignment(instituteId, a.getStudentUserId(),
                             a.getMentorUserId(), nameByMentorUser.get(a.getMentorUserId()))));
         }
-        return AssignmentResultDTO.builder().assigned(assigned).skipped(skipped).build();
+        return AssignmentResultDTO.builder()
+                .assigned(assigned).skipped(skipped).capacityFull(capacityFull).build();
     }
 
     @Transactional

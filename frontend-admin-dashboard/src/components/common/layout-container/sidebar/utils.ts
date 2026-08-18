@@ -397,6 +397,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'manage-payments-sub',
             },
             {
+                subItem: 'Payment Dashboard',
+                subItemLink: '/payment-dashboard',
+                subItemId: 'payment-dashboard-sub',
+            },
+            {
                 subItem: 'Manage Expiry',
                 subItemLink: '/membership-expiry',
                 subItemId: 'membership-expiry-sub',

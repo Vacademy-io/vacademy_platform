@@ -19,6 +19,7 @@ export const MENTORSHIP_PLACEHOLDERS = [
     { token: '{{student_name}}', label: "Student's name" },
     { token: '{{session_title}}', label: 'Session title (booking/cancellation)' },
     { token: '{{session_datetime}}', label: 'Session date & time (booking/cancellation)' },
+    { token: '{{decision_note}}', label: 'Your decline reason (mentor request)' },
 ] as const;
 
 /** Email channel: on/off + editable subject + HTML body (with {{placeholders}}). */
@@ -60,6 +61,18 @@ export interface MentorshipAssignmentTrigger extends MentorshipTriggerSettings {
     notify_mentor: boolean;
 }
 
+/**
+ * A learner asked for a mentor from the Find-a-mentor directory.
+ * `notify_mentor` tells the requested mentor someone asked for them (fixed text,
+ * like the assignment trigger's mentor side). `notify_student` sends the learner
+ * the decline notice — the editable message below is that one. Approvals send
+ * nothing here: the assignment they create already fires "You have a new mentor".
+ */
+export interface MentorshipRequestTrigger extends MentorshipTriggerSettings {
+    notify_student: boolean;
+    notify_mentor: boolean;
+}
+
 /** Scheduler-driven: one reminder per booked session, `hours_before` the start. */
 export interface MentorshipSessionReminderTrigger extends MentorshipTriggerSettings {
     enabled: boolean;
@@ -83,6 +96,8 @@ export interface MentorshipSettings {
     session_reminder: MentorshipSessionReminderTrigger;
     /** Inactivity check-in nudge (scheduler). Master flag defaults OFF. */
     checkin_reminder: MentorshipCheckinReminderTrigger;
+    /** A learner requested a mentor; the editable message is the decline notice. */
+    request: MentorshipRequestTrigger;
 }
 
 const whatsappDefault = (): MentorshipWhatsappTemplate => ({
@@ -191,6 +206,26 @@ export const DEFAULT_MENTORSHIP_SETTINGS: MentorshipSettings = {
         },
         whatsapp: whatsappDefault(),
     },
+    request: {
+        notify_student: true,
+        notify_mentor: true,
+        email: {
+            enabled: true,
+            subject: 'About your mentor request',
+            body: "<p>Hi {{name}},</p><p>Your request for a mentor wasn't taken forward this time.{{decision_note_html}}</p><p>You can browse other mentors and request again from <b>Find a mentor</b> in your dashboard.</p>",
+        },
+        system_alert: {
+            enabled: true,
+            title: 'Mentor request update',
+            body: "Your mentor request wasn't approved this time. Browse other mentors in Find a mentor.",
+        },
+        push: {
+            enabled: true,
+            title: 'Mentor request update',
+            body: "Your mentor request wasn't approved this time. Browse other mentors in Find a mentor.",
+        },
+        whatsapp: whatsappDefault(),
+    },
 };
 
 const getInstituteId = (): string => {
@@ -253,6 +288,15 @@ export const getMentorshipSettings = async (): Promise<MentorshipSettings> => {
                 DEFAULT_MENTORSHIP_SETTINGS.checkin_reminder,
                 partial.checkin_reminder
             ),
+            request: {
+                ...mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.request, partial.request),
+                notify_student:
+                    (partial.request as MentorshipRequestTrigger | undefined)?.notify_student ??
+                    DEFAULT_MENTORSHIP_SETTINGS.request.notify_student,
+                notify_mentor:
+                    (partial.request as MentorshipRequestTrigger | undefined)?.notify_mentor ??
+                    DEFAULT_MENTORSHIP_SETTINGS.request.notify_mentor,
+            },
         };
     } catch (err) {
         console.error('Failed to load mentorship settings, using defaults', err);

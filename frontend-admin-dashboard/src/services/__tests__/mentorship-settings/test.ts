@@ -24,6 +24,37 @@ describe('mentorship settings defaults', () => {
         expect(DEFAULT_MENTORSHIP_SETTINGS.session_reminder.whatsapp.enabled).toBe(false);
         expect(DEFAULT_MENTORSHIP_SETTINGS.checkin_reminder.whatsapp.enabled).toBe(false);
     });
+
+    it('mirrors the backend defaults for the mentor-request trigger', () => {
+        // Both sides notified by default — matches flag(trigger, "notify_*", true).
+        expect(DEFAULT_MENTORSHIP_SETTINGS.request.notify_student).toBe(true);
+        expect(DEFAULT_MENTORSHIP_SETTINGS.request.notify_mentor).toBe(true);
+        // The editable message is the DECLINE notice; REQUEST_DECLINED has emailDefault=true.
+        expect(DEFAULT_MENTORSHIP_SETTINGS.request.email.enabled).toBe(true);
+        expect(DEFAULT_MENTORSHIP_SETTINGS.request.whatsapp.enabled).toBe(false);
+        // The decline reason is injected by the backend as an escaped, pre-wrapped
+        // fragment, so the shipped body must keep that exact token.
+        expect(DEFAULT_MENTORSHIP_SETTINGS.request.email.body).toContain('{{decision_note_html}}');
+    });
+});
+
+describe('mentor-request trigger merge', () => {
+    it('fills the whole trigger for a blob saved before mentor requests existed', () => {
+        const merged = mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.request, undefined);
+        expect(merged).toEqual(DEFAULT_MENTORSHIP_SETTINGS.request);
+    });
+
+    it('keeps a saved notify flag while filling the channels', () => {
+        const merged = mergeTrigger(DEFAULT_MENTORSHIP_SETTINGS.request, {
+            notify_mentor: false,
+            push: { enabled: false },
+        });
+        expect(merged.notify_mentor).toBe(false);
+        expect(merged.notify_student).toBe(true);
+        expect(merged.push.enabled).toBe(false);
+        expect(merged.push.title).toBe(DEFAULT_MENTORSHIP_SETTINGS.request.push.title);
+        expect(merged.email).toEqual(DEFAULT_MENTORSHIP_SETTINGS.request.email);
+    });
 });
 
 describe('mergeTrigger', () => {

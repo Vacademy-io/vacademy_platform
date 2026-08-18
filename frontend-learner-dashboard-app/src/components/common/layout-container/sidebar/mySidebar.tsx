@@ -41,6 +41,7 @@ import { getInstituteId } from "@/constants/helper";
 import {
   handleGetMyMentors,
   type MyMentor,
+  handleGetMentorDirectory,
 } from "@/routes/my-mentors/-services/my-mentors-service";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
@@ -150,6 +151,14 @@ export const MySidebar = ({
     getInstituteId().then((id) => setInstituteId(id ?? undefined));
   }, []);
   const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
+  // A learner with no mentor still needs a way in to Find a mentor, so the tab
+  // also appears when their institute lists mentors for browsing. The directory
+  // is only fetched in that case — learners who already have a mentor see the
+  // tab regardless and shouldn't pay for an extra request.
+  const mentorDirectoryQuery = useQuery({
+    ...handleGetMentorDirectory(instituteId),
+    enabled: !!instituteId && myMentorsQuery.isSuccess && (myMentorsQuery.data?.length ?? 0) === 0,
+  });
 
   // Identity footer: read the logged-in learner from Preferences (same
   // storage the hamburger sheet uses) so the sidebar can show who is
@@ -308,9 +317,10 @@ export const MySidebar = ({
   const ensureMentorTab = (
     tabs: StudentSidebarTabConfig[],
     mentors: MyMentor[],
-    chatOn: boolean
+    chatOn: boolean,
+    directoryHasMentors: boolean
   ): StudentSidebarTabConfig[] => {
-    if (mentors.length === 0) return tabs;
+    if (mentors.length === 0 && !directoryHasMentors) return tabs;
     const soleMentorName =
       mentors.length === 1
         ? (mentors[0]?.display_name || mentors[0]?.name || "").trim()
@@ -322,7 +332,9 @@ export const MySidebar = ({
     // after an "All mentors" entry for the full page with booking. When the
     // institute's chat feature is OFF the chat entries would be dead links, so
     // the tab collapses to a plain link (booking still works there).
-    const mentorSubTabs = chatOn
+    // With no mentors yet there is nothing to chat with, so the tab stays a plain
+    // link straight to the page (where Find a mentor lives).
+    const mentorSubTabs = chatOn && mentors.length > 0
       ? [
           {
             id: "my-mentors-all",
@@ -376,10 +388,20 @@ export const MySidebar = ({
   const filteredSidebarItems = useMemo(
     () =>
       transformTabsToSidebarItems(
-        ensureMentorTab(configuredTabs, myMentorsQuery.data ?? [], chatFeatureEnabled)
+        ensureMentorTab(
+          configuredTabs,
+          myMentorsQuery.data ?? [],
+          chatFeatureEnabled,
+          (mentorDirectoryQuery.data?.length ?? 0) > 0
+        )
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [configuredTabs, myMentorsQuery.data, chatFeatureEnabled]
+    [
+      configuredTabs,
+      myMentorsQuery.data,
+      mentorDirectoryQuery.data,
+      chatFeatureEnabled,
+    ]
   );
 
   useEffect(() => {

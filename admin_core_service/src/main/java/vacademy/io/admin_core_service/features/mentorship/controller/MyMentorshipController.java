@@ -6,9 +6,15 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MenteeDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorDirectoryDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorFeedbackDTOs;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestCreateDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorDiscoveryService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorFeedbackService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -29,6 +35,8 @@ public class MyMentorshipController {
 
     private final MentorAssignmentService assignmentService;
     private final MentorService mentorService;
+    private final MentorDiscoveryService discoveryService;
+    private final MentorFeedbackService feedbackService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     /**
@@ -56,6 +64,77 @@ public class MyMentorshipController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(assignmentService.mentorsForStudent(instituteId, user.getUserId()));
+    }
+
+    // ==================== FIND A MENTOR (learner-initiated) ====================
+
+    /**
+     * The Find-a-mentor directory: mentors this institute opted into discovery.
+     * Deliberately returns a narrower DTO than the admin mentor list (no email,
+     * phone or user id) — it is the one mentorship read a plain learner can make
+     * about mentors who aren't theirs.
+     */
+    @GetMapping("/directory")
+    public ResponseEntity<List<MentorDirectoryDTO>> directory(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.directory(instituteId, user.getUserId(), search));
+    }
+
+    /** The learner asks for a mentor. Omitting {@code mentor_id} means "any available mentor". */
+    @PostMapping("/my-requests")
+    public ResponseEntity<MentorRequestDTO> createRequest(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorRequestCreateDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.createRequest(instituteId, user, request));
+    }
+
+    /** The caller's own mentor requests, newest first. */
+    @GetMapping("/my-requests")
+    public ResponseEntity<List<MentorRequestDTO>> myRequests(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.myRequests(instituteId, user.getUserId()));
+    }
+
+    /** The learner withdraws their own pending request. */
+    @DeleteMapping("/my-requests/{id}")
+    public ResponseEntity<String> cancelRequest(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        discoveryService.cancelRequest(id, instituteId, user.getUserId());
+        return ResponseEntity.ok("Request cancelled");
+    }
+
+    // ==================== SESSION FEEDBACK ====================
+
+    /**
+     * Mentor sessions the caller attended but hasn't rated yet. Drives the
+     * "rate your session" prompt; empty for learners with nothing outstanding.
+     */
+    @GetMapping("/my-pending-feedback")
+    public ResponseEntity<List<MentorFeedbackDTOs.PendingFeedbackDTO>> myPendingFeedback(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(feedbackService.pendingForStudent(instituteId, user.getUserId()));
+    }
+
+    /** Rate a session the caller attended. Re-submitting revises their existing rating. */
+    @PostMapping("/my-feedback")
+    public ResponseEntity<MentorFeedbackDTOs.FeedbackDTO> submitFeedback(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorFeedbackDTOs.SubmitFeedbackRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(feedbackService.submit(instituteId, user, request));
     }
 
     /** The caller's own mentor profile (incl. Google-connected status) — for the Connect Google card. */

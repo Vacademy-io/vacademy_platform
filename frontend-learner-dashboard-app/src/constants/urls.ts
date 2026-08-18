@@ -296,6 +296,12 @@ export const AUTHENTICATED_BOOKING_BASE = `${BASE_URL}/admin-core-service/v1/boo
 
 // Mentorship — a learner's assigned mentors
 export const MENTORSHIP_MY_MENTORS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentors`;
+export const MENTORSHIP_DIRECTORY = `${BASE_URL}/admin-core-service/mentorship/v1/directory`;
+export const MENTORSHIP_MY_REQUESTS = `${BASE_URL}/admin-core-service/mentorship/v1/my-requests`;
+export const MENTORSHIP_MY_REQUEST_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/mentorship/v1/my-requests/${id}`;
+export const MENTORSHIP_MY_PENDING_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-pending-feedback`;
+export const MENTORSHIP_MY_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-feedback`;
 // A learner's own bookings (by invitee user id) — membership-scoped, self only.
 export const MEETINGS_BY_LEAD = `${BASE_URL}/admin-core-service/v1/meetings/by-lead`;
 

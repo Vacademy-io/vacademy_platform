@@ -16,6 +16,10 @@ import {
     MENTORSHIP_MY_GOOGLE_INITIATE,
     MENTORSHIP_MY_MENTEES,
     MENTORSHIP_MY_MENTOR_PROFILE,
+    MENTORSHIP_REQUESTS,
+    MENTORSHIP_REQUEST_APPROVE,
+    MENTORSHIP_REQUEST_DECLINE,
+    MENTORSHIP_MENTOR_FEEDBACK,
 } from '@/constants/urls';
 import type {
     AssignMentorRequest,
@@ -29,6 +33,9 @@ import type {
     MentorBookingPage,
     MentorDTO,
     MentorDashboard,
+    MentorFeedbackDTO,
+    MentorRequestDTO,
+    MentorRequestDecision,
     PageResponse,
     StudentRow,
     TimelineEvent,
@@ -127,6 +134,67 @@ export const provisionMentorBookingPage = async (
         params: { instituteId },
     });
     return res.data as MentorDTO;
+};
+
+/**
+ * The admin review queue for learner mentor requests. Defaults to PENDING;
+ * pass a status for the decided history.
+ */
+export const fetchMentorRequests = async (
+    instituteId: string,
+    status: string,
+    pageNo: number,
+    pageSize: number
+): Promise<PageResponse<MentorRequestDTO>> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_REQUESTS,
+        params: { instituteId, status, pageNo, pageSize },
+    });
+    return res.data as PageResponse<MentorRequestDTO>;
+};
+
+/** Approve a request — creates the mentor↔student assignment server-side. */
+export const approveMentorRequest = async (
+    id: string,
+    instituteId: string,
+    decision?: MentorRequestDecision
+): Promise<MentorRequestDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_REQUEST_APPROVE(id),
+        params: { instituteId },
+        data: decision ?? {},
+    });
+    return res.data as MentorRequestDTO;
+};
+
+/** Decline a request, optionally with a reason the learner sees. */
+export const declineMentorRequest = async (
+    id: string,
+    instituteId: string,
+    decision?: MentorRequestDecision
+): Promise<MentorRequestDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_REQUEST_DECLINE(id),
+        params: { instituteId },
+        data: decision ?? {},
+    });
+    return res.data as MentorRequestDTO;
+};
+
+/** One mentor's session ratings, newest first. The average itself rides on the mentor DTO. */
+export const fetchMentorFeedback = async (
+    id: string,
+    instituteId: string
+): Promise<MentorFeedbackDTO[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MENTOR_FEEDBACK(id),
+        params: { instituteId },
+    });
+    return (res.data ?? []) as MentorFeedbackDTO[];
 };
 
 /** The caller's own mentor profile (incl. Google-connected status). */

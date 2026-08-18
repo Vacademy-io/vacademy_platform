@@ -10,6 +10,7 @@ import {
     WhatsappLogo,
     Alarm,
     HandWaving,
+    UserPlus,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,7 @@ const WA_FIELD_OPTIONS: { value: string; label: string }[] = [
     { value: 'student_name', label: "Student's name" },
     { value: 'session_title', label: 'Session title' },
     { value: 'session_datetime', label: 'Session date & time' },
+    { value: 'decision_note', label: 'Decline reason (mentor request)' },
 ];
 
 /** Extract {{tokens}} from an approved template's BODY text. */
@@ -457,6 +459,9 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
     const setAssignmentFlag = (key: 'notify_student' | 'notify_mentor', v: boolean) =>
         setSettings((prev) => ({ ...prev, assignment: { ...prev.assignment, [key]: v } }));
 
+    const setRequestFlag = (key: 'notify_student' | 'notify_mentor', v: boolean) =>
+        setSettings((prev) => ({ ...prev, request: { ...prev.request, [key]: v } }));
+
     const setReminderField = (key: 'enabled' | 'hours_before', v: boolean | number) =>
         setSettings((prev) => ({
             ...prev,
@@ -558,6 +563,50 @@ export default function MentorshipSettings({ embedded = false }: MentorshipSetti
                     <Separator />
                     <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
                         Learner message &amp; channels
+                    </div>
+                </div>
+            </TriggerCard>
+
+            <TriggerCard
+                icon={<UserPlus size={20} />}
+                title="Mentor Request"
+                description="When a learner asks for a mentor from Find a mentor."
+                idPrefix="request"
+                defaults={DEFAULT_MENTORSHIP_SETTINGS.request}
+                trigger={settings.request}
+                onChannelChange={(channel, patch) => updateChannel('request', channel, patch)}
+                waTemplates={waTemplates}
+                waLoading={waLoading}
+            >
+                <div className="pb-1">
+                    <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Who to notify
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">
+                            Tell the mentor someone requested them
+                        </span>
+                        <Switch
+                            checked={settings.request.notify_mentor}
+                            onCheckedChange={(v) => setRequestFlag('notify_mentor', v)}
+                        />
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-neutral-700">
+                            Tell the learner when you decline
+                        </span>
+                        <Switch
+                            checked={settings.request.notify_student}
+                            onCheckedChange={(v) => setRequestFlag('notify_student', v)}
+                        />
+                    </div>
+                    <p className="pb-1 text-xs text-neutral-400">
+                        Approving sends nothing extra — the learner already gets &ldquo;You have a
+                        new mentor&rdquo; from the pairing itself.
+                    </p>
+                    <Separator />
+                    <div className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        Decline message &amp; channels
                     </div>
                 </div>
             </TriggerCard>

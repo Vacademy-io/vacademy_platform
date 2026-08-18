@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MenteePicker } from './MenteePicker';
+import { assignmentNeedsAttention, assignmentResultMessage } from '../-utils/assignment-result';
 import { useAssignMentees } from '../-hooks/use-mentorship';
 import type { MentorDTO, StudentRow } from '../-types/mentorship-types';
 
@@ -33,9 +34,11 @@ export function AssignMenteesDialog({ mentor, instituteId, open, onOpenChange }:
                 mentor_id: mentor.id,
                 student_user_ids: selected.map((s) => s.user_id),
             });
-            toast.success(
-                `Assigned ${res.assigned}${res.skipped ? `, ${res.skipped} already assigned` : ''}`
-            );
+            // Capacity can leave students unplaced, so a plain success toast would
+            // hide them — warn instead whenever the run didn't place everyone.
+            const message = assignmentResultMessage(res, 'manual');
+            if (assignmentNeedsAttention(res)) toast.warning(message);
+            else toast.success(message);
             setSelected([]);
             onOpenChange(false);
         } catch {

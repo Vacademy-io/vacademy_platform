@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.mentorship.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
@@ -11,8 +12,13 @@ import vacademy.io.admin_core_service.features.mentorship.dto.BulkRoundRobinRequ
 import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorFeedbackDTOs;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestDecisionDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorDiscoveryService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorFeedbackService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -30,6 +36,8 @@ public class MentorController {
 
     private final MentorService mentorService;
     private final MentorAssignmentService assignmentService;
+    private final MentorDiscoveryService discoveryService;
+    private final MentorFeedbackService feedbackService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     // ==================== MENTOR CRUD ====================
@@ -141,6 +149,62 @@ public class MentorController {
         instituteAccessValidator.requireAdminAccess(user, instituteId);
         assignmentService.unassign(id, instituteId);
         return ResponseEntity.ok("Unassigned");
+    }
+
+    // ==================== LEARNER REQUESTS (review queue) ====================
+
+    /**
+     * Mentor requests raised by learners, newest first. Defaults to the PENDING
+     * queue; pass {@code status} for the decided history.
+     */
+    @GetMapping("/requests")
+    public ResponseEntity<Page<MentorRequestDTO>> listRequests(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.listRequests(instituteId, status,
+                pageNo == null ? 0 : pageNo, pageSize == null ? 20 : pageSize));
+    }
+
+    /** Approve a request — creates the mentor↔student assignment. */
+    @PostMapping("/requests/{id}/approve")
+    @Auditable(entityType = "MENTOR_REQUEST", action = "APPROVE",
+            entityIdExpr = "#id", descriptionExpr = "'approved mentor request'")
+    public ResponseEntity<MentorRequestDTO> approveRequest(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) MentorRequestDecisionDTO decision,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.approve(id, instituteId, decision, user));
+    }
+
+    /** Decline a request, optionally with a reason shown to the learner. */
+    @PostMapping("/requests/{id}/decline")
+    @Auditable(entityType = "MENTOR_REQUEST", action = "DECLINE",
+            entityIdExpr = "#id", descriptionExpr = "'declined mentor request'")
+    public ResponseEntity<MentorRequestDTO> declineRequest(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) MentorRequestDecisionDTO decision,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.decline(id, instituteId, decision, user));
+    }
+
+    // ==================== SESSION FEEDBACK ====================
+
+    /** One mentor's session ratings, newest first. The average itself rides on the mentor DTO. */
+    @GetMapping("/mentors/{id}/feedback")
+    public ResponseEntity<List<MentorFeedbackDTOs.FeedbackDTO>> mentorFeedback(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(feedbackService.forMentor(instituteId, id));
     }
 
     // ==================== DASHBOARD ====================

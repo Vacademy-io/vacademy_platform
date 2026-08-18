@@ -19,6 +19,10 @@ import {
     unassignMentee,
     updateMentor,
     updateMyBookingPage,
+    fetchMentorRequests,
+    approveMentorRequest,
+    declineMentorRequest,
+    fetchMentorFeedback,
 } from '../-services/mentorship-service';
 import type {
     AssignMentorRequest,
@@ -26,6 +30,7 @@ import type {
     CreateMentorRequest,
     CreateNoteRequest,
     MentorAvailabilityRequest,
+    MentorRequestDecision,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -35,6 +40,8 @@ export const MENTORSHIP_KEYS = {
     myMentees: 'mentorship-my-mentees',
     timeline: 'mentorship-timeline',
     calls: 'mentorship-calls',
+    requests: 'mentorship-requests',
+    feedback: 'mentorship-feedback',
 } as const;
 
 export const useStudentTimeline = (studentUserId: string | undefined) =>
@@ -201,3 +208,53 @@ export const useUnassignMentee = () => {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.myMentees] }),
     });
 };
+
+/**
+ * The admin review queue. Kept fresher than the mentor lists (10s) because an
+ * admin sitting on this screen is watching for requests as they land.
+ */
+export const useMentorRequests = (
+    instituteId: string | undefined,
+    status: string,
+    pageNo: number,
+    pageSize: number
+) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.requests, instituteId, status, pageNo, pageSize],
+        queryFn: () => fetchMentorRequests(instituteId ?? '', status, pageNo, pageSize),
+        enabled: !!instituteId,
+        staleTime: 10 * 1000,
+    });
+
+/**
+ * Approving creates an assignment, so the mentor lists and dashboard counts move
+ * too — both caches are invalidated, not just the queue.
+ */
+export const useDecideMentorRequest = () => {
+    const queryClient = useQueryClient();
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: {
+            id: string;
+            instituteId: string;
+            approve: boolean;
+            decision?: MentorRequestDecision;
+        }) =>
+            v.approve
+                ? approveMentorRequest(v.id, v.instituteId, v.decision)
+                : declineMentorRequest(v.id, v.instituteId, v.decision),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.requests] });
+            invalidate();
+        },
+    });
+};
+
+/** One mentor's ratings — only fetched while the feedback dialog is open. */
+export const useMentorFeedback = (mentorId: string | undefined, instituteId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.feedback, mentorId, instituteId],
+        queryFn: () => fetchMentorFeedback(mentorId ?? '', instituteId ?? ''),
+        enabled: !!mentorId && !!instituteId,
+        staleTime: 30 * 1000,
+    });

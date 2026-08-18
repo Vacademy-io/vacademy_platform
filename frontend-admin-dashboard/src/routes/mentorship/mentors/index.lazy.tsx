@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { createLazyFileRoute, Link } from '@tanstack/react-router';
 import {
     ArrowSquareOut,
     CalendarCheck,
     CalendarPlus,
     Copy,
     DotsThreeVertical,
+    Eye,
     GraduationCap,
     Handshake,
+    MagnifyingGlass,
+    NotePencil,
     Plus,
+    Star,
     Trash,
+    TrayArrowDown,
     UsersThree,
     WarningCircle,
 } from '@phosphor-icons/react';
@@ -51,6 +56,10 @@ import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
 import { BulkAssignDialog } from '../-components/BulkAssignDialog';
 import { MentorAvatar } from '../-components/MentorAvatar';
+import { EditMentorDialog } from '../-components/EditMentorDialog';
+import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
+import { CapacityChip, RatingChip } from '../-components/MentorChips';
+import { MyInput } from '@/components/design-system/input';
 
 export const Route = createLazyFileRoute('/mentorship/mentors/')({
     component: MentorsRoute,
@@ -80,12 +89,28 @@ function MentorsPage() {
     const provisionBooking = useProvisionBookingPage();
 
     const [addOpen, setAddOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [editMentor, setEditMentor] = useState<MentorDTO | null>(null);
+    const [feedbackMentor, setFeedbackMentor] = useState<MentorDTO | null>(null);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [assignMentor, setAssignMentor] = useState<MentorDTO | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
     const [confirmRemove, setConfirmRemove] = useState<MentorDTO | null>(null);
 
     const mentors = data?.mentors ?? [];
+
+    // Searching switches from the server-paginated page to a filter over the full
+    // mentor list the dashboard already loaded — a page-local filter would silently
+    // hide matches sitting on other pages.
+    const query = search.trim().toLowerCase();
+    const searching = query.length > 0;
+    const visibleMentors = searching
+        ? mentors.filter((m) =>
+              [m.display_name, m.name, m.title, m.email, ...(m.expertise_tags ?? [])].some(
+                  (field) => (field ?? '').toLowerCase().includes(query)
+              )
+          )
+        : pagedMentors;
 
     const remove = async (m: MentorDTO) => {
         if (!instituteId) return;
@@ -160,7 +185,7 @@ function MentorsPage() {
                 <HowStep n={3} text="Learners book 1:1s & message them from their app" />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Stat
                     icon={<UsersThree size={20} weight="duotone" />}
                     label="Mentors"
@@ -179,6 +204,63 @@ function MentorsPage() {
                     value={data?.distinct_mentees ?? 0}
                     hint="Students with at least one mentor"
                 />
+                <Stat
+                    icon={<TrayArrowDown size={20} weight="duotone" />}
+                    label="Requests to review"
+                    value={data?.pending_requests ?? 0}
+                    hint="Learners waiting on a mentor"
+                    to="/mentorship/requests"
+                    highlight={(data?.pending_requests ?? 0) > 0}
+                />
+            </div>
+
+            {(data?.pending_requests ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+                    <span className="text-body text-neutral-700">
+                        <b>
+                            {data?.pending_requests} learner
+                            {data?.pending_requests === 1 ? '' : 's'}
+                        </b>{' '}
+                        {data?.pending_requests === 1 ? 'is' : 'are'} waiting to be paired with a
+                        mentor.
+                    </span>
+                    <Link to="/mentorship/requests">
+                        <MyButton type="button" buttonType="primary" scale="small">
+                            Review requests
+                        </MyButton>
+                    </Link>
+                </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                    <MagnifyingGlass
+                        size={16}
+                        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                    />
+                    <MyInput
+                        input={search}
+                        onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setSearch(e.target.value)
+                        }
+                        inputType="text"
+                        inputPlaceholder="Search mentors by name, title or expertise"
+                        className="pl-9 sm:w-full"
+                    />
+                </div>
+                {searching && (
+                    <span className="text-caption text-neutral-500">
+                        {visibleMentors.length} of {mentors.length} mentors match
+                        {' · '}
+                        <button
+                            type="button"
+                            className="font-medium text-primary-500 hover:text-primary-600"
+                            onClick={() => setSearch('')}
+                        >
+                            Clear
+                        </button>
+                    </span>
+                )}
             </div>
 
             {isLoading || mentorsPage.isLoading ? (
@@ -219,9 +301,19 @@ function MentorsPage() {
                 </div>
             ) : (mentorsPage.data?.total_elements ?? 0) === 0 ? (
                 <EmptyMentors onAdd={() => setAddOpen(true)} />
+            ) : visibleMentors.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                    <MagnifyingGlass size={32} className="text-neutral-300" />
+                    <p className="text-body font-medium text-neutral-700">
+                        No mentors match &ldquo;{search.trim()}&rdquo;
+                    </p>
+                    <p className="text-caption text-neutral-500">
+                        Try a name, title or an expertise topic.
+                    </p>
+                </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    {pagedMentors.map((m) => (
+                    {visibleMentors.map((m) => (
                         <div
                             key={m.id}
                             className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
@@ -237,15 +329,39 @@ function MentorsPage() {
                                         {m.display_name || m.name || 'Mentor'}
                                     </span>
                                     <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
+                                    {(m.expertise_tags?.length ?? 0) > 0 && (
+                                        <span className="mt-1 flex flex-wrap gap-1">
+                                            {m.expertise_tags?.slice(0, 3).map((tag) => (
+                                                <span
+                                                    key={tag}
+                                                    className="rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600"
+                                                >
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                            {(m.expertise_tags?.length ?? 0) > 3 && (
+                                                <span
+                                                    className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500"
+                                                    title={m.expertise_tags?.slice(3).join(', ')}
+                                                >
+                                                    +{(m.expertise_tags?.length ?? 0) - 3}
+                                                </span>
+                                            )}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
-                                    title="Students currently assigned to this mentor"
-                                >
-                                    {m.assigned_student_count ?? 0} students
-                                </span>
+                                <CapacityChip mentor={m} />
+                                <RatingChip mentor={m} onClick={() => setFeedbackMentor(m)} />
+                                {m.is_discoverable && (
+                                    <span
+                                        className="flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-caption text-primary-600"
+                                        title="Learners can find and request this mentor"
+                                    >
+                                        <Eye size={14} weight="bold" /> In directory
+                                    </span>
+                                )}
                                 {m.booking_page_slug ? (
                                     <span
                                         className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600"
@@ -283,6 +399,19 @@ function MentorsPage() {
                                         </MyButton>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-56">
+                                        <DropdownMenuItem
+                                            className="gap-2"
+                                            onClick={() => setEditMentor(m)}
+                                        >
+                                            <NotePencil size={16} /> Edit profile
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            className="gap-2"
+                                            onClick={() => setFeedbackMentor(m)}
+                                        >
+                                            <Star size={16} /> Session feedback
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
                                         {m.booking_page_slug ? (
                                             <>
                                                 <DropdownMenuItem
@@ -325,7 +454,7 @@ function MentorsPage() {
                             </div>
                         </div>
                     ))}
-                    {(mentorsPage.data?.total_pages ?? 0) > 1 && (
+                    {!searching && (mentorsPage.data?.total_pages ?? 0) > 1 && (
                         <MyPagination
                             currentPage={page}
                             totalPages={mentorsPage.data?.total_pages ?? 1}
@@ -338,6 +467,24 @@ function MentorsPage() {
             {instituteId && (
                 <AddMentorDialog instituteId={instituteId} open={addOpen} onOpenChange={setAddOpen} />
             )}
+            {instituteId && (
+                <EditMentorDialog
+                    instituteId={instituteId}
+                    mentor={editMentor}
+                    open={!!editMentor}
+                    onOpenChange={(o) => {
+                        if (!o) setEditMentor(null);
+                    }}
+                />
+            )}
+            <MentorFeedbackDialog
+                mentor={feedbackMentor}
+                instituteId={instituteId}
+                open={!!feedbackMentor}
+                onOpenChange={(o) => {
+                    if (!o) setFeedbackMentor(null);
+                }}
+            />
             {instituteId && (
                 <BulkAssignDialog
                     instituteId={instituteId}
@@ -372,7 +519,8 @@ function MentorsPage() {
                             {confirmRemove?.assigned_student_count
                                 ? `Their ${confirmRemove.assigned_student_count} assigned student${confirmRemove.assigned_student_count === 1 ? '' : 's'} will be unassigned. `
                                 : ''}
-                            Their account stays untouched.
+                            Any learner requests waiting on them are released, so those learners can
+                            ask someone else. Their account stays untouched.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -409,15 +557,29 @@ function Stat({
     label,
     value,
     hint,
+    to,
+    highlight,
 }: {
     icon: React.ReactNode;
     label: string;
     value: number;
     hint: string;
+    /** When set the whole tile links here — used for the requests queue. */
+    to?: string;
+    /** Draws attention when the number is something the admin should act on. */
+    highlight?: boolean;
 }) {
-    return (
-        <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+    const body = (
+        <div
+            className={`flex h-full items-start gap-3 rounded-lg border bg-white p-4 ${
+                highlight ? 'border-primary-300 ring-1 ring-primary-100' : 'border-neutral-200'
+            } ${to ? 'transition-colors hover:border-primary-300 hover:bg-primary-50/40' : ''}`}
+        >
+            <span
+                className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${
+                    highlight ? 'bg-primary-100 text-primary-600' : 'bg-primary-50 text-primary-500'
+                }`}
+            >
                 {icon}
             </span>
             <div className="flex min-w-0 flex-col">
@@ -428,6 +590,13 @@ function Stat({
                 </span>
             </div>
         </div>
+    );
+    return to ? (
+        <Link to={to} className="block">
+            {body}
+        </Link>
+    ) : (
+        body
     );
 }
 

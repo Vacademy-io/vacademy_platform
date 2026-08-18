@@ -142,6 +142,18 @@ public class MentorshipNotificationService {
             "It's been a while since you connected with {{mentor_name}}. Book a session or message them.",
             "Mentor Check-in Reminder");
 
+    private static final Defaults REQUEST_DECLINED = new Defaults(
+            "MENTOR_REQUEST", true,
+            "About your mentor request",
+            "<p>Hi {{name}},</p><p>Your request for a mentor wasn't taken forward this time."
+                    + "{{decision_note_html}}</p><p>You can browse other mentors and request again "
+                    + "from <b>Find a mentor</b> in your dashboard.</p>",
+            "Mentor request update",
+            "Your mentor request wasn't approved this time. Browse other mentors in Find a mentor.",
+            "Mentor request update",
+            "Your mentor request wasn't approved this time. Browse other mentors in Find a mentor.",
+            "Mentor Request Declined");
+
     // ---------------------------------------------------------------- triggers
 
     /** New mentor↔student assignment. */
@@ -254,6 +266,78 @@ public class MentorshipNotificationService {
         } catch (Exception e) {
             log.warn("mentorship check-in reminder failed (institute {}): {}", instituteId, e.getMessage());
         }
+    }
+
+    /**
+     * A learner asked to be mentored — tell the requested mentor so they can back the
+     * admin's decision. Mentor-side only: the learner already saw the confirmation in-app,
+     * and the approval path re-uses the ordinary "new mentor" assignment notice.
+     */
+    public void notifyRequestSubmitted(String instituteId, String mentorUserId, String studentUserId,
+                                       String mentorDisplayName) {
+        try {
+            Map<String, Object> trigger = section(instituteId, "request");
+            if (!flag(trigger, "notify_mentor", true) || mentorUserId == null) return;
+
+            Map<String, UserDTO> users = hydrate(List.of(
+                    studentUserId == null ? "" : studentUserId, mentorUserId));
+            UserDTO student = users.get(studentUserId);
+            UserDTO mentor = users.get(mentorUserId);
+            String title = "New mentorship request";
+            String body = "%s has requested you as their mentor. Your admin will confirm the pairing."
+                    .formatted(nameOf(student, "A student"));
+            if (channelEnabled(channel(trigger, "system_alert"), true)) {
+                systemAlert(instituteId, mentorUserId, title, body);
+            }
+            if (channelEnabled(channel(trigger, "push"), true)) {
+                push(instituteId, mentorUserId, title, body);
+            }
+            if (channelEnabled(channel(trigger, "email"), true)
+                    && mentor != null && mentor.getEmail() != null && !mentor.getEmail().isBlank()) {
+                Map<String, String> vars = baseVars(nameOf(mentor, "there"),
+                        nameOf(student, "a student"),
+                        firstNonBlank(mentorDisplayName, nameOf(mentor, "you"), "you"), "", "");
+                if (!sendTemplatedEmail(instituteId, mentor.getEmail(), nameOf(mentor, "there"),
+                        "Mentor Request Received - Mentor", vars)) {
+                    sendEmail(instituteId, mentor.getEmail(), mentorUserId, title,
+                            "<p>Hi " + nameOf(mentor, "there") + ",</p><p>" + body + "</p>", "MENTOR_REQUEST");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("mentorship request notification failed (institute {}): {}", instituteId, e.getMessage());
+        }
+    }
+
+    /**
+     * A learner's mentor request was declined. Approvals deliberately send nothing here —
+     * the assignment that approval creates already fires the "you have a new mentor" notice,
+     * so a second message would double up.
+     */
+    public void notifyRequestDeclined(String instituteId, String studentUserId, String decisionNote) {
+        try {
+            Map<String, Object> trigger = section(instituteId, "request");
+            if (!flag(trigger, "notify_student", true)) return;
+            UserDTO student = hydrate(List.of(studentUserId)).get(studentUserId);
+            Map<String, String> vars = baseVars(nameOf(student, "there"),
+                    nameOf(student, "the student"), "your mentor", "", "");
+            // Rendered inline so a blank note leaves no dangling punctuation in the email.
+            vars.put("decision_note_html",
+                    decisionNote == null || decisionNote.isBlank()
+                            ? "" : " <i>" + escapeHtml(decisionNote.trim()) + "</i>");
+            // Escaped as well: {{decision_note}} is offered to admins as an editable
+            // placeholder, and an edited email body would otherwise render raw markup.
+            vars.put("decision_note",
+                    decisionNote == null ? "" : escapeHtml(decisionNote.trim()));
+            deliverToLearner(instituteId, studentUserId, student,
+                    student != null ? student.getMobileNumber() : null, trigger, vars, REQUEST_DECLINED);
+        } catch (Exception e) {
+            log.warn("mentorship request decline notification failed (institute {}): {}", instituteId, e.getMessage());
+        }
+    }
+
+    /** Minimal escaping for admin-authored decline notes rendered into the email body. */
+    private static String escapeHtml(String raw) {
+        return raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     // ---------------------------------------------------- scheduler-facing config

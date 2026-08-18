@@ -50,7 +50,9 @@ _DOC_START_RE = re.compile(r"<!doctype html|<html", re.IGNORECASE)
 _CONTENT_TYPE_SPECS = {
     "notes": "SHORT NOTES: concise, scannable teaching notes with headings, tight bullets, and concrete examples.",
     "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
-    "flashcards": "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS (a 3D flip). Include the handful of most important cards.",
+    "flashcards": (
+        "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS. Include the handful of most important cards. LAYOUT RULES (a flip card collapses if you get these wrong — this has shipped broken before): the card element MUST have its own explicit `width:100%` AND a `min-height` (≈170px); if the faces use `position:absolute;inset:0` they contribute NO width or height, so the card itself must define both. Lay the deck out with `grid-template-columns:repeat(auto-fit,minmax(240px,1fr))` — NEVER put a card in an `auto` grid track (it collapses to zero width and the text spills out one word per line). Put any prev/next controls on their OWN row, not in a track beside the card. Give the face text `overflow-wrap:break-word` and keep it comfortably inside the padding."
+    ),
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
     "interactive_games": (
         "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "

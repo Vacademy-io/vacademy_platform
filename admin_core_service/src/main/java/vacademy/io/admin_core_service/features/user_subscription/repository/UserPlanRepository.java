@@ -304,40 +304,34 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         /**
          * Billing summary for the Total / Collected / Due cards.
          *
-         * Due is what learners still owe on their enrolments — plan price minus what they have
-         * paid — NOT the count of unpaid payment rows. The two are wildly different: a ₹50,000
-         * course paid in one ₹10,000 instalment leaves a single PAID row and no trace of the
-         * ₹40,000 outstanding, and an enrolment that has never paid has no payment rows at all.
-         * Summing payment_log alone therefore reports institutes as fully collected while lakhs
-         * are still owed.
+         * Due is what learners still owe — what their enrolments were billed at, minus what they
+         * have actually paid — NOT a count of unpaid payment rows. A ₹35,000 course paid in one
+         * ₹10,000 instalment leaves a single PAID row and no trace of the ₹25,000 outstanding, and
+         * an enrolment that has never paid has no payment rows at all, so summing payment_log
+         * reports institutes as fully collected while lakhs are owed.
          *
-         * Total is returned as collected + due so the three cards always reconcile. Collected is
-         * every PAID payment in the window (matching the table below the cards), while due is the
-         * unpaid remainder of live enrolments — ACTIVE and PENDING_FOR_PAYMENT only, since nobody
-         * is chasing a terminated or cancelled plan. GREATEST(price - paid, 0) keeps an
-         * over-collected or zero-priced plan (free enrolments, CPO plans priced elsewhere) from
-         * pushing due negative.
+         * Matching is per LEARNER, not per plan. Money reaches an institute two ways — against an
+         * enrolment, or against an admin-raised invoice, which carries no user_plan and hangs off
+         * the institute directly. Crediting only plan-linked payments left learners who paid by
+         * invoice showing their whole course fee as due while the table below listed the very
+         * payment that settled part of it.
          *
-         * The PAID totals are pre-aggregated once and joined, rather than looked up per plan: as a
-         * correlated subquery this took 33 s on an institute with 8,380 live plans, and 172 ms
-         * this way.
+         * GREATEST(billed - paid, 0) per learner keeps an over-payment, a free enrolment or a CPO
+         * plan priced elsewhere from pushing due negative, and total is returned as collected + due
+         * so the three cards always reconcile. The PAID totals are pre-aggregated and joined rather
+         * than looked up per plan: as a correlated subquery this took 33 s on an institute with
+         * 8,380 live plans, and 172 ms this way.
          */
         @Query(value = """
-                WITH paid_by_plan AS (
-                  SELECT pl.user_plan_id AS plan_id, SUM(pl.payment_amount) AS amt
-                    FROM payment_log pl
-                   WHERE pl.payment_status = 'PAID'
-                     AND pl.user_plan_id IS NOT NULL
-                   GROUP BY pl.user_plan_id
-                ), plan_rows AS (
-                  SELECT COALESCE(pp.actual_price, 0) AS price,
-                         COALESCE(pbp.amt, 0) AS paid,
-                         UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
-                                        NULLIF(TRIM(ei.currency), ''))) AS cur
+                WITH billed AS (
+                  SELECT up.user_id AS user_id,
+                         SUM(COALESCE(pp.actual_price, 0)) AS price,
+                         COUNT(*) AS plans,
+                         MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                            NULLIF(TRIM(ei.currency), '')))) AS cur
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
-                    LEFT JOIN paid_by_plan pbp ON pbp.plan_id = up.id
                    WHERE ei.institute_id = :instituteId
                      AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
                      AND up.created_at >= :startDate
@@ -348,31 +342,43 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                             WHERE psli.enroll_invite_id = ei.id
                               AND psli.status = 'ACTIVE'
                               AND psli.package_session_id IN (:packageSessionIds)))
-                ), collected_rows AS (
-                  SELECT COALESCE(SUM(pl.payment_amount), 0) AS amt, COUNT(*) AS cnt
+                   GROUP BY up.user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id,
+                         SUM(pl.payment_amount) AS amt,
+                         COUNT(*) AS cnt
                     FROM payment_log pl
-                    JOIN user_plan up ON pl.user_plan_id = up.id
-                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                   WHERE ei.institute_id = :instituteId
-                     AND pl.payment_status = 'PAID'
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate
-                     AND (:noPackageSessions = true OR EXISTS (
-                           SELECT 1
-                             FROM package_session_learner_invitation_to_payment_option psli
-                            WHERE psli.enroll_invite_id = ei.id
-                              AND psli.status = 'ACTIVE'
-                              AND psli.package_session_id IN (:packageSessionIds)))
+                     AND ((ei.institute_id = :instituteId
+                           AND (:noPackageSessions = true OR EXISTS (
+                                 SELECT 1
+                                   FROM package_session_learner_invitation_to_payment_option psli
+                                  WHERE psli.enroll_invite_id = ei.id
+                                    AND psli.status = 'ACTIVE'
+                                    AND psli.package_session_id IN (:packageSessionIds))))
+                       -- An invoice carries no package session, so it is counted only for the
+                       -- whole institute, never leaked into a course-filtered view.
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
                 )
-                SELECT (SELECT amt FROM collected_rows) AS collected,
-                       COALESCE(SUM(GREATEST(price - paid, 0)), 0) AS due,
-                       (SELECT amt FROM collected_rows)
-                         + COALESCE(SUM(GREATEST(price - paid, 0)), 0) AS totalBilled,
-                       COUNT(*) AS planCount,
-                       COUNT(*) FILTER (WHERE price > 0 AND paid >= price) AS settledPlanCount,
-                       (SELECT cur FROM plan_rows WHERE cur IS NOT NULL
+                SELECT COALESCE(SUM(p.amt), 0) AS collected,
+                       COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0) AS due,
+                       COALESCE(SUM(p.amt), 0)
+                         + COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0)
+                         AS totalBilled,
+                       COALESCE(SUM(b.plans), 0) AS planCount,
+                       COUNT(*) FILTER (WHERE COALESCE(b.price, 0) > 0
+                                          AND COALESCE(p.amt, 0) >= b.price) AS settledPlanCount,
+                       (SELECT cur FROM billed WHERE cur IS NOT NULL
                          GROUP BY cur ORDER BY COUNT(*) DESC LIMIT 1) AS currency
-                  FROM plan_rows
+                  FROM billed b
+                  FULL JOIN paid p ON p.user_id = b.user_id
                 """, nativeQuery = true)
         BillingSummaryProjection getBillingSummary(
                         @Param("instituteId") String instituteId,

@@ -138,13 +138,15 @@ export const computeBillingFromEntries = (entries: PaymentLogEntry[]): EntryBill
         if (isRealCurrency(c)) counts[c] = (counts[c] || 0) + 1;
     }
     const primary = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
     const countsTowardsAmount = (entry: PaymentLogEntry): boolean => {
         if (!primary) return true;
         const c = resolveEntryCurrency(entry);
         return !isRealCurrency(c) || c === primary;
     };
 
-    const plans = new Map<string, { price: number; paid: number }>();
+    /** One learner: the plans they are enrolled on (priced once each) and everything they paid. */
+    const learners = new Map<string, { plans: Map<string, number>; paid: number }>();
     let collected = 0;
 
     for (const entry of entries) {
@@ -153,20 +155,28 @@ export const computeBillingFromEntries = (entries: PaymentLogEntry[]): EntryBill
         if (isPaid) collected += amount;
 
         const planId = entry.user_plan?.id;
-        if (!planId) continue;
-        const price = entry.user_plan?.payment_plan_dto?.actual_price || 0;
-        const plan = plans.get(planId) ?? { price: 0, paid: 0 };
-        // The price is a property of the plan, not of the row — take it once, don't accumulate.
-        plan.price = Math.max(plan.price, price);
-        if (isPaid) plan.paid += amount;
-        plans.set(planId, plan);
+        // Group by learner, not by plan: an admin-raised invoice carries no user_plan at all, and
+        // crediting it only to a plan left learners who paid by invoice owing their whole fee.
+        const key = entry.user?.id || entry.user_plan?.user_id || planId;
+        if (!key) continue;
+
+        const learner = learners.get(key) ?? { plans: new Map(), paid: 0 };
+        if (planId) {
+            // The price belongs to the plan, not to the row — record it once, don't accumulate.
+            learner.plans.set(planId, entry.user_plan?.payment_plan_dto?.actual_price || 0);
+        }
+        if (isPaid) learner.paid += amount;
+        learners.set(key, learner);
     }
 
     let due = 0;
+    let planCount = 0;
     let settledPlanCount = 0;
-    for (const plan of plans.values()) {
-        due += Math.max(0, plan.price - plan.paid);
-        if (plan.price > 0 && plan.paid >= plan.price) settledPlanCount += 1;
+    for (const learner of learners.values()) {
+        const billed = [...learner.plans.values()].reduce((sum, price) => sum + price, 0);
+        planCount += learner.plans.size;
+        due += Math.max(0, billed - learner.paid);
+        if (billed > 0 && learner.paid >= billed) settledPlanCount += 1;
     }
 
     return {
@@ -174,7 +184,7 @@ export const computeBillingFromEntries = (entries: PaymentLogEntry[]): EntryBill
         collected,
         due,
         currency: primary,
-        planCount: plans.size,
+        planCount,
         settledPlanCount,
     };
 };

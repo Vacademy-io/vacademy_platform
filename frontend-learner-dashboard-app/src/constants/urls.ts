@@ -54,6 +54,9 @@ export const START_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learn
 export const ASSESSMENT_SAVE = `${BASE_URL}/assessment-service/assessment/learner/status/update`;
 export const ASSESSMENT_SUBMIT = `${BASE_URL}/assessment-service/assessment/learner/status/submit`;
 export const RESTART_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learner/status/restart`;
+// Learner-raised reattempt / time-extension requests, reviewed by an admin.
+export const REATTEMPT_REQUEST = `${BASE_URL}/assessment-service/learner/reattempt-request/v1`;
+export const REATTEMPT_REQUEST_MINE = `${BASE_URL}/assessment-service/learner/reattempt-request/v1/mine`;
 // Learner-scoped report endpoints (properly authorized)
 export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/learner/report/list`;
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/assessment/learner/report/detail`;

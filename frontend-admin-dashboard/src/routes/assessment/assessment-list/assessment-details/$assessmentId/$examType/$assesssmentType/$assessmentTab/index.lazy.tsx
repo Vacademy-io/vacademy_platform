@@ -12,7 +12,7 @@ import { useAssessmentActionVisibility } from '@/lib/display-settings/assessment
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { DotIcon, DotIconOffline } from '@/svgs';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import {
     CaretLeft,
@@ -26,6 +26,8 @@ import { Helmet } from 'react-helmet';
 import { toast } from 'sonner';
 import AssessmentPreview from './-components/AssessmentPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ReattemptRequestsTab } from './-components/ReattemptRequestsTab';
+import { getPendingReattemptRequestCount } from '@/services/reattempt-requests';
 import AssessmentOverviewTab from './-components/AssessmentOverviewTab';
 import { AssessmentBasicInfoTab } from './-components/AssessmentBasicInfoTab';
 import { AssessmentQuestionsTab } from './-components/AssessmentQuestionsTab';
@@ -186,6 +188,15 @@ const AssessmentDetailsComponent = () => {
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
     const { canEdit } = useAssessmentActionVisibility();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
+    // Pending learner reattempt requests, shown as a badge on the tab. Polled rather than
+    // fetched once: an admin sitting on this page during a live exam is exactly who needs to
+    // see a request arrive, and that is when they come in.
+    const { data: pendingReattemptCount = 0 } = useQuery({
+        queryKey: ['reattempt-requests-pending-count', instituteDetails?.id],
+        queryFn: () => getPendingReattemptRequestCount(instituteDetails?.id ?? ''),
+        enabled: Boolean(instituteDetails?.id),
+        refetchInterval: 60_000,
+    });
     const { data: assessmentDetails, isLoading } = useSuspenseQuery(
         getAssessmentDetails({
             assessmentId: assessmentId,
@@ -372,6 +383,29 @@ const AssessmentDetailsComponent = () => {
                                     Access Control
                                 </span>
                             </TabsTrigger>
+                            <TabsTrigger
+                                value="reattemptRequests"
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'reattemptRequests'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
+                            >
+                                <span
+                                    className={`${
+                                        selectedTab === 'reattemptRequests' ? 'text-primary-500' : ''
+                                    }`}
+                                >
+                                    Reattempt Requests
+                                </span>
+                                {/* The in-app alert that learners are waiting. Without it an
+                                    admin only finds out via whatever the workflow emails them. */}
+                                {pendingReattemptCount > 0 && (
+                                    <span className="rounded-full bg-danger-500 px-2 py-0.5 text-caption font-semibold text-white">
+                                        {pendingReattemptCount}
+                                    </span>
+                                )}
+                            </TabsTrigger>
                         </TabsList>
                         {canEdit && selectedTab !== 'overview' && selectedTab !== 'submissions' && (
                             <MyButton
@@ -441,6 +475,9 @@ const AssessmentDetailsComponent = () => {
                         </TabsContent>
                         <TabsContent value="accessControl">
                             <AssessmentAccessControlTab />
+                        </TabsContent>
+                        <TabsContent value="reattemptRequests">
+                            <ReattemptRequestsTab />
                         </TabsContent>
                     </div>
                 </Tabs>

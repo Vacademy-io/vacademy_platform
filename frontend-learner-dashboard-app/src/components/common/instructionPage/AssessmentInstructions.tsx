@@ -17,7 +17,10 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
-import type { ExamExperienceSettings } from "@/types/assessment-experience";
+import {
+  DEFAULT_EXAM_EXPERIENCE,
+  type ExamExperienceSettings,
+} from "@/types/assessment-experience";
 
 interface AssessmentInstructionsProps {
   instructions: string;
@@ -25,7 +28,13 @@ interface AssessmentInstructionsProps {
   preview: boolean;
   canSwitchSections: boolean;
   assessmentInfo: Assessment;
-  examExperience: ExamExperienceSettings;
+  /**
+   * Optional so a caller that forgets it degrades to the documented defaults
+   * instead of throwing. This is rendered inside the live exam's React tree, and
+   * an unguarded `examExperience.calculator` on `undefined` blanked a paper
+   * mid-attempt when the help dialog opened it without the prop.
+   */
+  examExperience?: ExamExperienceSettings;
 }
 
 interface InstructionAttachment {
@@ -142,7 +151,7 @@ export const AssessmentInstructions = ({
   preview,
   canSwitchSections,
   assessmentInfo,
-  examExperience,
+  examExperience = DEFAULT_EXAM_EXPERIENCE,
 }: AssessmentInstructionsProps) => {
   const { used, max } = getAttemptInfo(assessmentInfo);
   const showAttempts =

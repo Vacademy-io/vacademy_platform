@@ -9,7 +9,7 @@ import { TransactionsView } from './-components/TransactionsView';
 
 export const Route = createLazyFileRoute('/manage-payments/')({
     component: () => (
-        <LayoutContainer>
+        <LayoutContainer className="lg:mt-3">
             <ManagePaymentsLayoutPage />
         </LayoutContainer>
     ),
@@ -37,7 +37,7 @@ function ManagePaymentsLayoutPage() {
                 <meta name="description" content="Manage payments and billing for your institute" />
             </Helmet>
 
-            <div className="space-y-6 p-6">
+            <div className="space-y-4 px-6 pb-6 pt-2">
                 <TransactionsView />
             </div>
         </>

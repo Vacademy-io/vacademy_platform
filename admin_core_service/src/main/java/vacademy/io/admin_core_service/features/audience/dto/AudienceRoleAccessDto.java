@@ -42,5 +42,20 @@ public class AudienceRoleAccessDto {
         private String mode;
         /** Only meaningful when {@code mode = AUDIENCE_LIST}. */
         private List<String> audienceIds;
+
+        /**
+         * Only meaningful when {@code mode = AUDIENCE_LIST}: narrow the granted
+         * lists further to the leads this user is the assigned counsellor of,
+         * and stamp them as the counsellor on leads they add by hand.
+         *
+         * <p>Deliberately inert while the institute has any counsellor pool
+         * configured under Leads &rarr; Settings &rarr; Pools — a pool owns
+         * lead ownership (it routes each new lead by rotation/shift), so
+         * letting this stamp the creator instead would silently fight the
+         * pool and skew its distribution. The gate lives in
+         * {@code AudienceRoleAccessService#resolveForCaller}, so every reader
+         * of {@code EffectiveAccess} sees the already-gated value.
+         */
+        private Boolean assignedOnly;
     }
 }

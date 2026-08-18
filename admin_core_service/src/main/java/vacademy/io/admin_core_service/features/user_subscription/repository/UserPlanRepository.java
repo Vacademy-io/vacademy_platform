@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
@@ -300,6 +301,92 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * bumps the attempt counter + timestamp in the same atomic write so the
          * claim and dunning bookkeeping can't diverge.
          */
+        /**
+         * Billing summary for the Total / Collected / Due cards.
+         *
+         * Due is what learners still owe — what their enrolments were billed at, minus what they
+         * have actually paid — NOT a count of unpaid payment rows. A ₹35,000 course paid in one
+         * ₹10,000 instalment leaves a single PAID row and no trace of the ₹25,000 outstanding, and
+         * an enrolment that has never paid has no payment rows at all, so summing payment_log
+         * reports institutes as fully collected while lakhs are owed.
+         *
+         * Matching is per LEARNER, not per plan. Money reaches an institute two ways — against an
+         * enrolment, or against an admin-raised invoice, which carries no user_plan and hangs off
+         * the institute directly. Crediting only plan-linked payments left learners who paid by
+         * invoice showing their whole course fee as due while the table below listed the very
+         * payment that settled part of it.
+         *
+         * GREATEST(billed - paid, 0) per learner keeps an over-payment, a free enrolment or a CPO
+         * plan priced elsewhere from pushing due negative, and total is returned as collected + due
+         * so the three cards always reconcile. The PAID totals are pre-aggregated and joined rather
+         * than looked up per plan: as a correlated subquery this took 33 s on an institute with
+         * 8,380 live plans, and 172 ms this way.
+         */
+        @Query(value = """
+                WITH billed AS (
+                  SELECT up.user_id AS user_id,
+                         SUM(COALESCE(pp.actual_price, 0)) AS price,
+                         COUNT(*) AS plans,
+                         MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                            NULLIF(TRIM(ei.currency), '')))) AS cur
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id,
+                         SUM(pl.payment_amount) AS amt,
+                         COUNT(*) AS cnt
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND ((ei.institute_id = :instituteId
+                           AND (:noPackageSessions = true OR EXISTS (
+                                 SELECT 1
+                                   FROM package_session_learner_invitation_to_payment_option psli
+                                  WHERE psli.enroll_invite_id = ei.id
+                                    AND psli.status = 'ACTIVE'
+                                    AND psli.package_session_id IN (:packageSessionIds))))
+                       -- An invoice carries no package session, so it is counted only for the
+                       -- whole institute, never leaked into a course-filtered view.
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                )
+                SELECT COALESCE(SUM(p.amt), 0) AS collected,
+                       COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0) AS due,
+                       COALESCE(SUM(p.amt), 0)
+                         + COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0)
+                         AS totalBilled,
+                       COALESCE(SUM(b.plans), 0) AS planCount,
+                       COUNT(*) FILTER (WHERE COALESCE(b.price, 0) > 0
+                                          AND COALESCE(p.amt, 0) >= b.price) AS settledPlanCount,
+                       (SELECT cur FROM billed WHERE cur IS NOT NULL
+                         GROUP BY cur ORDER BY COUNT(*) DESC LIMIT 1) AS currency
+                  FROM billed b
+                  FULL JOIN paid p ON p.user_id = b.user_id
+                """, nativeQuery = true)
+        BillingSummaryProjection getBillingSummary(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
         @Query("""

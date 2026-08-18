@@ -4,26 +4,37 @@ A professional payment management page for tracking and managing institute payme
 
 ## Features
 
-### 📊 Dashboard Statistics
-- **Total Payments**: Count of all payment records
-- **Successful Payments**: Number of successfully completed payments
-- **Failed Payments**: Number of failed payment attempts
-- **Total Revenue**: Sum of all successful payments
+### 📊 KPI cards (`PaymentKpiCards`)
+Four tiles, amount-first, shared verbatim with the Payment Dashboard so both screens report the
+same numbers:
+- **Total payment**: amount billed across every record in view
+- **Collected payment**: settled (PAID)
+- **Due payment**: still owed — PAYMENT_PENDING, NOT_INITIATED and any other unsettled status
+- **Failed payment**: attempts the gateway declined
 
-### 🔍 Advanced Filtering
+Each tile is also the status filter for the table below. The filtering happens client-side
+(`classifyEntry`), because the API's `payment_status IN (…)` can never return the NULL-status rows
+that make up part of "Due".
 
-#### Quick Filters
-- Last 1 Hour
-- Today
-- Last 7 Days
-- Last 30 Days
-- Last 90 Days
-- All Time
+**Scope of these numbers.** They count *payment records* — money raised through a gateway or
+recorded against a plan. Fees billed on an installment schedule live in Financial Management
+(`aft_installments`), which `payment_log` knows nothing about, so an institute can be 100% collected
+here and still be owed lakhs there. When that happens the page says so: Manage Payments prints a
+one-line pointer under the tiles, and the Payment Dashboard shows a "Fee installment dues" band
+(billed / expected / collected / overdue, institute-to-date — the endpoint takes no date window).
+On an institute with no unsettled records at all, Total and Collected are simply equal.
 
-#### Custom Filters
-- **Date Range**: Start and end date/time selection
-- **Payment Status**: Filter by PAID, FAILED, or PAYMENT_PENDING
-- **User Plan Status**: Filter by ACTIVE, PAYMENT_FAILED, EXPIRED, or INACTIVE
+### 🔍 Filtering
+
+#### Date range (`DateRangeDropdown`, toolbar)
+A single dropdown at the top of the page — Today / Yesterday / Last 7·30·90 days / This month /
+Last month / All time, plus a custom two-date calendar. Presets are cut on local day boundaries and
+sent to the API as UTC instants (`-utils/dateRange.ts`). The Payment Dashboard uses the same
+control, so a window means the same thing on both screens.
+
+#### Slide-over filters
+- **Payment Type**, **Plan Status**, **Payment Source**, **Course / Session**
+- Payment status and the date window are deliberately *not* here — they live in the toolbar
 
 ### 📋 Payment Logs Table
 

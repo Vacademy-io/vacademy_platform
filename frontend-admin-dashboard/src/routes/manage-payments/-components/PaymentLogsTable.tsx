@@ -127,6 +127,8 @@ interface PaymentLogsTableProps {
     packageSessions?: Record<string, string>;
     hasOrgAssociatedBatches: boolean;
     hideUserColumn?: boolean;
+    /** Column ids the user has switched off (see PAYMENT_COLUMN_TOGGLES). */
+    hiddenColumns?: Set<string>;
     onRefresh?: () => void;
     /** Open the read-only detail slide-over for a row (fires on any non-editable cell). */
     onViewDetails?: (entry: PaymentLogEntry) => void;
@@ -392,6 +394,7 @@ export function PaymentLogsTable({
     onPageChange,
     hasOrgAssociatedBatches,
     hideUserColumn = false,
+    hiddenColumns,
     onRefresh,
     onViewDetails,
 }: PaymentLogsTableProps) {
@@ -702,6 +705,16 @@ export function PaymentLogsTable({
         [hasOrgAssociatedBatches, hideUserColumn]
     );
 
+    // The user's layout choice. Date & Time and Amount are never hidden — a payment row without
+    // them isn't a payment row.
+    const visibleColumns = useMemo(
+        () =>
+            hiddenColumns && hiddenColumns.size > 0
+                ? columns.filter((c) => !(c.id && hiddenColumns.has(c.id)))
+                : columns,
+        [columns, hiddenColumns]
+    );
+
     if (error) {
         return (
             <div className="rounded-lg border border-danger-200 bg-danger-50 p-8 text-center">
@@ -730,7 +743,7 @@ export function PaymentLogsTable({
                 ) : (
                     <MyTable
                         data={tableData}
-                        columns={columns}
+                        columns={visibleColumns}
                         isLoading={isLoading}
                         error={null}
                         currentPage={currentPage}

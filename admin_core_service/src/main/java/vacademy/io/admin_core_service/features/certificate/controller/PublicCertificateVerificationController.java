@@ -21,9 +21,11 @@ import vacademy.io.admin_core_service.features.certificate.service.CertificateVe
  *
  * <p>Security posture, since this is reachable by anyone:
  * <ul>
- *   <li>The token, not the number, is the credential. Certificate numbers are
- *       sequential, so number-only lookup would be enumerable.</li>
- *   <li>A bad token and a non-existent number both return the same 404, so
+ *   <li>The credential, not the number, is what proves anything. Certificate
+ *       numbers are sequential, so number-only lookup would be enumerable.
+ *       Either credential is accepted: the QR's long token ({@code ?t=}) or the
+ *       barcode's short code ({@code ?c=}).</li>
+ *   <li>A bad credential and a non-existent number both return the same 404, so
  *       probing cannot distinguish "wrong token" from "no such certificate".</li>
  *   <li>The response carries no file id, no learner id, and only a masked name.</li>
  * </ul>
@@ -37,17 +39,42 @@ public class PublicCertificateVerificationController {
 
     /**
      * @param certificateId the human-readable number from the certificate
-     * @param t             the unguessable token; both must match
+     * @param t             the QR's long token
+     * @param c             the barcode's short code; supply either, not both
      */
     @GetMapping("/verify/{certificateId}")
     public ResponseEntity<CertificateVerificationDto> verify(
             @PathVariable String certificateId,
-            @RequestParam(name = "t", required = false) String t) {
+            @RequestParam(name = "t", required = false) String t,
+            @RequestParam(name = "c", required = false) String c) {
 
-        return verificationService.verify(certificateId, t)
+        // Whichever arrived. verify() tries the value as both credentials, so a
+        // scanner app that drops it in the "wrong" parameter still resolves.
+        String credential = t != null && !t.isBlank() ? t : c;
+
+        return verificationService.verify(certificateId, credential)
                 .map(ResponseEntity::ok)
                 // Same response for a wrong token and an unknown number — an
                 // attacker must not be able to confirm a number exists.
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(CertificateVerificationDto.builder().valid(false).build()));
+    }
+
+    /**
+     * Verify from a raw scanned or pasted string, so a barcode scan — which
+     * yields text, not a URL a phone can open — has somewhere to go. Also backs
+     * the manual-entry box for someone reading a printed certificate.
+     *
+     * @param q whatever the scanner produced: a verification URL, {@code NUM*CODE},
+     *          or a bare short code. A bare certificate number is deliberately
+     *          not enough and returns the same 404 as an unknown one.
+     */
+    @GetMapping("/verify")
+    public ResponseEntity<CertificateVerificationDto> verifyScanned(
+            @RequestParam(name = "q", required = false) String q) {
+
+        return verificationService.verifyScanned(q)
+                .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(CertificateVerificationDto.builder().valid(false).build()));
     }

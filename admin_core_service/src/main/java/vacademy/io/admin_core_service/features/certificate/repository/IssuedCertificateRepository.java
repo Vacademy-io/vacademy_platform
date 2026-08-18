@@ -18,6 +18,21 @@ public interface IssuedCertificateRepository extends JpaRepository<IssuedCertifi
     Optional<IssuedCertificate> findByCertificateIdAndVerificationToken(
             String certificateId, String verificationToken);
 
+    /**
+     * The barcode's equivalent of the finder above. Same rule: the number alone
+     * is never sufficient, so the short code is required too.
+     */
+    Optional<IssuedCertificate> findByCertificateIdAndShortCode(
+            String certificateId, String shortCode);
+
+    /**
+     * Short-code-only lookup, for a scan that yields just the code (a barcode an
+     * institute chose to print without the number beside it). Safe without the
+     * number because the short code is the unguessable half — the number is the
+     * enumerable one. Unique index guarantees at most one row.
+     */
+    Optional<IssuedCertificate> findByShortCode(String shortCode);
+
     Optional<IssuedCertificate> findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(
             String userId, String packageSessionId);
 

@@ -52,6 +52,7 @@ import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
 import { getUserId } from "@/constants/getUserId";
 import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
 import { RevokedDeviceDialog } from "@/components/common/offline/revoked-device-dialog";
+import { useLiveTestStore } from "@/stores/live-test-store";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -773,7 +774,17 @@ const RootComponent = () => {
   }, []);
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const hideChatbot = pathname.startsWith("/admission");
+
+  // A live assessment attempt owns the viewport. The chatbot is suppressed for
+  // the whole attempt on every device — it is an AI assistant sitting on top of
+  // a proctored paper, and its launcher covers the exam's own bottom-right
+  // controls. Banners and full-screen announcements follow the institute's
+  // "hide app navigation" toggle, since those only push the exam's safe zone
+  // around rather than posing an integrity problem.
+  const isLiveTestActive = useLiveTestStore((s) => s.isActive);
+  const hideLiveTestChrome = useLiveTestStore((s) => s.hideAppChrome);
+  const suppressAppChrome = isLiveTestActive && hideLiveTestChrome;
+  const hideChatbot = pathname.startsWith("/admission") || isLiveTestActive;
 
   // ── Sentry: tag events with the current route. Navigation breadcrumbs
   // come from the SDK's built-in history instrumentation; a custom one here
@@ -789,11 +800,11 @@ const RootComponent = () => {
 
   return (
     <ChatbotProvider>
-      <ChildViewBanner />
-      <OtaUpdateBanner />
+      {!suppressAppChrome && <ChildViewBanner />}
+      {!suppressAppChrome && <OtaUpdateBanner />}
       <Outlet />
       {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}
-      {!isPublicRoute(pathname) && <AppOverlayHost />}
+      {!isPublicRoute(pathname) && !suppressAppChrome && <AppOverlayHost />}
       {!hideChatbot && <ChatbotPanel />}
       {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}
       <RevokedDeviceDialog />

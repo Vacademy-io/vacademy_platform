@@ -7,7 +7,7 @@ import { PaymentDashboard } from '@/routes/manage-payments/-components/PaymentDa
 
 export const Route = createLazyFileRoute('/payment-dashboard/')({
     component: () => (
-        <LayoutContainer>
+        <LayoutContainer className="lg:mt-3">
             <PaymentDashboardPage />
         </LayoutContainer>
     ),
@@ -30,7 +30,7 @@ function PaymentDashboardPage() {
                 />
             </Helmet>
 
-            <div className="p-6">
+            <div className="px-6 pb-6 pt-2">
                 <PaymentDashboard />
             </div>
         </>

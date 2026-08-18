@@ -3,7 +3,7 @@ import { MagnifyingGlass, Funnel } from '@phosphor-icons/react';
 import { MyInput } from '@/components/design-system/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { SummaryStatusKey } from './PaymentSummaryCards';
+import type { SummaryStatusKey } from './PaymentKpiCards';
 
 export interface StatusSegment {
     key: SummaryStatusKey;

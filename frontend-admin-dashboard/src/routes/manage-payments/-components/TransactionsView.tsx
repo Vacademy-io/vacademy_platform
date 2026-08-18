@@ -14,27 +14,38 @@ import type {
     BatchForSession,
 } from '@/types/payment-logs';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
+import { fetchBillingSummary } from '@/services/payment-logs';
+import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
+import { useLeadColumnPrefs } from '@/components/shared/leads/use-lead-column-prefs';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { PaymentFilters } from './PaymentFilters';
 import { PaymentControlBar, type StatusSegment } from './PaymentControlBar';
 import { PaymentLogsTable } from './PaymentLogsTable';
-import { PaymentSummaryCards, type SummaryStatusKey } from './PaymentSummaryCards';
+import { PaymentKpiCards, type SummaryStatusKey } from './PaymentKpiCards';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
 import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
+import { DateRangeDropdown } from './DateRangeDropdown';
 import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
-import { computePaymentSummary, summarizeBucketAmount } from '../-utils/paymentSummary';
+import {
+    classifyEntry,
+    computeBillingFromEntries,
+    computePaymentSummary,
+    summarizeBucketAmount,
+} from '../-utils/paymentSummary';
+import { ALL_TIME_RANGE, type DateRangeValue } from '../-utils/dateRange';
 
 const PAGE_SIZE = 20;
 
+/** Where this table's column layout is remembered, per browser. */
+const COLUMN_PREFS_KEY = 'manage-payments:hidden-columns';
+
+/** Columns hidden until someone asks for them — the tracking trio is a niche reconciliation aid. */
+const DEFAULT_HIDDEN_COLUMNS = ['tracking_id', 'tracking_source', 'order_status'];
+
 /** Header actions (Send reminders / Record payment) are hidden until the flows are ready. */
 const SHOW_HEADER_ACTIONS = false;
-
-/** Map a KPI card / segment to the payment_status value(s) it filters the table down to. */
-const STATUS_FOR_KEY: Record<Exclude<SummaryStatusKey, 'total'>, string> = {
-    paid: 'PAID',
-    pending: 'PAYMENT_PENDING',
-    failed: 'FAILED',
-};
 
 interface ActiveChip {
     id: string;
@@ -58,10 +69,13 @@ export function TransactionsView() {
         return () => clearTimeout(timer);
     }, [searchValue]);
 
-    // Filters
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState<SelectOption[]>([]);
+    // Filters. The date window lives in the toolbar (not the slide-over) so changing the period
+    // is one click; start/end are the UTC instants it resolves to.
+    const [dateRange, setDateRange] = useState<DateRangeValue>(ALL_TIME_RANGE);
+    const { start: startDate, end: endDate } = dateRange;
+    // Status is one control — the KPI tiles and the segmented switch drive this single bucket, and
+    // it filters the loaded rows locally (see classifyEntry).
+    const [statusBucket, setStatusBucket] = useState<SummaryStatusKey>('total');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]);
     const [selectedPaymentTypes, setSelectedPaymentTypes] = useState<SelectOption[]>([]);
@@ -92,8 +106,6 @@ export function TransactionsView() {
         };
         if (startDate) filters.start_date_in_utc = startDate;
         if (endDate) filters.end_date_in_utc = endDate;
-        if (selectedPaymentStatuses.length > 0)
-            filters.payment_statuses = selectedPaymentStatuses.map((s) => s.value);
         if (selectedUserPlanStatuses.length > 0)
             filters.user_plan_statuses = selectedUserPlanStatuses.map((s) => s.value);
         if (selectedPaymentSources.length > 0)
@@ -126,7 +138,6 @@ export function TransactionsView() {
     }, [
         startDate,
         endDate,
-        selectedPaymentStatuses,
         selectedUserPlanStatuses,
         selectedPaymentSources,
         selectedPaymentTypes,
@@ -146,9 +157,61 @@ export function TransactionsView() {
         staleTime: 30000,
     });
 
-    const filteredEntries = useMemo(() => allData?.entries ?? [], [allData]);
+    // Everything the API returned for the current filters — the KPI tiles always describe this set,
+    // so the numbers don't collapse to whichever tile is selected.
+    const allEntries = useMemo(() => allData?.entries ?? [], [allData]);
 
-    const paymentSummary = useMemo(() => computePaymentSummary(filteredEntries), [filteredEntries]);
+    const paymentSummary = useMemo(() => computePaymentSummary(allEntries), [allEntries]);
+
+    // What the table shows: the same set narrowed to the selected KPI bucket.
+    const filteredEntries = useMemo(
+        () =>
+            statusBucket === 'total'
+                ? allEntries
+                : allEntries.filter((entry) => classifyEntry(entry) === statusBucket),
+        [allEntries, statusBucket]
+    );
+
+    /**
+     * What learners were billed, paid, and still owe. Payment records can't answer this: a
+     * part-paid instalment plan leaves one PAID row and no trace of the balance, and an enrolment
+     * that never paid leaves no row at all. Same window and course scope as the table.
+     */
+    const { data: billingSummary } = useQuery({
+        queryKey: [
+            'payment-billing-summary',
+            startDate,
+            endDate,
+            requestFilters.package_session_ids,
+        ],
+        queryFn: () =>
+            fetchBillingSummary({
+                start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
+                end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
+                package_session_ids: requestFilters.package_session_ids,
+            }),
+        staleTime: 60_000,
+        retry: false,
+    });
+
+    /**
+     * Prefer the server figures; without them (older backend, failed request) derive what we can
+     * from the rows on screen — that still prices each enrolment properly, it just can't see
+     * enrolments that have never paid anything.
+     */
+    const entryBilling = useMemo(() => computeBillingFromEntries(allEntries), [allEntries]);
+    const billing = billingSummary
+        ? {
+              totalBilled: billingSummary.total_billed,
+              collected: billingSummary.collected,
+              due: billingSummary.due,
+              currency: billingSummary.currency || '',
+              planCount: billingSummary.plan_count,
+              settledPlanCount: billingSummary.settled_plan_count,
+          }
+        : entryBilling.planCount > 0
+          ? entryBilling
+          : null;
 
     const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
         if (!allData) return undefined;
@@ -181,40 +244,51 @@ export function TransactionsView() {
         return map;
     }, [batchesForSessions]);
 
-    // Which KPI/segment is reflected in the current status filter (only when exactly one is selected).
-    const activeSummaryKey: SummaryStatusKey = useMemo(() => {
-        if (selectedPaymentStatuses.length !== 1) return 'total';
-        const value = selectedPaymentStatuses[0]!.value;
-        const match = (
-            Object.entries(STATUS_FOR_KEY) as [Exclude<SummaryStatusKey, 'total'>, string][]
-        ).find(([, v]) => v === value);
-        return match ? match[0] : 'total';
-    }, [selectedPaymentStatuses]);
+    // Column layout, remembered per browser. Date & Time and Amount stay pinned: they are the row.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        COLUMN_PREFS_KEY,
+        DEFAULT_HIDDEN_COLUMNS
+    );
+
+    const columnToggles = useMemo(() => {
+        const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+        const toggles = [{ id: 'user_info', label: 'User' }];
+        if (hasOrgAssociatedBatches) toggles.push({ id: 'org_name', label: 'Organization Name' });
+        toggles.push(
+            { id: 'current_payment_status', label: 'Payment' },
+            { id: 'vendor', label: 'Payment Method' },
+            { id: 'user_plan_status', label: 'Plan Status' },
+            { id: 'enroll_invite', label: `${courseTerm}/Membership` },
+            { id: 'transaction_id', label: 'Transaction ID' },
+            { id: 'payment_plan', label: 'Payment Plan' },
+            { id: 'tracking_id', label: 'Tracking ID' },
+            { id: 'tracking_source', label: 'Tracking Source' },
+            { id: 'order_status', label: 'Order Status' },
+            { id: 'tracking_actions', label: 'Actions' }
+        );
+        return toggles;
+    }, [hasOrgAssociatedBatches]);
 
     const handleSummarySelect = (key: SummaryStatusKey) => {
         setCurrentPage(0);
-        if (key === 'total' || key === activeSummaryKey) {
-            setSelectedPaymentStatuses([]);
-            return;
-        }
-        setSelectedPaymentStatuses([{ value: STATUS_FOR_KEY[key], label: key }]);
+        // Clicking the active tile again clears back to "all".
+        setStatusBucket(key === statusBucket ? 'total' : key);
     };
 
     // Segmented status switch — counts come from the same summary the KPI cards use.
     const segments: StatusSegment[] = [
-        { key: 'total', label: 'All', count: filteredEntries.length },
+        { key: 'total', label: 'All', count: allEntries.length },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
-        { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
+        { key: 'pending', label: 'Due', count: paymentSummary.pending.count },
         { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
     ];
 
-    // Detailed-filter count for the Filters button badge (status lives in the segmented switch).
+    // Detailed-filter count for the Filters button badge. Status lives in the segmented switch and
+    // the date window in the toolbar dropdown, so neither is counted here.
     const detailedFilterCount =
         selectedPaymentTypes.length +
         selectedUserPlanStatuses.length +
         selectedPaymentSources.length +
-        (startDate ? 1 : 0) +
-        (endDate ? 1 : 0) +
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
 
@@ -245,15 +319,6 @@ export function TransactionsView() {
                     setSelectedPaymentSources((prev) => prev.filter((x) => x.value !== s.value)),
             })
         );
-        if (startDate || endDate)
-            chips.push({
-                id: 'date',
-                label: 'Date range',
-                onRemove: () => {
-                    setStartDate('');
-                    setEndDate('');
-                },
-            });
         if (packageSessionFilter.packageId || packageSessionFilter.packageSessionIds?.length)
             chips.push({
                 id: 'course',
@@ -265,8 +330,6 @@ export function TransactionsView() {
         selectedPaymentTypes,
         selectedUserPlanStatuses,
         selectedPaymentSources,
-        startDate,
-        endDate,
         packageSessionFilter,
     ]);
 
@@ -275,16 +338,14 @@ export function TransactionsView() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleQuickFilterSelect = (range: { start: string; end: string }) => {
-        setStartDate(range.start);
-        setEndDate(range.end);
+    const handleDateRangeChange = (range: DateRangeValue) => {
+        setDateRange(range);
         setCurrentPage(0);
     };
 
     const handleClearFilters = () => {
-        setStartDate('');
-        setEndDate('');
-        setSelectedPaymentStatuses([]);
+        setDateRange(ALL_TIME_RANGE);
+        setStatusBucket('total');
         setSelectedUserPlanStatuses([]);
         setSelectedPaymentSources([]);
         setSelectedPaymentTypes([]);
@@ -318,30 +379,33 @@ export function TransactionsView() {
     return (
         <StudentSidebarProvider>
             <div className="space-y-4">
-                {/* Header: subline + primary actions */}
+                {/* Toolbar: date window (one click, no filter panel) + live subline + actions */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-body text-neutral-500">
-                        {isLoadingPayments ? (
-                            'Loading payments…'
-                        ) : (
-                            <>
-                                <span className="font-medium text-neutral-700">
-                                    {filteredEntries.length.toLocaleString()}
-                                </span>{' '}
-                                payments
-                                {collectedAmount && (
-                                    <>
-                                        {' · '}
-                                        <span className="font-medium text-neutral-700">
-                                            {collectedAmount}
-                                        </span>{' '}
-                                        collected
-                                    </>
-                                )}
-                                {needAttention > 0 && <> · {needAttention} need attention</>}
-                            </>
-                        )}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <DateRangeDropdown value={dateRange} onChange={handleDateRangeChange} />
+                        <p className="text-body text-neutral-500">
+                            {isLoadingPayments ? (
+                                'Loading payments…'
+                            ) : (
+                                <>
+                                    <span className="font-medium text-neutral-700">
+                                        {allEntries.length.toLocaleString()}
+                                    </span>{' '}
+                                    payments
+                                    {collectedAmount && (
+                                        <>
+                                            {' · '}
+                                            <span className="font-medium text-neutral-700">
+                                                {collectedAmount}
+                                            </span>{' '}
+                                            collected
+                                        </>
+                                    )}
+                                    {needAttention > 0 && <> · {needAttention} need attention</>}
+                                </>
+                            )}
+                        </p>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <MyButton
                             buttonType="secondary"
@@ -379,13 +443,14 @@ export function TransactionsView() {
                     </div>
                 </div>
 
-                {/* KPI tiles */}
-                <PaymentSummaryCards
+                {/* KPI tiles — Total / Collected / Due / Failed (same row as the dashboard) */}
+                <PaymentKpiCards
                     summary={paymentSummary}
-                    totalCount={filteredEntries.length}
+                    billing={billing}
+                    totalCount={allEntries.length}
                     isLoading={isLoadingPayments}
                     truncated={allData?.truncated}
-                    activeKey={activeSummaryKey}
+                    activeKey={statusBucket}
                     onSelect={handleSummarySelect}
                 />
 
@@ -397,10 +462,18 @@ export function TransactionsView() {
                         setCurrentPage(0);
                     }}
                     segments={segments}
-                    activeStatus={activeSummaryKey}
+                    activeStatus={statusBucket}
                     onStatusSelect={handleSummarySelect}
                     filterCount={detailedFilterCount}
                     onOpenFilters={() => setFiltersOpen(true)}
+                    actions={
+                        <ManageColumnsPopover
+                            columns={columnToggles}
+                            hiddenColumns={hiddenColumns}
+                            onToggle={toggleColumn}
+                            onReset={resetColumns}
+                        />
+                    }
                 />
 
                 {/* Active filter chips */}
@@ -444,6 +517,7 @@ export function TransactionsView() {
                     onPageChange={handlePageChange}
                     packageSessions={packageSessionsMap}
                     hasOrgAssociatedBatches={hasOrgAssociatedBatches}
+                    hiddenColumns={hiddenColumns}
                     onRefresh={() => refetchPaymentLogs()}
                     onViewDetails={openDetail}
                 />
@@ -461,19 +535,21 @@ export function TransactionsView() {
                                 onSearchChange={setSearchValue}
                                 startDate={startDate}
                                 endDate={endDate}
-                                onStartDateChange={(date) => {
-                                    setStartDate(date);
-                                    setCurrentPage(0);
-                                }}
-                                onEndDateChange={(date) => {
-                                    setEndDate(date);
-                                    setCurrentPage(0);
-                                }}
-                                selectedPaymentStatuses={selectedPaymentStatuses}
-                                onPaymentStatusesChange={(statuses) => {
-                                    setSelectedPaymentStatuses(statuses);
-                                    setCurrentPage(0);
-                                }}
+                                hideDateFilters
+                                onStartDateChange={(date) =>
+                                    handleDateRangeChange({
+                                        ...dateRange,
+                                        start: date,
+                                        preset: 'custom',
+                                    })
+                                }
+                                onEndDateChange={(date) =>
+                                    handleDateRangeChange({
+                                        ...dateRange,
+                                        end: date,
+                                        preset: 'custom',
+                                    })
+                                }
                                 selectedUserPlanStatuses={selectedUserPlanStatuses}
                                 onUserPlanStatusesChange={(statuses) => {
                                     setSelectedUserPlanStatuses(statuses);
@@ -496,7 +572,9 @@ export function TransactionsView() {
                                     setCurrentPage(0);
                                 }}
                                 batchesForSessions={batchesForSessions}
-                                onQuickFilterSelect={handleQuickFilterSelect}
+                                onQuickFilterSelect={(range) =>
+                                    handleDateRangeChange({ ...range, preset: 'custom' })
+                                }
                                 onClearFilters={handleClearFilters}
                             />
                         </div>

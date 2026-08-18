@@ -1086,6 +1086,33 @@ class CourseOutlineGenerationService:
             _t.path = _new_path
             _seen_paths.add(_new_path)
 
+        # Titles must ALSO be unique within a chapter. The frontend matches a
+        # generated slide back to its outline slide by fuzzy TITLE match, so two
+        # slides sharing a title collapse onto one map entry: the extra slides
+        # never map, their todos are filtered out as "removed", and they spin
+        # "generating" forever (seen live: a chapter whose 6 slides all carried
+        # the parent chapter's heading generated only 1 of 6).
+        _titles_by_chapter: dict = {}
+        for _t in outline_response.todos:
+            _chapter_key = (_t.path or "").rsplit(".SL", 1)[0]
+            _title = (_t.title or _t.name or "").strip()
+            if not _title:
+                continue
+            _used = _titles_by_chapter.setdefault(_chapter_key, set())
+            if _title.casefold() not in _used:
+                _used.add(_title.casefold())
+                continue
+            _part = 2
+            while f"{_title} (part {_part})".casefold() in _used:
+                _part += 1
+            _unique = f"{_title} (part {_part})"
+            logger.warning(
+                "Duplicate slide title %r in chapter %s — renamed to %r",
+                _title, _chapter_key or "?", _unique,
+            )
+            _t.title = _unique
+            _used.add(_unique.casefold())
+
         # Group todos by chapter and find insertion points
         # We need to insert homework slides right after the last slide of each chapter
         chapter_groups = {}

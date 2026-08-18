@@ -119,17 +119,23 @@ describe('payment buckets', () => {
 });
 
 describe('billing derived from payment rows', () => {
-    /** A payment on a plan: one row of a course priced at `planPrice`. */
+    /** A payment on a plan: one row of a course priced at `planPrice`, paid by `userId`. */
     const planEntry = (
         planId: string,
         planPrice: number,
         amount: number,
-        status: string | null = 'PAID'
+        status: string | null = 'PAID',
+        userId = `user-of-${planId}`
     ): PaymentLogEntry =>
         ({
             payment_log: { payment_status: status, payment_amount: amount, currency: 'INR' },
             current_payment_status: status ?? 'NOT_INITIATED',
-            user_plan: { id: planId, payment_plan_dto: { actual_price: planPrice } },
+            user: { id: userId },
+            user_plan: {
+                id: planId,
+                user_id: userId,
+                payment_plan_dto: { actual_price: planPrice },
+            },
         }) as unknown as PaymentLogEntry;
 
     it('prices an instalment plan once, not once per instalment', () => {
@@ -165,5 +171,54 @@ describe('billing derived from payment rows', () => {
         ]);
         expect(billing.due).toBe(0);
         expect(billing.totalBilled).toBe(billing.collected);
+    });
+});
+
+describe('invoice payments credited to the learner', () => {
+    const planEntry = (
+        planId: string,
+        planPrice: number,
+        amount: number,
+        userId: string
+    ): PaymentLogEntry =>
+        ({
+            payment_log: { payment_status: 'PAID', payment_amount: amount, currency: 'INR' },
+            current_payment_status: 'PAID',
+            user: { id: userId },
+            user_plan: {
+                id: planId,
+                user_id: userId,
+                payment_plan_dto: { actual_price: planPrice },
+            },
+        }) as unknown as PaymentLogEntry;
+
+    const invoiceEntry = (userId: string, amount: number): PaymentLogEntry =>
+        ({
+            payment_log: { payment_status: 'PAID', payment_amount: amount, currency: 'INR' },
+            current_payment_status: 'PAID',
+            user: { id: userId },
+        }) as unknown as PaymentLogEntry;
+
+    /**
+     * An enrolment paid off by an admin-raised invoice: the payment carries no user_plan, so
+     * crediting it to the plan alone reported the learner as owing their whole course fee while
+     * the table right below listed the payment that settled part of it.
+     */
+    it('reduces a course balance by an invoice payment from the same learner', () => {
+        const billing = computeBillingFromEntries([
+            // ₹70,000 course, ₹10,000 paid by invoice (no plan on the payment row).
+            planEntry('plan-gopal', 70000, 0, 'gopal'),
+            invoiceEntry('gopal', 10000),
+        ]);
+        expect(billing.collected).toBe(10000);
+        expect(billing.due).toBe(60000);
+        expect(billing.totalBilled).toBe(70000);
+    });
+
+    it('does not invent a balance for an invoice payer who was never enrolled', () => {
+        const billing = computeBillingFromEntries([invoiceEntry('deepak', 10000)]);
+        expect(billing.collected).toBe(10000);
+        expect(billing.due).toBe(0);
+        expect(billing.planCount).toBe(0);
     });
 });

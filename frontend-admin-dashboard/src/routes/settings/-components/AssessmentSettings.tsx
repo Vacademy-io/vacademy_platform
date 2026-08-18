@@ -15,6 +15,7 @@ import { getAssessmentSettings, saveAssessmentSettings } from '@/services/assess
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import ReportBrandingSettingsSection from './ReportBrandingSettings';
 import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard';
+import ExamExperienceSettingsCard from './ExamExperienceSettingsCard';
 
 const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
 <div style="text-align:center; font-size:11px; color:#666;">Student Performance Analysis</div>`;
@@ -150,6 +151,15 @@ const AssessmentSettings = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Live test experience (tools, palette, mobile chrome) */}
+            <ExamExperienceSettingsCard
+                settings={settings.examExperience ?? DEFAULT_ASSESSMENT_SETTINGS.examExperience}
+                onChange={(examExperience) => {
+                    setSettings((prev) => ({ ...prev, examExperience }));
+                    setHasChanges(true);
+                }}
+            />
 
             {/* Result Notification Recipients (role-wise) */}
             <ResultNotificationRecipientsCard

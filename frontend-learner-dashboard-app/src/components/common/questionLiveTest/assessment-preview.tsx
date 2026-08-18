@@ -17,7 +17,12 @@ import { useProctoring } from "@/hooks";
 import { App } from "@capacitor/app";
 import { useLocation } from "@tanstack/react-router";
 import { PluginListenerHandle } from "@capacitor/core";
+import { Clock } from "@phosphor-icons/react";
 import { QuestionHtmlContent } from "./question-html-content";
+import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { useExamExperienceSettings } from "@/hooks/use-exam-experience-settings";
+import { useLiveTestStore } from "@/stores/live-test-store";
+import { topSafeAreaInset, bottomSafeAreaInset } from "@/utils/safe-area";
 
 export function AssessmentPreview() {
   const router = useRouter();
@@ -43,6 +48,10 @@ export function AssessmentPreview() {
   });
 
   const location = useLocation();
+  const examExperience = useExamExperienceSettings();
+  // Same full-bleed safe zone as the brief and the live test.
+  useImmersiveMode(examExperience.mobile.hideAppNavigation);
+  const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
   const [backButtonListener, setBackButtonListener] =
     useState<PluginListenerHandle | null>(null);
 
@@ -145,98 +154,93 @@ export function AssessmentPreview() {
 
   return (
     <>
-      <div className="flex flex-col w-full bg-gray-50">
-        {/* Navbar with Timer */}
-        <div className="sticky top-0 z-20 bg-white border-b">
-          <div className="flex bg-primary-50 items-center justify-center sm:flex-row  p-4">
-            <h1 className="text-base ms-5 font-semibold">Preview</h1>
-            {/* <h1 className="text-base font-semibold">
-            {assessmentData ? assessmentData.name : "Loading..."}
-          </h1> */}
-            <div className="flex items-center justify-center space-x-4 me-14 w-full">
-              {formatTime(timeLeft)
-                .split(":")
-                .map((time, index, array) => (
-                  <div key={index} className="relative flex items-center">
-                    <span className="border border-gray-400 px-2 py-1 rounded">
-                      {time}
-                    </span>
-                    {index < array.length - 1 && (
-                      <span className="absolute -end-2.5 text-lg">:</span>
-                    )}
-                  </div>
-                ))}
-            </div>
+      {/* Same full-bleed shell as the live test: the preview is a timed screen
+          of its own, so its Start button has to stay reachable on a phone
+          rather than sitting at the end of a long page scroll. */}
+      <div
+        className="fixed inset-0 z-60 flex flex-col bg-neutral-50"
+        style={{ // design-lint-ignore: dynamic safe-area inset padding
+          paddingTop: topSafeAreaInset(immersiveActive),
+        }}
+      >
+        <header className="flex h-14 flex-none items-center gap-3 border-b border-neutral-200 bg-white px-4 md:px-6">
+          <div className="min-w-0 flex-1">
+            <p className="text-body font-semibold text-neutral-900">Preview</p>
+            <p className="text-2xs text-neutral-500">
+              Read-only — answering starts when this ends
+            </p>
           </div>
+          <div className="flex flex-none items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-100 px-3 py-1.5">
+            <Clock size={15} weight="duotone" className="text-neutral-500" />
+            <span className="font-mono text-body font-semibold tabular-nums text-neutral-800">
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+        </header>
 
-          {/* Section Tabs */}
-          {assessment.section_dtos.length > 1 && (
-            <div className="sticky top-0 z-10 bg-white border-b">
-              <div className="flex overflow-x-auto items-center justify-between p-4 pb-0">
-                <div className="flex flex-nowrap items-center space-x-4">
-                  {assessment.section_dtos
-                    ?.map((section, originalIndex) => ({
-                      section,
-                      originalIndex,
-                    }))
-                    ?.sort(
-                      (a, b) =>
-                        a.section.section_order - b.section.section_order,
-                    )
-                    ?.map(({ section, originalIndex }) => (
-                      <button
-                        key={section.id}
-                        onClick={() => setActiveSection(originalIndex)}
-                        className={`px-4 py-2 text-sm rounded-t-lg ${
-                          activeSection === originalIndex
-                            ? "bg-orange-50 text-primary-500 border border-b-0 border-primary-500"
-                            : "text-gray-600"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-max">
-                          <span>{section.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        {assessment.section_dtos.length > 1 && (
+          <nav
+            aria-label="Sections"
+            className="flex flex-none gap-5 overflow-x-auto border-b border-neutral-200 bg-white px-4 [scrollbar-width:none] md:px-6 [&::-webkit-scrollbar]:hidden"
+          >
+            {assessment.section_dtos
+              ?.map((section, originalIndex) => ({ section, originalIndex }))
+              ?.sort(
+                (a, b) => a.section.section_order - b.section.section_order,
+              )
+              ?.map(({ section, originalIndex }) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveSection(originalIndex)}
+                  aria-current={
+                    activeSection === originalIndex ? "page" : undefined
+                  }
+                  className={`-mb-px flex flex-none items-center whitespace-nowrap border-b-2 py-3 text-caption font-semibold transition-colors md:text-body ${
+                    activeSection === originalIndex
+                      ? "border-neutral-900 text-neutral-900"
+                      : "border-transparent text-neutral-500 hover:text-neutral-700"
+                  }`}
+                >
+                  {section.name}
+                </button>
+              ))}
+          </nav>
+        )}
 
-        {/* Main content */}
-        <div className="flex-1 p-4 sm:p-6">
-          <div className="flex flex-col space-y-8">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 md:px-6">
+          <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
             {assessment.section_dtos[
               activeSection
             ].question_preview_dto_list.map((question, idx) => (
               <div
                 key={question.question_id}
-                className="bg-white rounded-lg p-4 sm:p-6 shadow-sm"
+                className="rounded-2xl border border-neutral-200 bg-white p-4 md:p-5"
               >
-                <div className="flex flex-row gap-2 mb-4">
-                  <span className="text-sm text-gray-500">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-body font-semibold text-neutral-900">
                     Question {idx + 1}
                   </span>
-                  <span className="text-sm text-gray-500 ms-auto">
+                  <span className="flex-1" />
+                  <span className="rounded-md bg-success-50 px-2 py-1 text-3xs font-semibold uppercase tracking-wide text-success-700">
+                    +
                     {
                       calculateMarkingScheme(question.marking_json).data
                         .totalMark
-                    }{" "}
-                    Marks
+                    }
                   </span>
                 </div>
 
                 <QuestionHtmlContent
                   html={question.question.content}
-                  className="text-base mb-4"
+                  className="mb-4 text-body text-neutral-800 md:text-subtitle"
                 />
 
-                <div className="space-y-3">
+                <div className="flex flex-col gap-2">
                   {question.options.map((option) => (
                     <div
                       key={option.id}
-                      className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                      className="rounded-xl border border-neutral-200 p-3 text-body text-neutral-700"
                     >
                       <QuestionHtmlContent html={option.text.content} inline />
                     </div>
@@ -245,16 +249,21 @@ export function AssessmentPreview() {
               </div>
             ))}
           </div>
-        </div>
+        </main>
 
-        {/* Footer */}
-        <div className="sticky bg-primary-50 bottom-0 p-4 bg-white border-t">
-          <div className="flex  justify-center">
+        <div
+          className="flex-none border-t border-neutral-200 bg-white px-4 pt-3 md:px-6"
+          style={{ // design-lint-ignore: dynamic safe-area inset padding
+            paddingBottom: bottomSafeAreaInset(immersiveActive),
+          }}
+        >
+          <div className="mx-auto w-full max-w-4xl">
             <MyButton
               onClick={() => handleStartAssessment()}
               buttonType="primary"
               scale="large"
               layoutVariant="default"
+              className="h-12 w-full"
             >
               Start Test
             </MyButton>

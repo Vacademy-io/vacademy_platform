@@ -26,12 +26,50 @@ export interface ResultNotificationSettings {
     roles: Record<string, boolean>;
 }
 
+/**
+ * Calculator offered inside the live test.
+ * - `basic`     — four-function keypad (arithmetic only).
+ * - `scientific` — JEE/NEET-style: trig and inverse trig, log/ln, powers and
+ *   roots, factorial, π/e and a DEG/RAD toggle. Still a plain on-screen
+ *   calculator — no programmability, no stored formulas.
+ */
+export type ExamCalculatorMode = 'basic' | 'scientific';
+
+/**
+ * How the live-test surface behaves for learners. Read by the learner app
+ * (frontend-learner-dashboard-app) when it renders the exam shell, so an
+ * institute can turn exam tools on/off without a release.
+ */
+export interface ExamExperienceSettings {
+    calculator: {
+        enabled: boolean;
+        mode: ExamCalculatorMode;
+    };
+    scratchpad: {
+        enabled: boolean;
+    };
+    questionPalette: {
+        enabled: boolean;
+        defaultView: 'grid' | 'list';
+    };
+    /** Marks / negative-marks chips on each question. */
+    showMarkingScheme: boolean;
+    mobile: {
+        /**
+         * Hide app chrome (chatbot launcher, floating helpers) while a learner is
+         * inside a live test on a phone, leaving only the assessment safe zone.
+         */
+        hideAppNavigation: boolean;
+    };
+}
+
 export interface AssessmentSettingsData {
     offlineEntry: {
         enabled: boolean;
     };
     reportBranding: ReportBrandingSettings;
     resultNotifications: ResultNotificationSettings;
+    examExperience: ExamExperienceSettings;
 }
 
 /** Default: STUDENT/LEARNER receive results; every other role (incl. ADMIN) does not. */
@@ -59,9 +97,23 @@ export const DEFAULT_REPORT_BRANDING: ReportBrandingSettings = {
     show_watermark: false,
     watermark_text: '',
     watermark_opacity: 0.05,
-    footer_text: 'This report is auto-generated. For queries, contact your institute administrator.',
+    footer_text:
+        'This report is auto-generated. For queries, contact your institute administrator.',
     header_html: '',
     footer_html: '',
+};
+
+/**
+ * Defaults match the behaviour learners already had before these toggles
+ * existed, except the calculator — which is off until an institute opts in,
+ * because a calculator in a no-calculator exam is a fairness problem.
+ */
+export const DEFAULT_EXAM_EXPERIENCE: ExamExperienceSettings = {
+    calculator: { enabled: false, mode: 'scientific' },
+    scratchpad: { enabled: false },
+    questionPalette: { enabled: true, defaultView: 'grid' },
+    showMarkingScheme: true,
+    mobile: { hideAppNavigation: true },
 };
 
 export const DEFAULT_ASSESSMENT_SETTINGS: AssessmentSettingsData = {
@@ -71,4 +123,34 @@ export const DEFAULT_ASSESSMENT_SETTINGS: AssessmentSettingsData = {
     reportBranding: { ...DEFAULT_REPORT_BRANDING },
     // Empty map => backend applies per-role defaults (STUDENT on, everything else off).
     resultNotifications: { version: 1, roles: {} },
+    examExperience: {
+        ...DEFAULT_EXAM_EXPERIENCE,
+        calculator: { ...DEFAULT_EXAM_EXPERIENCE.calculator },
+        scratchpad: { ...DEFAULT_EXAM_EXPERIENCE.scratchpad },
+        questionPalette: { ...DEFAULT_EXAM_EXPERIENCE.questionPalette },
+        mobile: { ...DEFAULT_EXAM_EXPERIENCE.mobile },
+    },
 };
+
+/** Fill in any missing branch of a partially-saved `examExperience` object. */
+export const mergeExamExperience = (
+    incoming?: Partial<ExamExperienceSettings> | null
+): ExamExperienceSettings => ({
+    calculator: {
+        ...DEFAULT_EXAM_EXPERIENCE.calculator,
+        ...incoming?.calculator,
+    },
+    scratchpad: {
+        ...DEFAULT_EXAM_EXPERIENCE.scratchpad,
+        ...incoming?.scratchpad,
+    },
+    questionPalette: {
+        ...DEFAULT_EXAM_EXPERIENCE.questionPalette,
+        ...incoming?.questionPalette,
+    },
+    showMarkingScheme: incoming?.showMarkingScheme ?? DEFAULT_EXAM_EXPERIENCE.showMarkingScheme,
+    mobile: {
+        ...DEFAULT_EXAM_EXPERIENCE.mobile,
+        ...incoming?.mobile,
+    },
+});

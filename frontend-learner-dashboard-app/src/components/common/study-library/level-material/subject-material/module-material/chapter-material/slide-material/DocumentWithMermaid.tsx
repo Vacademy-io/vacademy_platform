@@ -675,16 +675,50 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             continueOrderedNumbering(tempDiv);
 
-            // Yoopta serializes a checkbox/todo item as `<li>[ ] text</li>` (or
-            // `[x]` when checked) — a literal bracket marker, not a real checkbox.
-            // The admin editor re-parses that marker into an interactive checkbox,
-            // but rendered as raw HTML it shows as a bullet + literal "[ ]". Strip
-            // the marker and tag the <li> so the scoped CSS below renders a real
-            // checkbox (read-only, reflecting the saved checked state) like admin.
+            // A checkbox/todo item reaches us in one of two serialized shapes,
+            // depending on which admin editor authored the slide:
+            //  - Yoopta (legacy): `<li>[ ] text</li>` / `[x] text` — a literal
+            //    bracket marker, no checkbox markup at all.
+            //  - Lexical (the "New editor"): `<ul __lexicallisttype="check">` with
+            //    `<li role="checkbox" aria-checked="true|false" class="… lex-check-item">`
+            //    — real state, but the box itself is drawn by CSS that only exists
+            //    inside the admin editor shell.
+            // Rendered as raw HTML both collapse to a plain bullet (plus a literal
+            // "[ ]" for the Yoopta shape). Normalise both onto `todo-item` so the
+            // scoped CSS below draws a real checkbox like admin, and the effect
+            // below can make it tickable.
             const convertTodoListsToCheckboxes = (root: Element) => {
                 const TODO_RE = /^\s*\[([ xX])\]\s?/;
                 let todoIndex = 0;
+                const markTodoItem = (li: Element, checked: boolean) => {
+                    li.classList.add('todo-item');
+                    if (checked) li.classList.add('todo-item--checked');
+                    // Stable document-order index so the learner's saved tick state
+                    // (persisted per slide) can be mapped back onto each item.
+                    li.setAttribute('data-todo-index', String(todoIndex));
+                    todoIndex++;
+                };
+                // querySelectorAll walks in document order, so the two shapes share
+                // one index sequence even in a document that mixes them.
                 root.querySelectorAll('ul > li').forEach((li) => {
+                    // Lexical check list. Lexical only puts role/aria-checked on
+                    // LEAF items, so an <li> that merely wraps a nested list is
+                    // skipped here — which is what we want.
+                    const ariaChecked = li.getAttribute('aria-checked');
+                    if (
+                        li.getAttribute('role') === 'checkbox' ||
+                        ariaChecked !== null ||
+                        li.classList.contains('lex-check-item')
+                    ) {
+                        markTodoItem(
+                            li,
+                            ariaChecked === 'true' ||
+                                li.classList.contains('lex-check-item--checked')
+                        );
+                        return;
+                    }
+
+                    // Yoopta bracket marker.
                     const m = (li.textContent || '').match(TODO_RE);
                     if (!m) return;
                     const checked = m[1]!.toLowerCase() === 'x';
@@ -696,12 +730,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     if (node && node.nodeValue) {
                         node.nodeValue = node.nodeValue.replace(TODO_RE, '');
                     }
-                    li.classList.add('todo-item');
-                    if (checked) li.classList.add('todo-item--checked');
-                    // Stable document-order index so the learner's saved tick state
-                    // (persisted per slide) can be mapped back onto each item.
-                    li.setAttribute('data-todo-index', String(todoIndex));
-                    todoIndex++;
+                    markTodoItem(li, checked);
                 });
             };
             convertTodoListsToCheckboxes(tempDiv);
@@ -1116,6 +1145,14 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
         if (items.length === 0) return;
 
         const indexOf = (li: HTMLElement) => Number(li.getAttribute('data-todo-index'));
+        // Lexical-authored items carry role="checkbox", so aria-checked has to
+        // track the learner's tick, not the state the author saved.
+        const applyChecked = (li: HTMLElement, checked: boolean) => {
+            li.classList.toggle('todo-item--checked', checked);
+            if (li.getAttribute('role') === 'checkbox') {
+                li.setAttribute('aria-checked', checked ? 'true' : 'false');
+            }
+        };
         items.forEach((li) => {
             li.style.cursor = 'pointer';
         });
@@ -1143,7 +1180,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             checkedSet.clear();
             saved.checked.forEach((i) => checkedSet.add(i));
             items.forEach((li) => {
-                li.classList.toggle('todo-item--checked', checkedSet.has(indexOf(li)));
+                applyChecked(li, checkedSet.has(indexOf(li)));
             });
         });
 
@@ -1154,7 +1191,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             if (!li || !container.contains(li)) return;
             const idx = indexOf(li);
             const nowChecked = !li.classList.contains('todo-item--checked');
-            li.classList.toggle('todo-item--checked', nowChecked);
+            applyChecked(li, nowChecked);
             if (nowChecked) checkedSet.add(idx);
             else checkedSet.delete(idx);
             if (saveTimer) clearTimeout(saveTimer);

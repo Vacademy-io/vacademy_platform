@@ -151,33 +151,56 @@ class ContentGenerationService:
         Returns (generated_content, usage_info, used_model).
         """
         has_usage = hasattr(self._llm_client, 'generate_outline_with_usage')
-        try:
+
+        async def _call(use_model: str):
             if has_usage:
-                content, usage = await self._llm_client.generate_outline_with_usage(
-                    prompt=prompt, model=model
+                return await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt, model=use_model
                 )
-            else:
-                content = await self._llm_client.generate_outline(prompt=prompt, model=model)
-                usage = {}
+            return await self._llm_client.generate_outline(prompt=prompt, model=use_model), {}
+
+        def _is_empty(text) -> bool:
+            return not (text or "").strip()
+
+        try:
+            content, usage = await _call(model)
+            # An EMPTY completion is a failure, not a result — reasoning models
+            # can spend their whole budget thinking and return nothing. Letting
+            # it through produced assessment slides that crashed the JSON parser
+            # ("argument of type 'NoneType' is not iterable") and shipped as
+            # silently-empty quizzes.
+            #
+            # Retry the SAME model once first: an empty completion is usually
+            # transient, and switching models is a worse outcome than simply
+            # asking again (a different model writes in a different voice, and
+            # for documents it is also the weaker fallback model).
+            if _is_empty(content):
+                logger.warning(
+                    f"Model '{model}' returned empty content; retrying the same model once"
+                )
+                content, usage = await _call(model)
+            if _is_empty(content):
+                raise ValueError(f"'{model}' returned empty content twice")
             return content, usage, model
         except PaymentRequiredError:
             # Out-of-credits is fatal by design — no fallback model will help.
             raise
         except Exception as e:
             if model == self._content_model:
+                # Already the fallback model, and it has had its same-model
+                # retry above — nothing left to try.
                 raise
             logger.warning(
                 f"Model '{model}' failed ({e}); retrying with default '{self._content_model}'"
             )
-            if has_usage:
-                content, usage = await self._llm_client.generate_outline_with_usage(
-                    prompt=prompt, model=self._content_model
+            content, usage = await _call(self._content_model)
+            if _is_empty(content):
+                # Both the chosen model and the fallback came back empty — fail
+                # loudly so the slide is reported as an ERROR rather than saved
+                # blank.
+                raise ValueError(
+                    f"both '{model}' and fallback '{self._content_model}' returned empty content"
                 )
-            else:
-                content = await self._llm_client.generate_outline(
-                    prompt=prompt, model=self._content_model
-                )
-                usage = {}
             return content, usage, self._content_model
 
     async def generate_document_content(
@@ -1274,6 +1297,13 @@ class ContentGenerationService:
         Extract JSON from LLM response, handling markdown code blocks and other formatting.
         Matches the pattern from media-service JsonUtils.extractAndSanitizeJson.
         """
+        # Defensive: a None/empty completion used to raise TypeError here
+        # ("argument of type 'NoneType' is not iterable"), which surfaced as an
+        # unhelpful error on the slide. Callers now retry empties upstream; this
+        # keeps the parser itself honest.
+        if not response:
+            raise ValueError("empty LLM response — nothing to parse")
+
         # Remove markdown code blocks if present
         if "```json" in response:
             start = response.find("```json") + 7

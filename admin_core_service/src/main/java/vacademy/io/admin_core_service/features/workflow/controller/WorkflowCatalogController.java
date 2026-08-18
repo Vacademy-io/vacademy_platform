@@ -250,6 +250,7 @@ public class WorkflowCatalogController {
         eventMeta.put("ASSESSMENT_RESULT_RELEASED", new String[]{"Assessment Result Released", "Fires when a learner's result becomes visible to them, automatically or via manual release", "Assessment", "ASSESSMENT"});
         eventMeta.put("ASSESSMENT_REMINDER_BEFORE_START", new String[]{"Assessment Starting Soon", "Fires for each registered learner shortly before an assessment opens", "Assessment", "ASSESSMENT"});
         eventMeta.put("ASSESSMENT_REATTEMPT_GRANTED", new String[]{"Assessment Reattempt Granted", "Fires for each learner an admin grants extra attempts to", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_REATTEMPT_REQUESTED", new String[]{"Assessment Reattempt Requested", "Fires when a learner asks for another attempt or more time — notify staff", "Assessment", "ASSESSMENT"});
 
         List<CatalogItemDTO> events = new ArrayList<>();
         for (WorkflowTriggerEvent event : WorkflowTriggerEvent.values()) {
@@ -439,6 +440,16 @@ public class WorkflowCatalogController {
                 ctxVar("attemptsRemaining", "Attempts left (allowed minus attempts already taken)"),
                 ctxVar("grantedBy", "User ID of the admin who granted them")));
 
+        List<Map<String, String>> reattemptRequested = new ArrayList<>(assessmentLearner);
+        reattemptRequested.addAll(List.of(
+                ctxVar("requestId", "ID of the request, for the review link"),
+                ctxVar("requestType", "REATTEMPT or TIME_INCREASE"),
+                ctxVar("requestReason", "What the learner typed as their reason"),
+                ctxVar("requestStatus", "Status of the request (PENDING when raised)"),
+                ctxVar("attemptId", "Attempt they were on, when known"),
+                ctxVar("attemptsAllowed", "Total attempts the learner is currently allowed"),
+                ctxVar("attemptsRemaining", "Attempts left (allowed minus attempts already taken)")));
+
         // ASSESSMENT_CREATE fires on the very first save of a brand-new draft row, before any
         // batch is registered to it, so the batch tokens are always absent there. Offering
         // them would hand an admin a token that is guaranteed empty for this event.
@@ -465,6 +476,7 @@ public class WorkflowCatalogController {
         out.put(WorkflowTriggerEvent.ASSESSMENT_RESULT_RELEASED.name(), result);
         out.put(WorkflowTriggerEvent.ASSESSMENT_REMINDER_BEFORE_START.name(), reminder);
         out.put(WorkflowTriggerEvent.ASSESSMENT_REATTEMPT_GRANTED.name(), reattemptGranted);
+        out.put(WorkflowTriggerEvent.ASSESSMENT_REATTEMPT_REQUESTED.name(), reattemptRequested);
         return ResponseEntity.ok(out);
     }
 

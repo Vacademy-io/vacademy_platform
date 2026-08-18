@@ -14,8 +14,6 @@ import {
 } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-const CAMPAIGN_USERS_ROUTE = '/audience-manager/list/campaign-users/' as const;
-
 const campaignUsersSearchSchema = z.object({
     campaignId: z.string().min(1, 'Campaign ID is required'),
     campaignName: z.string().optional(),
@@ -23,11 +21,7 @@ const campaignUsersSearchSchema = z.object({
     campaignType: z.string().optional(),
 });
 
-export const Route = createFileRoute(
-    // Route path uses a const sentinel; the generated route tree doesn't know it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    CAMPAIGN_USERS_ROUTE as any
-)({
+export const Route = createFileRoute('/audience-manager/list/campaign-users/')({
     component: CampaignUsersPage,
     validateSearch: campaignUsersSearchSchema,
 });
@@ -42,12 +36,9 @@ export function CampaignUsersPage() {
     }, [setNavHeading]);
 
     const handleBack = () => {
-        navigate({
-            from: Route.id,
-            // Same sentinel-route reason as the file route above.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            to: '/audience-manager/list/' as any,
-        });
+        // Both routes are in the generated tree now, so this navigation is fully typed.
+        // `to` takes the route path without a trailing slash (the id keeps one).
+        navigate({ from: Route.id, to: '/audience-manager/list' });
     };
 
     return (

@@ -208,4 +208,18 @@ export const flavorConfig: FlavorConfigs = {
     domain: "thelearningbridge.uk",
     subdomain: "student",
   },
+
+  // Brahm Varchas Shiksha iOS app
+  "io.brahmvarchas.app": {
+    appName: "Brahm Varchas Shiksha",
+    domain: "brahmvarchas.org",
+    subdomain: "learning",
+  },
+
+  // Brahm Varchas Shiksha Android app
+  "com.brahmvarchas.app": {
+    appName: "Brahm Varchas Shiksha",
+    domain: "brahmvarchas.org",
+    subdomain: "learning",
+  },
 };

@@ -1,5 +1,6 @@
-import { BULK_SUBMIT_AUDIENCE_LEAD } from '@/constants/urls';
-import { SubmitLeadRequest } from './submit-audience-lead';
+import { BULK_SUBMIT_AUDIENCE_LEAD_ADMIN_URL } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { SubmitLeadRequest, throwWithServerMessage } from './submit-audience-lead';
 
 export interface BulkSubmitLeadRequest {
     audience_id: string;
@@ -26,22 +27,26 @@ export interface BulkSubmitLeadResponse {
     results: BulkSubmitLeadResultItem[];
 }
 
+/**
+ * Bulk-import leads as the signed-in admin/counsellor.
+ *
+ * Sent with the session token so the backend knows who ran the import: under the
+ * "only leads assigned to <ROLE>" audience-access option, rows with no owner
+ * column are stamped to the importer rather than landing unassigned and
+ * invisible to them. Same payload and same pipeline as the open bulk endpoint
+ * otherwise.
+ */
 export const submitBulkAudienceLead = async (
     payload: BulkSubmitLeadRequest
 ): Promise<BulkSubmitLeadResponse> => {
-    const response = await fetch(BULK_SUBMIT_AUDIENCE_LEAD, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-        },
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    try {
+        const response = await authenticatedAxiosInstance({
+            method: 'POST',
+            url: BULK_SUBMIT_AUDIENCE_LEAD_ADMIN_URL,
+            data: payload,
+        });
+        return response.data as BulkSubmitLeadResponse;
+    } catch (error) {
+        return throwWithServerMessage(error, 'Failed to submit leads');
     }
-
-    return response.json();
 };

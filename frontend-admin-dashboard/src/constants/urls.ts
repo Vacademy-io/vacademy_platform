@@ -365,9 +365,19 @@ export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
+/**
+ * Authenticated twin of SUBMIT_AUDIENCE_LEAD_URL, for leads an admin/counsellor
+ * adds from the dashboard. Same payload and same intake pipeline; the token is
+ * what lets the backend stamp the creator as the lead's counsellor when the
+ * audience-access setting asks for it. Website/webhook integrations keep using
+ * the open URL above.
+ */
+export const SUBMIT_AUDIENCE_LEAD_ADMIN_URL = `${BASE_URL}/admin-core-service/v1/audience/lead/submit`;
 export const SUBMIT_CATALOGUE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-catalogue`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
 export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit`;
+/** Authenticated twin of BULK_SUBMIT_AUDIENCE_LEAD — see SUBMIT_AUDIENCE_LEAD_ADMIN_URL. */
+export const BULK_SUBMIT_AUDIENCE_LEAD_ADMIN_URL = `${BASE_URL}/admin-core-service/v1/audience/lead/bulk-submit`;
 export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
 export const BULK_SUBMIT_ADMISSION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/admission/bulk-submit-with-admission`;
 export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;

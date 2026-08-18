@@ -15,4 +15,14 @@ public interface CounselorPoolRepository extends JpaRepository<CounselorPool, St
     Optional<CounselorPool> findByIdAndInstituteId(String id, String instituteId);
 
     boolean existsByInstituteIdAndNameIgnoreCase(String instituteId, String name);
+
+    /**
+     * Does this institute have ANY counsellor pool configured (Leads &rarr;
+     * Settings &rarr; Pools)? Used by {@code AudienceRoleAccessService} to gate
+     * the per-role "only my assigned leads" audience-access option: a pool owns
+     * lead ownership, so that option stays inert while one exists. Mirrors what
+     * the admin sees on the Pools page — an empty list means "no pool", mode
+     * (MANUAL / ROUND_ROBIN / TIME_BASED) is not considered.
+     */
+    boolean existsByInstituteId(String instituteId);
 }

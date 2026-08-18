@@ -1,5 +1,5 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useBlocker } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -46,6 +46,7 @@ import {
     AddSessionDialog,
     GenerateCourseAssetsDialog,
     BackToLibraryDialog,
+    LeaveDuringGenerationDialog,
 } from './dialogs/CourseGenerationDialogs';
 import {
     ArrowLeft,
@@ -1672,7 +1673,59 @@ export function RouteComponent() {
 
     const getSlideIcon = (type: SlideType) => SLIDE_ICON_MAP[type] ?? null;
 
+    // ---- Leave-during-generation guard -------------------------------------
+    // Generation is driven entirely from this page (the outline call and the
+    // per-page content stream both live in this component), so any navigation
+    // away kills it and the pages produced so far are unrecoverable. Guard
+    // every exit route: the in-page Back button, in-app navigation, browser
+    // back/forward, and refresh/tab-close.
+    const isBusyGenerating = (isGenerating && slides.length === 0) || isGeneratingContent;
+
+    // Set just before an intentional leave so the blocker lets that one
+    // navigation through instead of re-prompting.
+    const bypassLeaveGuardRef = useRef(false);
+    const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
+
+    const leaveBlocker = useBlocker({
+        withResolver: true,
+        disabled: !isBusyGenerating,
+        shouldBlockFn: ({ current, next }) =>
+            !bypassLeaveGuardRef.current && current.pathname !== next.pathname,
+        enableBeforeUnload: isBusyGenerating,
+    });
+
+    const leaveGuardOpen = leaveBlocker.status === 'blocked' || leaveWarningOpen;
+
+    const handleStayOnPage = () => {
+        setLeaveWarningOpen(false);
+        leaveBlocker.reset?.();
+    };
+
+    const handleLeaveWhileGenerating = () => {
+        bypassLeaveGuardRef.current = true;
+        abortController?.abort();
+        setAbortController(null);
+        setIsGeneratingContent(false);
+        setLeaveWarningOpen(false);
+        if (leaveBlocker.status === 'blocked') {
+            leaveBlocker.proceed?.();
+        } else {
+            navigate({ to: '/study-library/ai-copilot' });
+        }
+    };
+
+    const generationProgressLabel = useMemo(() => {
+        if (!isGeneratingContent) return undefined;
+        const real = slides.filter((s: SlideGeneration) => s.slideTitle !== '_placeholder_');
+        if (real.length === 0) return undefined;
+        return `${real.filter((s: SlideGeneration) => s.status === 'completed').length} of ${real.length}`;
+    }, [isGeneratingContent, slides]);
+
     const handleBack = () => {
+        if (isBusyGenerating) {
+            setLeaveWarningOpen(true);
+            return;
+        }
         setBackToLibraryDialogOpen(true);
     };
 
@@ -1730,6 +1783,12 @@ export function RouteComponent() {
                     <title>{`Generating ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline...`}</title>
                 </Helmet>
                 <OutlineGeneratingLoader estimatedTimeRemaining={estimatedTimeRemaining} />
+                <LeaveDuringGenerationDialog
+                    open={leaveGuardOpen}
+                    onOpenChange={(open) => !open && handleStayOnPage()}
+                    onStay={handleStayOnPage}
+                    onLeave={handleLeaveWhileGenerating}
+                />
             </LayoutContainer>
         );
     }
@@ -1785,6 +1844,13 @@ export function RouteComponent() {
                     onOpenChange={setBackToLibraryDialogOpen}
                     onDiscard={handleDiscardCourse}
                     onSaveToDrafts={handleSaveToDrafts}
+                />
+                <LeaveDuringGenerationDialog
+                    open={leaveGuardOpen}
+                    onOpenChange={(open) => !open && handleStayOnPage()}
+                    onStay={handleStayOnPage}
+                    onLeave={handleLeaveWhileGenerating}
+                    progressLabel={generationProgressLabel}
                 />
             </LayoutContainer>
         );
@@ -3515,6 +3581,14 @@ export function RouteComponent() {
                         onOpenChange={setBackToLibraryDialogOpen}
                         onDiscard={handleDiscardCourse}
                         onSaveToDrafts={handleSaveToDrafts}
+                    />
+
+                    <LeaveDuringGenerationDialog
+                        open={leaveGuardOpen}
+                        onOpenChange={(open) => !open && handleStayOnPage()}
+                        onStay={handleStayOnPage}
+                        onLeave={handleLeaveWhileGenerating}
+                        progressLabel={generationProgressLabel}
                     />
                 </div>
             </div>

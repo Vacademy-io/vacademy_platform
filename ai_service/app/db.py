@@ -122,7 +122,7 @@ def background_db_session() -> Iterator[Session]:
 
 def db_dependency() -> Iterator[Session]:
     """
-    FastAPI dependency for per-request DB session.
+    FastAPI dependency for per-request DB session
     """
     with db_session() as session:
         yield session

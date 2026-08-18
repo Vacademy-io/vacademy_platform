@@ -27,7 +27,11 @@ export interface ContentGenerationRequest {
 }
 
 export interface ContentUpdate {
-    type: 'SLIDE_CONTENT_UPDATE' | 'SLIDE_CONTENT_ERROR';
+    // CONTENT_POSTPASS wraps the server's repetition-dedupe pass: STARTED
+    // (with `paths` about to be rewritten) and DONE. Everything else on the
+    // update is absent for these envelope events.
+    type: 'SLIDE_CONTENT_UPDATE' | 'SLIDE_CONTENT_ERROR' | 'CONTENT_POSTPASS';
+    paths?: string[];
     path: string;
     status: boolean | string; // Can be boolean or "COMPLETED" | "GENERATING" for AI_VIDEO
     actionType: 'ADD' | 'UPDATE';
@@ -85,7 +89,13 @@ export async function generateContent(
     documentContentTypes?: string[],
     // The model the user picked in course creation — applied to DOCUMENT slides
     // too (else they default to the strong HTML model server-side).
-    documentModel?: string
+    documentModel?: string,
+    // Source-figure policy for DOCUMENT slides: REQUIRE (must embed every
+    // relevant source figure), PREFER (default), GENERATED_ONLY (ignore them).
+    figuresPolicy?: string,
+    // Opt-in second pass: after all slides generate, the server regenerates
+    // slides that repeat material a chapter-mate already covers.
+    dedupeRepetition?: boolean
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
 
@@ -136,12 +146,16 @@ export async function generateContent(
                             : undefined,
                     document_settings:
                         (documentContentTypes && documentContentTypes.length > 0) ||
-                        documentModel
+                        documentModel ||
+                        figuresPolicy ||
+                        dedupeRepetition
                             ? {
                                   ...(documentContentTypes && documentContentTypes.length > 0
                                       ? { content_types: documentContentTypes }
                                       : {}),
                                   ...(documentModel ? { model: documentModel } : {}),
+                                  ...(figuresPolicy ? { figures_policy: figuresPolicy } : {}),
+                                  ...(dedupeRepetition ? { dedupe_repetition: true } : {}),
                               }
                             : undefined,
                     reference_document_file_ids:
@@ -316,6 +330,22 @@ export async function generateContent(
                         }
 
                         totalProcessed++;
+
+                        // Dedupe-pass envelope: forward as-is so the hook can
+                        // re-open the generating state for the rewritten paths.
+                        if (update.type === 'CONTENT_POSTPASS') {
+                            try {
+                                onUpdate(update as ContentUpdate);
+                            } catch (callbackError) {
+                                console.error('❌ Error in postpass callback:', callbackError);
+                            }
+                            if (onProgress && update.status === 'STARTED') {
+                                onProgress(
+                                    `Reducing repetition — rewriting ${update.paths?.length || 0} slide(s)...`
+                                );
+                            }
+                            continue;
+                        }
 
                         if (
                             update.type === 'SLIDE_CONTENT_UPDATE' ||

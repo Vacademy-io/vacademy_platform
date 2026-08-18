@@ -777,15 +777,60 @@ export function RouteComponent() {
                     sessionStorage.removeItem('courseVideoSettings');
                 }
 
+                // Course-structure options (quiz placement, chapter deliverables,
+                // figures policy) chosen in the wizard.
+                const courseStructure = courseConfig.courseStructure || {};
+                if (courseStructure.quizPlacement) {
+                    payload.generation_options.quiz_placement = courseStructure.quizPlacement;
+                }
+                if (typeof courseStructure.includeChapterAssignment === 'boolean') {
+                    payload.generation_options.include_assignment =
+                        courseStructure.includeChapterAssignment;
+                }
+                if (courseStructure.includeChapterVideo) {
+                    payload.generation_options.include_chapter_video = true;
+                }
+                // Figures policy must survive to the content step.
+                if (courseStructure.figuresPolicy) {
+                    sessionStorage.setItem('courseFiguresPolicy', courseStructure.figuresPolicy);
+                } else {
+                    sessionStorage.removeItem('courseFiguresPolicy');
+                }
+                // Repetition-dedupe second pass (content step) — write-or-remove.
+                if (courseStructure.dedupeRepetition) {
+                    sessionStorage.setItem('courseDedupeRepetition', '1');
+                } else {
+                    sessionStorage.removeItem('courseDedupeRepetition');
+                }
+
                 // Course-wide document content-type enrichments — must survive
                 // to the content step (same write-or-remove discipline).
+                // When quizzes are consolidated per chapter (or disabled), strip
+                // the per-slide 'quiz' enrichment so it can't double up.
+                let effectiveContentTypes: string[] = Array.isArray(
+                    courseConfig.documentContentTypes
+                )
+                    ? courseConfig.documentContentTypes
+                    : [];
                 if (
-                    Array.isArray(courseConfig.documentContentTypes) &&
-                    courseConfig.documentContentTypes.length > 0
+                    courseStructure.quizPlacement === 'CHAPTER' ||
+                    courseStructure.quizPlacement === 'NONE'
                 ) {
+                    effectiveContentTypes = effectiveContentTypes.filter((t) => t !== 'quiz');
+                } else if (
+                    courseStructure.quizPlacement === 'BOTH' &&
+                    !effectiveContentTypes.includes('quiz')
+                ) {
+                    // BOTH explicitly asks for per-topic quizzes too — make sure
+                    // the per-slide quiz enrichment is actually on. (PER_TOPIC is
+                    // the default placement; there the 'quiz' chip stays
+                    // authoritative so untouched wizards keep legacy behaviour.)
+                    effectiveContentTypes = [...effectiveContentTypes, 'quiz'];
+                }
+                if (effectiveContentTypes.length > 0) {
                     sessionStorage.setItem(
                         'courseDocumentContentTypes',
-                        JSON.stringify(courseConfig.documentContentTypes)
+                        JSON.stringify(effectiveContentTypes)
                     );
                 } else {
                     sessionStorage.removeItem('courseDocumentContentTypes');

@@ -89,6 +89,44 @@ def _cite(hit: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def deterministic_sections(
+    db: Session,
+    *,
+    kb_id: str,
+    institute_id: str,
+    node_ids: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """The selected slice of the topic tree, in source order, for DETERMINISTIC
+    outline construction (REPLICATE+FULL): topics become chapters and subtopics
+    become slides VERBATIM, so the model cannot rename, reorder or drop them.
+
+    Returns {"kb_name": str, "sections": [...]} or None when the KB is
+    missing/locked/tree-less — the caller then falls back to the LLM outline."""
+    repo = KbRepository(db)
+    kb = repo.get_kb(kb_id, institute_id)
+    if not kb or not repo.is_usable(kb, institute_id):
+        return None
+    tree = repo.get_topic_tree(kb_id)
+    if not tree:
+        return None
+
+    wanted = set(node_ids or [])
+    out: List[Dict[str, Any]] = []
+    for topic in tree:
+        children = topic.get("subtopics") or []
+        parent_picked = not wanted or topic["id"] in wanted
+        picked_children = [
+            c for c in children
+            if not wanted or parent_picked or c["id"] in wanted
+        ]
+        if not parent_picked and not picked_children:
+            continue
+        out.append({**topic, "subtopics": picked_children})
+    if not out:
+        return None
+    return {"kb_name": kb.get("name") or "Course", "sections": out}
+
+
 def _pages(node: Dict[str, Any]) -> str:
     """' (pages 12-18)' for a node that knows where it lives in the source."""
     start, end = node.get("page_start"), node.get("page_end")
@@ -199,7 +237,10 @@ def outline_grounding_block(
         "slides empty."
         if fidelity == "REPLICATE"
         else "Give every slide a title that names its subject plainly rather than "
-        "a marketing phrase — a vague title retrieves vague pages."
+        "a marketing phrase — a vague title retrieves vague pages. When you rename "
+        "or merge a source section, append the source's original section name in "
+        "brackets — e.g. 'Reading the Patient's Story (Subjective Assessment)' — "
+        "so teachers can still find the material in their book."
     )
 
     return (
@@ -223,6 +264,7 @@ async def ground_slide(
     query: str,
     mode: str = "STRICT",
     faithful: bool = True,
+    node_id: Optional[str] = None,
 ) -> SlideGrounding:
     """Retrieve the material for one slide.
 
@@ -231,9 +273,15 @@ async def ground_slide(
 
     `faithful` widens recall (SLIDE_TOP_K_FAITHFUL) for courses that must
     reproduce the material rather than summarise it.
+
+    `node_id` (deterministic outlines carry the section's topic-tree id):
+    WHOLE-SECTION grounding — the slide gets every chunk of its own section, in
+    source order, instead of a similarity guess. Similarity top-k over a section
+    can miss the exact sub-parts a client prescribed; the section's own chunks
+    cannot. Falls back to similarity search when the node has no linked chunks.
     """
     result = SlideGrounding()
-    if not query.strip():
+    if not (query.strip() or node_id):
         return result
 
     repo = KbRepository(db)
@@ -248,18 +296,39 @@ async def ground_slide(
     # anyway, so a weaker passage is still worth having.
     threshold = SLIDE_MIN_SIMILARITY if mode == "STRICT" else SLIDE_MIN_SIMILARITY - 0.08
 
-    try:
-        hits = await KbRetrievalService(db).search(
-            kb_id=kb_id,
-            institute_id=institute_id,
-            query=query,
-            top_k=SLIDE_TOP_K_FAITHFUL if faithful else SLIDE_TOP_K,
-            similarity_threshold=threshold,
-        )
-    except Exception:  # noqa: BLE001
-        # One slide failing to retrieve must not abort a 25-slide course.
-        logger.warning("KB grounding failed for slide %r", query[:80], exc_info=True)
-        return result
+    hits: List[Dict[str, Any]] = []
+    if node_id:
+        try:
+            # Chunks are stored under the KB owner's institute (PLATFORM
+            # libraries!), same scoping search() applies internally.
+            hits = repo.get_chunks_for_node(
+                kb_id=kb_id, institute_id=kb["institute_id"], node_id=node_id
+            )
+            if hits:
+                # Hydrate figures the same way search() does.
+                all_fids = [fid for h in hits for fid in h.get("figure_ids", [])]
+                figs = repo.get_figures_by_ids(all_fids)
+                for h in hits:
+                    h["figures"] = [
+                        figs[fid] for fid in h.get("figure_ids", []) if fid in figs
+                    ]
+        except Exception:  # noqa: BLE001
+            logger.warning("Node-scoped grounding failed for node %s", node_id, exc_info=True)
+            hits = []
+
+    if not hits:
+        try:
+            hits = await KbRetrievalService(db).search(
+                kb_id=kb_id,
+                institute_id=institute_id,
+                query=query,
+                top_k=SLIDE_TOP_K_FAITHFUL if faithful else SLIDE_TOP_K,
+                similarity_threshold=threshold,
+            )
+        except Exception:  # noqa: BLE001
+            # One slide failing to retrieve must not abort a 25-slide course.
+            logger.warning("KB grounding failed for slide %r", query[:80], exc_info=True)
+            return result
 
     if not hits:
         return result

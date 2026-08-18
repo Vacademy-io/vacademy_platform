@@ -8,6 +8,10 @@ _DOC_CONTENT_TYPE_SPECS = {
         "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS. Include the handful of most important cards. LAYOUT RULES (a flip card collapses if you get these wrong — this has shipped broken before): the card element MUST have its own explicit `width:100%` AND a `min-height` (≈170px); if the faces use `position:absolute;inset:0` they contribute NO width or height, so the card itself must define both. Lay the deck out with `grid-template-columns:repeat(auto-fit,minmax(240px,1fr))` — NEVER put a card in an `auto` grid track (it collapses to zero width and the text spills out one word per line). Put any prev/next controls on their OWN row, not in a track beside the card. Give the face text `overflow-wrap:break-word` and keep it comfortably inside the padding."
     ),
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
+    "why_it_matters": "WHY IT MATTERS: a short opening hook — what this topic is and why the learner should care, grounded in the material's own framing (2-4 sentences, before the notes).",
+    "high_yield": "HIGH-YIELD POINT: one visually prominent callout card with THE most exam-relevant fact/distinction of this topic, quoted faithfully from the material.",
+    "visual_process": "VISUAL / PROCESS: one clear diagram of this topic's core process or relationships — inline SVG or styled HTML, adapted from the material's own figures/flow where they exist (never a decorative stock-style image).",
+    "application": "APPLICATION: one short applied scenario or worked case that uses this topic's content (from the material; no invented statistics or named instruments).",
     "interactive_games": (
         "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "
         "learning game built from THIS material's own terms. Pick the form that fits the content: "
@@ -61,6 +65,8 @@ class ContentGenerationPrompts:
         language: str = "English",
         reference_figures: "list | None" = None,
         content_types: "list | None" = None,
+        sibling_titles: "list | None" = None,
+        figures_policy: "str | None" = None,
     ) -> str:
         """
         Build document generation prompt. Always produces HTML (the only format
@@ -85,6 +91,10 @@ class ContentGenerationPrompts:
             else "Include a Mermaid diagram ONLY where it genuinely aids understanding; skip it otherwise."
         )
 
+        # figures_policy: REQUIRE = must embed every relevant source figure;
+        # PREFER (default) = advisory; GENERATED_ONLY = ignore source figures.
+        if figures_policy == "GENERATED_ONLY":
+            reference_figures = None
         figures_block = ""
         if reference_figures:
             manifest = "\n".join(
@@ -94,7 +104,7 @@ class ContentGenerationPrompts:
                 if getattr(f, "url", "")
             )
             if manifest:
-                figures_block = f"""**Source figures (from the uploaded document — PREFER these over generated images)**:
+                figures_block = f"""**Source figures (from the uploaded document{" — you MUST embed every figure relevant to this slide" if figures_policy == "REQUIRE" else " — PREFER these over generated images"})**:
 The uploaded source document provides these REAL figures/diagrams/tables. When this slide's topic matches one, embed it VERBATIM:
 {manifest}
 - Embed as: `<img src="EXACT_URL_FROM_THE_LIST_ABOVE" alt="short caption" style="max-width:100%;border-radius:8px;margin:12px 0;">`
@@ -106,6 +116,19 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 
         content_types_block = _doc_content_types_block(content_types)
 
+        # Repetition control: this slide's chapter siblings. Slides generate
+        # independently, so without this the same definitions (and near-
+        # identical quiz questions) repeat across a chapter.
+        siblings_block = ""
+        titles = [t for t in (sibling_titles or []) if t]
+        if titles:
+            listing = "\n".join(f"  - {t}" for t in titles)
+            siblings_block = f"""
+
+**This chapter's OTHER slides (do not re-teach their subjects)**:
+{listing}
+Stay strictly on THIS slide's own subject. Do not re-explain a sibling's topic — mention it in one clause at most ("covered in '{titles[0]}'"). Define each core term fully only on the slide named for it, and make flashcards/quiz questions test THIS slide's content, not a sibling's."""
+
         return f"""You are a world-class front-end designer AND an instructional designer. You craft ONE complete, self-contained, visually STUNNING HTML document that teaches its topic — a mini web page a student can learn from with no other material. It renders inside a sandboxed iframe, so it must be a full standalone document.
 
 **Language**: Write ALL student-facing content in {language}. Do NOT use English if a different language is specified.
@@ -114,7 +137,7 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 
 **Content Requirements** (from the course planner):
 {text_prompt}
-{content_types_block}
+{content_types_block}{siblings_block}
 
 **Depth & quality bar**:
 - Real, substantive teaching content — roughly 300-600 words (more if the topic demands it). Never thin, never filler, never lorem ipsum.
@@ -123,7 +146,7 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 
 **Design & creativity (this is the point — make it beautiful and memorable)**:
 - Return a SINGLE full document: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"> <style>…ALL your CSS…</style></head><body>…</body></html>`.
-- Put ALL styling in one inline `<style>`. Design a cohesive visual system: a considered color palette, strong typography, generous spacing, cards/sections, clear hierarchy. Dark text on light surfaces by default; strong contrast.
+- Put ALL styling in one inline `<style>`. Design a cohesive visual system: a considered color palette, strong typography, generous spacing, cards/sections, clear hierarchy. Dark text on light surfaces by default; strong contrast. CONTRAST (content has shipped INVISIBLE): never give inline emphasis (`strong`,`b`,`em`,`mark`,`span`) a FIXED dark colour — on a dark card it becomes dark-on-dark and the text vanishes until selected. Inline emphasis must INHERIT its container's colour (use weight/background to emphasise, not a hard-coded colour), and every dark surface must set a light colour for ALL its descendants, not just its `p`. Never rely on the `body` colour for text sitting inside a dark card.
 - Use tasteful MOTION: CSS `@keyframes`/transitions, hover states, and small vanilla JS (one inline `<script>` at the end of `<body>`) for counters, tabs, interactive diagrams, or canvas/SVG. Motion must be smooth and purposeful — wrap non-essential motion in `@media (prefers-reduced-motion: reduce)` to disable it. CRITICAL: the page renders at FULL height with NO internal scrolling, so NEVER hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners that start sections at opacity:0 and reveal on scroll) — that content would stay INVISIBLE. All content must be visible on load; entrance animations play on load, not on scroll.
 - Responsive (mobile → desktop) and accessible (semantic tags, alt text, keyboard-friendly).
 - You MAY load Google Fonts via `<link>` and a reputable CDN library via `<script src>` if it genuinely elevates the page. Prefer inline SVG for diagrams. NEVER reference private/local URLs, analytics or trackers, and don't rely on cookies/localStorage/parent-window access.

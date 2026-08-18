@@ -270,6 +270,10 @@ class ContentGenerationService:
                     # Course-wide document content-type selection (Notes/Flashcards/
                     # Quiz/…), injected onto DOCUMENT todos from the wizard.
                     content_types=(todo.metadata or {}).get("content_types"),
+                    # What the chapter's OTHER slides teach — repetition control.
+                    sibling_titles=(todo.metadata or {}).get("sibling_titles"),
+                    # Source-figure policy from the wizard (REQUIRE/PREFER/GENERATED_ONLY).
+                    figures_policy=(todo.metadata or {}).get("figures_policy"),
                 )
             
             # Generate content using the enhanced prompt and capture token usage

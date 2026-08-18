@@ -131,7 +131,7 @@ _SYSTEM_DIRECTIVE = (
     "content must be visible on load; entrance animations must play automatically on load, not "
     "on scroll. Keep motion smooth and honor `prefers-reduced-motion`.\n"
     "4. Responsive (mobile → desktop), accessible (semantic tags, alt text, adequate "
-    "contrast — dark text on light surfaces by default), and readable.\n"
+    "contrast — dark text on light surfaces by default), and readable CONTRAST (content has shipped INVISIBLE): never give inline emphasis (`strong`,`b`,`em`,`mark`,`span`) a FIXED dark colour — on a dark card it becomes dark-on-dark and the text vanishes until selected. Inline emphasis must INHERIT its container's colour (use weight/background to emphasise, not a hard-coded colour), and every dark surface must set a light colour for ALL its descendants, not just its `p`. Never rely on the `body` colour for text sitting inside a dark card.\n"
     "5. Real, substantive content about the TOPIC — no lorem ipsum, no placeholder text. "
     "Use headings, sections, tables, callouts, diagrams as the content warrants.\n"
     "6. External resources: you MAY use Google Fonts via `<link>` and reputable CDN "

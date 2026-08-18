@@ -58,6 +58,27 @@ class GenerationOptions(BaseModel):
         default=False,
         description="Whether to generate course_banner_image and course_preview_image (S3 URLs)"
     )
+    # ── Course structure options (chosen in the create-course UI) ──
+    quiz_placement: Optional[Literal["PER_TOPIC", "CHAPTER", "BOTH", "NONE"]] = Field(
+        default=None,
+        description=(
+            "Where quizzes live: PER_TOPIC = mini quiz inside each document slide "
+            "(via content_types), CHAPTER = one consolidated ASSESSMENT slide per "
+            "chapter, BOTH = both, NONE = no quizzes. None/absent keeps legacy "
+            "behaviour (whatever content_types says)."
+        ),
+    )
+    include_assignment: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Chapter assignment + solution slides: True = always add per chapter, "
+            "False = never, None = legacy keyword detection on the user prompt."
+        ),
+    )
+    include_chapter_video: bool = Field(
+        default=False,
+        description="Add one AI_VIDEO overview slide at the end of each chapter.",
+    )
     image_style: Optional[str] = Field(
         default="professional",
         description="Style for generated images (e.g., 'professional', 'creative', 'minimalist')"

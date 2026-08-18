@@ -241,6 +241,33 @@ function RouteComponent() {
         useState<AiVideoSettings>(DEFAULT_AI_VIDEO_SETTINGS);
     // Course-wide enrichments woven into every generated HTML document slide.
     const [documentContentTypes, setDocumentContentTypes] = useState<string[]>(['notes']);
+    // Course structure: where quizzes live, chapter deliverables, figure sourcing.
+    const [quizPlacement, setQuizPlacement] = useState<
+        'PER_TOPIC' | 'CHAPTER' | 'BOTH' | 'NONE'
+    >('PER_TOPIC');
+    // null = let the AI decide from the prompt (legacy keyword detection)
+    const [includeChapterAssignment, setIncludeChapterAssignment] = useState<boolean | null>(null);
+    const [includeChapterVideo, setIncludeChapterVideo] = useState(false);
+    const [figuresPolicy, setFiguresPolicy] = useState<'PREFER' | 'REQUIRE' | 'GENERATED_ONLY'>(
+        'PREFER'
+    );
+    // Second-pass repetition cleanup: after all slides generate, slides that
+    // restate material a chapter-mate already covers are regenerated once.
+    const [dedupeRepetition, setDedupeRepetition] = useState(false);
+    // The client-requested standard per-topic teaching flow, in order.
+    const STANDARD_FLOW = [
+        'why_it_matters',
+        'notes',
+        'high_yield',
+        'visual_process',
+        'application',
+        'flashcards',
+        'quiz',
+        'summary',
+    ];
+    const usingStandardFlow =
+        documentContentTypes.length === STANDARD_FLOW.length &&
+        documentContentTypes.every((t, i) => t === STANDARD_FLOW[i]);
     const { uploadFile } = useFileUpload();
     const [isUploadingReferences, setIsUploadingReferences] = useState(false);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -767,6 +794,13 @@ function RouteComponent() {
             model: selectedModel,
             aiVideoSettings: aiVideoSettings,
             documentContentTypes: documentContentTypes,
+            courseStructure: {
+                quizPlacement,
+                includeChapterAssignment,
+                includeChapterVideo,
+                figuresPolicy,
+                dedupeRepetition,
+            },
             referenceDocumentFileIds,
             kbGrounding,
             userId: userId,
@@ -1248,12 +1282,45 @@ function RouteComponent() {
                                 <p className="mb-2 text-caption text-neutral-400">
                                     Woven into every generated document slide.
                                 </p>
+                                {/* Flow template: one click applies the standard
+                                    per-topic teaching flow, in order. */}
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocumentContentTypes(['notes'])}
+                                        className={cn(
+                                            'rounded-full border px-3 py-1 text-caption transition-colors',
+                                            !usingStandardFlow
+                                                ? 'border-primary-500 bg-primary-50 text-primary-500'
+                                                : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                        )}
+                                    >
+                                        Custom
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocumentContentTypes(STANDARD_FLOW)}
+                                        className={cn(
+                                            'rounded-full border px-3 py-1 text-caption transition-colors',
+                                            usingStandardFlow
+                                                ? 'border-primary-500 bg-primary-50 text-primary-500'
+                                                : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                        )}
+                                        title="Why it matters → Short notes → High-yield point → Visual/process → Application → Flashcards → Mini quiz → Summary"
+                                    >
+                                        Standard learning flow
+                                    </button>
+                                </div>
                                 <div className="flex flex-wrap gap-2">
                                     {[
+                                        { key: 'why_it_matters', label: 'Why it matters' },
                                         { key: 'notes', label: 'Short notes' },
-                                        { key: 'summary', label: 'Summary' },
+                                        { key: 'high_yield', label: 'High-yield point' },
+                                        { key: 'visual_process', label: 'Visual / process' },
+                                        { key: 'application', label: 'Application' },
                                         { key: 'flashcards', label: 'Flashcards' },
                                         { key: 'quiz', label: 'Quiz' },
+                                        { key: 'summary', label: 'Summary' },
                                         { key: 'practical_examples', label: 'Practical examples' },
                                         { key: 'interactive_games', label: 'Interactive games' },
                                     ].map((ct) => {
@@ -1280,6 +1347,133 @@ function RouteComponent() {
                                             </button>
                                         );
                                     })}
+                                </div>
+                            </div>
+
+                            {/* Course structure — quizzes, chapter deliverables,
+                                and how figures are sourced. */}
+                            <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+                                <div className="mb-1 text-subtitle font-semibold text-neutral-600">
+                                    Course structure
+                                </div>
+                                <div className="mb-2">
+                                    <p className="mb-1 text-caption text-neutral-400">Quizzes</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                { key: 'PER_TOPIC', label: 'Mini quiz per topic' },
+                                                { key: 'CHAPTER', label: 'One chapter quiz' },
+                                                { key: 'BOTH', label: 'Both' },
+                                                { key: 'NONE', label: 'No quizzes' },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={opt.key}
+                                                type="button"
+                                                onClick={() => setQuizPlacement(opt.key)}
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    quizPlacement === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="mb-2">
+                                    <p className="mb-1 text-caption text-neutral-400">
+                                        Chapter deliverables
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                { key: null, label: 'Assignment: auto' },
+                                                { key: true, label: 'Assignment + solution' },
+                                                { key: false, label: 'No assignment' },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={String(opt.key)}
+                                                type="button"
+                                                onClick={() =>
+                                                    setIncludeChapterAssignment(opt.key)
+                                                }
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    includeChapterAssignment === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => setIncludeChapterVideo((v) => !v)}
+                                            className={cn(
+                                                'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                includeChapterVideo
+                                                    ? 'border-primary-500 bg-primary-500 text-white'
+                                                    : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                            )}
+                                        >
+                                            Chapter video
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDedupeRepetition((v) => !v)}
+                                            title="After all slides generate, slides that repeat material another slide in the chapter already covers are rewritten once."
+                                            className={cn(
+                                                'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                dedupeRepetition
+                                                    ? 'border-primary-500 bg-primary-500 text-white'
+                                                    : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                            )}
+                                        >
+                                            Reduce repetition (2nd pass)
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="mb-1 text-caption text-neutral-400">
+                                        Diagrams &amp; figures
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                {
+                                                    key: 'PREFER',
+                                                    label: 'Prefer source figures',
+                                                },
+                                                {
+                                                    key: 'REQUIRE',
+                                                    label: 'Source figures required',
+                                                },
+                                                {
+                                                    key: 'GENERATED_ONLY',
+                                                    label: 'Generated only',
+                                                },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={opt.key}
+                                                type="button"
+                                                onClick={() => setFiguresPolicy(opt.key)}
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    figuresPolicy === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>

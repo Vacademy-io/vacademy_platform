@@ -957,6 +957,47 @@ class KbRepository:
             for r in rows
         ]
 
+    def get_chunks_for_node(
+        self, *, kb_id: str, institute_id: str, node_id: str, limit: int = 40
+    ) -> List[Dict[str, Any]]:
+        """EVERY chunk of one topic-tree section, in source order.
+
+        Whole-section grounding for faithful courses: similarity top-k over a
+        section can miss the very sub-parts a client prescribed (two feedback
+        rounds hit this), whereas the section's own chunks — kb_chunk.node_id
+        is linked at ingest — ARE the section. Same dict shape as
+        search_chunks so the passage builder is agnostic; similarity is 1.0
+        because membership, not ranking, is the relevance claim."""
+        rows = self.db.execute(
+            text(
+                """
+                SELECT c.id, c.content_text, c.page_start, c.page_end, c.figure_ids,
+                       c.lang, c.meta_data, c.source_id, s.title AS source_title
+                FROM kb_chunk c
+                JOIN knowledge_base_source s ON s.id = c.source_id
+                WHERE c.knowledge_base_id = :kb_id
+                  AND c.institute_id = :institute_id
+                  AND c.node_id = :node_id
+                  AND s.is_active = TRUE
+                ORDER BY c.chunk_index
+                LIMIT :limit
+                """
+            ),
+            {
+                "kb_id": kb_id, "institute_id": institute_id,
+                "node_id": node_id, "limit": limit,
+            },
+        ).fetchall()
+        return [
+            {
+                "chunk_id": r[0], "content_text": r[1], "page_start": r[2], "page_end": r[3],
+                "figure_ids": list(r[4] or []), "lang": r[5], "metadata": r[6] or {},
+                "source_id": r[7], "source_title": r[8],
+                "similarity_score": 1.0,
+            }
+            for r in rows
+        ]
+
     def search_institute_wide(
         self,
         *,

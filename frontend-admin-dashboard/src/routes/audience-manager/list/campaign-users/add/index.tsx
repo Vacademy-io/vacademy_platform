@@ -9,7 +9,7 @@ import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { submitAudienceLead, SubmitLeadRequest } from '../../-services/submit-audience-lead';
+import { submitAudienceLeadAsAdmin, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -307,7 +307,12 @@ export function AddResponsePage() {
                 },
             };
 
-            await submitAudienceLead(payload);
+            // Authenticated twin of the open submit endpoint: the token tells the
+            // backend who added this lead, which the "only leads assigned to
+            // <ROLE>" audience-access option needs in order to stamp the creator
+            // as its counsellor. Without it the creator saves a lead and it
+            // immediately drops out of their own list.
+            await submitAudienceLeadAsAdmin(payload);
 
             toast.success('Response submitted successfully!');
 

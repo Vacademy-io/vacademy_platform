@@ -32,6 +32,16 @@ export interface RoleAccessConfig {
     mode: AudienceAccessMode;
     /** Only meaningful when mode = AUDIENCE_LIST. */
     audience_ids?: string[];
+    /**
+     * Only meaningful when mode = AUDIENCE_LIST. Narrows the granted lists to
+     * the leads this user is the assigned counsellor of, and stamps them as the
+     * counsellor on leads they add by hand.
+     *
+     * Inert while the institute has any counsellor pool under Leads → Settings →
+     * Pools — the backend gate lives in AudienceRoleAccessService, so this flag
+     * can be saved ahead of removing the pools without changing behaviour.
+     */
+    assigned_only?: boolean;
 }
 
 export interface AudienceRoleAccessConfig {

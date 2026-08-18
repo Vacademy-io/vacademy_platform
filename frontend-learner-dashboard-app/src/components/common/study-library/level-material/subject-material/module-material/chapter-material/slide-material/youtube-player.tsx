@@ -1240,107 +1240,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Small delay to ensure iframe is ready
       const autoplayTimeout = setTimeout(async () => {
-        // Keep trying for a few seconds before giving the learner a button.
-        //
-        // A browser only permits unmuted playback while the page holds a recent
-        // user gesture. Opening a class often does hold one (the tap on the class
-        // card, or "Continue to class" on the disclaimer), but the player is not
-        // always initialised in time for the first attempt to land. Retrying over
-        // ~4s catches that, and costs nothing when the first attempt works.
-        //
-        // A synthetic .click() would NOT help — the browser only counts real
-        // input, so the retry is deliberately a real playVideo() each time.
-        const ATTEMPTS = 5;
-        const GAP_MS = 800;
-        let started = false;
-
-        for (let attempt = 0; attempt < ATTEMPTS && !started; attempt++) {
-          if (!isMountedRef.current) return;
-          const ok = await safePlayerOperation(async () => {
-            const p = playerRef.current;
-            if (!p) return;
-            try {
-              await p.unMute(); // Unmute for autoplay
-            } catch (e) {
-              console.warn("unMute failed during autoplay", e);
-            }
-            await p.playVideo();
-          }, `autoplay#${attempt + 1}`);
-
-          if (ok) {
-            await new Promise((r) => setTimeout(r, GAP_MS));
-            if (!isMountedRef.current) return;
-            try {
-              started = (await player.getPlayerState()) === 1;
-            } catch {
-              started = false;
-            }
-          } else {
-            await new Promise((r) => setTimeout(r, GAP_MS));
-          }
-        }
-
-        if (!isMountedRef.current) return;
-        if (started) {
-          setIsPlayed(true);
-          setShowManualPlayButton(false);
-          return;
-        }
-
-        // Still not playing, so the browser is withholding permission for SOUND.
-        // A muted start is always allowed, and the class beginning on its own
-        // matters more than the first second of audio — the learner came here to
-        // attend, not to hunt for a play button.
-        const mutedOk = await safePlayerOperation(async () => {
+        const success = await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
-          await p.mute();
-          await p.playVideo();
-        }, "autoplay-muted");
-
-        await new Promise((r) => setTimeout(r, GAP_MS));
-        if (!isMountedRef.current) return;
-
-        let playingMuted = false;
-        try {
-          playingMuted = mutedOk && (await player.getPlayerState()) === 1;
-        } catch {
-          playingMuted = false;
-        }
-
-        if (!playingMuted) {
-          // Even muted playback was refused — nothing left but a real tap.
-          console.warn("Autoplay blocked even muted, showing manual play button");
-          setShowManualPlayButton(true);
-          return;
-        }
-
-        setIsPlayed(true);
-        setShowManualPlayButton(false);
-
-        // Playing, but silent. Ask for sound back immediately; the learner
-        // arrived through a real tap, so this usually succeeds outright.
-        try {
-          await playerRef.current?.unMute();
-        } catch {
-          /* still withheld — handled by the listener below */
-        }
-
-        // If it is somehow still muted, restore sound on the learner's very next
-        // touch anywhere on the page. That counts as fresh input, so it always
-        // works, and it needs no button and no instruction on screen.
-        try {
-          if (await playerRef.current?.isMuted()) {
-            const restoreSound = () => {
-              playerRef.current?.unMute();
-              window.removeEventListener("pointerdown", restoreSound);
-              window.removeEventListener("keydown", restoreSound);
-            };
-            window.addEventListener("pointerdown", restoreSound, { once: true });
-            window.addEventListener("keydown", restoreSound, { once: true });
+          try {
+            await p.unMute(); // Unmute for autoplay
+          } catch (e) {
+            console.warn("unMute failed during autoplay", e);
           }
-        } catch {
-          /* isMuted unsupported on this build — leave as is */
+          await p.playVideo();
+        }, "autoplay");
+
+        if (success) {
+          // Verify that video actually started playing after a short delay
+          autoplayVerifyTimeoutRef.current = setTimeout(async () => {
+            autoplayVerifyTimeoutRef.current = null;
+            if (!isMountedRef.current) return;
+            try {
+              const playerState = await player.getPlayerState();
+              if (!isMountedRef.current) return;
+              // PlayerState.PLAYING = 1, if not playing, show manual button
+              if (playerState !== 1) {
+                setShowManualPlayButton(true);
+              } else {
+                setIsPlayed(true);
+                setShowManualPlayButton(false);
+              }
+            } catch (error) {
+              console.warn("Error checking player state after autoplay", error);
+              if (isMountedRef.current) setShowManualPlayButton(true);
+            }
+          }, 1000);
+        } else {
+          console.warn("Autoplay failed, showing manual play button");
+          if (isMountedRef.current) setShowManualPlayButton(true);
         }
       }, 500);
 

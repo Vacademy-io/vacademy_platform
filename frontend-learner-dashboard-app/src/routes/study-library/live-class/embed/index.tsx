@@ -614,8 +614,12 @@ function EmbedComponent() {
       </Helmet>
 
       <div className="flex flex-col h-nav-offset">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-center mb-6">
+        <div className="mb-6 flex items-center justify-between gap-2">
+          {/* Scales with the viewport: a session title like
+              "Suchbliss.com - 07:30 (Day 2)" wrapped onto two lines on a phone
+              at a fixed 2xl. min-w-0 lets it shrink beside the LIVE badge
+              instead of pushing it off the row. */}
+          <h1 className="min-w-0 text-subtitle font-bold leading-tight xs:text-h3 md-tablets:text-h2">
             {sessionDetails?.title || getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </h1>
           <span className={`rounded px-3 py-1 text-sm font-semibold uppercase text-white shadow ${sessionId ? "bg-red-600" : "bg-primary-300"}`}>

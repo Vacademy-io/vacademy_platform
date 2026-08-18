@@ -19,8 +19,13 @@ interface PaymentFiltersProps {
     endDate: string;
     onStartDateChange: (date: string) => void;
     onEndDateChange: (date: string) => void;
-    selectedPaymentStatuses: SelectOption[];
-    onPaymentStatusesChange: (statuses: SelectOption[]) => void;
+    /**
+     * Omit both to drop the Payment Status field — Manage Payments drives status from the KPI
+     * tiles / segmented switch instead, because the "Due" bucket also holds rows whose
+     * payment_status is NULL and those can never come back from an `IN (...)` filter.
+     */
+    selectedPaymentStatuses?: SelectOption[];
+    onPaymentStatusesChange?: (statuses: SelectOption[]) => void;
     selectedUserPlanStatuses: SelectOption[];
     onUserPlanStatusesChange: (statuses: SelectOption[]) => void;
     selectedPaymentSources: SelectOption[];
@@ -43,6 +48,12 @@ interface PaymentFiltersProps {
      * inside the redesign's slide-over panel, where search/segmented-status live in the control bar.
      */
     panelOnly?: boolean;
+    /**
+     * Drop the quick-range pills and the Start/End inputs. Set when the caller owns the date window
+     * itself (Manage Payments puts it in the toolbar dropdown), so the same period can't be set two
+     * ways in two places.
+     */
+    hideDateFilters?: boolean;
 }
 
 const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
@@ -113,6 +124,7 @@ export function PaymentFilters({
     onSearchChange,
     exportSlot,
     panelOnly = false,
+    hideDateFilters = false,
 }: PaymentFiltersProps) {
     const [showFilters, setShowFilters] = useState(false);
     // Which quick-range pill is highlighted. Cleared when the user edits dates manually
@@ -195,12 +207,11 @@ export function PaymentFilters({
     };
 
     const activeFilterCount =
-        (selectedPaymentStatuses.length || 0) +
+        (selectedPaymentStatuses?.length || 0) +
         (selectedUserPlanStatuses.length || 0) +
         (selectedPaymentSources.length || 0) +
         (selectedPaymentTypes.length || 0) +
-        (startDate ? 1 : 0) +
-        (endDate ? 1 : 0) +
+        (hideDateFilters ? 0 : (startDate ? 1 : 0) + (endDate ? 1 : 0)) +
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
 
@@ -232,17 +243,19 @@ export function PaymentFilters({
                         clearable
                     />
                 </FilterField>
-                <FilterField label="Payment Status">
-                    <SelectChips
-                        options={PAYMENT_STATUS_OPTIONS}
-                        selected={selectedPaymentStatuses}
-                        onChange={onPaymentStatusesChange}
-                        placeholder="All statuses"
-                        multiSelect
-                        fullWidth
-                        clearable
-                    />
-                </FilterField>
+                {onPaymentStatusesChange && (
+                    <FilterField label="Payment Status">
+                        <SelectChips
+                            options={PAYMENT_STATUS_OPTIONS}
+                            selected={selectedPaymentStatuses ?? []}
+                            onChange={onPaymentStatusesChange}
+                            placeholder="All statuses"
+                            multiSelect
+                            fullWidth
+                            clearable
+                        />
+                    </FilterField>
+                )}
                 <FilterField label="Plan Status">
                     <SelectChips
                         options={USER_PLAN_STATUS_OPTIONS}
@@ -271,36 +284,44 @@ export function PaymentFilters({
 
             <div className="h-px bg-border" />
 
-            {/* Date range */}
-            <div className="space-y-2">
-                <span className="text-caption font-medium text-neutral-500">Quick range</span>
-                <ChipToggleGroup
-                    value={activeQuick}
-                    onChange={handleQuickFilter}
-                    options={QUICK_RANGE_OPTIONS}
-                    ariaLabel="Quick date range"
-                />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FilterField label="Start Date">
-                    <Input
-                        type="datetime-local"
-                        value={startDate ? toLocalInputValue(startDate) : ''}
-                        onChange={(e) => handleDateChange(onStartDateChange, e.target.value)}
-                        className="h-9"
-                    />
-                </FilterField>
-                <FilterField label="End Date">
-                    <Input
-                        type="datetime-local"
-                        value={endDate ? toLocalInputValue(endDate) : ''}
-                        onChange={(e) => handleDateChange(onEndDateChange, e.target.value)}
-                        className="h-9"
-                    />
-                </FilterField>
-            </div>
+            {/* Date range — omitted when the caller owns the window (see hideDateFilters). */}
+            {!hideDateFilters && (
+                <>
+                    <div className="space-y-2">
+                        <span className="text-caption font-medium text-neutral-500">
+                            Quick range
+                        </span>
+                        <ChipToggleGroup
+                            value={activeQuick}
+                            onChange={handleQuickFilter}
+                            options={QUICK_RANGE_OPTIONS}
+                            ariaLabel="Quick date range"
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <FilterField label="Start Date">
+                            <Input
+                                type="datetime-local"
+                                value={startDate ? toLocalInputValue(startDate) : ''}
+                                onChange={(e) =>
+                                    handleDateChange(onStartDateChange, e.target.value)
+                                }
+                                className="h-9"
+                            />
+                        </FilterField>
+                        <FilterField label="End Date">
+                            <Input
+                                type="datetime-local"
+                                value={endDate ? toLocalInputValue(endDate) : ''}
+                                onChange={(e) => handleDateChange(onEndDateChange, e.target.value)}
+                                className="h-9"
+                            />
+                        </FilterField>
+                    </div>
 
-            <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                </>
+            )}
 
             {/* Course / session */}
             <div className="space-y-2">

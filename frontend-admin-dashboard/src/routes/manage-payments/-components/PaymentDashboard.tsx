@@ -22,38 +22,29 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isRealCurrency } from '@/utils/payment-currency';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import type { PaymentLogsRequest } from '@/types/payment-logs';
-import { fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
+import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
 import {
     computePaymentAnalytics,
     type AmountSlice,
     type PaymentAnalytics,
 } from '../-utils/paymentAnalytics';
+import { computeBillingFromEntries, computePaymentSummary } from '../-utils/paymentSummary';
+import {
+    formatRangeLabel,
+    rangeToLocalIsoWindow,
+    resolvePreset,
+    type DateRangeValue,
+} from '../-utils/dateRange';
 import {
     fetchCollectionSummary,
     type CollectionSummary,
 } from '@/routes/dashboard/-services/collection-summary-service';
+import { fetchBillingSummary } from '@/services/payment-logs';
 import { GatewayBadge } from './GatewayBadge';
-
-// ─── Range control ────────────────────────────────────────────────────────────
-
-type DashRangeKey = '7d' | '30d' | '90d' | 'all';
-const RANGES: { key: DashRangeKey; label: string; days: number | null }[] = [
-    { key: '7d', label: '7 days', days: 7 },
-    { key: '30d', label: '30 days', days: 30 },
-    { key: '90d', label: '90 days', days: 90 },
-    { key: 'all', label: 'All time', days: null },
-];
-
-const toLocalIso = (d: Date): string => d.toISOString().slice(0, 19);
-
-const rangeWindow = (key: DashRangeKey): { start?: string; end?: string } => {
-    const cfg = RANGES.find((r) => r.key === key);
-    if (!cfg || cfg.days == null) return {};
-    const end = new Date();
-    const start = new Date(end.getTime() - cfg.days * 24 * 60 * 60 * 1000);
-    return { start: toLocalIso(start), end: toLocalIso(end) };
-};
+import { PaymentKpiCards } from './PaymentKpiCards';
+import { DateRangeDropdown } from './DateRangeDropdown';
 
 // ─── Formatting ────────────────────────────────────────────────────────────────
 
@@ -123,34 +114,6 @@ function SectionCard({
     );
 }
 
-function MetricCard({
-    label,
-    value,
-    meta,
-    isLoading,
-}: {
-    label: string;
-    value: string;
-    meta: string;
-    isLoading?: boolean;
-}) {
-    return (
-        <Card className="p-4">
-            <div className="text-caption font-medium uppercase tracking-wide text-neutral-500">
-                {label}
-            </div>
-            {isLoading ? (
-                <Skeleton className="mt-2 h-8 w-28" />
-            ) : (
-                <div className="mt-1 text-h2 font-semibold tabular-nums text-neutral-800">
-                    {value}
-                </div>
-            )}
-            <div className="mt-1 text-caption text-neutral-500">{isLoading ? ' ' : meta}</div>
-        </Card>
-    );
-}
-
 /** Horizontal ranked bars (gateways, courses, method mix). */
 function RankedBars({
     slices,
@@ -207,11 +170,14 @@ function RankedBars({
 
 export function PaymentDashboard() {
     const instituteId = getCurrentInstituteId();
-    const [range, setRange] = useState<DashRangeKey>('30d');
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    // Same date control as Manage Payments, so a window picked on one screen means the same thing
+    // on the other. Opens on the last 30 days.
+    const [range, setRange] = useState<DateRangeValue>(() => resolvePreset('30d'));
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
     const requestFilters: Omit<PaymentLogsRequest, 'institute_id'> = useMemo(() => {
-        const w = rangeWindow(range);
+        const w = rangeToLocalIsoWindow(range);
         const filters: Omit<PaymentLogsRequest, 'institute_id'> = {
             sort_columns: { createdAt: 'DESC' },
         };
@@ -228,19 +194,55 @@ export function PaymentDashboard() {
 
     const entries = useMemo(() => data?.entries ?? [], [data]);
     const analytics: PaymentAnalytics = useMemo(() => computePaymentAnalytics(entries), [entries]);
+    // The KPI row is computed with the very same function Manage Payments uses.
+    const summary = useMemo(() => computePaymentSummary(entries), [entries]);
 
-    // Real collections trend (backend aggregate) for the same window.
+    // Real collections trend (backend aggregate) for the same window. The window has to be spelled
+    // with the request's own field names — spreading a {start,end} pair here silently charted all
+    // time no matter which range was picked.
     const { data: collection } = useQuery<CollectionSummary>({
         queryKey: ['collection-summary-dash', instituteId, range],
-        queryFn: () =>
-            fetchCollectionSummary({
+        queryFn: () => {
+            const w = rangeToLocalIsoWindow(range);
+            return fetchCollectionSummary({
                 institute_id: instituteId || '',
-                ...rangeWindow(range),
-            }),
+                start_date_in_utc: w.start,
+                end_date_in_utc: w.end,
+            });
+        },
         enabled: !!instituteId,
         staleTime: 60_000,
         retry: false,
     });
+
+    /**
+     * Billed / collected / due, straight from the enrolments — the same figures Manage Payments
+     * shows. Payment records can only report money that was actually raised, so an instalment plan
+     * looks fully collected until this is asked for.
+     */
+    const { data: billingSummary } = useQuery({
+        queryKey: ['payment-billing-summary-dash', range],
+        queryFn: () => {
+            const w = rangeToLocalIsoWindow(range);
+            return fetchBillingSummary({ start_date_in_utc: w.start, end_date_in_utc: w.end });
+        },
+        staleTime: 60_000,
+        retry: false,
+    });
+    // Same fallback as Manage Payments: derive billing from the rows when the endpoint is absent.
+    const entryBilling = useMemo(() => computeBillingFromEntries(entries), [entries]);
+    const billing = billingSummary
+        ? {
+              totalBilled: billingSummary.total_billed,
+              collected: billingSummary.collected,
+              due: billingSummary.due,
+              currency: billingSummary.currency || '',
+              planCount: billingSummary.plan_count,
+              settledPlanCount: billingSummary.settled_plan_count,
+          }
+        : entryBilling.planCount > 0
+          ? entryBilling
+          : null;
 
     const currency = analytics.primaryCurrency || collection?.currency || '';
     const money = useMemo(() => makeMoney(currency), [currency]);
@@ -250,54 +252,53 @@ export function PaymentDashboard() {
         [collection]
     );
 
-    const rangeLabel = RANGES.find((r) => r.key === range)?.label.toLowerCase() ?? '';
+    const rangeLabel =
+        range.preset === 'custom' ? formatRangeLabel(range) : formatRangeLabel(range).toLowerCase();
     const isEmpty = !isLoading && entries.length === 0;
 
     const handleExport = () => {
-        toast.info('Use “Export” on the Manage Payments page to download the underlying records.');
+        if (entries.length === 0) {
+            toast.info('No payment records to export for this period.');
+            return;
+        }
+        try {
+            const count = exportEntriesToCsv(entries, instituteDetails?.institute_name);
+            toast.success(`Exported ${count.toLocaleString()} payment records.`);
+        } catch (error) {
+            console.error('Failed to export payment logs:', error);
+            toast.error('Failed to export payment logs. Please try again.');
+        }
     };
 
     return (
         <div className="space-y-6">
-            {/* Toolbar */}
+            {/* Toolbar: the date window first, because it governs every number below it */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-body text-neutral-500">
-                    Overview of collections and outstanding dues · last {rangeLabel}
-                </p>
-                <div className="flex items-center gap-3">
-                    <div
-                        role="group"
-                        aria-label="Dashboard time range"
-                        className="flex shrink-0 items-center gap-0.5 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"
-                    >
-                        {RANGES.map((r) => (
-                            <button
-                                key={r.key}
-                                type="button"
-                                onClick={() => setRange(r.key)}
-                                aria-pressed={range === r.key}
-                                className={cn(
-                                    'cursor-pointer rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
-                                    range === r.key
-                                        ? 'bg-primary-500 text-white shadow-sm'
-                                        : 'text-neutral-600 hover:bg-neutral-100'
-                                )}
-                            >
-                                {r.label}
-                            </button>
-                        ))}
-                    </div>
-                    <MyButton
-                        buttonType="secondary"
-                        scale="medium"
-                        className="gap-2"
-                        onClick={handleExport}
-                    >
-                        <DownloadSimple size={16} />
-                        Export
-                    </MyButton>
+                <div className="flex flex-wrap items-center gap-3">
+                    <DateRangeDropdown value={range} onChange={setRange} />
+                    <p className="text-body text-neutral-500">
+                        Collections and outstanding dues · {rangeLabel}
+                    </p>
                 </div>
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    className="gap-2"
+                    onClick={handleExport}
+                >
+                    <DownloadSimple size={16} />
+                    Export
+                </MyButton>
             </div>
+
+            {/* KPI row — the same Total / Collected / Due / Failed tiles as Manage Payments */}
+            <PaymentKpiCards
+                summary={summary}
+                billing={billing}
+                totalCount={entries.length}
+                isLoading={isLoading}
+                truncated={data?.truncated}
+            />
 
             {isError ? (
                 <Card className="p-10 text-center">
@@ -315,47 +316,15 @@ export function PaymentDashboard() {
                         No payments in this period
                     </p>
                     <p className="text-caption text-neutral-500">
-                        Try a wider time range to see collection trends.
+                        Pick a wider date range to see collection trends.
                     </p>
                 </Card>
             ) : (
                 <>
-                    {/* Metric row */}
-                    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                        <MetricCard
-                            label="Collected"
-                            value={money(analytics.collected.amount, true)}
-                            meta={`${analytics.collected.count.toLocaleString()} payments`}
-                            isLoading={isLoading}
-                        />
-                        <MetricCard
-                            label="Outstanding"
-                            value={money(analytics.outstanding.amount, true)}
-                            meta={`${analytics.outstanding.count.toLocaleString()} pending`}
-                            isLoading={isLoading}
-                        />
-                        <MetricCard
-                            label="Success rate"
-                            value={
-                                analytics.successRate == null
-                                    ? '—'
-                                    : `${(analytics.successRate * 100).toFixed(1)}%`
-                            }
-                            meta={`${analytics.failed.count.toLocaleString()} failed attempts`}
-                            isLoading={isLoading}
-                        />
-                        <MetricCard
-                            label="Total payments"
-                            value={analytics.totalEntries.toLocaleString()}
-                            meta={`in the last ${rangeLabel}`}
-                            isLoading={isLoading}
-                        />
-                    </div>
-
                     {/* Collections trend */}
                     <SectionCard
                         title="Collections trend"
-                        subtitle={`Paid volume per day · last ${rangeLabel}`}
+                        subtitle={`Paid volume per day · ${rangeLabel}`}
                         right={
                             <span className="flex size-8 items-center justify-center rounded-lg bg-success-100 text-success-600">
                                 <TrendUp size={16} weight="duotone" />
@@ -555,10 +524,13 @@ export function PaymentDashboard() {
                     <div className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-caption text-neutral-500">
                         <Info size={15} className="mt-px shrink-0 text-neutral-400" />
                         <span>
-                            Every figure here is derived from your payment records. Bank settlement
-                            timelines and gateway-reported decline reasons aren’t available from the
-                            current API, so those panels are intentionally omitted rather than
-                            estimated.
+                            Total / Collected / Due come from the enrolments themselves — what the
+                            courses were billed at, what has been paid, and the balance, so the
+                            three always reconcile. Everything below counts payment records instead,
+                            which is why a part-paid enrolment shows one settled payment here and an
+                            outstanding balance above. Bank settlement timelines and
+                            gateway-reported decline reasons aren’t available from the current API,
+                            so those panels are omitted rather than estimated.
                         </span>
                     </div>
                 </>

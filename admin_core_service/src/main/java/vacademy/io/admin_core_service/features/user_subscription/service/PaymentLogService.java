@@ -13,6 +13,9 @@ import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryResponseDTO;
@@ -1058,6 +1061,49 @@ public class PaymentLogService {
                 .totalCount(count)
                 .currency(currency)
                 .daily(daily)
+                .build();
+    }
+
+    /**
+     * Total billed / collected / due for an institute — the numbers an admin means by those words.
+     *
+     * Deliberately NOT derived from payment_log: that table only holds payments someone actually
+     * raised, so a part-paid instalment plan looks fully collected and an enrolment that never paid
+     * a rupee does not appear at all. Billing lives on the plan; see
+     * {@link UserPlanRepository#getBillingSummary}.
+     */
+    public BillingSummaryResponseDTO getBillingSummary(BillingSummaryRequestDTO request) {
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
+
+        BillingSummaryProjection row = userPlanRepository.getBillingSummary(
+                request.getInstituteId(),
+                startDate,
+                endDate,
+                noPackageSessions,
+                // A native IN (...) needs a non-empty list even when the guard above skips it.
+                noPackageSessions ? List.of("__none__") : request.getPackageSessionIds());
+
+        double collected = row != null && row.getCollected() != null ? row.getCollected() : 0d;
+        double due = row != null && row.getDue() != null ? row.getDue() : 0d;
+
+        return BillingSummaryResponseDTO.builder()
+                // Total is derived, never read back: the three cards must always reconcile.
+                .totalBilled(collected + due)
+                .collected(collected)
+                .due(due)
+                .planCount(row != null && row.getPlanCount() != null ? row.getPlanCount() : 0L)
+                .settledPlanCount(
+                        row != null && row.getSettledPlanCount() != null ? row.getSettledPlanCount() : 0L)
+                .currency(row != null ? row.getCurrency() : null)
                 .build();
     }
 

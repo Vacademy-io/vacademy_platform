@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
@@ -300,6 +301,86 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * bumps the attempt counter + timestamp in the same atomic write so the
          * claim and dunning bookkeeping can't diverge.
          */
+        /**
+         * Billing summary for the Total / Collected / Due cards.
+         *
+         * Due is what learners still owe on their enrolments — plan price minus what they have
+         * paid — NOT the count of unpaid payment rows. The two are wildly different: a ₹50,000
+         * course paid in one ₹10,000 instalment leaves a single PAID row and no trace of the
+         * ₹40,000 outstanding, and an enrolment that has never paid has no payment rows at all.
+         * Summing payment_log alone therefore reports institutes as fully collected while lakhs
+         * are still owed.
+         *
+         * Total is returned as collected + due so the three cards always reconcile. Collected is
+         * every PAID payment in the window (matching the table below the cards), while due is the
+         * unpaid remainder of live enrolments — ACTIVE and PENDING_FOR_PAYMENT only, since nobody
+         * is chasing a terminated or cancelled plan. GREATEST(price - paid, 0) keeps an
+         * over-collected or zero-priced plan (free enrolments, CPO plans priced elsewhere) from
+         * pushing due negative.
+         *
+         * The PAID totals are pre-aggregated once and joined, rather than looked up per plan: as a
+         * correlated subquery this took 33 s on an institute with 8,380 live plans, and 172 ms
+         * this way.
+         */
+        @Query(value = """
+                WITH paid_by_plan AS (
+                  SELECT pl.user_plan_id AS plan_id, SUM(pl.payment_amount) AS amt
+                    FROM payment_log pl
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.user_plan_id IS NOT NULL
+                   GROUP BY pl.user_plan_id
+                ), plan_rows AS (
+                  SELECT COALESCE(pp.actual_price, 0) AS price,
+                         COALESCE(pbp.amt, 0) AS paid,
+                         UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                        NULLIF(TRIM(ei.currency), ''))) AS cur
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    LEFT JOIN paid_by_plan pbp ON pbp.plan_id = up.id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                ), collected_rows AS (
+                  SELECT COALESCE(SUM(pl.payment_amount), 0) AS amt, COUNT(*) AS cnt
+                    FROM payment_log pl
+                    JOIN user_plan up ON pl.user_plan_id = up.id
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                   WHERE ei.institute_id = :instituteId
+                     AND pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                )
+                SELECT (SELECT amt FROM collected_rows) AS collected,
+                       COALESCE(SUM(GREATEST(price - paid, 0)), 0) AS due,
+                       (SELECT amt FROM collected_rows)
+                         + COALESCE(SUM(GREATEST(price - paid, 0)), 0) AS totalBilled,
+                       COUNT(*) AS planCount,
+                       COUNT(*) FILTER (WHERE price > 0 AND paid >= price) AS settledPlanCount,
+                       (SELECT cur FROM plan_rows WHERE cur IS NOT NULL
+                         GROUP BY cur ORDER BY COUNT(*) DESC LIMIT 1) AS currency
+                  FROM plan_rows
+                """, nativeQuery = true)
+        BillingSummaryProjection getBillingSummary(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
         @Query("""

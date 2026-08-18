@@ -1,6 +1,7 @@
 import type { PaymentLogEntry } from '@/types/payment-logs';
 import { isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from './exportPaymentLogsCsv';
+import { classifyEntry } from './paymentSummary';
 
 /**
  * Dashboard analytics derived entirely client-side from the payment-logs set the Manage Payments
@@ -14,15 +15,10 @@ import { derivePaymentTypeLabel } from './exportPaymentLogsCsv';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Bucketing is shared with the KPI cards so the two can never disagree about what's still due. */
 const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'PENDING' => {
-    const raw = (
-        entry.current_payment_status ||
-        entry.payment_log?.payment_status ||
-        ''
-    ).toUpperCase();
-    if (raw === 'PAID') return 'PAID';
-    if (raw === 'FAILED') return 'FAILED';
-    return 'PENDING';
+    const bucket = classifyEntry(entry);
+    return bucket === 'paid' ? 'PAID' : bucket === 'failed' ? 'FAILED' : 'PENDING';
 };
 
 /** created_at is the real instant; `date` (UTC-midnight DATE) is the pre-created_at fallback. */
@@ -31,6 +27,17 @@ const entryTime = (entry: PaymentLogEntry): number | null => {
     if (!raw) return null;
     const t = new Date(raw).getTime();
     return Number.isNaN(t) ? null : t;
+};
+
+/**
+ * What to file a payment's revenue under. Normally the course/membership it was taken for, but an
+ * admin-raised invoice has no enrolment behind it (user_plan_id is NULL) and so has no invite name
+ * — those were being grouped as "Unlabelled", which tells the reader nothing. Fall back to what the
+ * payment actually is ("User Invoice").
+ */
+const revenueLabel = (entry: PaymentLogEntry): string => {
+    const name = entry.user_plan?.enroll_invite?.name?.trim();
+    return name && name.length ? name : derivePaymentTypeLabel(entry);
 };
 
 /** The vendor string, normalised for grouping. Blank vendors collapse to "Other". */
@@ -152,7 +159,7 @@ export const computePaymentAnalytics = (entries: PaymentLogEntry[]): PaymentAnal
             collected.count += 1;
             bump(methodMix, vendorLabel(entry));
             bump(gatewayBreakdown, vendorLabel(entry));
-            bump(topCourses, entry.user_plan?.enroll_invite?.name || 'Unlabelled');
+            bump(topCourses, revenueLabel(entry));
         } else if (status === 'FAILED') {
             failed.amount += amount;
             failed.count += 1;

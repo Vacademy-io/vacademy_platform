@@ -6,7 +6,16 @@ _DOC_CONTENT_TYPE_SPECS = {
     "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
     "flashcards": "FLASHCARDS: an INTERACTIVE flashcard deck the learner clicks/taps to flip (question → answer), a handful of the most important cards, built with inline JS/CSS (a 3D flip).",
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
-    "interactive_games": "INTERACTIVE GAME: a small self-contained learning game (drag-and-drop matching, click-to-reveal, memory, or a timed challenge) in inline JS with real state + feedback — genuinely playable.",
+    "interactive_games": (
+        "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "
+        "learning game built from THIS material's own terms. Pick the form that fits the content: "
+        "match each term to its definition, put the steps of a process in the right order, sort "
+        "items into their correct categories, or a click-to-reveal/timed recall challenge. "
+        "Implement it in inline JS with real state, scoring and per-answer feedback (correct/"
+        "incorrect + a short 'why'), and a Reset control. It must work with mouse AND touch — if "
+        "you use drag-and-drop, also support tap-to-select-then-tap-to-place, or prefer "
+        "click/tap-based interaction outright."
+    ),
     "quiz": "QUIZ: an INTERACTIVE multiple-choice quiz — the learner selects answers and gets instant feedback + a score (inline JS), 3-5 questions each with a short explanation. When the learner finishes, report the result with `window.parent.postMessage({type:'vacademy:complete', score:<n>, maxScore:<n>, wrong:<n>, timesSec:[<seconds per question>]}, '*')`.",
 }
 
@@ -23,7 +32,16 @@ def _doc_content_types_block(content_types: "list | None") -> str:
     return (
         "\n\n**Also build these sections into the page** (part of ONE cohesive design, not "
         "disconnected blocks; any interactive part uses inline JS and must actually work; all "
-        "content visible on load — no scroll-reveal):\n" + "\n".join(specs)
+        "content visible on load — no scroll-reveal):\n"
+        + "\n".join(specs)
+        + "\n\nIMPORTANT — these are PRESENTATION FORMATS, not new subject matter. Any "
+        "source-fidelity rule above restricts the FACTS you may state; it does NOT excuse you "
+        "from building these sections. Build every one of them USING the material's own "
+        "content: the flashcards, quiz questions and game items must all be drawn from the "
+        "definitions, lists, steps and classifications in the passages — inventing the "
+        "interaction is required, inventing facts is not allowed. Do not skip a requested "
+        "section because the material 'does not contain a game/quiz' — it never will; that is "
+        "your job to construct from what the material says."
     )
 
 

@@ -1059,7 +1059,33 @@ class CourseOutlineGenerationService:
             return False
 
         outline_response.todos = [t for t in outline_response.todos if not _is_llm_homework_or_solution_todo(t)]
-        
+
+        # Every slide is addressed by todo.path — the backend keys generated
+        # content by it and the frontend maps content back onto slides by it.
+        # The outline LLM sometimes emits the SAME path twice (e.g. a DOCUMENT
+        # and an ASSESSMENT both at C1.CH5.SL5), and the second one then never
+        # receives its content: that is how a course shipped with an empty
+        # "No quiz questions available" slide that had even inherited the
+        # document's title. Re-number duplicates onto free slots in their own
+        # chapter so every todo is uniquely addressable.
+        _seen_paths: set[str] = set()
+        for _t in outline_response.todos:
+            _path = _t.path or ""
+            if _path and _path not in _seen_paths:
+                _seen_paths.add(_path)
+                continue
+            _base = _path.rsplit(".SL", 1)[0] if ".SL" in _path else (_path or "C1.CH1")
+            _n = 1
+            while f"{_base}.SL{_n}" in _seen_paths:
+                _n += 1
+            _new_path = f"{_base}.SL{_n}"
+            logger.warning(
+                "Duplicate todo path %r (%s '%s') — reassigned to %r",
+                _path, _t.type, _t.title or _t.name or "", _new_path,
+            )
+            _t.path = _new_path
+            _seen_paths.add(_new_path)
+
         # Group todos by chapter and find insertion points
         # We need to insert homework slides right after the last slide of each chapter
         chapter_groups = {}

@@ -52,7 +52,13 @@ _CONTENT_TYPE_SPECS = {
     "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
     "flashcards": "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS (a 3D flip). Include the handful of most important cards.",
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
-    "interactive_games": "INTERACTIVE GAME: a small self-contained learning game (e.g. drag-and-drop matching, click-to-reveal, memory, or a timed challenge) in inline JS — track state and give feedback. Make it genuinely playable.",
+    "interactive_games": (
+        "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "
+        "learning game built from the material's own terms — match term to definition, order the "
+        "steps of a process, sort items into categories, or a click-to-reveal/timed recall challenge. "
+        "Inline JS with real state, scoring, per-answer feedback and a Reset control. Must work with "
+        "mouse AND touch (if you use drag-and-drop, also support tap-to-select-then-tap-to-place)."
+    ),
     "quiz": "QUIZ: an INTERACTIVE multiple-choice quiz — the learner selects answers and gets instant feedback + a score (inline JS). 3-6 questions, each with a short explanation.",
     "assignment": "ASSIGNMENT: a clearly-scoped task section — objective, step-by-step instructions, the deliverable, and a simple rubric / success criteria (static content).",
 }
@@ -156,6 +162,11 @@ def _content_types_block(content_types: Optional[list[str]]) -> str:
         "\n\n**Include these sections, in this order** (design them into one cohesive page, "
         "not disconnected blocks — interactive parts use inline JS and must actually work):\n"
         + "\n".join(specs)
+        + "\n\nIMPORTANT — these are PRESENTATION FORMATS, not new subject matter. Any "
+        "source-fidelity rule above restricts the FACTS you may state; it does NOT excuse you from "
+        "building these sections. Build each one USING the supplied material's own content, and "
+        "never skip a requested section because the material 'does not contain a game/quiz' — "
+        "constructing the interaction is your job."
     )
 
 

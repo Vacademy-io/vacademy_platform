@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyIndexRouteImport } from './routes/verify/index'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-registration/index'
@@ -116,6 +117,11 @@ import { Route as AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRout
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/slides/index'
 
+const VerifyIndexRoute = VerifyIndexRouteImport.update({
+  id: '/verify/',
+  path: '/verify/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   id: '/user-profile/',
   path: '/user-profile/',
@@ -737,6 +743,7 @@ export interface FileRoutesByFullPath {
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -844,6 +851,7 @@ export interface FileRoutesByTo {
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
@@ -952,6 +960,7 @@ export interface FileRoutesById {
   '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
+  '/verify/': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -1062,6 +1071,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
+    | '/verify'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1169,6 +1179,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
+    | '/verify'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
@@ -1276,6 +1287,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration/'
     | '/terms-and-conditions/'
     | '/user-profile/'
+    | '/verify/'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1385,6 +1397,7 @@ export interface RootRouteChildren {
   SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
+  VerifyIndexRoute: typeof VerifyIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   ParentChildChildIdRoute: typeof ParentChildChildIdRouteWithChildren
@@ -1445,6 +1458,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify/': {
+      id: '/verify/'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-profile/': {
       id: '/user-profile/'
       path: '/user-profile'
@@ -2273,6 +2293,7 @@ const rootRouteChildren: RootRouteChildren = {
   SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
+  VerifyIndexRoute: VerifyIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   ParentChildChildIdRoute: ParentChildChildIdRouteWithChildren,

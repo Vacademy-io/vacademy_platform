@@ -12,19 +12,19 @@ import {
     MagnifyingGlassPlus,
     MagnifyingGlassMinus,
     ArrowsOut,
+    Plus,
+    Trash,
 } from '@phosphor-icons/react';
 import { nanoid } from 'nanoid';
 import {
     handleConfigureCertificateSettings,
+    type BarcodeContent,
     type CertificateAspectRatio,
+    type CertificateCustomField,
 } from '../../-services/setting-services';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { certificateHtml as defaultCertificateHtml } from '../../-utils/certificate-html';
 import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
-import {
-    CERTIFICATE_BARCODE_PLACEHOLDER,
-    CERTIFICATE_QR_PLACEHOLDER,
-} from '../../-utils/certificate-code-placeholders';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import {
@@ -40,14 +40,27 @@ import type {
     FieldMapping,
     ImageTemplate,
 } from '@/types/certificate/certificate-types';
-import { serializeImageTemplateToHtml } from '../../-utils/serialize-image-template-to-html';
+import {
+    CUSTOM_FIELD_PREFIX,
+    fieldNameToToken,
+    MAX_TEXT_LINES,
+    normalizeCustomFieldKey,
+    serializeImageTemplateToHtml,
+    TEXT_LINE_HEIGHT,
+} from '../../-utils/serialize-image-template-to-html';
 import {
     buildAutoBadgeHtml,
     codeSizePx,
     injectAutoBadge,
+    isCodeFieldName,
+    minBarcodeWidthMm,
     planFromHtml,
     type BadgeCodeType,
 } from '../../-utils/certificate-auto-badge';
+import {
+    applyCertificateSamples,
+    buildCertificateSampleTokens,
+} from '../../-utils/certificate-preview-samples';
 import { downloadCertificateTemplatePreview } from '../../-utils/download-certificate-template';
 import {
     type BuiltinCertificateTemplate,
@@ -132,6 +145,10 @@ const AVAILABLE_FIELDS: AvailableField[] = [
     { name: 'certificate_id', displayName: 'Certificate ID', type: 'text', isRequired: false, sampleValue: 'VA-0123-2026', source: 'system' },
     { name: 'certificate_qr', displayName: 'QR Code', type: 'text', isRequired: false, sampleValue: '(QR image)', source: 'system' },
     { name: 'certificate_barcode', displayName: 'Barcode', type: 'text', isRequired: false, sampleValue: '(barcode image)', source: 'system' },
+    // Worth placing beside a barcode: a barcode that gets damaged, photocopied
+    // or cropped stops scanning, and the printed code is then the only way left
+    // to verify the certificate.
+    { name: 'certificate_short_code', displayName: 'Verification Code', type: 'text', isRequired: false, sampleValue: 'A1B2C3D4E5', source: 'system' },
     { name: 'enrollment_number', displayName: 'Enrollment Number', type: 'text', isRequired: false, sampleValue: 'ENR2024001', source: 'system' },
     { name: 'email', displayName: 'Email', type: 'text', isRequired: false, sampleValue: 'student@example.com', source: 'system' },
     { name: 'mobile_number', displayName: 'Mobile Number', type: 'text', isRequired: false, sampleValue: '+1 555 0100', source: 'system' },
@@ -163,6 +180,205 @@ const DraggableFieldChip = ({ field }: { field: AvailableField }) => {
     );
 };
 
+/**
+ * Admin-defined certificate fields.
+ *
+ * The built-in token list is platform-wide and fixed, so an institute wanting
+ * "Grade", "Director of Studies" or an accreditation line on its certificates
+ * had no way to add one — and dropping an unrecognised chip on the canvas used
+ * to print the raw `{{GRADE}}` on the learner's PDF.
+ *
+ * Keys are normalised to the token shape as you type, and shown, because the
+ * key is what the renderer matches on. An admin who cannot see it has no way to
+ * tell why a field came out blank.
+ */
+const CustomFieldsEditor = ({
+    fields,
+    onChange,
+}: {
+    fields: CertificateCustomField[];
+    onChange: (fields: CertificateCustomField[]) => void;
+}) => {
+    const update = (index: number, patch: Partial<CertificateCustomField>) =>
+        onChange(fields.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+
+    const addField = () =>
+        onChange([
+            ...fields,
+            { key: '', displayName: '', valueType: 'STATIC', value: '', fallbackValue: '' },
+        ]);
+
+    // Duplicates are flagged rather than blocked: two fields sharing a key both
+    // resolve to the same token, so the second silently overwrites the first on
+    // every certificate — invisible unless we say so.
+    const keyCounts = fields.reduce<Record<string, number>>((counts, f) => {
+        const key = normalizeCustomFieldKey(f.key || '');
+        if (key) counts[key] = (counts[key] ?? 0) + 1;
+        return counts;
+    }, {});
+
+    return (
+        <div>
+            <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Your own fields</label>
+                <Button type="button" variant="outline" size="sm" onClick={addField}>
+                    <Plus className="mr-1 size-3" />
+                    Add field
+                </Button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+                For anything the built-in fields don&apos;t cover — a grade, a signatory&apos;s
+                title, an accreditation line. Each one becomes a chip you can drag onto the design,
+                anywhere you like.
+            </p>
+
+            {fields.length === 0 ? (
+                <div className="mt-2 rounded border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+                    No custom fields yet.
+                </div>
+            ) : (
+                <div className="mt-2 space-y-3">
+                    {fields.map((field, index) => {
+                        const key = normalizeCustomFieldKey(field.key || '');
+                        const isDuplicate = !!key && (keyCounts[key] ?? 0) > 1;
+                        return (
+                            <div
+                                key={index}
+                                className="rounded border bg-card p-3 space-y-2"
+                            >
+                                <div className="flex items-start gap-2">
+                                    <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">
+                                                Field name
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={field.displayName}
+                                                placeholder="Grade"
+                                                onChange={(e) => {
+                                                    // Typing the label fills the key until the
+                                                    // admin edits the key directly, so the common
+                                                    // case needs one input, not two.
+                                                    const displayName = e.target.value;
+                                                    const derivedFromOld = normalizeCustomFieldKey(
+                                                        field.displayName || ''
+                                                    );
+                                                    update(index, {
+                                                        displayName,
+                                                        key:
+                                                            !field.key || field.key === derivedFromOld
+                                                                ? normalizeCustomFieldKey(displayName)
+                                                                : field.key,
+                                                    });
+                                                }}
+                                                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">
+                                                Where the value comes from
+                                            </label>
+                                            <select
+                                                value={field.valueType}
+                                                onChange={(e) =>
+                                                    update(index, {
+                                                        valueType:
+                                                            e.target.value === 'CUSTOM_FIELD'
+                                                                ? 'CUSTOM_FIELD'
+                                                                : 'STATIC',
+                                                    })
+                                                }
+                                                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                            >
+                                                <option value="STATIC">
+                                                    Same text on every certificate
+                                                </option>
+                                                <option value="CUSTOM_FIELD">
+                                                    The learner&apos;s own answer
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground">
+                                                {field.valueType === 'CUSTOM_FIELD'
+                                                    ? 'Learner custom field key'
+                                                    : 'Text to print'}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={field.value}
+                                                placeholder={
+                                                    field.valueType === 'CUSTOM_FIELD'
+                                                        ? 'final_grade'
+                                                        : 'Director of Studies'
+                                                }
+                                                onChange={(e) =>
+                                                    update(index, { value: e.target.value })
+                                                }
+                                                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                            />
+                                        </div>
+                                        {field.valueType === 'CUSTOM_FIELD' && (
+                                            <div>
+                                                <label className="text-xs text-muted-foreground">
+                                                    If the learner has no answer
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={field.fallbackValue ?? ''}
+                                                    placeholder="—"
+                                                    onChange={(e) =>
+                                                        update(index, {
+                                                            fallbackValue: e.target.value,
+                                                        })
+                                                    }
+                                                    className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                            onChange(fields.filter((_, i) => i !== index))
+                                        }
+                                        className="mt-5 text-destructive hover:text-destructive"
+                                        aria-label={`Remove ${field.displayName || 'field'}`}
+                                    >
+                                        <Trash className="size-4" />
+                                    </Button>
+                                </div>
+
+                                {key ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Placed on the certificate as{' '}
+                                        <code className="rounded bg-muted px-1 font-mono">
+                                            {`{{CF_${key}}}`}
+                                        </code>
+                                        {isDuplicate && (
+                                            <span className="ml-2 font-medium text-destructive">
+                                                Two fields share this name — only the first will be
+                                                used.
+                                            </span>
+                                        )}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                        Give this field a name so it can be placed.
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 type CertificateConfig = {
     isDefaultCertificateSettingOn?: boolean;
     certificateNumbering?: {
@@ -173,6 +389,8 @@ type CertificateConfig = {
     };
     qrVerificationUrlTemplate?: string;
     badgeCodeType?: 'QR' | 'BARCODE';
+    barcodeContent?: BarcodeContent;
+    customFields?: CertificateCustomField[];
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
     autoIssuePercentage?: number;
@@ -282,6 +500,52 @@ const CertificatesSettings = () => {
     const [sequencePadding, setSequencePadding] = useState<number>(3);
     const [qrVerificationUrlTemplate, setQrVerificationUrlTemplate] = useState<string>('');
     const [badgeCodeType, setBadgeCodeType] = useState<'QR' | 'BARCODE'>('QR');
+    // Defaults to NUMBER, which is what every certificate issued before this
+    // setting existed encodes. Switching to VERIFICATION_CODE makes the barcode
+    // scannable-to-verify but noticeably wider, so it is opt-in.
+    const [barcodeContent, setBarcodeContent] = useState<BarcodeContent>('NUMBER');
+    const [customFields, setCustomFields] = useState<CertificateCustomField[]>([]);
+
+    // What actually gets saved: keys normalised to the token shape the renderer
+    // looks for, keyless rows dropped, duplicates collapsed. Two fields sharing
+    // a key would both resolve to the same {{CF_…}} token, so the second would
+    // silently overwrite the first on every certificate.
+    const sanitizedCustomFields = useMemo<CertificateCustomField[]>(() => {
+        const seen = new Set<string>();
+        return customFields.reduce<CertificateCustomField[]>((out, field) => {
+            const key = normalizeCustomFieldKey(field.key || '');
+            if (!key || seen.has(key)) return out;
+            seen.add(key);
+            out.push({
+                key,
+                displayName: field.displayName?.trim() || key,
+                valueType: field.valueType === 'CUSTOM_FIELD' ? 'CUSTOM_FIELD' : 'STATIC',
+                value: field.value ?? '',
+                fallbackValue: field.fallbackValue ?? '',
+            });
+            return out;
+        }, []);
+    }, [customFields]);
+
+    // The palette: built-ins plus this institute's own fields. Chips are keyed
+    // `custom_field:<KEY>`, which the serializer turns into {{CF_<KEY>}}.
+    const paletteFields = useMemo<AvailableField[]>(
+        () => [
+            ...AVAILABLE_FIELDS,
+            ...sanitizedCustomFields.map((field) => ({
+                name: `${CUSTOM_FIELD_PREFIX}${field.key}`,
+                displayName: field.displayName,
+                type: 'text' as const,
+                isRequired: false,
+                sampleValue:
+                    field.valueType === 'CUSTOM_FIELD'
+                        ? field.fallbackValue || `(${field.value || 'learner value'})`
+                        : field.value,
+                source: 'system' as const,
+            })),
+        ],
+        [sanitizedCustomFields]
+    );
     // True while the visual editor is showing a template that was auto-loaded
     // as a starting point rather than saved by this institute or picked just
     // now. Keeps the gallery from claiming it is the active design.
@@ -337,6 +601,18 @@ const CertificatesSettings = () => {
     // the right default based on what's saved.
     const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
     const [htmlTemplate, setHtmlTemplate] = useState<string>('');
+
+    // Whether a barcode will actually print — either stamped automatically as
+    // the badge, or placed on the design by hand. A placed Barcode field renders
+    // regardless of badgeCodeType, so keying the setting off badgeCodeType alone
+    // hid it from exactly the admins who had positioned one themselves.
+    const usesBarcode = useMemo(() => {
+        if (badgeCodeType === 'BARCODE') return true;
+        if (editorMode === 'visual') {
+            return fieldMappings.some((f) => f.fieldName === 'certificate_barcode');
+        }
+        return /\{\{\s*CERTIFICATE_BARCODE\s*\}\}/i.test(htmlTemplate || '');
+    }, [badgeCodeType, editorMode, fieldMappings, htmlTemplate]);
     const htmlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     // Hydrate local state from the institute store whenever the underlying
@@ -371,6 +647,8 @@ const CertificatesSettings = () => {
         setSequencePadding(ex.certificateNumbering?.sequencePadding ?? 3);
         setQrVerificationUrlTemplate(ex.qrVerificationUrlTemplate ?? '');
         setBadgeCodeType(ex.badgeCodeType === 'BARCODE' ? 'BARCODE' : 'QR');
+        setBarcodeContent(ex.barcodeContent === 'VERIFICATION_CODE' ? 'VERIFICATION_CODE' : 'NUMBER');
+        setCustomFields(Array.isArray(ex.customFields) ? ex.customFields : []);
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
         setImageTemplate(parsed.imageTemplate);
         // Restored from saved settings, so it genuinely is this
@@ -679,14 +957,21 @@ const CertificatesSettings = () => {
         // get the same box the backend's automatic stamp uses. A text-shaped
         // box would letterbox a QR into a sliver and squash a barcode until it
         // stops scanning.
-        const isCodeField =
-            field.name === 'certificate_qr' || field.name === 'certificate_barcode';
-        const codeBox = codeSizePx(field.name === 'certificate_barcode' ? 'BARCODE' : 'QR');
+        const isCodeField = isCodeFieldName(field.name);
+        const codeBox = codeSizePx(
+            field.name === 'certificate_barcode' ? 'BARCODE' : 'QR',
+            barcodeContent
+        );
         const width = isCodeField
             ? codeBox.width
             : Math.round(Math.max(220, imageTemplate.width * 0.3));
         const fontSize = Math.max(18, Math.round(imageTemplate.height * 0.03));
-        const height = isCodeField ? codeBox.height : Math.round(fontSize * 2);
+        // Tall enough for the two lines a long value is allowed to wrap to
+        // (MAX_TEXT_LINES x TEXT_LINE_HEIGHT), so a learner with a long name
+        // doesn't land in a box that was only ever one line deep.
+        const height = isCodeField
+            ? codeBox.height
+            : Math.round(fontSize * MAX_TEXT_LINES * TEXT_LINE_HEIGHT);
         const newMapping: FieldMapping = {
             id: nanoid(),
             fieldName: field.name,
@@ -830,6 +1115,11 @@ const CertificatesSettings = () => {
                 },
                 qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
                 badgeCodeType,
+                barcodeContent,
+                // Always sent, including as `[]`, so deleting the last custom
+                // field actually clears it. `undefined` would hit the backend's
+                // preserve-on-null merge and silently keep the old list.
+                customFields: sanitizedCustomFields,
             });
 
             // Patch the institute store with the just-saved values so a
@@ -878,6 +1168,8 @@ const CertificatesSettings = () => {
                     },
                     qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
                     badgeCodeType,
+                    barcodeContent,
+                    customFields: sanitizedCustomFields,
                 };
                 const nextSettings = {
                     ...parsedSettings,
@@ -924,7 +1216,11 @@ const CertificatesSettings = () => {
                 imageTemplate,
                 fieldMappings,
                 `${imageTemplate.originalFileName || 'certificate-template'}-preview.pdf`,
-                { customImages, instituteLogoUrl: logoUrl }
+                {
+                    customImages,
+                    instituteLogoUrl: logoUrl,
+                    customFields: sanitizedCustomFields,
+                }
             );
         } catch (e) {
             console.error('Failed to download template preview', e);
@@ -1216,6 +1512,52 @@ const CertificatesSettings = () => {
                     </p>
                 </div>
 
+                {usesBarcode && (
+                    <div>
+                        <label className="text-sm font-medium" htmlFor="barcode-content">
+                            What the barcode encodes
+                        </label>
+                        <select
+                            id="barcode-content"
+                            value={barcodeContent}
+                            onChange={(e) =>
+                                setBarcodeContent(
+                                    e.target.value === 'VERIFICATION_CODE'
+                                        ? 'VERIFICATION_CODE'
+                                        : 'NUMBER'
+                                )
+                            }
+                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                        >
+                            <option value="NUMBER">Certificate number only (default)</option>
+                            <option value="VERIFICATION_CODE">
+                                Verification code — anyone can scan it to check the certificate
+                            </option>
+                        </select>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {barcodeContent === 'VERIFICATION_CODE' ? (
+                                <>
+                                    Scanning the barcode gives a code that verifies the certificate
+                                    on your verification page. It carries about twice as much data
+                                    as the number alone, so it needs to be at least{' '}
+                                    <strong>{minBarcodeWidthMm('VERIFICATION_CODE')}mm</strong> wide
+                                    to still scan off a printed page — the design below warns you if
+                                    it is too narrow.
+                                </>
+                            ) : (
+                                <>
+                                    Scanning gives the certificate number as text. That identifies
+                                    the certificate but proves nothing, because the number on its
+                                    own is not a credential. Switch to the verification code to make
+                                    a barcode scan actually verify.
+                                </>
+                            )}
+                        </p>
+                    </div>
+                )}
+
+                <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
+
                 <div>
                     <label className="text-sm font-medium" htmlFor="qr-verify-url">
                         QR verification link (optional)
@@ -1364,7 +1706,10 @@ const CertificatesSettings = () => {
                             customHeightMm={customHeightMm}
                             onResetToDefault={() => setHtmlTemplate(defaultCertificateHtml)}
                             badgeCodeType={badgeCodeType}
+                            barcodeContent={barcodeContent}
                             sampleCertificateId={sampleCertificateNumber}
+                            paletteFields={paletteFields}
+                            customFields={sanitizedCustomFields}
                         />
                     )}
 
@@ -1411,7 +1756,7 @@ const CertificatesSettings = () => {
                                             Drag a field
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            {AVAILABLE_FIELDS.map((f) => (
+                                            {paletteFields.map((f) => (
                                                 <DraggableFieldChip key={f.name} field={f} />
                                             ))}
                                         </div>
@@ -1446,6 +1791,14 @@ const CertificatesSettings = () => {
                                     customImages={customImages}
                                     onCustomImagesChange={setCustomImages}
                                     badgeCodeType={badgeCodeType}
+                                    barcodeContent={barcodeContent}
+                                    // The editor works in canvas pixels, but
+                                    // whether a code scans is a printed-millimetre
+                                    // question — which depends on the page size.
+                                    pageWidthMm={
+                                        aspectRatioToMm(aspectRatio, customWidthMm, customHeightMm)
+                                            .wMm
+                                    }
                                     sampleCertificateId={sampleCertificateNumber}
                                 />
                             )}
@@ -1458,6 +1811,8 @@ const CertificatesSettings = () => {
                                     logoUrl={logoUrl}
                                     instituteName={effectiveInstituteName}
                                     badgeCodeType={badgeCodeType}
+                                    barcodeContent={barcodeContent}
+                                    customFields={sanitizedCustomFields}
                                     sampleCertificateId={sampleCertificateNumber}
                                 />
                             )}
@@ -1470,38 +1825,6 @@ const CertificatesSettings = () => {
     );
 };
 
-/**
- * Maps a system field's `name` to the placeholder token the backend
- * substitutes at issuance time. Mirrors FIELD_NAME_TO_TOKEN in
- * serialize-image-template-to-html.ts so HTML-mode chip insertion produces
- * the same tokens the visual editor would have written.
- */
-const FIELD_NAME_TO_TOKEN_HTML: Record<string, string> = {
-    user_id: '{{USER_ID}}',
-    enrollment_number: '{{ENROLLMENT_NUMBER}}',
-    student_name: '{{STUDENT_NAME}}',
-    full_name: '{{STUDENT_NAME}}',
-    email: '{{EMAIL}}',
-    mobile_number: '{{MOBILE_NUMBER}}',
-    institute_name: '{{INSTITUTE_NAME}}',
-    institute_logo: '{{INSTITUTE_LOGO}}',
-    course_name: '{{COURSE_NAME}}',
-    package_name: '{{PACKAGE_NAME}}',
-    package_level: '{{PACKAGE_LEVEL}}',
-    session_name: '{{SESSION_NAME}}',
-    completion_date: '{{DATE_OF_COMPLETION}}',
-    completion_percentage: '{{COMPLETION_PERCENTAGE}}',
-    // Both `date_of_completion` (new canonical name) and legacy `issue_date`
-    // map to the same token so saved templates that pre-date the rename keep
-    // resolving on the backend without re-saving.
-    date_of_completion: '{{DATE_OF_COMPLETION}}',
-    issue_date: '{{DATE_OF_COMPLETION}}',
-    certificate_id: '{{CERTIFICATE_ID}}',
-    // Image tokens — a template uses these as <img src="{{CERTIFICATE_QR}}">.
-    certificate_qr: '{{CERTIFICATE_QR}}',
-    certificate_barcode: '{{CERTIFICATE_BARCODE}}',
-    theme_color: '{{INSTITUTE_THEME_COLOR}}',
-};
 
 /**
  * Raw HTML editor: textarea on the left for writing/pasting custom HTML,
@@ -1543,7 +1866,10 @@ const HtmlCertificateEditor = ({
     customHeightMm,
     onResetToDefault,
     badgeCodeType,
+    barcodeContent,
     sampleCertificateId,
+    paletteFields,
+    customFields,
 }: {
     html: string;
     onHtmlChange: (html: string) => void;
@@ -1555,7 +1881,12 @@ const HtmlCertificateEditor = ({
     customHeightMm: number;
     onResetToDefault: () => void;
     badgeCodeType: BadgeCodeType;
+    barcodeContent: BarcodeContent;
     sampleCertificateId: string;
+    /** Built-ins plus the institute's own fields, so both editors offer the same set. */
+    paletteFields: AvailableField[];
+    /** Definitions, so the preview substitutes the value each field will print. */
+    customFields: CertificateCustomField[];
 }) => {
     const insertAtCaret = (token: string) => {
         const ta = textareaRef.current;
@@ -1577,46 +1908,17 @@ const HtmlCertificateEditor = ({
 
     const previewSrcDoc = useMemo(() => {
         const sampleCertId = sampleCertificateId;
-        const samples: Record<string, string> = {
-            '{{STUDENT_NAME}}': 'Alex Sample',
-            '{{INSTITUTE_NAME}}': instituteName || 'Vacademy Institute',
-            '{{COURSE_NAME}}': 'Intro to Sample Course',
-            '{{PACKAGE_NAME}}': 'Foundation Package',
-            '{{PACKAGE_LEVEL}}': 'Beginner',
-            '{{SESSION_NAME}}': '2025-26',
-            '{{COMPLETION_PERCENTAGE}}': '92',
-            '{{DATE_OF_COMPLETION}}': new Date().toLocaleDateString(),
-            // Legacy alias kept so previews of pre-rename templates still
-            // substitute correctly.
-            '{{ISSUE_DATE}}': new Date().toLocaleDateString(),
-            '{{CERTIFICATE_ID}}': sampleCertId,
-            // Schematic stand-ins: the real codes only exist once a number is
-            // allocated at issuance, but leaving the token unsubstituted would
-            // render a broken image in the preview.
-            '{{CERTIFICATE_QR}}': CERTIFICATE_QR_PLACEHOLDER,
-            '{{CERTIFICATE_BARCODE}}': CERTIFICATE_BARCODE_PLACEHOLDER,
-            '{{ENROLLMENT_NUMBER}}': 'ENR2024001',
-            '{{EMAIL}}': 'student@example.com',
-            '{{MOBILE_NUMBER}}': '+1 555 0100',
-            '{{USER_ID}}': 'PREVIEW_USER',
-            // Legacy tokens used by the bundled default template and older
-            // saved templates. The backend fills these via its numeric
-            // placeholder pass (LEVEL->2, TODAY_DATE->9, DESIGNATION->6,
-            // SIGNATURE->7); mirror them here so the preview matches the
-            // issued certificate instead of showing raw {{TOKEN}} text.
-            '{{LEVEL}}': 'Beginner',
-            '{{TODAY_DATE}}': new Date().toLocaleDateString(),
-            '{{DESIGNATION}}': 'Official Signatory',
-            '{{SIGNATURE}}': '',
-            '{{INSTITUTE_THEME_COLOR}}': '#1e4fa1',
-            '{{INSTITUTE_LOGO}}':
-                logoUrl ||
-                'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-        };
         // Plan off the raw template, before substitution removes the tokens.
         const badgePlan = planFromHtml(html || '');
-        let out = html || '';
-        for (const [t, v] of Object.entries(samples)) out = out.split(t).join(v);
+        const out = applyCertificateSamples(
+            html || '',
+            buildCertificateSampleTokens({
+                sampleCertificateId: sampleCertId,
+                instituteName,
+                logoUrl,
+                customFields,
+            })
+        );
         // Mirror server-side appendCertificateIdBadge, including the scannable
         // code it stamps beside the number. The old hand-rolled copy showed the
         // number only, so the code arrived unannounced on the issued PDF.
@@ -1625,10 +1927,19 @@ const HtmlCertificateEditor = ({
             buildAutoBadgeHtml({
                 badgePlan,
                 codeType: badgeCodeType,
+                barcodeContent,
                 certificateId: sampleCertId,
             })
         );
-    }, [html, logoUrl, instituteName, badgeCodeType, sampleCertificateId]);
+    }, [
+        html,
+        logoUrl,
+        instituteName,
+        badgeCodeType,
+        barcodeContent,
+        customFields,
+        sampleCertificateId,
+    ]);
 
     return (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -1647,9 +1958,8 @@ const HtmlCertificateEditor = ({
                         </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        {AVAILABLE_FIELDS.map((f) => {
-                            const token = FIELD_NAME_TO_TOKEN_HTML[f.name] ??
-                                `{{${f.name.toUpperCase()}}}`;
+                        {paletteFields.map((f) => {
+                            const token = fieldNameToToken(f.name);
                             return (
                                 <button
                                     key={f.name}
@@ -1809,6 +2119,8 @@ const CertificateSettingsPreview = ({
     logoUrl,
     instituteName,
     badgeCodeType,
+    barcodeContent,
+    customFields,
     sampleCertificateId,
 }: {
     imageTemplate: ImageTemplate;
@@ -1817,7 +2129,9 @@ const CertificateSettingsPreview = ({
     logoUrl?: string;
     instituteName?: string;
     badgeCodeType: BadgeCodeType;
+    barcodeContent: BarcodeContent;
     sampleCertificateId: string;
+    customFields: CertificateCustomField[];
 }) => {
     const srcDoc = useMemo(() => {
         const html = serializeImageTemplateToHtml(imageTemplate, fieldMappings, customImages);
@@ -1825,42 +2139,15 @@ const CertificateSettingsPreview = ({
         // does — after substitution the tokens are gone and every design would
         // look like it places nothing.
         const badgePlan = planFromHtml(html);
-        const samples: Record<string, string> = {
-            '{{STUDENT_NAME}}': 'Alex Sample',
-            '{{INSTITUTE_NAME}}': instituteName || 'Vacademy Institute',
-            '{{COURSE_NAME}}': 'Intro to Sample Course',
-            '{{PACKAGE_NAME}}': 'Foundation Package',
-            '{{PACKAGE_LEVEL}}': 'Beginner',
-            '{{SESSION_NAME}}': '2025-26',
-            '{{COMPLETION_PERCENTAGE}}': '92',
-            '{{DATE_OF_COMPLETION}}': new Date().toLocaleDateString(),
-            // Legacy alias for pre-rename templates.
-            '{{ISSUE_DATE}}': new Date().toLocaleDateString(),
-            '{{CERTIFICATE_ID}}': sampleCertificateId,
-            '{{CERTIFICATE_QR}}': CERTIFICATE_QR_PLACEHOLDER,
-            '{{CERTIFICATE_BARCODE}}': CERTIFICATE_BARCODE_PLACEHOLDER,
-            '{{ENROLLMENT_NUMBER}}': 'ENR2024001',
-            '{{EMAIL}}': 'student@example.com',
-            '{{MOBILE_NUMBER}}': '+1 555 0100',
-            // Legacy tokens used by the bundled default template and older
-            // saved templates. The backend fills these via its numeric
-            // placeholder pass (LEVEL->2, TODAY_DATE->9, DESIGNATION->6,
-            // SIGNATURE->7); mirror them here so the preview matches the
-            // issued certificate instead of showing raw {{TOKEN}} text.
-            '{{LEVEL}}': 'Beginner',
-            '{{TODAY_DATE}}': new Date().toLocaleDateString(),
-            '{{DESIGNATION}}': 'Official Signatory',
-            '{{SIGNATURE}}': '',
-            '{{INSTITUTE_THEME_COLOR}}': '#1e4fa1',
-            // Use the real institute logo URL when available so the preview
-            // matches the issued certificate. Falls back to a transparent gif
-            // so missing-logo institutes don't show a broken image.
-            '{{INSTITUTE_LOGO}}':
-                logoUrl ||
-                'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-        };
-        let out = html;
-        for (const [t, v] of Object.entries(samples)) out = out.split(t).join(v);
+        const out = applyCertificateSamples(
+            html,
+            buildCertificateSampleTokens({
+                sampleCertificateId,
+                instituteName,
+                logoUrl,
+                customFields,
+            })
+        );
         // Mirror the server's automatic badge so the preview shows the code and
         // number an admin has not placed themselves — the parts that would
         // otherwise appear for the first time on an issued PDF.
@@ -1869,6 +2156,7 @@ const CertificateSettingsPreview = ({
             buildAutoBadgeHtml({
                 badgePlan,
                 codeType: badgeCodeType,
+                barcodeContent,
                 certificateId: sampleCertificateId,
             })
         );
@@ -1879,6 +2167,8 @@ const CertificateSettingsPreview = ({
         logoUrl,
         instituteName,
         badgeCodeType,
+        barcodeContent,
+        customFields,
         sampleCertificateId,
     ]);
 

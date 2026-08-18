@@ -55,6 +55,33 @@ export interface CertificateSavePayload {
     qrVerificationUrlTemplate?: string;
     /** Which code is stamped beside the number on every certificate. */
     badgeCodeType?: 'QR' | 'BARCODE';
+    /**
+     * What the Barcode field encodes. `NUMBER` (the default) prints the bare
+     * certificate number, which scans to a string but verifies nothing.
+     * `VERIFICATION_CODE` prints `NUMBER*CODE`, which the public verify page
+     * resolves — at the cost of a wider barcode.
+     */
+    barcodeContent?: BarcodeContent;
+    /**
+     * Admin-defined fields, for values the platform has no built-in token for.
+     * Each becomes a draggable chip and a {{CF_<KEY>}} token on the template.
+     * Send `[]` to clear them; `undefined` preserves what the server has.
+     */
+    customFields?: CertificateCustomField[];
+}
+
+export type BarcodeContent = 'NUMBER' | 'VERIFICATION_CODE';
+
+export interface CertificateCustomField {
+    /** Uppercase A–Z, 0–9 and underscores. Rendered as {{CF_<KEY>}}. */
+    key: string;
+    displayName: string;
+    /** STATIC = the same text on every certificate; CUSTOM_FIELD = the learner's own answer. */
+    valueType: 'STATIC' | 'CUSTOM_FIELD';
+    /** The literal text for STATIC; the learner custom field's key for CUSTOM_FIELD. */
+    value: string;
+    /** Printed when a CUSTOM_FIELD lookup finds no answer. */
+    fallbackValue?: string;
 }
 
 export const handleConfigureCertificateSettings = async (

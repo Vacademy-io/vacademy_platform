@@ -31,10 +31,41 @@ const FIELD_NAME_TO_TOKEN: Record<string, string> = {
     // data URI for each, so these are image fields, not text.
     certificate_qr: '{{CERTIFICATE_QR}}',
     certificate_barcode: '{{CERTIFICATE_BARCODE}}',
+    // The verification code in readable form. Worth placing next to a barcode:
+    // a barcode that gets damaged, photocopied or cropped stops scanning, and
+    // the printed code is then the only way left to verify the certificate.
+    certificate_short_code: '{{CERTIFICATE_SHORT_CODE}}',
     theme_color: '{{INSTITUTE_THEME_COLOR}}',
 };
 
+/**
+ * Prefix an admin-defined field's name carries on the canvas, and the namespace
+ * its token lands in. Namespaced because admins choose these keys: without a
+ * prefix, a field keyed `student_name` would shadow the real
+ * `{{STUDENT_NAME}}` and silently print a constant on every certificate.
+ */
+export const CUSTOM_FIELD_PREFIX = 'custom_field:';
+
+/**
+ * Uppercase, `[A-Z0-9_]` only. Normalised identically on the backend
+ * (CertificateCustomFieldService.normaliseKey), so a key saved with spaces or
+ * lowercase still matches its token instead of rendering blank.
+ */
+export const normalizeCustomFieldKey = (raw: string): string =>
+    raw
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
 export function fieldNameToToken(fieldName: string): string {
+    if (fieldName.startsWith(CUSTOM_FIELD_PREFIX)) {
+        const key = normalizeCustomFieldKey(fieldName.slice(CUSTOM_FIELD_PREFIX.length));
+        // A key that normalises to nothing has no token to emit. Returning an
+        // empty string means the span renders blank rather than printing a
+        // malformed `{{CF_}}` on the learner's certificate.
+        return key ? `{{CF_${key}}}` : '';
+    }
     return FIELD_NAME_TO_TOKEN[fieldName] ?? `{{${fieldName.toUpperCase()}}}`;
 }
 
@@ -48,6 +79,37 @@ const escapeHtml = (s: string): string =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
+/**
+ * Text wrapping on the certificate.
+ *
+ * <p>Fields used to be emitted `white-space:nowrap; overflow:hidden`, so a value
+ * longer than its box was silently sliced — and because the box centres its
+ * content, the slice took characters off <em>both</em> ends. A learner called
+ * "Bhuvaneshwari Ramachandran" printed as "uvaneshwari Ramachand". Long course
+ * names did the same.
+ *
+ * <p>Values now wrap to at most {@link MAX_TEXT_LINES} lines and can never
+ * exceed the box width. Two lines is the cap because a certificate is a fixed
+ * layout: a name that grows to four lines collides with whatever the design has
+ * underneath it, which is a worse failure than a slightly smaller font.
+ */
+export const MAX_TEXT_LINES = 2;
+
+/** Unitless, so `max-height` in `em` scales with any font size the fitter picks. */
+export const TEXT_LINE_HEIGHT = 1.2;
+
+/**
+ * Width available to the text once the box's own padding and border are taken
+ * off. This is the number the server-side fitter measures against, so it has to
+ * be the real content width, not the box width.
+ */
+export const fieldContentWidthPx = (f: FieldMapping): number => {
+    const padding = typeof f.style.padding === 'number' ? f.style.padding : 0;
+    const border = f.style.borderColor ? 1 : 0;
+    return Math.max(1, Math.round(f.position.width - 2 * padding - 2 * border));
+};
+
+/** The positioned box. Vertical centring and clipping live here. */
 const buildFieldStyle = (f: FieldMapping): string => {
     const parts: string[] = [
         'position:absolute',
@@ -55,14 +117,12 @@ const buildFieldStyle = (f: FieldMapping): string => {
         `top:${f.position.y}px`,
         `width:${f.position.width}px`,
         `height:${f.position.height}px`,
-        `font-family:${f.style.fontFamily}`,
-        `font-size:${f.style.fontSize}px`,
-        `font-weight:${f.style.fontWeight}`,
-        `color:${f.style.fontColor}`,
-        `text-align:${f.style.alignment}`,
-        'line-height:1.2',
-        'white-space:nowrap',
-        'overflow:hidden',
+        // Deliberately visible. The inner element is what constrains the text:
+        // it can never be wider than this box, and it is clamped to two lines.
+        // Clipping here as well would slice the second line in half whenever a
+        // box is shorter than two lines — the flex centring puts the overflow on
+        // both edges, so you get slivers of two lines rather than one clean one.
+        'overflow:visible',
         'box-sizing:border-box',
         'display:flex',
         `justify-content:${
@@ -79,6 +139,30 @@ const buildFieldStyle = (f: FieldMapping): string => {
     if (typeof f.style.padding === 'number') parts.push(`padding:${f.style.padding}px`);
     return parts.join(';');
 };
+
+/**
+ * The text itself. Given an explicit `width:100%` rather than left as an
+ * anonymous flex item, so wrapping is well-defined in the PDF renderer instead
+ * of depending on how it sizes anonymous items.
+ */
+const buildFieldTextStyle = (f: FieldMapping): string =>
+    [
+        'width:100%',
+        `font-family:${f.style.fontFamily}`,
+        `font-size:${f.style.fontSize}px`,
+        `font-weight:${f.style.fontWeight}`,
+        `color:${f.style.fontColor}`,
+        `text-align:${f.style.alignment}`,
+        `line-height:${TEXT_LINE_HEIGHT}`,
+        // `em` here is this element's own font-size, so the clamp stays exactly
+        // two lines whatever size the server-side fitter settles on.
+        `max-height:${(MAX_TEXT_LINES * TEXT_LINE_HEIGHT).toFixed(2)}em`,
+        'overflow:hidden',
+        // A single unbroken token — a long email, a hyphen-free course code —
+        // has no space to wrap at, and would otherwise run past the box edge.
+        'overflow-wrap:break-word',
+        'word-wrap:break-word',
+    ].join(';');
 
 const buildLogoImgStyle = (f: FieldMapping): string =>
     [
@@ -137,7 +221,17 @@ export function serializeImageTemplateToHtml(
                 return `<img src="${escapeHtml(dataUrl)}" style="${escapeHtml(buildLogoImgStyle(f))}" alt="" />`;
             }
             const token = fieldNameToToken(f.fieldName);
-            return `<span style="${escapeHtml(buildFieldStyle(f))}">${escapeHtml(token)}</span>`;
+            // data-fit-* is read server-side after substitution: the renderer
+            // knows the box, but only the server knows the value, so the two
+            // have to meet somewhere. See CertificateTextFitService.
+            return (
+                `<div style="${escapeHtml(buildFieldStyle(f))}">` +
+                `<div style="${escapeHtml(buildFieldTextStyle(f))}"` +
+                ` data-fit-width="${fieldContentWidthPx(f)}"` +
+                ` data-fit-size="${f.style.fontSize}"` +
+                `>${escapeHtml(token)}</div>` +
+                `</div>`
+            );
         })
         .join('\n        ');
 

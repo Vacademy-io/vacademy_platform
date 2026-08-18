@@ -43,19 +43,130 @@ export const AUTO_BADGE = {
 } as const;
 
 /**
+ * What the Barcode field encodes. Mirrors `barcodeContent` in the institute's
+ * certificate setting; see BarcodeContent in setting-services.ts.
+ */
+export type BarcodeContent = 'NUMBER' | 'VERIFICATION_CODE';
+
+/**
+ * Smallest bar width that still scans off a printed page. Below roughly this,
+ * consumer scanners start failing — the barcode looks fine on screen and is
+ * unreadable in the recipient's hand, which is the worst possible failure for a
+ * verification code.
+ */
+const MIN_BARCODE_MODULE_MM = 0.19;
+
+/**
+ * Code 128 module counts. Each character costs 11 modules; start, checksum and
+ * stop add 11 + 11 + 13. Certificate numbers run ~11 characters; a verification
+ * payload is that plus a separator plus a 10-character code.
+ */
+const barcodeModules = (characters: number): number => characters * 11 + 35;
+
+/** Minimum width at which a Code 128 barcode of this payload still scans. */
+export const minBarcodeWidthMm = (content: BarcodeContent): number =>
+    Math.ceil(barcodeModules(content === 'VERIFICATION_CODE' ? 22 : 11) * MIN_BARCODE_MODULE_MM);
+
+/**
  * A 1D barcode needs a wide, short box; a QR needs a square one — sizing both
  * the same squashes the barcode until it stops scanning.
+ *
+ * A verifying barcode carries roughly twice the payload, so it needs roughly
+ * twice the width. Sizing it like a number-only barcode produces a code that
+ * looks right in the editor and cannot be scanned off the printed certificate.
  */
-export const codeSizeMm = (codeType: BadgeCodeType): { widthMm: number; heightMm: number } =>
-    codeType === 'BARCODE' ? { widthMm: 34, heightMm: 11 } : { widthMm: 16, heightMm: 16 };
+export const codeSizeMm = (
+    codeType: BadgeCodeType,
+    barcodeContent: BarcodeContent = 'NUMBER'
+): { widthMm: number; heightMm: number } => {
+    if (codeType !== 'BARCODE') return { widthMm: 16, heightMm: 16 };
+    return barcodeContent === 'VERIFICATION_CODE'
+        ? { widthMm: 60, heightMm: 14 }
+        : { widthMm: 34, heightMm: 11 };
+};
 
 /** Same box in canvas pixels, which is what the editor positions fields in. */
-export const codeSizePx = (codeType: BadgeCodeType): { width: number; height: number } => {
-    const { widthMm, heightMm } = codeSizeMm(codeType);
+export const codeSizePx = (
+    codeType: BadgeCodeType,
+    barcodeContent: BarcodeContent = 'NUMBER'
+): { width: number; height: number } => {
+    const { widthMm, heightMm } = codeSizeMm(codeType, barcodeContent);
     return {
         width: Math.round(widthMm * PX_PER_MM),
         height: Math.round(heightMm * PX_PER_MM),
     };
+};
+
+/** Field names that render as a machine-readable code rather than text. */
+export const CODE_FIELD_NAMES = ['certificate_qr', 'certificate_barcode'] as const;
+
+export const isCodeFieldName = (fieldName: string): boolean =>
+    (CODE_FIELD_NAMES as readonly string[]).includes(fieldName);
+
+/**
+ * The aspect a code field must keep. A QR is square by construction — stretching
+ * it makes the modules non-square and consumer scanners reject it. A barcode's
+ * ratio is looser (only bar *width* carries data), but squashing it vertically
+ * past a point stops it scanning too.
+ */
+export const codeAspectRatio = (
+    fieldName: string,
+    barcodeContent: BarcodeContent = 'NUMBER'
+): number => {
+    if (fieldName !== 'certificate_barcode') return 1;
+    const { widthMm, heightMm } = codeSizeMm('BARCODE', barcodeContent);
+    return widthMm / heightMm;
+};
+
+/**
+ * Why a placed code field would not scan off the printed page, or null when it
+ * is fine. Warned about rather than prevented: the admin owns the design, and a
+ * hard constraint on a box they are dragging is worse than a clear explanation.
+ */
+export const codeScanWarning = ({
+    fieldName,
+    widthPx,
+    heightPx,
+    canvasWidthPx,
+    canvasWidthMm,
+    barcodeContent = 'NUMBER',
+}: {
+    fieldName: string;
+    widthPx: number;
+    heightPx: number;
+    /** Canvas dimensions, to convert the field's pixel box into printed mm. */
+    canvasWidthPx: number;
+    canvasWidthMm: number;
+    barcodeContent?: BarcodeContent;
+}): string | null => {
+    if (!isCodeFieldName(fieldName) || canvasWidthPx <= 0 || canvasWidthMm <= 0) return null;
+    const mmPerPx = canvasWidthMm / canvasWidthPx;
+    const widthMm = widthPx * mmPerPx;
+    const heightMm = heightPx * mmPerPx;
+
+    if (fieldName === 'certificate_barcode') {
+        const needed = minBarcodeWidthMm(barcodeContent);
+        if (widthMm < needed) {
+            return `This barcode is about ${Math.round(widthMm)}mm wide. Below ${needed}mm the bars get too thin to scan off a printed certificate — widen it${
+                barcodeContent === 'VERIFICATION_CODE'
+                    ? ', or switch the barcode back to the number only'
+                    : ''
+            }.`;
+        }
+        if (heightMm < 8) {
+            return `This barcode is only about ${Math.round(heightMm)}mm tall. Scanners need roughly 8mm to find it reliably.`;
+        }
+        return null;
+    }
+
+    if (widthMm < 12 || heightMm < 12) {
+        return `This QR is about ${Math.round(Math.min(widthMm, heightMm))}mm across. Below 12mm phone cameras struggle with it in print.`;
+    }
+    const ratio = widthPx / Math.max(1, heightPx);
+    if (ratio < 0.9 || ratio > 1.1) {
+        return 'This QR is stretched. QR codes have to stay square — scanners reject distorted ones.';
+    }
+    return null;
 };
 
 export const codeFieldName = (codeType: BadgeCodeType): string =>
@@ -107,15 +218,18 @@ export const buildAutoBadgeHtml = ({
     codeType,
     certificateId,
     codeDataUri,
+    barcodeContent = 'NUMBER',
 }: {
     badgePlan: AutoBadgePlan;
     codeType: BadgeCodeType;
     certificateId: string;
     /** Defaults to the schematic placeholder — the real code needs a number. */
     codeDataUri?: string;
+    /** Widens the stamped barcode when it carries a verification code. */
+    barcodeContent?: BarcodeContent;
 }): string => {
     if (!badgePlan.any) return '';
-    const { widthMm, heightMm } = codeSizeMm(codeType);
+    const { widthMm, heightMm } = codeSizeMm(codeType, barcodeContent);
     const codeImg = badgePlan.code
         ? `<img src="${escapeAttr(codeDataUri ?? codePlaceholder(codeType))}" alt="" ` +
           `style="width:${widthMm}mm;height:${heightMm}mm;display:block;" />`

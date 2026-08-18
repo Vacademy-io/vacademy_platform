@@ -57,11 +57,12 @@ public class CertificateSettingDto {
     // See CertificateNumberService for the supported tokens.
     private CertificateNumberingDto certificateNumbering;
 
-    // What the {{CERTIFICATE_QR}} token encodes. Null/blank encodes the bare
-    // certificate number. Set a URL containing {{CERTIFICATE_ID}} — for example
-    // https://myschool.com/verify?c={{CERTIFICATE_ID}} — to make a scan land on
-    // a verification page instead. There is no platform-provided public
-    // verification endpoint, so this is opt-in per institute.
+    // Overrides what the {{CERTIFICATE_QR}} token encodes. Null/blank uses the
+    // platform verification page on the institute's own learner portal, which
+    // needs no login. Set a URL containing {{CERTIFICATE_ID}} — for example
+    // https://myschool.com/verify?c={{CERTIFICATE_ID}} — to send scans to your
+    // own page instead. Note that doing so bypasses platform verification: the
+    // QR then carries only the number, which is not a credential.
     private String qrVerificationUrlTemplate;
 
     // Which machine-readable code is stamped alongside the certificate number
@@ -69,4 +70,21 @@ public class CertificateSettingDto {
     // QR — it carries more data, survives partial damage, and any phone camera
     // reads it without a dedicated scanner.
     private String badgeCodeType;
+
+    // What the {{CERTIFICATE_BARCODE}} token encodes:
+    //   NUMBER            - the bare certificate number (the historical
+    //                       behaviour, and what null means). Scans to a string;
+    //                       verifies nothing, because the number alone is
+    //                       deliberately not a credential.
+    //   VERIFICATION_CODE - "<number>*<shortCode>", which the public verify page
+    //                       resolves. Needs a wider barcode to stay scannable
+    //                       (~21 characters rather than ~11), so the editor
+    //                       widens the default box when this is selected.
+    private String barcodeContent;
+
+    // Admin-defined fields, so an institute can put values on its certificates
+    // that the platform has no built-in token for — a grade, a director's name,
+    // an accreditation line. Each entry becomes a draggable chip in the visual
+    // editor and a {{CF_<KEY>}} token the renderer substitutes.
+    private List<CertificateCustomFieldDto> customFields;
 }

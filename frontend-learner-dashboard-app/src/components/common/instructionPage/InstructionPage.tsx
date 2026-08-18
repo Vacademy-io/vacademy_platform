@@ -12,13 +12,25 @@ import {
 import AssessmentNavbar from "./AssessmentNavbar";
 import { AssessmentInstructions } from "./AssessmentInstructions";
 import { SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+import { useExamExperienceSettings } from "@/hooks/use-exam-experience-settings";
+import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { useLiveTestStore } from "@/stores/live-test-store";
+import { bottomSafeAreaInset } from "@/utils/safe-area";
 
 const InstructionPage = () => {
   const [instructions, setInstructions] = useState<RichText>();
   const [assessmentInfo, setAssessmentInfo] = useState<AssessmentType>();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const { assessmentId } = useParams({ strict: false });
+  const examExperience = useExamExperienceSettings();
+  // The brief is part of the assessment safe zone: it is a full-bleed screen
+  // with a sticky Start bar, so Android's system bars must come down here too,
+  // not only once the paper opens.
+  useImmersiveMode(examExperience.mobile.hideAppNavigation);
+  const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
 
   const fetchInstructions = async () => {
     setIsLoading(true);
@@ -73,48 +85,90 @@ const InstructionPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentId]);
 
-  return (
-    <div className="min-h-screen relative bg-neutral-50 w-full">
-      <div className="fixed top-0 w-full z-50">
-        <AssessmentNavbar title={assessmentInfo?.name ?? ""} />
-      </div>
+  const isReady = !isLoading && !hasError && !!assessmentInfo;
 
-      <main className="pt-24 pb-28 px-4 lg:px-8">
+  return (
+    // fixed inset-0 rather than min-h-screen: the brief is a full-bleed screen
+    // with its own scroller, so the sticky start bar stays reachable on a phone
+    // instead of sitting below the fold behind the system nav bar.
+    <div className="fixed inset-0 flex flex-col bg-neutral-50">
+      <AssessmentNavbar title={assessmentInfo?.name ?? ""} />
+
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-8">
         <div className="mx-auto w-full max-w-2xl">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center min-h-96 gap-4">
+            <div className="flex min-h-reg-320 flex-col items-center justify-center gap-4">
               <SpinnerGap
                 size={40}
                 className="animate-spin text-primary-400"
                 weight="bold"
               />
-              <p className="text-sm text-neutral-500">Loading assessment details…</p>
+              <p className="text-body text-neutral-500">
+                Loading assessment details…
+              </p>
             </div>
           ) : hasError || !assessmentInfo ? (
-            <div className="flex flex-col items-center justify-center min-h-96 gap-4 text-center">
+            <div className="flex min-h-reg-320 flex-col items-center justify-center gap-4 text-center">
               <WarningCircle size={48} className="text-danger-400" weight="duotone" />
-              <p className="text-base font-semibold text-neutral-700">
+              <p className="text-title font-semibold text-neutral-700">
                 Assessment details unavailable
               </p>
-              <p className="text-sm text-neutral-500 max-w-sm">
-                We couldn&apos;t load this assessment. Please go back and try again.
+              <p className="max-w-sm text-body text-neutral-500">
+                We couldn&apos;t load this assessment. Please go back and try
+                again.
               </p>
             </div>
           ) : (
-            <AssessmentInstructions
-              instructions={instructions?.content ?? ""}
-              duration={assessmentInfo.duration}
-              preview={assessmentInfo.preview_time > 0}
-              canSwitchSections={assessmentInfo.can_switch_section}
-              assessmentInfo={assessmentInfo}
-            />
+            <>
+              <AssessmentInstructions
+                instructions={instructions?.content ?? ""}
+                duration={assessmentInfo.duration}
+                preview={assessmentInfo.preview_time > 0}
+                canSwitchSections={assessmentInfo.can_switch_section}
+                assessmentInfo={assessmentInfo}
+                examExperience={examExperience}
+              />
+
+              {/* Explicit acknowledgement. Proctoring can auto-submit a paper,
+                  so the learner confirms they know that before the timer can
+                  start — the Start button below stays disabled until they do. */}
+              <label
+                className={cn(
+                  "mt-5 flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors",
+                  agreed
+                    ? "border-primary-300 bg-primary-50"
+                    : "border-neutral-200 bg-white"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(event) => setAgreed(event.target.checked)}
+                  className="mt-0.5 size-4 flex-none accent-primary-500"
+                />
+                <span className="text-body leading-relaxed text-neutral-700">
+                  I have read the instructions and understand that leaving full
+                  screen is recorded and may auto-submit my paper.
+                </span>
+              </label>
+            </>
           )}
         </div>
       </main>
 
-      <div className="fixed bottom-0 start-0 end-0 bg-white border-t border-neutral-100 z-50">
-        <div className="mx-auto w-full max-w-2xl pb-4 pt-3 px-4">
-          <AssessmentStartModal />
+      <div
+        className="flex-none border-t border-neutral-200 bg-white px-4 pt-3 sm:px-6"
+        style={{ // design-lint-ignore: dynamic safe-area inset padding
+          paddingBottom: bottomSafeAreaInset(immersiveActive),
+        }}
+      >
+        <div className="mx-auto w-full max-w-2xl">
+          <AssessmentStartModal disabled={!isReady || !agreed} />
+          {isReady && !agreed && (
+            <p className="mt-2 text-center text-caption text-neutral-400">
+              Tick the acknowledgement above to begin.
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -1163,6 +1163,152 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 } catch (_fserr) { /* never break the shot */ }
                             };
 
+                            // CONTRAST AUTO-FIX.
+                            // The brand palette is injected as CSS vars tuned for
+                            // the run's page background (a light palette means
+                            // --brand-text is near-black). A shot that goes
+                            // full-bleed dark — stock video + black gradient
+                            // overlay — still resolves var(--brand-text) to
+                            // near-black, so its headline renders black-on-black
+                            // and is simply invisible. The model even writes
+                            // `var(--brand-text, #ffffff)` believing the white
+                            // fallback applies; it never does, because the var IS
+                            // defined. No amount of prompt wording fixes this
+                            // reliably, so measure the rendered result instead:
+                            // walk text elements, resolve the effective backdrop,
+                            // and flip any pair below WCAG 3:1 to whichever of
+                            // white / near-black actually reads.
+                            var __srgb = function (c) {
+                                c = c / 255;
+                                return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+                            };
+                            var __lum = function (rgb) {
+                                return 0.2126 * __srgb(rgb[0]) + 0.7152 * __srgb(rgb[1]) + 0.0722 * __srgb(rgb[2]);
+                            };
+                            var __contrast = function (a, b) {
+                                var la = __lum(a), lb = __lum(b);
+                                return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+                            };
+                            var __parseRGB = function (str) {
+                                if (!str) return null;
+                                var m = str.match(/rgba?\(\s*([0-9.]+)[,\s]+([0-9.]+)[,\s]+([0-9.]+)(?:[,\s/]+([0-9.]+))?/i);
+                                if (!m) return null;
+                                return [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]),
+                                        m[4] === undefined ? 1 : parseFloat(m[4])];
+                            };
+                            // Does this element paint a full-bleed photo/video bed?
+                            var __hasMediaBed = function (rootEl) {
+                                try {
+                                    var rr = rootEl.getBoundingClientRect();
+                                    var area = Math.max(1, rr.width * rr.height);
+                                    var media = rootEl.querySelectorAll('video, img');
+                                    for (var i = 0; i < media.length; i++) {
+                                        var mr = media[i].getBoundingClientRect();
+                                        if ((mr.width * mr.height) / area >= 0.6) return media[i];
+                                    }
+                                } catch (_mb) {}
+                                return null;
+                            };
+                            // Best-effort luminance of a media bed: a black-ish
+                            // gradient overlay or a brightness()<0.8 filter means
+                            // the bed is graded dark (the standard hero recipe).
+                            var __mediaIsDark = function (rootEl, mediaEl) {
+                                try {
+                                    var cs = getComputedStyle(mediaEl);
+                                    var fm = (cs.filter || '').match(/brightness\(\s*([0-9.]+)\s*\)/);
+                                    if (fm && parseFloat(fm[1]) < 0.8) return true;
+                                    var all = rootEl.querySelectorAll('*');
+                                    for (var i = 0; i < all.length; i++) {
+                                        var s2 = getComputedStyle(all[i]);
+                                        var bg = (s2.backgroundImage || '') + ' ' + (s2.backgroundColor || '');
+                                        if (/rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*(0\.[3-9]|1)/.test(bg)) {
+                                            var r2 = all[i].getBoundingClientRect();
+                                            var rr2 = rootEl.getBoundingClientRect();
+                                            if (r2.width * r2.height >= 0.5 * rr2.width * rr2.height) return true;
+                                        }
+                                    }
+                                } catch (_md) {}
+                                return false;
+                            };
+                            var __fixContrastSweep = function () {
+                                try {
+                                    var rootEl = scope.getElementById
+                                        ? (scope.getElementById('shot-root') || scope.querySelector('#shot-root'))
+                                        : scope.querySelector('#shot-root');
+                                    if (!rootEl) rootEl = scope.querySelector('div');
+                                    if (!rootEl) return;
+                                    var mediaEl = __hasMediaBed(rootEl);
+                                    var mediaDark = mediaEl ? __mediaIsDark(rootEl, mediaEl) : false;
+                                    var pageBG = __parseRGB(getComputedStyle(rootEl).backgroundColor);
+                                    if (!pageBG || pageBG[3] < 0.5) pageBG = [255, 255, 255, 1];
+                                    var nodes = rootEl.querySelectorAll('*');
+                                    for (var i = 0; i < nodes.length; i++) {
+                                        var el = nodes[i];
+                                        if (el.getAttribute && el.getAttribute('data-vx-contrast') === '1') continue;
+                                        // Only elements that own visible text.
+                                        var hasText = false;
+                                        for (var c = 0; c < el.childNodes.length; c++) {
+                                            var n = el.childNodes[c];
+                                            if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim().length) { hasText = true; break; }
+                                        }
+                                        if (!hasText) continue;
+                                        var r = el.getBoundingClientRect();
+                                        if (r.width < 4 || r.height < 4) continue;
+                                        var cs = getComputedStyle(el);
+                                        var fg = __parseRGB(cs.color);
+                                        if (!fg) continue;
+                                        // Walk ancestors for the first opaque-ish backdrop.
+                                        var bg = null, p = el;
+                                        while (p && p !== rootEl.parentNode) {
+                                            var pb = __parseRGB(getComputedStyle(p).backgroundColor);
+                                            if (pb && pb[3] >= 0.5) { bg = pb; break; }
+                                            p = p.parentElement;
+                                        }
+                                        if (!bg) {
+                                            // No painted backdrop above the bed: the
+                                            // text sits directly on the media (or the
+                                            // page background).
+                                            if (mediaEl) {
+                                                var mr = mediaEl.getBoundingClientRect();
+                                                var overlaps = !(r.right < mr.left || r.left > mr.right ||
+                                                                 r.bottom < mr.top || r.top > mr.bottom);
+                                                if (overlaps) {
+                                                    if (!mediaDark) continue;   // unknown bed — don't guess
+                                                    bg = [0, 0, 0, 1];
+                                                }
+                                            }
+                                            if (!bg) bg = pageBG;
+                                        }
+                                        if (__contrast(fg, bg) >= 3.0) continue;
+                                        var light = [255, 255, 255], dark = [15, 23, 42];
+                                        var pick = __contrast(light, bg) >= __contrast(dark, bg) ? '#ffffff' : '#0f172a';
+                                        el.style.setProperty('color', pick, 'important');
+                                        if (el.getAttribute && (el.getAttribute('stroke') === 'currentColor' ||
+                                                                (cs.fill && cs.fill.indexOf('rgb') === 0))) {
+                                            el.style.setProperty('fill', 'currentColor', 'important');
+                                        }
+                                        // Text on a photo needs a scrim even at 3:1.
+                                        if (mediaEl && !bgWasPainted(el, rootEl)) {
+                                            el.style.setProperty('text-shadow', '0 2px 12px rgba(0,0,0,0.55)');
+                                        }
+                                        if (el.setAttribute) el.setAttribute('data-vx-contrast', '1');
+                                        try {
+                                            console.log('[CONTRAST-FIX shot=${e.id}] flipped "' +
+                                                (el.textContent || '').trim().slice(0, 28) + '" -> ' + pick);
+                                        } catch (_cl) {}
+                                    }
+                                } catch (_cerr) { /* never break the shot */ }
+                            };
+                            function bgWasPainted(el, rootEl) {
+                                var p = el;
+                                while (p && p !== rootEl.parentNode) {
+                                    var pb = __parseRGB(getComputedStyle(p).backgroundColor);
+                                    if (pb && pb[3] >= 0.5) return true;
+                                    p = p.parentElement;
+                                }
+                                return false;
+                            }
+
                             // Run the fit-text sweep when fonts are ready — running
                             // before fonts load gives stale measurements based on
                             // fallback fonts.
@@ -1173,10 +1319,16 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                             // Defer one rAF so the shot script's
                                             // initial gsap.set / transforms have
                                             // applied before we measure.
-                                            requestAnimationFrame(__fitTextSweep);
+                                            requestAnimationFrame(function () {
+                                                __fitTextSweep();
+                                                __fixContrastSweep();
+                                            });
                                         });
                                     } else {
-                                        requestAnimationFrame(__fitTextSweep);
+                                        requestAnimationFrame(function () {
+                                            __fitTextSweep();
+                                            __fixContrastSweep();
+                                        });
                                     }
                                 } catch (_se) {
                                     try { __fitTextSweep(); } catch (_se2) {}
@@ -1201,6 +1353,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
                                 // Hard sweep: script crashed, repair every hide state.
                                 __vxRecover(true);
+                                try { __fixContrastSweep(); } catch (_cf) {}
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;

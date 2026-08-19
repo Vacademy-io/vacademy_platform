@@ -2114,6 +2114,25 @@ class GoogleCloudTTSClient:
         raw_json_path.write_text(json.dumps(word_entries, indent=2))
 
 
+def _repair_undefined_css_vars(html: str) -> str:
+    """Module-level wrapper: never let a repair failure break a render."""
+    try:
+        from html_contract_repair import (
+            repair_undefined_css_vars as _ruv,
+            repair_dark_bed_text as _rdb,
+        )
+        repaired, fixed = _ruv(html)
+        if fixed:
+            print(f"   \U0001f3a8 css-var repair: gave fallbacks to undefined tokens {fixed}")
+        repaired, bed_fixes = _rdb(repaired)
+        if bed_fixes:
+            print(f"   \U0001f3a8 dark-bed repair: {bed_fixes}")
+        return repaired
+    except Exception as _cv_err:  # pragma: no cover - defensive
+        print(f"   \u26a0\ufe0f css-var repair skipped ({_cv_err})")
+        return html
+
+
 class VideoGenerationPipeline:
     STAGE_ORDER = ("script", "tts", "words", "html", "avatar", "render")
     STAGE_INDEX = {name: idx for idx, name in enumerate(STAGE_ORDER)}
@@ -18671,6 +18690,15 @@ class VideoGenerationPipeline:
                 "(they are viewport-relative clamps — e.g. `font-size: clamp(...)`). "
                 "Never substitute a plain rem/px size.\n"
                 "- SPACING: use `spacing` tokens for padding/margin/gap. Use `safe_area` for outer padding.\n"
+                "- Every token above ALSO exists as a CSS variable, so either form works: "
+                "`var(--font-scale-h1)`, `var(--font-scale-body)`, `var(--spacing-safe_area)`, "
+                "`var(--spacing-lg)`, `var(--font-heading)`, `var(--font-mono)`. "
+                "Do NOT invent variable names outside this list — an undefined var makes the whole "
+                "declaration invalid, which silently collapses font-size to 16px and padding to 0.\n"
+                "- CONTRAST: `var(--brand-text)` is tuned for the run's page background. On a dark "
+                "full-bleed bed (stock video / photo + dark overlay) it is UNREADABLE, and writing "
+                "`var(--brand-text, #fff)` does NOT help — the variable is defined, so your fallback "
+                "is never used. Set `color:#fff` (or a light literal) explicitly on dark beds.\n"
                 "- EASES: use `ease` tokens in GSAP tweens (ease: 'power3.out' → use `ease_tokens.entry`).\n"
                 "- IDs: prefix every element id with `s{shot_idx}_` (replace {shot_idx} with this shot's index) "
                 "so IDs never collide between shots.\n"
@@ -22959,6 +22987,80 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # would double up.
         return self._ensure_fonts(html_doc, finish=False)
 
+    def _design_token_css_block(self) -> str:
+        """Every shot_pack token, emitted as a CSS custom property.
+
+        Colors already ship as vars; sizes/spacings/families historically did
+        not, so any shot that referenced them as vars rendered with invalid
+        declarations (16px text, zero padding). Both spellings of safe_area
+        are emitted because models write either. Values come from the live
+        shot pack when one exists so the vars and the literals in the prompt
+        can never disagree.
+        """
+        pack = getattr(self, "_current_shot_pack", None)
+        if not isinstance(pack, dict) or not pack:
+            try:
+                pack = self._build_shot_pack(
+                    getattr(self, "_current_style_guide", None) or {},
+                    int(getattr(self, "video_width", 1920) or 1920),
+                    int(getattr(self, "video_height", 1080) or 1080),
+                )
+            except Exception:
+                pack = {}
+        fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+        sp = (pack.get("spacing") or {}) if isinstance(pack, dict) else {}
+        ff = (pack.get("font_family") or {}) if isinstance(pack, dict) else {}
+        sa = (pack.get("semantic_accents") or {}) if isinstance(pack, dict) else {}
+
+        _fs_default = {
+            "display": "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)",
+            "h1": "clamp(2rem, min(6vw, 10.7vh), 7.25rem)",
+            "h2": "clamp(1.5rem, min(4vw, 7vh), 4.75rem)",
+            "body": "clamp(1rem, min(1.7vw, 3vh), 2rem)",
+            "caption": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+            "label": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+            "micro": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+        }
+        _sp_default = {
+            "xs": "8px", "sm": "16px", "md": "24px",
+            "lg": "40px", "xl": "64px", "2xl": "96px", "safe_area": "6%",
+        }
+        _sa_default = {"warn": "#ff2e3a", "good": "#16a34a", "gold": "#c9a86a"}
+
+        def _clean(v: str) -> str:
+            # These land inside a CSS declaration — never let a stray brace or
+            # semicolon from a malformed pack break the whole :root block.
+            return re.sub(r"[{};<>]", "", str(v or "")).strip()
+
+        lines: List[str] = []
+        for k, dflt in _fs_default.items():
+            lines.append(f"              --font-scale-{k}: {_clean(fs.get(k) or dflt)};")
+        for k, dflt in _sp_default.items():
+            val = _clean(sp.get(k) or dflt)
+            lines.append(f"              --spacing-{k}: {val};")
+            if k == "safe_area":
+                # Models write both `safe_area` (JSON key echoed verbatim) and
+                # the CSS-idiomatic `safe-area`. Define both.
+                lines.append(f"              --spacing-safe-area: {val};")
+                lines.append(f"              --safe-area: {val};")
+        _heading = _clean(ff.get("heading") or "") or "var(--font-display)"
+        _mono = _clean(ff.get("mono") or "") or "'Fira Code', monospace"
+        lines.append(f"              --font-heading: {_heading};")
+        lines.append(f"              --font-mono: {_mono};")
+        # Alias families under the --brand- prefix used by the color tokens —
+        # models pattern-match the prefix and write --brand-font-display.
+        lines.append("              --brand-font-display: var(--font-display);")
+        lines.append("              --brand-font-body: var(--font-body);")
+        lines.append("              --brand-font-heading: var(--font-heading);")
+        lines.append("              --brand-font-mono: var(--font-mono);")
+        for k, dflt in _sa_default.items():
+            lines.append(f"              --{k}: {_clean(sa.get(k) or dflt)};")
+        # Bare aliases for the brand palette — the shot pack names them
+        # `text`/`bg`/`primary`, so models reference them unprefixed.
+        lines.append("              --bg: var(--brand-bg);")
+        lines.append("              --surface: var(--brand-bg);")
+        return "\n".join(lines)
+
     def _ensure_fonts(self, html: str, *, finish: bool = True) -> str:
         # IDEMPOTENT (Phase B): the preamble is now injected EARLY in the LLM
         # path (before bbox lint / vision review, so QA screenshots finally
@@ -23082,6 +23184,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             }
         """
 
+        # --- SHOT-PACK DESIGN TOKENS AS REAL CSS VARS -------------------
+        # The prompt hands the model a `shot_pack` JSON whose COLORS are CSS
+        # vars (var(--brand-primary)) but whose font sizes / spacings / font
+        # families are raw literals, and then says "use only tokens, never
+        # hardcode". The model generalises the var() form to every token and
+        # writes `font-size: var(--font-scale-h1)` / `padding:
+        # var(--spacing-safe_area)` / `font-family: var(--font-heading)`.
+        # Those names were never defined, so the declarations are INVALID at
+        # computed-value time: font-size silently falls back to the inherited
+        # ~16px and padding to 0 — which is exactly the "tiny text flush
+        # against the frame edge" failure. Defining the same tokens as vars
+        # makes both authoring styles (verbatim literal OR var reference)
+        # produce the designed value.
+        _tok_css = self._design_token_css_block()
+
         global_css = f"""<!--vx-preamble--><style>
             @import url('{_fonts_url}');
             {_identity_import}
@@ -23103,6 +23220,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               --primary-color: {primary_color};
               --accent-color: {accent_color};
               --text-color: {text_color};
+{_tok_css}
             }}
 {_vx_css}
 
@@ -23607,7 +23725,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                top of every generated HTML. */
 
             {svg_canvas_css}
-            </style>"""
+            </style>{_CONTRAST_AUTOFIX_JS}"""
 
         # Global SVG defs — hidden 0×0 SVG holding filters that any other
         # SVG in the document can reference. Used for the hand-drawn wobble
@@ -23630,7 +23748,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If the model already imports fonts, trust it.
         # But still inject our global helpers.
         if "fonts.googleapis.com" in html:
-            return svg_defs + global_css + html + _finish_overlay
+            return _repair_undefined_css_vars(svg_defs + global_css + html + _finish_overlay)
 
         # Fallback corporate pairing if none found
         base_style = (
@@ -23640,7 +23758,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "h1, h2, h3, h4, h5, h6 { font-family: var(--font-display, 'Montserrat', sans-serif); }"
             "</style>"
         )
-        return svg_defs + global_css + base_style + html + _finish_overlay
+        return _repair_undefined_css_vars(
+            svg_defs + global_css + base_style + html + _finish_overlay
+        )
 
     def _ensure_segment_coverage(
         self, entries: List[Dict[str, Any]], seg: Dict[str, Any], base_start: float, base_end: float

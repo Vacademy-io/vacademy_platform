@@ -349,3 +349,165 @@ def audit_contract(html: str) -> List[str]:
     # risked driving a wrong "forbid iconify" fix (which would remove working icons).
 
     return issues
+
+
+# ---------------------------------------------------------------------------
+# Undefined CSS custom properties
+# ---------------------------------------------------------------------------
+# A `var(--x)` with no fallback whose `--x` is never defined does not degrade
+# gracefully: the whole declaration is INVALID at computed-value time. For
+# `font-size` that means the element inherits ~16px; for `padding` it means 0.
+# Those two failures are precisely the "tiny text flush against the frame
+# edge" shots. The pipeline now defines every shot_pack token, but models keep
+# inventing names (`--font-size-hero`, `--gap-lg`, `--radius-card`), so this
+# pass gives any surviving undefined var a family-appropriate fallback rather
+# than letting it void the declaration.
+
+_VAR_DEF_RE = re.compile(r"(--[A-Za-z0-9_-]+)\s*:")
+# var(--name) with NO comma → no fallback. Nested var()s in the fallback slot
+# are left alone; only the bare form is rewritten.
+_VAR_USE_NOFB_RE = re.compile(r"var\(\s*(--[A-Za-z0-9_-]+)\s*\)")
+
+_FAMILY_FALLBACKS: List[Tuple[str, str]] = [
+    # (substring matched against the token name, fallback value)
+    ("font-scale-display", "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)"),
+    ("font-scale-h1", "clamp(2rem, min(6vw, 10.7vh), 7.25rem)"),
+    ("font-scale-h2", "clamp(1.5rem, min(4vw, 7vh), 4.75rem)"),
+    ("font-scale-body", "clamp(1rem, min(1.7vw, 3vh), 2rem)"),
+    ("display", "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)"),
+    ("h1", "clamp(2rem, min(6vw, 10.7vh), 7.25rem)"),
+    ("h2", "clamp(1.5rem, min(4vw, 7vh), 4.75rem)"),
+    ("h3", "clamp(1.25rem, min(3vw, 5vh), 3rem)"),
+    ("mono", "'Fira Code', monospace"),
+    ("font-heading", "var(--font-display, 'Montserrat', sans-serif)"),
+    ("font-title", "var(--font-display, 'Montserrat', sans-serif)"),
+    ("font", "var(--font-body, 'Inter', sans-serif)"),
+    ("safe", "6%"),
+    ("radius", "12px"),
+    ("gap", "24px"),
+    ("spacing-xs", "8px"),
+    ("spacing-sm", "16px"),
+    ("spacing-md", "24px"),
+    ("spacing-lg", "40px"),
+    ("spacing-xl", "64px"),
+    ("spacing", "24px"),
+    ("padding", "24px"),
+    ("margin", "24px"),
+    ("bg", "var(--brand-bg, #ffffff)"),
+    ("background", "var(--brand-bg, #ffffff)"),
+    ("surface", "var(--brand-bg, #ffffff)"),
+    ("muted", "var(--brand-text-secondary, #475569)"),
+    ("secondary", "var(--brand-text-secondary, #475569)"),
+    ("accent", "var(--brand-accent, #0071b8)"),
+    ("primary", "var(--brand-primary, #0071b8)"),
+    ("color", "var(--brand-text, #0f172a)"),
+    ("text", "var(--brand-text, #0f172a)"),
+]
+
+# Size-valued properties are the ones that fail catastrophically (inherit or
+# collapse to zero) rather than merely losing a color. When we cannot infer a
+# family from the token name, fall back based on the property being set.
+_SIZE_PROPS = (
+    "font-size", "padding", "margin", "gap", "width", "height",
+    "top", "left", "right", "bottom", "border-radius", "inset",
+)
+
+
+def _infer_var_fallback(token: str, property_name: str = "") -> str:
+    name = token.lower().lstrip("-")
+    for needle, value in _FAMILY_FALLBACKS:
+        if needle in name:
+            return value
+    prop = (property_name or "").lower()
+    if prop == "font-size":
+        return "clamp(1rem, min(1.7vw, 3vh), 2rem)"
+    if prop.startswith("font-family"):
+        return "var(--font-body, 'Inter', sans-serif)"
+    if any(prop.startswith(p) for p in _SIZE_PROPS):
+        return "24px"
+    return "var(--brand-text, #0f172a)"
+
+
+def repair_undefined_css_vars(html: str) -> Tuple[str, List[str]]:
+    """Give every undefined `var(--x)` (no fallback) a sane fallback.
+
+    Returns `(repaired_html, [token names repaired])`. Idempotent: once a
+    fallback is present the use no longer matches the no-fallback pattern.
+    """
+    if not html or "var(" not in html:
+        return html, []
+    defined = set(_VAR_DEF_RE.findall(html))
+    used = set(_VAR_USE_NOFB_RE.findall(html))
+    missing = used - defined
+    if not missing:
+        return html, []
+
+    def _sub(m: "re.Match") -> str:
+        token = m.group(1)
+        if token not in missing:
+            return m.group(0)
+        # Look back for the property this value belongs to, so a bare
+        # `font-size: var(--x)` can be distinguished from `color: var(--x)`.
+        head = html[max(0, m.start() - 60):m.start()]
+        pm = re.search(r"([a-zA-Z-]+)\s*:\s*[^;{}]*$", head)
+        prop = pm.group(1) if pm else ""
+        return f"var({token}, {_infer_var_fallback(token, prop)})"
+
+    repaired = _VAR_USE_NOFB_RE.sub(_sub, html)
+    return repaired, sorted(missing)
+
+
+# ---------------------------------------------------------------------------
+# Dark-bed text tokens
+# ---------------------------------------------------------------------------
+# Hero shots put a stock video / photo under a black gradient and then write
+#     --text: var(--brand-text, #ffffff);
+# believing the white fallback applies on the dark bed. It never does:
+# --brand-text IS defined (near-black for a light run palette), so the fallback
+# is dead code and the headline renders black-on-black. The model's own
+# fallback is an explicit statement of intent — on a shot that really does have
+# a dark full-bleed bed, honour it. The runtime contrast sweep in the
+# dispatcher catches the rest; this makes the common case deterministic and
+# fixes it before the vision reviewer ever sees the frame.
+
+_DARK_OVERLAY_RE = re.compile(
+    r"rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*(?:0\.[3-9]\d*|1(?:\.0+)?)\s*\)", re.I
+)
+_FULL_BLEED_MEDIA_RE = re.compile(r"<(?:video|img)\b[^>]*", re.I)
+_LIGHT_LITERAL = r"(#fff(?:fff)?\b|white\b|rgba?\(\s*255\s*,\s*255\s*,\s*255[^)]*\))"
+_DARK_BED_TOKEN_RE = re.compile(
+    r"(--[A-Za-z0-9_-]+\s*:\s*)var\(\s*--brand-text(?:-secondary)?\s*,\s*" + _LIGHT_LITERAL + r"\s*\)",
+    re.I,
+)
+_DARK_BED_COLOR_RE = re.compile(
+    r"(\bcolor\s*:\s*)var\(\s*--brand-text(?:-secondary)?\s*,\s*" + _LIGHT_LITERAL + r"\s*\)",
+    re.I,
+)
+
+
+def _has_dark_media_bed(html: str) -> bool:
+    if not _FULL_BLEED_MEDIA_RE.search(html):
+        return False
+    if not _DARK_OVERLAY_RE.search(html):
+        # A brightness()-graded bed counts too — that is the other half of the
+        # standard hero recipe.
+        return bool(re.search(r"brightness\(\s*0?\.[0-7]\d*\s*\)", html))
+    return True
+
+
+def repair_dark_bed_text(html: str) -> Tuple[str, List[str]]:
+    """Honour a light-literal fallback on --brand-text when the shot has a
+    dark full-bleed media bed. Returns `(html, applied_fixes)`."""
+    if not html or "--brand-text" not in html:
+        return html, []
+    if not _has_dark_media_bed(html):
+        return html, []
+    fixes: List[str] = []
+
+    def _tok(m: "re.Match") -> str:
+        fixes.append(f"dark-bed token -> {m.group(2)}")
+        return f"{m.group(1)}{m.group(2)}"
+
+    html, _n1 = _DARK_BED_TOKEN_RE.subn(_tok, html)
+    html, _n2 = _DARK_BED_COLOR_RE.subn(_tok, html)
+    return html, fixes

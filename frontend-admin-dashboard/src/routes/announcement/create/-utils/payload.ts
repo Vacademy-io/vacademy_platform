@@ -18,7 +18,7 @@ import type {
     PushConfig,
     ScheduleType,
     WhatsAppConfig,
-    WizardStepId,
+    FormSectionId,
 } from '../-types';
 
 type Recipients = CreateAnnouncementRequest['recipients'];
@@ -273,8 +273,8 @@ export function buildCreatePayload(
     };
 }
 
-/** Where a given field path lives, so a server error can send the user to the right step. */
-export function stepForFieldPath(path: string): WizardStepId {
+/** Where a given field path lives, so a server error can send the user to the right section. */
+export function sectionForFieldPath(path: string): FormSectionId {
     if (path.startsWith('schedule.') || path.startsWith('scheduling.')) return 'delivery';
     if (path.startsWith('push.') || path.startsWith('email.') || path.startsWith('whatsapp.'))
         return 'delivery';
@@ -287,8 +287,8 @@ export function stepForFieldPath(path: string): WizardStepId {
 export interface ApiFailure {
     fieldErrors: FieldErrors;
     message: string;
-    /** First step containing a field error, so the wizard can jump there. */
-    step: WizardStepId | null;
+    /** First section containing a field error, so the page can scroll there. */
+    section: FormSectionId | null;
 }
 
 /** Turn an axios failure into inline field errors plus one sentence for the toast. */
@@ -332,6 +332,6 @@ export function interpretApiError(err: unknown): ApiFailure {
     return {
         fieldErrors,
         message,
-        step: paths.length && paths[0] ? stepForFieldPath(paths[0]) : null,
+        section: paths.length && paths[0] ? sectionForFieldPath(paths[0]) : null,
     };
 }

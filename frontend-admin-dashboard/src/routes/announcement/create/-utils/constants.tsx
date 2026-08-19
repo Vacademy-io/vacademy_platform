@@ -13,9 +13,9 @@ import {
     WhatsappLogo,
 } from '@phosphor-icons/react';
 import type { MediumType, ModeType } from '@/services/announcement';
-import type { ModeSettings, StepDefinition } from '../-types';
+import type { ModeSettings, SectionDefinition } from '../-types';
 
-export const WIZARD_STEPS: StepDefinition[] = [
+export const FORM_SECTIONS: SectionDefinition[] = [
     { id: 'basics', title: 'Basic Information', caption: 'Title and message' },
     { id: 'recipients', title: 'Recipients', caption: 'Who receives it' },
     { id: 'placements', title: 'Display Locations', caption: 'Where it appears' },

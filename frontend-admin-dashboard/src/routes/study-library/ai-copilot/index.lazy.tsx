@@ -227,9 +227,38 @@ function RouteComponent() {
     const { kb: kbFromLink } = Route.useSearch();
     // Arriving from a knowledge base page: start already grounded in it, so
     // the teacher does not have to find the same material again.
-    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(
-        kbFromLink ? { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' } : null
-    );
+    // The KB pick must survive wizard remounts (reload, back-navigation): it
+    // used to be memory-only state, and losing it silently produced a course
+    // with NO source material — the outline LLM invented a generic syllabus.
+    // Persisted per selection (write-or-remove below) and always VISIBLE in
+    // the KbGroundingCard + the confirm dialog, so a restored pick is never
+    // a surprise and a missing source is never silent.
+    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(() => {
+        if (kbFromLink) {
+            return { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' };
+        }
+        try {
+            const raw = localStorage.getItem('aiCourseKbGrounding');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.knowledge_base_id) return parsed as KbGroundingValue;
+            }
+        } catch {
+            /* ignore */
+        }
+        return null;
+    });
+    useEffect(() => {
+        try {
+            if (kbGrounding?.knowledge_base_id) {
+                localStorage.setItem('aiCourseKbGrounding', JSON.stringify(kbGrounding));
+            } else {
+                localStorage.removeItem('aiCourseKbGrounding');
+            }
+        } catch {
+            /* ignore */
+        }
+    }, [kbGrounding]);
     // Chapter/slide counts start at '5', so "still empty?" can never detect an
     // untouched control. Track the teacher's own choice explicitly instead.
     const structureChosenByUser = useRef(false);
@@ -2034,6 +2063,34 @@ function RouteComponent() {
                                 <p className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
                                     {courseGoal || 'Not provided'}
                                 </p>
+                            </div>
+
+                            {/* Source material — a silently missing source has
+                                shipped an entirely AI-invented course, so this
+                                is always stated, loudly when absent. */}
+                            <div>
+                                <h4 className="mb-2 text-sm font-semibold text-neutral-900">
+                                    Source Material
+                                </h4>
+                                {kbGrounding?.knowledge_base_id ? (
+                                    <p className="rounded-md border border-success-200 bg-success-50 p-3 text-sm text-success-700">
+                                        Built from your selected knowledge base — the outline
+                                        mirrors its sections and every page is written from its
+                                        content.
+                                    </p>
+                                ) : referenceFiles.length > 0 ? (
+                                    <p className="rounded-md border border-success-200 bg-success-50 p-3 text-sm text-success-700">
+                                        Grounded in {referenceFiles.length} uploaded reference
+                                        document(s).
+                                    </p>
+                                ) : (
+                                    <p className="rounded-md border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
+                                        No source material selected — the AI will write this
+                                        course from its own general knowledge. To build it from
+                                        your own material, go back and pick a knowledge base or
+                                        upload a reference document.
+                                    </p>
+                                )}
                             </div>
 
                             {learningOutcome && (

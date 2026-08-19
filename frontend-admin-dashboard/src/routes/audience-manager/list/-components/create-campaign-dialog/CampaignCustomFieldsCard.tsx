@@ -17,6 +17,9 @@ import {
     FormFieldRow,
     FormFieldRowHeader,
 } from '@/components/common/custom-fields/FormFieldRow';
+import { useQuery } from '@tanstack/react-query';
+import { getCustomFieldUsages } from '@/services/custom-field-mappings';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 /**
  * Props interface for Campaign Custom Fields Card
@@ -42,6 +45,8 @@ interface CampaignCustomFieldsCardProps {
         config?: Record<string, unknown>
     ) => void;
     handleAddPhoneNumber?: (type: string, name: string, oldKey: boolean) => void;
+    /** Id of the campaign being edited, so its own usage is not counted as "another form". */
+    campaignId?: string | null;
     handleEditFieldAt: (
         index: number,
         type: string,
@@ -81,9 +86,11 @@ const CampaignCustomFieldsCard = ({
     handleCloseDialog,
     handleAddPhoneNumber,
     handleEditFieldAt,
+    campaignId,
 }: CampaignCustomFieldsCardProps) => {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { control, getValues } = form;
+    const { instituteDetails } = useInstituteDetailsStore();
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
         name: 'custom_fields',
@@ -93,6 +100,37 @@ const CampaignCustomFieldsCard = ({
         keyName: '_rhfKey',
     });
     const customFields = getValues('custom_fields');
+    // A deleted field stays in the array until the form is saved, and the row list
+    // already hides it — the preview has to agree, or it advertises a field the
+    // respondent will never see.
+    // A field's type, label and options live on one shared row, so editing them here
+    // also edits every other form built on the same field. Look up where else it is
+    // used and say so before the admin changes it.
+    const editingField = editingIndex !== null ? customFieldsArray[editingIndex] : null;
+    const editingFieldMasterId = (editingField as unknown as { _id?: string } | null)?._id;
+    const { data: fieldUsages } = useQuery({
+        queryKey: ['custom-field-usages', instituteDetails?.id, editingFieldMasterId],
+        queryFn: () => getCustomFieldUsages(instituteDetails!.id, editingFieldMasterId!),
+        enabled: Boolean(instituteDetails?.id && editingFieldMasterId),
+        staleTime: 60_000,
+    });
+    const otherFormsUsingField = (fieldUsages ?? []).filter(
+        (usage) => usage.type !== 'DEFAULT_CUSTOM_FIELD' && usage.type_id !== campaignId
+    );
+    const otherFormNames = otherFormsUsingField
+        .map((usage) => usage.type_display_name)
+        .filter(Boolean) as string[];
+    const sharedFieldNotice =
+        otherFormsUsingField.length === 0
+            ? null
+            : `This field is shared with ${otherFormsUsingField.length} other form` +
+              `${otherFormsUsingField.length > 1 ? 's' : ''}` +
+              `${otherFormNames.length > 0 ? ` (${otherFormNames.slice(0, 3).join(', ')}${otherFormNames.length > 3 ? ', …' : ''})` : ''}` +
+              '. Its type, label and options are stored once, so changing them here changes them there too.';
+
+    const previewFields = customFields?.filter(
+        (field) => (field as unknown as { status?: string }).status !== 'DELETED'
+    );
 
     return (
         <Card className="mb-4">
@@ -210,6 +248,13 @@ const CampaignCustomFieldsCard = ({
                                 onOpenChange={(isOpen) => {
                                     if (!isOpen) setEditingIndex(null);
                                 }}
+                                notice={
+                                    sharedFieldNotice ? (
+                                        <p className="rounded-md bg-warning-50 p-3 text-caption text-warning-700">
+                                            {sharedFieldNotice}
+                                        </p>
+                                    ) : undefined
+                                }
                                 initialField={{
                                     type: customFieldsArray[editingIndex].type,
                                     name: customFieldsArray[editingIndex].name,
@@ -260,7 +305,7 @@ const CampaignCustomFieldsCard = ({
                                 Preview Registration Form
                             </h1>
                             <div className="flex-1 flex-col gap-4 overflow-y-auto px-4 py-2">
-                                {customFields?.map((testInputFields, idx) => {
+                                {previewFields?.map((testInputFields, idx) => {
                                     const fieldConfig = (testInputFields as unknown as { config?: { defaultValue?: string; allowedFileTypes?: string[]; maxSizeMB?: number } }).config;
                                     const rendererOptions = testInputFields.options?.map((o) => o.value);
                                     return (

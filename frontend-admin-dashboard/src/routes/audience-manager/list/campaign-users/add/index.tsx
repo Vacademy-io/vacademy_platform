@@ -78,7 +78,7 @@ export function AddResponsePage() {
 
     const parseFields = (raw: any[]): CustomFieldConfig[] => {
         return raw
-            .map((field: any) => {
+            .map((field: any, index: number) => {
                 const customField = field.custom_field || field;
                 const configStr = customField.config || field.config || '';
 
@@ -147,14 +147,25 @@ export function AddResponsePage() {
                     isMandatory: customField.isMandatory ?? field.isMandatory ?? true,
                     defaultValue:
                         customField.defaultValue || field.defaultValue || defaultFromConfig || '',
-                    formOrder: customField.formOrder || field.formOrder || 0,
+                    // The per-form mapping order is what the admin arranged and what the
+                    // public form renders; the master formOrder is the shared catalog
+                    // position every other form inherits. Sorting by the master made this
+                    // page show the fields in a different sequence to the respondent's.
+                    // `??` not `||`: a seeded field's master order is NULL, and `|| 0`
+                    // floated all of those to the top.
+                    formOrder:
+                        field.individual_order ??
+                        customField.individualOrder ??
+                        customField.formOrder ??
+                        field.formOrder ??
+                        index,
                     config: configStr,
                     options,
                     fileConfig,
                 };
             })
             .filter((f: CustomFieldConfig) => f.id && f.fieldName)
-            .sort((a, b) => (a.formOrder || 0) - (b.formOrder || 0));
+            .sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0));
     };
 
     // Parse custom fields from URL params OR from API fetch

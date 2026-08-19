@@ -326,13 +326,23 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         @Query(value = """
                 WITH billed AS (
                   SELECT up.user_id AS user_id,
-                         SUM(COALESCE(pp.actual_price, 0)) AS price,
+                         SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS price,
                          COUNT(*) AS plans,
                          MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
                                             NULLIF(TRIM(ei.currency), '')))) AS cur
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
                    WHERE ei.institute_id = :instituteId
                      AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
                      AND up.created_at >= :startDate
@@ -401,7 +411,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         @Query(value = """
                 WITH billed AS (
                   SELECT up.user_id AS user_id,
-                         SUM(COALESCE(pp.actual_price, 0)) AS billed,
+                         SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed,
                          COUNT(*) AS plan_count,
                          MIN(ei.name) AS course_name,
                          MIN(up.status) AS plan_status,
@@ -416,6 +426,16 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
                     LEFT JOIN payment_option po ON po.id = up.payment_option_id
                    WHERE ei.institute_id = :instituteId
                      AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
@@ -469,10 +489,20 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                  ORDER BY due DESC
                 """, countQuery = """
                 WITH billed AS (
-                  SELECT up.user_id AS user_id, SUM(COALESCE(pp.actual_price, 0)) AS billed
+                  SELECT up.user_id AS user_id, SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
                    WHERE ei.institute_id = :instituteId
                      AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
                      AND up.created_at >= :startDate

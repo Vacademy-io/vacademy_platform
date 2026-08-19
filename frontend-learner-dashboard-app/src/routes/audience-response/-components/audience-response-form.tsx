@@ -359,13 +359,6 @@ const AudienceResponseForm = ({
                     </p>
                   )}
                 </div>
-
-                {/* Campaign Info */}
-                <div className="mt-8 pt-6 border-t border-neutral-200">
-                  <p className="text-sm text-neutral-600">
-                    <span className="font-semibold">Campaign:</span> {campaignData.campaign_name}
-                  </p>
-                </div>
               </div>
             </ModernCard>
           </div>

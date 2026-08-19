@@ -67,6 +67,10 @@ class SlideGrounding:
     # {source_title, page_start, page_end} for each passage used, stored on the
     # slide so a teacher can verify any claim in one click.
     citations: List[Dict[str, Any]] = field(default_factory=list)
+    # Chunks actually included — the coverage sweep diffs these against the
+    # KB's full chunk census to find dropped material. (Their pages come from
+    # the existing `pages` property, derived from citations.)
+    chunk_ids: List[str] = field(default_factory=list)
     # False when the knowledge base does not really cover this slide.
     supported: bool = False
     top_similarity: float = 0.0
@@ -352,6 +356,8 @@ async def ground_slide(
         parts.append(block)
         used += len(block)
         result.citations.append(_cite(hit))
+        if hit.get("chunk_id"):
+            result.chunk_ids.append(hit["chunk_id"])
         for fig in hit.get("figures") or []:
             result.figures.append(fig)
 
@@ -361,6 +367,86 @@ async def ground_slide(
     result.passages = "\n\n".join(parts)
     result.supported = True
     return result
+
+
+
+
+# ── Coverage sweep ───────────────────────────────────────────────────────────
+# FULL coverage promises "nothing in the material silently disappears", but
+# per-slide retrieval can only cover chunks it reaches: node-scoped grounding
+# dies when ingest linked chunks to tree nodes no slide uses, and similarity
+# top-k ranks *something* out on every slide. The sweep is the guarantee that
+# survives both: census every chunk, diff against what the slides actually
+# retrieved, and hand each dropped chunk to the page-nearest slide as explicit
+# extra material. (Client audit: "Physical inactivity" and "People-like-me"
+# vanished exactly this way — section-linked chunks invisible to every slide.)
+
+MAX_SWEEP_CHUNKS = 400          # census cap — sweep is for faithful courses, not 10k-chunk corpora
+SUPPLEMENT_CHARS_PER_SLIDE = 8_000
+
+
+def assign_uncovered_chunks(
+    all_chunks: List[Dict[str, Any]],
+    groundings: Dict[str, "SlideGrounding"],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Pure assignment logic (offline-testable): uncovered chunk → nearest slide.
+
+    Nearness is by page distance to the pages a slide actually retrieved —
+    the one signal that exists regardless of how ingest shaped the tree. A
+    chunk with no page, or a sweep with no paged slides, assigns to the first
+    supported slide rather than being dropped."""
+    used = {cid for g in groundings.values() for cid in g.chunk_ids}
+    supported = [(path, g) for path, g in groundings.items() if g.supported]
+    if not supported:
+        return {}
+
+    assignments: Dict[str, List[Dict[str, Any]]] = {}
+    for chunk in all_chunks:
+        if chunk["chunk_id"] in used:
+            continue
+        page = chunk.get("page_start")
+        best_path = None
+        if page is not None:
+            best_dist = None
+            for path, g in supported:
+                if not g.pages:
+                    continue
+                dist = min(abs(page - p) for p in g.pages)
+                if best_dist is None or dist < best_dist:
+                    best_dist, best_path = dist, path
+        if best_path is None:
+            best_path = supported[0][0]
+        assignments.setdefault(best_path, []).append(chunk)
+    return assignments
+
+
+def supplement_block(chunks: List[Dict[str, Any]], budget: int = SUPPLEMENT_CHARS_PER_SLIDE) -> str:
+    """Prompt addendum carrying the chunks no slide retrieved."""
+    parts: List[str] = []
+    used = 0
+    for chunk in chunks:
+        text_ = (chunk.get("content_text") or "").strip()
+        if not text_:
+            continue
+        page = chunk.get("page_start")
+        header = f"[{chunk.get('source_title') or 'Material'}"
+        header += f", p. {page}]" if page is not None else "]"
+        block = f"{header}\n{text_}"
+        if used + len(block) > budget:
+            break
+        parts.append(block)
+        used += len(block)
+    if not parts:
+        return ""
+    return (
+        "\n===== ADDITIONAL COURSE MATERIAL (coverage) =====\n"
+        "These passages are from the SAME material but were not retrieved for any "
+        "other slide — this slide is their only home. Teach their distinct "
+        "concepts too (each named concept, definition and list must appear); do "
+        "not drop them because they extend beyond the slide title.\n\n"
+        + "\n\n".join(parts)
+        + "\n===== END ADDITIONAL MATERIAL =====\n"
+    )
 
 
 def slide_prompt_block(grounding: SlideGrounding, mode: str = "STRICT") -> str:

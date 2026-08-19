@@ -998,6 +998,40 @@ class KbRepository:
             for r in rows
         ]
 
+    def get_all_chunk_summaries(
+        self, *, kb_id: str, institute_id: str, limit: int = 400
+    ) -> List[Dict[str, Any]]:
+        """Every active chunk of a KB, page-ordered — the coverage-sweep census.
+
+        FULL-coverage courses must not silently drop material, but per-slide
+        retrieval (node-scoped OR similarity) can only cover chunks it reaches:
+        chunks linked to tree nodes no slide uses (ingest linked a whole KB to
+        'section' nodes while the outline teaches topic/subtopic nodes) were
+        invisible to every slide. The sweep diffs this census against what the
+        slides actually retrieved."""
+        rows = self.db.execute(
+            text(
+                """
+                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title
+                FROM kb_chunk c
+                JOIN knowledge_base_source s ON s.id = c.source_id
+                WHERE c.knowledge_base_id = :kb_id
+                  AND c.institute_id = :institute_id
+                  AND s.is_active = TRUE
+                ORDER BY c.page_start NULLS LAST, c.chunk_index
+                LIMIT :limit
+                """
+            ),
+            {"kb_id": kb_id, "institute_id": institute_id, "limit": limit},
+        ).fetchall()
+        return [
+            {
+                "chunk_id": r[0], "content_text": r[1], "page_start": r[2],
+                "page_end": r[3], "source_title": r[4],
+            }
+            for r in rows
+        ]
+
     def search_institute_wide(
         self,
         *,

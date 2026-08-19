@@ -58,6 +58,9 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const [isGenerating, setIsGenerating] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [showSource, setShowSource] = useState(false);
+    // Bring-your-own HTML (create only) — paste a page made elsewhere instead of generating.
+    const [showPaste, setShowPaste] = useState(false);
+    const [pastedHtml, setPastedHtml] = useState('');
     const [testResult, setTestResult] = useState<string | null>(null);
     // Live-stream buffer while generating (null = not streaming).
     const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
@@ -220,6 +223,22 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
 
     const cancelGenerate = () => abortRef.current?.abort();
 
+    const usePastedHtml = () => {
+        const next = pastedHtml.trim();
+        if (!next) {
+            toast.error('Paste your HTML first.');
+            return;
+        }
+        if (!next.includes('<')) {
+            toast.error('That does not look like HTML — paste the full page markup.');
+            return;
+        }
+        pushVersion(next);
+        setPastedHtml('');
+        setShowPaste(false);
+        toast.success('HTML added. Refine it with AI or edit the source anytime.');
+    };
+
     if (isLearnerView) {
         return (
             <div className="mx-auto w-full max-w-5xl px-4 pb-10">
@@ -272,8 +291,44 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             >
                                 <FilePdf className="size-4" /> Attach PDF
                             </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setShowPaste((s) => !s)}
+                            >
+                                <Code className="size-4" />
+                                {showPaste ? 'Hide paste box' : 'Paste HTML'}
+                            </MyButton>
                             {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
                         </div>
+
+                        {/* Bring-your-own HTML — skip generation entirely */}
+                        {showPaste && (
+                            <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white p-3">
+                                <span className="text-caption text-neutral-500">
+                                    Already have a page built elsewhere? Paste the complete HTML
+                                    here — no credits used. You can still refine it with AI
+                                    afterwards.
+                                </span>
+                                <Textarea
+                                    value={pastedHtml}
+                                    onChange={(e) => setPastedHtml(e.target.value)}
+                                    spellCheck={false}
+                                    placeholder="<!doctype html>…"
+                                    className="min-h-40 resize-y whitespace-pre font-mono text-caption"
+                                />
+                                <div className="flex justify-end">
+                                    <MyButton
+                                        buttonType="primary"
+                                        scale="small"
+                                        disable={!pastedHtml.trim()}
+                                        onClick={usePastedHtml}
+                                    >
+                                        <Code className="size-4" /> Use this HTML
+                                    </MyButton>
+                                </div>
+                            </div>
+                        )}
                         {pdf && (
                             <p className="text-caption text-neutral-400">
                                 Grounding in a PDF adds a per-page conversion charge on top of the
@@ -545,7 +600,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                     <p className="mt-1 max-w-sm text-caption text-neutral-400">
                         {isGenerating
                             ? 'The AI is designing a rich, self-contained page from your materials. This can take up to a minute.'
-                            : 'Add materials and describe what you want, then generate.'}
+                            : 'Add materials and describe what you want, then generate — or paste HTML you already have.'}
                     </p>
                 </div>
             )}

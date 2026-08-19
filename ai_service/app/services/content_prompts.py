@@ -58,6 +58,21 @@ _DESIGN_SAFETY_RULES = """**Rendering safety — every rule below exists because
 - VISIBILITY: the page renders at FULL height with NO internal scrolling — never hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners starting sections at opacity:0); everything is visible on load and entrance animations play on load. Any animation touching opacity must END at opacity:1 — text frozen at partial opacity has shipped as unreadable ghost text. Honor `@media (prefers-reduced-motion: reduce)`."""
 
 
+def _fig_field(fig, *names) -> str:
+    """First non-empty of the named fields, whether the figure is an object
+    (PDF-ingest path: .url/.caption) or a dict (KB path: image_url/alt_text).
+    getattr on a dict silently returns the default — that bug dropped EVERY
+    knowledge-base figure from the manifest, so no source figure was ever
+    offered to a KB course's slides."""
+    for name in names:
+        value = getattr(fig, name, None)
+        if value is None and isinstance(fig, dict):
+            value = fig.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
 class ContentGenerationPrompts:
     """
     Prompt templates for content generation (documents and assessments).
@@ -105,10 +120,10 @@ class ContentGenerationPrompts:
         figures_block = ""
         if reference_figures:
             manifest = "\n".join(
-                f"  - url={getattr(f, 'url', '')}"
-                + (f" — {getattr(f, 'caption', '')}" if getattr(f, "caption", "") else "")
+                f"  - url={_fig_field(f, 'url', 'image_url')}"
+                + (f" — {_fig_field(f, 'caption', 'alt_text')}" if _fig_field(f, 'caption', 'alt_text') else "")
                 for f in reference_figures
-                if getattr(f, "url", "")
+                if _fig_field(f, "url", "image_url")
             )
             if manifest:
                 figures_block = f"""**Source figures (from the uploaded document{" — you MUST embed every figure relevant to this slide" if figures_policy == "REQUIRE" else " — PREFER these over generated images"})**:

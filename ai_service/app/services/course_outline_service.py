@@ -289,6 +289,9 @@ class CourseOutlineGenerationService:
 
         semaphore = asyncio.Semaphore(4)
         service = self._content_generation_service
+        # Grounding objects by path — the coverage sweep below diffs what the
+        # slides retrieved against the KB's full chunk census.
+        groundings: dict = {}
 
         async def one(todo) -> None:
             # Chapter + title: specific enough to retrieve the right pages,
@@ -317,6 +320,7 @@ class CourseOutlineGenerationService:
                     logger.warning("KB grounding failed for %s", todo.path, exc_info=True)
                     return
 
+            groundings[todo.path] = grounding
             service._kb_grounding_by_path[todo.path] = (
                 course_grounding.slide_prompt_block(grounding, mode)
             )
@@ -331,6 +335,42 @@ class CourseOutlineGenerationService:
                 service._kb_unsupported_paths.append(todo.path)
 
         await asyncio.gather(*(one(t) for t in content_todos), return_exceptions=True)
+
+        # ── Coverage sweep (faithful runs): no chunk may be invisible to every
+        # slide. Retrieval reaches only what node linkage / similarity ranking
+        # offer it — the client's "Physical inactivity"/"People-like-me" audit
+        # gaps were chunks NO slide retrieved. Diff the census, hand each
+        # dropped chunk to the page-nearest slide as explicit extra material.
+        if faithful and groundings:
+            try:
+                from .kb.repository import KbRepository
+
+                with db_session() as db:
+                    repo = KbRepository(db)
+                    kb = repo.get_kb(kb_id, institute_id)
+                    all_chunks = (
+                        repo.get_all_chunk_summaries(
+                            kb_id=kb_id,
+                            institute_id=kb["institute_id"],
+                            limit=course_grounding.MAX_SWEEP_CHUNKS,
+                        )
+                        if kb
+                        else []
+                    )
+                assignments = course_grounding.assign_uncovered_chunks(all_chunks, groundings)
+                for path, chunks in assignments.items():
+                    block = course_grounding.supplement_block(chunks)
+                    if block:
+                        service._kb_grounding_by_path[path] = (
+                            service._kb_grounding_by_path.get(path, "") + block
+                        )
+                if assignments:
+                    logger.info(
+                        "Coverage sweep: %d uncovered chunk(s) supplemented onto %d slide(s)",
+                        sum(len(c) for c in assignments.values()), len(assignments),
+                    )
+            except Exception:  # noqa: BLE001
+                logger.warning("Coverage sweep failed (continuing without it)", exc_info=True)
 
         supported = len(content_todos) - len(service._kb_unsupported_paths)
         logger.info(

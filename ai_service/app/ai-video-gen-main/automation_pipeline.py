@@ -2120,6 +2120,7 @@ def _repair_undefined_css_vars(html: str) -> str:
         from html_contract_repair import (
             repair_undefined_css_vars as _ruv,
             repair_dark_bed_text as _rdb,
+            repair_inline_flex_direction as _rfd,
         )
         repaired, fixed = _ruv(html)
         if fixed:
@@ -2127,6 +2128,9 @@ def _repair_undefined_css_vars(html: str) -> str:
         repaired, bed_fixes = _rdb(repaired)
         if bed_fixes:
             print(f"   \U0001f3a8 dark-bed repair: {bed_fixes}")
+        repaired, flex_fixes = _rfd(repaired)
+        if flex_fixes:
+            print(f"   \U0001f3a8 flex-direction repair: {len(flex_fixes)} container(s)")
         return repaired
     except Exception as _cv_err:  # pragma: no cover - defensive
         print(f"   \u26a0\ufe0f css-var repair skipped ({_cv_err})")

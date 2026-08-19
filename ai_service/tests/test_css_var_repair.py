@@ -63,3 +63,26 @@ def test_dark_bed_only_fires_with_a_dark_media_bed():
 
     light = '<style>#shot-root{--text:var(--brand-text, #ffffff)}</style><div>copy</div>'
     assert repair_dark_bed_text(light)[1] == []
+
+
+def test_inline_flex_row_is_pinned_only_when_the_content_implies_a_row():
+    from html_contract_repair import repair_inline_flex_direction
+
+    # Model authored its own row: restated display:flex inline, children grow.
+    row = ("<div class='process-flow' style='display:flex;align-items:flex-start'>"
+           "<div style='flex:1'>a</div><div style='flex:1'>b</div></div>")
+    out, fixes = repair_inline_flex_direction(row)
+    assert fixes and "flex-direction:row" in out
+    assert repair_inline_flex_direction(out)[1] == []          # idempotent
+
+    # An explicit inline direction is the author's word — never touch it.
+    col = ("<div class='stage-drift' style='display:flex;flex-direction:column'>"
+           "<div style='flex:1'>x</div></div>")
+    assert repair_inline_flex_direction(col)[1] == []
+
+    # Helper class used as documented (no inline display) keeps its own layout.
+    plain = "<div class='process-flow'><div class='process-node'>a</div></div>"
+    assert repair_inline_flex_direction(plain)[1] == []
+
+    # No growing child -> no evidence of a row -> leave it alone.
+    assert repair_inline_flex_direction("<div style='display:flex'><div>a</div></div>")[1] == []

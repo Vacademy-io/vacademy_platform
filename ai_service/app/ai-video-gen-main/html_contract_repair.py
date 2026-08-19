@@ -528,3 +528,56 @@ def repair_dark_bed_text(html: str) -> Tuple[str, List[str]]:
     html, _n1 = _DARK_BED_TOKEN_RE.subn(_tok, html)
     html, _n2 = _DARK_BED_COLOR_RE.subn(_tok, html)
     return html, fixes
+
+
+# ---------------------------------------------------------------------------
+# Inline flex direction
+# ---------------------------------------------------------------------------
+# The harness ships opinionated helper classes — `.process-flow` is a VERTICAL
+# process list, `.stage-drift` a centred column — and the prompt shows the model
+# their markup. The model reuses the class name for its own layout and states
+# that layout inline: `class='process-flow' style='display:flex;
+# align-items:flex-start;gap:24px'` with `flex:1` children and horizontal
+# connectors, i.e. a row. Restating display:flex inline is redundant (the class
+# already sets it), so it reads as the model authoring its own container. But it
+# does not restate the DIRECTION, and inline styles only win for properties they
+# actually declare — so the helper's `flex-direction: column` applies unopposed
+# and the row becomes a stack of full-width cards taller than the frame, whose
+# last card is cut off at the bottom edge.
+#
+# Pin the CSS default the element implied. Elements that do declare a direction
+# inline, and elements that use a helper class without restating display:flex,
+# are left exactly as they were.
+
+_INLINE_STYLE_RE = re.compile(r"""style\s*=\s*(['"])(.*?)\1""", re.I | re.S)
+_DISPLAY_FLEX_RE = re.compile(r"display\s*:\s*(?:inline-)?flex\b", re.I)
+_FLEX_DIRECTION_RE = re.compile(r"flex-direction\s*:", re.I)
+_FLEX_CHILD_RE = re.compile(r"flex\s*:\s*[1-9]|flex-grow\s*:\s*[1-9]", re.I)
+
+
+def repair_inline_flex_direction(html: str) -> Tuple[str, List[str]]:
+    """Pin `flex-direction:row` on elements that declare `display:flex` inline
+    without a direction, when their children imply a row.
+
+    Returns `(html, applied_fixes)`. Idempotent — once the direction is present
+    the element no longer matches.
+    """
+    if not html or "display" not in html:
+        return html, []
+    fixes: List[str] = []
+
+    def _sub(m: "re.Match") -> str:
+        quote, style = m.group(1), m.group(2)
+        if not _DISPLAY_FLEX_RE.search(style) or _FLEX_DIRECTION_RE.search(style):
+            return m.group(0)
+        # Only act when the container's own content implies a row: a child that
+        # grows (`flex:1`) is meaningless in the column the helper imposes, and
+        # is the model's clearest statement that these sit side by side.
+        tail = html[m.end():m.end() + 2600]
+        if not _FLEX_CHILD_RE.search(tail):
+            return m.group(0)
+        sep = "" if style.rstrip().endswith(";") or not style.strip() else ";"
+        fixes.append("pinned flex-direction:row on inline display:flex")
+        return f'style={quote}{style}{sep}flex-direction:row;{quote}'
+
+    return _INLINE_STYLE_RE.sub(_sub, html), fixes

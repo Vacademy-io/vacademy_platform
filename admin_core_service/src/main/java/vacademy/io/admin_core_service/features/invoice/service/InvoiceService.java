@@ -123,6 +123,16 @@ public class InvoiceService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    // Installment line items name themselves after their fee type ("Registration Fee",
+    // "GP Rating Course Installments") rather than the course. student_fee_payment.fee_type_id
+    // is never populated by the generator, so the name is resolved the long way round:
+    // sfp.asv_id → assigned_fee_value.fee_type_id → fee_type.name.
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository assignedFeeValueRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository feeTypeRepository;
+
     // Used by buildSfpInvoiceDTOs() to walk SFP → PaymentLog → Invoice so the synthetic
     // installment rows can carry the real Invoice's pdf_file_id / pdf_url. Avoids the
     // "No PDF" state on PAID/PARTIAL rows that actually have a persisted invoice.
@@ -975,6 +985,54 @@ public class InvoiceService {
      * @param paymentLogId the payment log whose allocations should be itemized
      * @return per-installment line items (possibly empty)
      */
+    /**
+     * The fee type's display name for a bill, via sfp.asv_id → assigned_fee_value.fee_type_id →
+     * fee_type.name. Null when the chain can't be resolved, so callers fall back to the course.
+     * (student_fee_payment.fee_type_id exists but the generator never populates it, so it can't
+     * be used as a shortcut here.)
+     */
+    private String feeTypeName(String asvId) {
+        if (!StringUtils.hasText(asvId)) {
+            return null;
+        }
+        try {
+            return assignedFeeValueRepository.findById(asvId)
+                    .map(afv -> afv.getFeeTypeId())
+                    .filter(StringUtils::hasText)
+                    .flatMap(ftId -> feeTypeRepository.findById(ftId))
+                    .map(ft -> ft.getName())
+                    .filter(StringUtils::hasText)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve fee type name for assignedFeeValue {}: {}", asvId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * The list-price equivalent of what this payment allocated to a bill, i.e. the allocation
+     * scaled back up by the bill's own discount ratio (original_amount / amount_expected).
+     *
+     * <p>Line items show gross so the invoice reads "gross, less discount, total". Taking
+     * original_amount directly would overstate a part payment — a ₹3,000 payment against a
+     * ₹10,000 installment would print ₹10,000 — so it is scaled by the share actually paid.
+     * Falls back to the allocated amount whenever the ratio can't be computed, which keeps
+     * undiscounted bills (original == expected) exactly as they were.
+     */
+    private BigDecimal grossForAllocation(StudentFeePayment sfp, BigDecimal allocated) {
+        if (sfp == null || allocated == null || allocated.compareTo(BigDecimal.ZERO) <= 0) {
+            return allocated != null ? allocated : BigDecimal.ZERO;
+        }
+        BigDecimal expected = sfp.getAmountExpected();
+        BigDecimal original = sfp.getOriginalAmount();
+        if (expected == null || original == null
+                || expected.compareTo(BigDecimal.ZERO) <= 0
+                || original.compareTo(expected) <= 0) {
+            return allocated;
+        }
+        return allocated.multiply(original).divide(expected, 2, RoundingMode.HALF_UP);
+    }
+
     /** Due date ascending, nulls last — the order the fee receipt and the side-view both use. */
     private static int compareByDueDate(StudentFeePayment a, StudentFeePayment b) {
         java.util.Date da = a.getDueDate();
@@ -1020,6 +1078,12 @@ public class InvoiceService {
             // second payment's line read "Installment 1" again, so two invoices for the same
             // learner both claimed to be for the first installment.
             Map<String, Integer> ordinalBySfp = new java.util.HashMap<>();
+            // How many bills each fee type has on this plan. A fee type billed only once — a
+            // one-off registration fee — reads better as "Registration Fee" than
+            // "Registration Fee installment 1", so the number is only appended when there is
+            // actually a sequence to distinguish.
+            Map<String, Integer> billsPerFeeType = new java.util.HashMap<>();
+            Map<String, String> feeTypeKeyBySfp = new java.util.HashMap<>();
             String userPlanId = sfps.stream()
                     .map(StudentFeePayment::getUserPlanId)
                     .filter(java.util.Objects::nonNull)
@@ -1028,31 +1092,52 @@ public class InvoiceService {
                 List<StudentFeePayment> planBills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
                 if (planBills != null && !planBills.isEmpty()) {
                     planBills.sort(InvoiceService::compareByDueDate);
-                    int position = 1;
+                    // Numbering runs within a fee type, not across the plan: with a registration
+                    // fee plus three course installments, the course instalments should read 1..3
+                    // rather than 2..4 because an unrelated fee happened to be billed first.
+                    Map<String, Integer> positionPerFeeType = new java.util.HashMap<>();
                     for (StudentFeePayment bill : planBills) {
-                        ordinalBySfp.put(bill.getId(), position++);
+                        String key = bill.getAsvId() != null ? bill.getAsvId() : "";
+                        feeTypeKeyBySfp.put(bill.getId(), key);
+                        billsPerFeeType.merge(key, 1, Integer::sum);
+                        int next = positionPerFeeType.merge(key, 1, Integer::sum);
+                        ordinalBySfp.put(bill.getId(), next);
                     }
                 }
             }
 
-            String label = StringUtils.hasText(courseLabel) ? courseLabel.trim() : null;
+            String courseName = StringUtils.hasText(courseLabel) ? courseLabel.trim() : null;
             java.text.SimpleDateFormat dueFmt = new java.text.SimpleDateFormat("dd MMM yyyy");
             int fallbackIndex = 1;
             for (StudentFeePayment sfp : sfps) {
-                BigDecimal amt = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
+                BigDecimal allocated = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
                 String due = sfp.getDueDate() != null ? dueFmt.format(sfp.getDueDate()) : "N/A";
                 int number = ordinalBySfp.getOrDefault(sfp.getId(), fallbackIndex);
-                // "<Course> installment 2 (Due: 06 Nov 2026)" — the course name first, because on a
-                // learner with several plans "Installment 2" alone says nothing about what was paid for.
-                String description = (label != null ? label + " installment " + number
+
+                // The fee type's own name when the admin gave it one ("Registration Fee"),
+                // otherwise the course. A learner's invoice should say what the money was for.
+                String label = feeTypeName(sfp.getAsvId());
+                if (!StringUtils.hasText(label)) {
+                    label = courseName;
+                }
+                boolean numbered = billsPerFeeType.getOrDefault(
+                        feeTypeKeyBySfp.getOrDefault(sfp.getId(), ""), 1) > 1;
+                String description = (StringUtils.hasText(label)
+                        ? label + (numbered ? " installment " + number : "")
                         : "Installment #" + number)
                         + " (Due: " + due + ")";
+
+                // Line carries the GROSS, with the discount subtracted once in the totals block —
+                // the usual invoice convention, and it reconciles: gross - discount = amount paid.
+                // Grossed up from what this payment actually allocated rather than taken straight
+                // from original_amount, so a part payment shows its own share of the list price
+                // instead of the whole installment.
                 items.add(InvoiceLineItemData.builder()
                         .itemType("FEE_INSTALLMENT")
                         .description(description)
                         .quantity(1)
-                        .unitPrice(amt)
-                        .amount(amt)
+                        .unitPrice(grossForAllocation(sfp, allocated))
+                        .amount(grossForAllocation(sfp, allocated))
                         .sourceId(sfp.getId())
                         .build());
                 fallbackIndex++;

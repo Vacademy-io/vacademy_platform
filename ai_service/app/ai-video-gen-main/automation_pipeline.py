@@ -5807,7 +5807,12 @@ class VideoGenerationPipeline:
                     # REQUIRED to embed narration-synced. Best-effort: a
                     # failed image just drops that item, never the shot.
                     try:
-                        self._resolve_support_visuals(_director_plan["shots"], run_dir)
+                        _sv_images = self._resolve_support_visuals(_director_plan["shots"], run_dir)
+                        if _sv_images:
+                            # Meter the Seedream spend — every other image
+                            # path bills via image_count; without this the
+                            # support photos were free to the institute.
+                            accumulate_usage({"image_count": _sv_images})
                     except Exception as _sv_err:
                         print(f"   ⚠️ support-visuals resolve failed: {_sv_err}")
 
@@ -9318,7 +9323,7 @@ class VideoGenerationPipeline:
 
     def _resolve_support_visuals(
         self, shots: List[Dict[str, Any]], run_dir: Path,
-    ) -> None:
+    ) -> int:
         """Visual-beats pre-pass: turn every shot's planner-authored
         `support_visuals` into READY assets before HTML generation —
         icons from the bundled inline set, photos AI-generated + uploaded.
@@ -9328,8 +9333,11 @@ class VideoGenerationPipeline:
         try:
             from support_visuals import pick_icon
         except ImportError:
-            return
+            return 0
+        self._check_stop()
         _SKIP_TYPES = {"DIALOGUE_SCENE", "KINETIC_TITLE", "KINETIC_TEXT", "LOWER_THIRD"}
+        # Honor user-authored "text only / no imagery" shot notes.
+        _deny = getattr(self, "_user_authored_no_host_indices", None) or set()
         photo_queue: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
         icons = 0
         for s in shots:
@@ -9337,8 +9345,19 @@ class VideoGenerationPipeline:
                 continue
             if str(s.get("shot_type") or "").upper() in _SKIP_TYPES:
                 continue
-            for it in (s.get("support_visuals") or []):
+            if s.get("shot_index") in _deny:
+                continue
+            _sv_list = s.get("support_visuals")
+            if not isinstance(_sv_list, list):
+                # Gate edits round-trip raw FE JSON — junk shapes must never
+                # cost us the shot downstream. Scrub here.
+                if _sv_list is not None:
+                    s.pop("support_visuals", None)
+                continue
+            for it in _sv_list:
                 if not isinstance(it, dict) or it.get("url") or it.get("icon_svg"):
+                    continue
+                if not str(it.get("concept") or "").strip():
                     continue
                 if it.get("kind") == "icon":
                     svg = pick_icon(it.get("concept", ""))
@@ -9371,13 +9390,26 @@ class VideoGenerationPipeline:
 
                 def _gen(kv):
                     key, concept = kv
+                    _prompt = (
+                        f"{concept}. Photorealistic, clean modern composition, "
+                        "soft natural light, no text or captions in frame."
+                    )
                     try:
-                        img, _ = self._call_image_generation_llm(
-                            f"{concept}. Photorealistic, clean modern composition, "
-                            "soft natural light, no text or captions in frame.",
-                            width=1024, height=576,
-                            model_override="bytedance-seed/seedream-4.5",
-                        )
+                        try:
+                            img, _ = self._call_image_generation_llm(
+                                _prompt, width=1024, height=576,
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
+                        except _ImageGenRateLimitError:
+                            # One paced retry — the blanket except below was
+                            # swallowing 429s as permanent failures while six
+                            # workers amplified the rate limit.
+                            import time as _t
+                            _t.sleep(15)
+                            img, _ = self._call_image_generation_llm(
+                                _prompt, width=1024, height=576,
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
                         if not img:
                             return key, None
                         local = run_dir / "support" / f"{key}.png"
@@ -9404,12 +9436,14 @@ class VideoGenerationPipeline:
 
         n_url = sum(
             1 for s in shots if isinstance(s, dict)
-            for it in (s.get("support_visuals") or []) if it.get("url")
+            for it in (s.get("support_visuals") or [] if isinstance(s.get("support_visuals"), list) else [])
+            if isinstance(it, dict) and it.get("url")
         )
         if icons or n_url:
             print(f"   🖼️  Support visuals resolved: {n_url} photo placement(s) "
                   f"({len(generated)} unique image(s)), {icons} icon(s)")
             self._persist_dialogue_plan(run_dir, shots=shots)
+        return len(generated)
 
     def _pregenerate_dialogue_clips(
         self, shots: List[Dict[str, Any]], run_dir: Path,
@@ -19045,7 +19079,8 @@ class VideoGenerationPipeline:
                 # "2 images in a 2.5-minute video" density failure.
                 and not any(
                     isinstance(_svi, dict) and (_svi.get("url") or _svi.get("icon_svg"))
-                    for _svi in (shot.get("support_visuals") or [])
+                    for _svi in (shot.get("support_visuals")
+                                 if isinstance(shot.get("support_visuals"), list) else [])
                 )
             ):
                 _t_transition_in = shot.get("transition_in") or "fade"
@@ -20773,7 +20808,10 @@ class VideoGenerationPipeline:
                 # in the harness is the second line of defence.
                 print(f"   ⚠️ Shot {shot_idx + 1} JS sanitizer failed ({_jcs_err}); shipping unsanitized")
 
-            html = self._clamp_entry_animations(html, duration)
+            html = self._clamp_entry_animations(
+                html, duration,
+                exempt_delays=shot.get("_sv_reveal_times") or None,
+            )
 
             # Pillar 2.4 — strip the redundant shared preamble the LLM tends
             # to re-emit (SVG <defs>, font @imports, brand palette :root, text-
@@ -22243,7 +22281,10 @@ class VideoGenerationPipeline:
         )
 
     @staticmethod
-    def _clamp_entry_animations(html: str, shot_duration_s: float) -> str:
+    def _clamp_entry_animations(
+        html: str, shot_duration_s: float,
+        exempt_delays: Optional[List[float]] = None,
+    ) -> str:
         """Clamp GSAP entry-animation `delay:` and `duration:` to a shot-aware
         budget so short shots don't waste their first 1–3 seconds in pure black.
 
@@ -22316,6 +22357,12 @@ class VideoGenerationPipeline:
                     return m.group(0)
                 # Leave intentional back-half reveals (delay ≥ skip_above) alone.
                 if skip_above is not None and cur >= skip_above:
+                    return m.group(0)
+                # Leave narration-synced support-visual reveals alone — their
+                # delay IS the moment the narrator speaks the concept; pulling
+                # them to the entry cap desyncs image from voice (front-half
+                # reveals landed in the clamp's dead window otherwise).
+                if exempt_delays and any(abs(cur - e) <= 0.25 for e in exempt_delays):
                     return m.group(0)
                 if cur > cap:
                     pre = m.group('pre')

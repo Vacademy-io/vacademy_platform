@@ -88,13 +88,16 @@ _ICON_KEYWORDS = {
 
 def pick_icon(concept: str) -> Optional[str]:
     """Best-effort keyword → inline SVG. None when nothing matches (caller
-    should then treat the item as a photo instead)."""
+    should then treat the item as a photo instead). The EARLIEST keyword in
+    the concept wins (ties broken by length): in "quiz after every section"
+    the subject is the quiz, not the section — position beats length."""
     c = (concept or "").lower()
-    best, best_len = None, 0
+    best, best_key = None, (10**9, 0)
     for name, kws in _ICON_KEYWORDS.items():
         for kw in kws:
-            if kw in c and len(kw) > best_len:
-                best, best_len = name, len(kw)
+            pos = c.find(kw)
+            if pos >= 0 and (pos, -len(kw)) < best_key:
+                best, best_key = name, (pos, -len(kw))
     return ICONS.get(best) if best else None
 
 
@@ -147,7 +150,9 @@ def reveal_seconds(phrase: str, narration: str, duration_s: float, idx: int, tot
 def build_support_visuals_block(shot: Dict[str, Any]) -> str:
     """The prompt block handed to the per-shot HTML LLM. Empty string when the
     shot has no RESOLVED visuals (never block generation on missing assets)."""
-    items = shot.get("support_visuals") or []
+    items = shot.get("support_visuals")
+    if not isinstance(items, list):  # junk from raw gate-edit JSON — never crash
+        return ""
     resolved = [it for it in items if isinstance(it, dict) and (it.get("url") or it.get("icon_svg"))]
     if not resolved:
         return ""
@@ -174,10 +179,15 @@ def build_support_visuals_block(shot: Dict[str, Any]) -> str:
         "styled container (tinted circle/rounded square); size 40-72px via CSS; "
         "color via `color:` (they use currentColor). Do NOT redraw or replace them.",
     ]
+    reveal_times: List[float] = []
     for i, it in enumerate(resolved):
         t = reveal_seconds(it.get("phrase", ""), narration, dur, i, len(resolved))
+        reveal_times.append(t)
         if it.get("url"):
             lines.append(f'  {i+1}. PHOTO "{it["concept"]}" — reveal_at={t}s — url: {it["url"]}')
         else:
             lines.append(f'  {i+1}. ICON "{it["concept"]}" — reveal_at={t}s — svg: {it["icon_svg"]}')
+    # Stash for the entry-animation clamp: these delays are narration-synced
+    # by design and must not be pulled down to the entry cap.
+    shot["_sv_reveal_times"] = reveal_times
     return "\n".join(lines)

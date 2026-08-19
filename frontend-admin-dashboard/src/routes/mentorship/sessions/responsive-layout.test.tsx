@@ -23,6 +23,10 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
+    MentorAvatar: () => <span data-testid="avatar" />,
+}));
+
 import { MentorSessionsPanel } from '@/routes/mentorship/-components/MentorSessionsPanel';
 
 /**

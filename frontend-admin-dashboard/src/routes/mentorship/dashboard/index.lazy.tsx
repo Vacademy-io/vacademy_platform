@@ -4,6 +4,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { MentorshipDashboard } from '../-components/MentorshipDashboard';
+import { MentorshipTabs } from '../-components/MentorshipTabs';
 
 export const Route = createLazyFileRoute('/mentorship/dashboard/')({
     component: MentorshipDashboardRoute,
@@ -24,6 +25,7 @@ function MentorshipDashboardRoute() {
                         How mentoring is going across your institute.
                     </p>
                 </div>
+                <MentorshipTabs />
                 <MentorshipDashboard instituteId={getInstituteId()} />
             </div>
         </LayoutContainer>

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, UploadSimple, UserCircle } from '@phosphor-icons/react';
+import { CaretRight, Check, UploadSimple, UserCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -12,6 +12,7 @@ import {
     fetchEligibleOrgUsers,
     type InstituteUser,
 } from '@/routes/manage-institute/teams/-services/institute-users-service';
+import { handleInviteUsers } from '@/routes/dashboard/-services/dashboard-services';
 import { useCreateMentor } from '../-hooks/use-mentorship';
 import { MentorProfileFields, type MentorProfileValues } from './MentorProfileFields';
 
@@ -21,17 +22,72 @@ interface AddMentorDialogProps {
     onOpenChange: (open: boolean) => void;
 }
 
-function initials(name?: string | null): string {
-    if (!name) return '?';
-    const parts = name.trim().split(/\s+/);
-    return (parts[0]?.[0] ?? '').concat(parts.length > 1 ? (parts[1]?.[0] ?? '') : '').toUpperCase() || '?';
+/** Good enough to catch a typo before we spend an invitation on it. */
+function isEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 /**
- * Make an existing institute team member (staff) a mentor: pick them from the
- * team, optionally set a mentor photo / display name / title / bio.
+ * Expertise, capacity, photo and titles are all optional and editable afterwards,
+ * so they start folded. The dialog then asks one question — who is this? — and
+ * only expands for an admin who wants to fill the rest in now.
+ */
+function OptionalDetails({
+    open,
+    onToggle,
+    children,
+}: {
+    open: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col gap-3">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                className="flex w-fit items-center gap-1.5 text-caption font-medium text-primary-600 hover:text-primary-700"
+            >
+                <CaretRight
+                    size={12}
+                    weight="bold"
+                    className={`transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+                {open ? 'Hide details' : 'Add photo, expertise and capacity'}
+            </button>
+            {open && <div className="flex flex-col gap-4">{children}</div>}
+        </div>
+    );
+}
+
+function initials(name?: string | null): string {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return (
+        (parts[0]?.[0] ?? '').concat(parts.length > 1 ? parts[1]?.[0] ?? '' : '').toUpperCase() ||
+        '?'
+    );
+}
+
+/**
+ * Add a mentor, from either direction:
+ *   - someone already on the team, picked from the list, or
+ *   - someone who isn't yet, invited by name + email right here.
+ *
+ * The invite path exists because the alternative was a detour: leave mentorship,
+ * go to Teams, invite the person, wait, come back, find them. It reuses the
+ * platform's own invitation endpoint with the MENTOR role, which creates the user
+ * immediately and returns its id — so the mentor row is created in the same step
+ * and the person appears in the list straight away, pending their acceptance.
  */
 export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDialogProps) {
+    const [mode, setMode] = useState<'team' | 'invite'>('team');
+    // Everything past "who is it" is optional and editable later, so the dialog
+    // opens short and only grows if the admin asks it to.
+    const [showDetails, setShowDetails] = useState(false);
+    const [inviteName, setInviteName] = useState('');
+    const [inviteEmail, setInviteEmail] = useState('');
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<InstituteUser | null>(null);
     const [displayName, setDisplayName] = useState('');
@@ -78,6 +134,10 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
         setPhotoFileId(null);
         setPhotoUrl(null);
         setProfile({ expertiseTags: [], maxMentees: '', isDiscoverable: false });
+        setMode('team');
+        setShowDetails(false);
+        setInviteName('');
+        setInviteEmail('');
     };
 
     const pick = async (m: InstituteUser) => {
@@ -123,16 +183,40 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
     };
 
     const submit = async () => {
-        if (!selected) {
+        if (mode === 'team' && !selected) {
             toast.error('Select a team member');
+            return;
+        }
+        if (mode === 'invite' && (!inviteName.trim() || !isEmail(inviteEmail))) {
+            toast.error('Enter a name and a valid email address');
             return;
         }
         setSubmitting(true);
         try {
+            // Inviting first yields the new user's id, which the mentor row needs.
+            // If the invite succeeds but the mentor row fails, the person is left as
+            // an invited team member — recoverable by adding them from the team list,
+            // and better than silently losing the invitation.
+            const userId =
+                mode === 'team'
+                    ? selected!.id
+                    : ((
+                          await handleInviteUsers(instituteId, {
+                              name: inviteName.trim(),
+                              email: inviteEmail.trim(),
+                              roleType: ['MENTOR'],
+                          })
+                      )?.id as string | undefined);
+
+            if (!userId) {
+                throw new Error('The invitation did not return a user to add as a mentor');
+            }
+
             await createMentor.mutateAsync({
                 institute_id: instituteId,
-                user_id: selected.id,
-                display_name: displayName || selected.full_name,
+                user_id: userId,
+                display_name:
+                    displayName || (mode === 'team' ? selected!.full_name : inviteName.trim()),
                 title,
                 bio,
                 profile_image_file_id: photoFileId || undefined,
@@ -141,7 +225,11 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                     profile.maxMentees.trim() === '' ? undefined : Number(profile.maxMentees),
                 is_discoverable: profile.isDiscoverable,
             });
-            toast.success('Mentor added');
+            toast.success(
+                mode === 'invite'
+                    ? `Invitation sent to ${inviteEmail.trim()} — they're a mentor already`
+                    : 'Mentor added'
+            );
             reset();
             onOpenChange(false);
         } catch (error) {
@@ -150,8 +238,9 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
             reportApiError(error, {
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'create-mentor' },
-                extra: { userId: selected.id },
-                fallbackMessage: 'Failed to add mentor',
+                extra: { mode, userId: selected?.id },
+                fallbackMessage:
+                    mode === 'invite' ? 'Failed to invite this mentor' : 'Failed to add mentor',
             });
         } finally {
             setSubmitting(false);
@@ -169,7 +258,12 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
             dialogWidth="max-w-lg"
             footer={
                 <div className="flex justify-end gap-2">
-                    <MyButton type="button" buttonType="secondary" scale="medium" onClick={() => onOpenChange(false)}>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={() => onOpenChange(false)}
+                    >
                         Cancel
                     </MyButton>
                     <MyButton
@@ -177,40 +271,112 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                         buttonType="primary"
                         scale="medium"
                         onClick={submit}
-                        disable={submitting || !selected}
-                        title={!selected ? 'Choose a team member above first' : undefined}
+                        disable={
+                            submitting ||
+                            (mode === 'team'
+                                ? !selected
+                                : !inviteName.trim() || !isEmail(inviteEmail))
+                        }
+                        title={
+                            mode === 'team' && !selected
+                                ? 'Choose a team member above first'
+                                : undefined
+                        }
                     >
-                        {submitting ? 'Adding…' : 'Add mentor'}
+                        {submitting
+                            ? mode === 'invite'
+                                ? 'Inviting…'
+                                : 'Adding…'
+                            : mode === 'invite'
+                              ? 'Invite as mentor'
+                              : 'Add mentor'}
                     </MyButton>
                 </div>
             }
         >
             <div className="flex flex-col gap-4">
                 <p className="text-body text-neutral-600">
-                    Pick a member of your institute&apos;s team to make them a mentor. They get the
-                    Mentor role and appear to their assigned students.
+                    Mentors get the Mentor role and appear to the students you assign them.
                 </p>
 
-                {!selected ? (
+                {!selected && (
+                    <div className="flex gap-1 rounded-lg bg-neutral-100 p-1">
+                        {(
+                            [
+                                { key: 'team', label: 'From your team' },
+                                { key: 'invite', label: 'Invite by email' },
+                            ] as const
+                        ).map((t) => (
+                            <button
+                                key={t.key}
+                                type="button"
+                                onClick={() => setMode(t.key)}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-body transition-colors ${
+                                    mode === t.key
+                                        ? 'bg-white font-medium text-neutral-700 shadow-sm'
+                                        : 'text-neutral-500 hover:text-neutral-700'
+                                }`}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {mode === 'invite' && !selected && (
+                    <div className="flex flex-col gap-3">
+                        <p className="text-caption text-neutral-500">
+                            They&apos;ll get an invitation email and the Mentor role, and appear in
+                            this list right away — no need to go to Teams first.
+                        </p>
+                        <MyInput
+                            input={inviteName}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setInviteName(e.target.value)
+                            }
+                            inputType="text"
+                            inputPlaceholder="e.g. Asha Nair"
+                            label="Full name"
+                            required
+                            className="sm:w-full"
+                        />
+                        <MyInput
+                            input={inviteEmail}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setInviteEmail(e.target.value)
+                            }
+                            inputType="email"
+                            inputPlaceholder="asha@example.com"
+                            label="Email"
+                            required
+                            className="sm:w-full"
+                        />
+                    </div>
+                )}
+
+                {mode === 'team' && !selected ? (
                     <div className="flex flex-col gap-2">
-                        <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                            Choose a team member
-                        </span>
                         <MyInput
                             input={search}
-                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setSearch(e.target.value)
+                            }
                             inputType="text"
                             inputPlaceholder="Search your team by name or email"
-                            label="Team member"
+                            className="sm:w-full"
                         />
                         <div className="max-h-64 overflow-y-auto rounded-md border border-neutral-200">
                             {membersQuery.isLoading ? (
                                 <div className="p-4 text-body text-neutral-400">Loading team…</div>
                             ) : membersQuery.isError ? (
-                                <div className="p-4 text-body text-danger-600">Couldn&apos;t load your team.</div>
+                                <div className="p-4 text-body text-danger-600">
+                                    Couldn&apos;t load your team.
+                                </div>
                             ) : filtered.length === 0 ? (
                                 <div className="p-4 text-body text-neutral-400">
-                                    {members.length === 0 ? 'No team members found.' : 'No matches.'}
+                                    {members.length === 0
+                                        ? 'No team members found.'
+                                        : 'No matches.'}
                                 </div>
                             ) : (
                                 filtered.map((m) => (
@@ -229,7 +395,9 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                                             </span>
                                             <span className="text-caption text-neutral-400">
                                                 {m.email}
-                                                {m.roles && m.roles.length ? ` · ${m.roles.join(', ')}` : ''}
+                                                {m.roles && m.roles.length
+                                                    ? ` · ${m.roles.join(', ')}`
+                                                    : ''}
                                             </span>
                                         </span>
                                     </button>
@@ -237,7 +405,11 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                             )}
                         </div>
                     </div>
-                ) : (
+                ) : mode === 'invite' ? (
+                    <OptionalDetails open={showDetails} onToggle={() => setShowDetails((v) => !v)}>
+                        <MentorProfileFields values={profile} onChange={setProfile} />
+                    </OptionalDetails>
+                ) : selected ? (
                     <>
                         <div className="flex items-center justify-between gap-3 rounded-md border border-primary-200 bg-primary-50 px-3 py-2">
                             <div className="flex items-center gap-2">
@@ -246,7 +418,9 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                                     <span className="text-body font-medium text-neutral-700">
                                         {selected.full_name || selected.email}
                                     </span>
-                                    <span className="text-caption text-neutral-400">{selected.email}</span>
+                                    <span className="text-caption text-neutral-400">
+                                        {selected.email}
+                                    </span>
                                 </div>
                             </div>
                             <MyButton
@@ -260,73 +434,85 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                             </MyButton>
                         </div>
 
-                        <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                            Mentor profile
-                        </span>
-                        <p className="-mt-2 text-caption text-neutral-400">
-                            How this mentor appears to their assigned students.
-                        </p>
+                        <OptionalDetails
+                            open={showDetails}
+                            onToggle={() => setShowDetails((v) => !v)}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
+                                    {photoUrl ? (
+                                        <img
+                                            src={photoUrl}
+                                            alt="Mentor"
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <UserCircle size={40} className="text-neutral-300" />
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disable={uploadingPhoto}
+                                    >
+                                        <UploadSimple size={16} />{' '}
+                                        {uploadingPhoto
+                                            ? 'Uploading…'
+                                            : photoUrl
+                                              ? 'Change photo'
+                                              : 'Upload photo'}
+                                    </MyButton>
+                                    <span className="text-caption text-neutral-400">
+                                        Optional. Defaults to their team profile photo.
+                                    </span>
+                                </div>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={onPhotoChange}
+                                />
+                            </div>
 
-                        <div className="flex items-center gap-4">
-                            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
-                                {photoUrl ? (
-                                    <img src={photoUrl} alt="Mentor" className="h-full w-full object-cover" />
-                                ) : (
-                                    <UserCircle size={40} className="text-neutral-300" />
-                                )}
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disable={uploadingPhoto}
-                                >
-                                    <UploadSimple size={16} />{' '}
-                                    {uploadingPhoto ? 'Uploading…' : photoUrl ? 'Change photo' : 'Upload photo'}
-                                </MyButton>
-                                <span className="text-caption text-neutral-400">
-                                    Optional. Defaults to their team profile photo.
-                                </span>
-                            </div>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={onPhotoChange}
+                            <MyInput
+                                input={displayName}
+                                onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setDisplayName(e.target.value)
+                                }
+                                inputType="text"
+                                inputPlaceholder={selected.full_name || 'Display name'}
+                                label="Display name"
+                                className="sm:w-full"
                             />
-                        </div>
+                            <MyInput
+                                input={title}
+                                onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setTitle(e.target.value)
+                                }
+                                inputType="text"
+                                inputPlaceholder="e.g. Senior Career Mentor"
+                                label="Title"
+                                className="sm:w-full"
+                            />
+                            <MyInput
+                                input={bio}
+                                onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setBio(e.target.value)
+                                }
+                                inputType="text"
+                                inputPlaceholder="Short bio (optional)"
+                                label="Bio"
+                                className="sm:w-full"
+                            />
 
-                        <MyInput
-                            input={displayName}
-                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
-                            inputType="text"
-                            inputPlaceholder={selected.full_name || 'Display name'}
-                            label="Display name"
-                            className="sm:w-full"
-                        />
-                        <MyInput
-                            input={title}
-                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-                            inputType="text"
-                            inputPlaceholder="e.g. Senior Career Mentor"
-                            label="Title"
-                            className="sm:w-full"
-                        />
-                        <MyInput
-                            input={bio}
-                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => setBio(e.target.value)}
-                            inputType="text"
-                            inputPlaceholder="Short bio (optional)"
-                            label="Bio"
-                            className="sm:w-full"
-                        />
-
-                        <MentorProfileFields values={profile} onChange={setProfile} />
+                            <MentorProfileFields values={profile} onChange={setProfile} />
+                        </OptionalDetails>
                     </>
-                )}
+                ) : null}
             </div>
         </MyDialog>
     );

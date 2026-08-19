@@ -3,6 +3,7 @@ import {
     CalendarBlank,
     CheckCircle,
     Clock,
+    CaretRight,
     Star,
     UserMinus,
     VideoCamera,
@@ -13,7 +14,9 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMentorSessions } from '../-hooks/use-mentorship';
+import { dayOfMonth, sessionDateTime, shortMonth, timeOfDay } from '../-utils/format-session-time';
 import { SessionActionDialog } from './SessionActionDialog';
+import { MentorAvatar } from './MentorAvatar';
 import type { MentorSessionDTO } from '../-types/mentorship-types';
 
 /** The lifecycle states an admin filters by, in the order they matter. */
@@ -25,12 +28,6 @@ const FILTERS = [
     { key: 'NO_SHOW', label: 'No-shows' },
     { key: 'CANCELLED', label: 'Cancelled' },
 ] as const;
-
-function fmtDateTime(v?: number | null): string {
-    if (!v) return '—';
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
-}
 
 /**
  * Every mentorship session in one place: who, when, what happened, and how the
@@ -117,19 +114,45 @@ export function MentorSessionsPanel({
                             key={s.booking_instance_id}
                             type="button"
                             onClick={() => setDetail(s)}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-left hover:border-primary-200 hover:bg-primary-50/30"
+                            className="group flex w-full flex-wrap items-center gap-4 rounded-xl border border-neutral-200 bg-white p-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/30"
                         >
-                            <div className="flex min-w-0 flex-col gap-0.5">
-                                <span className="truncate text-body font-medium text-neutral-700">
-                                    {s.mentor_name || 'Mentor'} &rarr; {s.student_name || 'Learner'}
+                            {/* Leading date block — turns a wall of rows into something scannable. */}
+                            <span className="flex size-12 shrink-0 flex-col items-center justify-center rounded-lg bg-neutral-50 leading-none text-neutral-600 group-hover:bg-white">
+                                <span className="text-body font-semibold tabular-nums">
+                                    {dayOfMonth(s.scheduled_start_utc)}
                                 </span>
-                                <span className="truncate text-caption text-neutral-500">
-                                    {fmtDateTime(s.scheduled_start_utc)}
+                                <span className="text-caption font-medium tracking-wide text-neutral-400">
+                                    {shortMonth(s.scheduled_start_utc)}
+                                </span>
+                            </span>
+
+                            <span className="flex min-w-0 flex-1 basis-1/2 flex-col gap-1">
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                    <MentorAvatar
+                                        fileId={null}
+                                        name={s.mentor_name}
+                                        className="size-5 shrink-0 text-caption"
+                                    />
+                                    <span className="truncate text-body font-medium text-neutral-700">
+                                        {s.mentor_name || 'Mentor'}
+                                    </span>
+                                    <CaretRight
+                                        size={11}
+                                        weight="bold"
+                                        className="shrink-0 text-neutral-300"
+                                    />
+                                    <span className="truncate text-body text-neutral-600">
+                                        {s.student_name || 'Learner'}
+                                    </span>
+                                </span>
+                                <span className="truncate text-caption text-neutral-400">
+                                    {timeOfDay(s.scheduled_start_utc)}
                                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}
                                     {s.topic ? ` · ${s.topic}` : ''}
                                 </span>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
+                            </span>
+
+                            <span className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
                                 {s.lifecycle === 'UPCOMING' && (
                                     <>
                                         <MyButton
@@ -167,7 +190,7 @@ export function MentorSessionsPanel({
                                     </span>
                                 )}
                                 <LifecycleBadge lifecycle={s.lifecycle} />
-                            </div>
+                            </span>
                         </button>
                     ))}
                 </div>
@@ -267,7 +290,7 @@ function SessionDetailDialog({
                         value={session.student_name}
                         sub={session.student_email}
                     />
-                    <Field label="When" value={fmtDateTime(session.scheduled_start_utc)} />
+                    <Field label="When" value={sessionDateTime(session.scheduled_start_utc)} />
                     <Field
                         label="Duration"
                         value={session.duration_minutes ? `${session.duration_minutes} min` : '—'}

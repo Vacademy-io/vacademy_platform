@@ -56,6 +56,7 @@ import { MentorAvatar } from '../-components/MentorAvatar';
 import { EditMentorDialog } from '../-components/EditMentorDialog';
 import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
 import { MentorDetailDialog } from '../-components/MentorDetailDialog';
+import { MentorshipTabs } from '../-components/MentorshipTabs';
 import { CapacityChip, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
 import { filterMentors } from '../-utils/filter-mentors';
@@ -155,7 +156,7 @@ function MentorsPage() {
         <div className="flex flex-col gap-6 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-col">
-                    <h2 className="text-title font-semibold text-neutral-700">Mentors</h2>
+                    <h2 className="text-title font-semibold text-neutral-700">Mentorship</h2>
                     <p className="text-body text-neutral-500">
                         Add mentors and assign students to them.
                     </p>
@@ -175,11 +176,18 @@ function MentorsPage() {
                     >
                         <UsersThree size={18} /> Bulk assign
                     </MyButton>
-                    <MyButton type="button" buttonType="primary" scale="medium" onClick={() => setAddOpen(true)}>
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={() => setAddOpen(true)}
+                    >
                         <Plus size={18} /> Add mentor
                     </MyButton>
                 </div>
             </div>
+
+            <MentorshipTabs />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="relative w-full sm:w-80">
@@ -282,27 +290,20 @@ function MentorsPage() {
                                     >
                                         {m.display_name || m.name || 'Mentor'}
                                     </button>
-                                    <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
-                                    {(m.expertise_tags?.length ?? 0) > 0 && (
-                                        <span className="mt-1 flex flex-wrap gap-1">
-                                            {m.expertise_tags?.slice(0, 2).map((tag) => (
-                                                <span
-                                                    key={tag}
-                                                    className="rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600"
-                                                >
-                                                    {tag}
+                                    <span className="flex min-w-0 items-center gap-1.5 text-caption text-neutral-400">
+                                        <span className="truncate">{m.title || m.email || ''}</span>
+                                        {(m.expertise_tags?.length ?? 0) > 0 && (
+                                            <>
+                                                <span className="text-neutral-300">·</span>
+                                                <span className="truncate text-primary-600">
+                                                    {m.expertise_tags?.slice(0, 2).join(', ')}
+                                                    {(m.expertise_tags?.length ?? 0) > 2
+                                                        ? ` +${(m.expertise_tags?.length ?? 0) - 2}`
+                                                        : ''}
                                                 </span>
-                                            ))}
-                                            {(m.expertise_tags?.length ?? 0) > 2 && (
-                                                <span
-                                                    className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500"
-                                                    title={m.expertise_tags?.slice(2).join(', ')}
-                                                >
-                                                    +{(m.expertise_tags?.length ?? 0) - 2}
-                                                </span>
-                                            )}
-                                        </span>
-                                    )}
+                                            </>
+                                        )}
+                                    </span>
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -396,7 +397,11 @@ function MentorsPage() {
             )}
 
             {instituteId && (
-                <AddMentorDialog instituteId={instituteId} open={addOpen} onOpenChange={setAddOpen} />
+                <AddMentorDialog
+                    instituteId={instituteId}
+                    open={addOpen}
+                    onOpenChange={setAddOpen}
+                />
             )}
             {instituteId && (
                 <EditMentorDialog
@@ -452,7 +457,8 @@ function MentorsPage() {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>
-                            Remove {confirmRemove?.display_name || confirmRemove?.name || 'this mentor'}?
+                            Remove{' '}
+                            {confirmRemove?.display_name || confirmRemove?.name || 'this mentor'}?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             {confirmRemove?.assigned_student_count

@@ -30,12 +30,12 @@ describe('CapacityChip', () => {
                 mentor={mentor({ assigned_student_count: 10, max_mentees: 10, at_capacity: true })}
             />
         );
-        expect(screen.getByText('10/10 students · Full')).toBeInTheDocument();
+        expect(screen.getByText('10/10 · full')).toBeInTheDocument();
     });
 
     it('derives fullness from the numbers when the server omits the flag', () => {
         render(<CapacityChip mentor={mentor({ assigned_student_count: 5, max_mentees: 5 })} />);
-        expect(screen.getByText('5/5 students · Full')).toBeInTheDocument();
+        expect(screen.getByText('5/5 · full')).toBeInTheDocument();
     });
 
     it('warns before a mentor is full, not only once they are', () => {
@@ -77,20 +77,20 @@ describe('RatingChip', () => {
         expect(screen.getByText('5.0')).toBeInTheDocument();
     });
 
-    it('says "Not rated" instead of implying a zero score', () => {
-        render(<RatingChip mentor={mentor()} onClick={vi.fn()} />);
-        expect(screen.getByText('Not rated')).toBeInTheDocument();
-        expect(screen.queryByText('0.0')).not.toBeInTheDocument();
+    it('renders nothing at all for an unrated mentor', () => {
+        // A row of greyed "Not rated" chips is noise; absence says the same thing.
+        const { container } = render(<RatingChip mentor={mentor()} onClick={vi.fn()} />);
+        expect(container).toBeEmptyDOMElement();
     });
 
     it('treats an average with no ratings behind it as unrated', () => {
-        render(
+        const { container } = render(
             <RatingChip
                 mentor={mentor({ average_rating: 4.2, rating_count: 0 })}
                 onClick={vi.fn()}
             />
         );
-        expect(screen.getByText('Not rated')).toBeInTheDocument();
+        expect(container).toBeEmptyDOMElement();
     });
 
     it('opens the feedback list when there is something to read', () => {

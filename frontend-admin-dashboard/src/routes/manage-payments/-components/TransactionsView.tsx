@@ -14,15 +14,16 @@ import type {
     BatchForSession,
 } from '@/types/payment-logs';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
-import { fetchBillingSummary } from '@/services/payment-logs';
+import { fetchBillingSummary, fetchOutstandingLearners } from '@/services/payment-logs';
 import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
 import { useLeadColumnPrefs } from '@/components/shared/leads/use-lead-column-prefs';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { PaymentFilters } from './PaymentFilters';
-import { PaymentControlBar, type StatusSegment } from './PaymentControlBar';
+import { PaymentControlBar, type SegmentKey, type StatusSegment } from './PaymentControlBar';
+import { DueLearnersTable } from './DueLearnersTable';
 import { PaymentLogsTable } from './PaymentLogsTable';
-import { PaymentKpiCards, type SummaryStatusKey } from './PaymentKpiCards';
+import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
 import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -75,7 +76,10 @@ export function TransactionsView() {
     const { start: startDate, end: endDate } = dateRange;
     // Status is one control — the KPI tiles and the segmented switch drive this single bucket, and
     // it filters the loaded rows locally (see classifyEntry).
-    const [statusBucket, setStatusBucket] = useState<SummaryStatusKey>('total');
+    const [statusBucket, setStatusBucket] = useState<RecordStatusKey>('total');
+    // 'balances' answers "who owes money", which the payment records cannot: an unpaid balance
+    // normally has no row to filter to. It swaps the table rather than narrowing it.
+    const [view, setView] = useState<'records' | 'balances'>('records');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]);
     const [selectedPaymentTypes, setSelectedPaymentTypes] = useState<SelectOption[]>([]);
@@ -269,18 +273,57 @@ export function TransactionsView() {
         return toggles;
     }, [hasOrgAssociatedBatches]);
 
-    const handleSummarySelect = (key: SummaryStatusKey) => {
+    // Paging only applies while the balances list is on screen; leaving it at 0 otherwise keeps
+    // the count in the segmented switch from refetching every time the records table is paged.
+    const balancesPage = view === 'balances' ? currentPage : 0;
+    const {
+        data: outstanding,
+        isLoading: isLoadingOutstanding,
+        error: outstandingError,
+    } = useQuery({
+        queryKey: [
+            'payment-outstanding-learners',
+            startDate,
+            endDate,
+            requestFilters.package_session_ids,
+            balancesPage,
+        ],
+        queryFn: () =>
+            fetchOutstandingLearners(
+                {
+                    start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
+                    end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
+                    package_session_ids: requestFilters.package_session_ids,
+                },
+                balancesPage,
+                PAGE_SIZE
+            ),
+        staleTime: 60_000,
+        retry: false,
+    });
+
+    /** 'due' opens the balances list; everything else narrows the payment records. */
+    const handleSegmentSelect = (key: SegmentKey) => {
         setCurrentPage(0);
+        if (key === 'due') {
+            setView('balances');
+            return;
+        }
+        setView('records');
         // Clicking the active tile again clears back to "all".
         setStatusBucket(key === statusBucket ? 'total' : key);
     };
 
-    // Segmented status switch — counts come from the same summary the KPI cards use.
+    const handleSummarySelect = (key: SummaryStatusKey) => handleSegmentSelect(key);
+
+    // Segmented switch. The first four narrow the payment records; the last swaps in the learners
+    // who still owe money, counted from the balances query rather than from the records.
     const segments: StatusSegment[] = [
         { key: 'total', label: 'All', count: allEntries.length },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
-        { key: 'pending', label: 'Due', count: paymentSummary.pending.count },
+        { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
         { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
+        { key: 'due', label: 'Due', count: outstanding?.totalElements ?? 0 },
     ];
 
     // Detailed-filter count for the Filters button badge. Status lives in the segmented switch and
@@ -346,6 +389,7 @@ export function TransactionsView() {
     const handleClearFilters = () => {
         setDateRange(ALL_TIME_RANGE);
         setStatusBucket('total');
+        setView('records');
         setSelectedUserPlanStatuses([]);
         setSelectedPaymentSources([]);
         setSelectedPaymentTypes([]);
@@ -450,7 +494,7 @@ export function TransactionsView() {
                     totalCount={allEntries.length}
                     isLoading={isLoadingPayments}
                     truncated={allData?.truncated}
-                    activeKey={statusBucket}
+                    activeKey={view === 'balances' ? 'due' : statusBucket}
                     onSelect={handleSummarySelect}
                 />
 
@@ -462,8 +506,8 @@ export function TransactionsView() {
                         setCurrentPage(0);
                     }}
                     segments={segments}
-                    activeStatus={statusBucket}
-                    onStatusSelect={handleSummarySelect}
+                    activeStatus={view === 'balances' ? 'due' : statusBucket}
+                    onStatusSelect={handleSegmentSelect}
                     filterCount={detailedFilterCount}
                     onOpenFilters={() => setFiltersOpen(true)}
                     actions={
@@ -508,19 +552,29 @@ export function TransactionsView() {
                     </div>
                 )}
 
-                {/* Table */}
-                <PaymentLogsTable
-                    data={pagedData}
-                    isLoading={isLoadingPayments}
-                    error={paymentsError as Error}
-                    currentPage={currentPage}
-                    onPageChange={handlePageChange}
-                    packageSessions={packageSessionsMap}
-                    hasOrgAssociatedBatches={hasOrgAssociatedBatches}
-                    hiddenColumns={hiddenColumns}
-                    onRefresh={() => refetchPaymentLogs()}
-                    onViewDetails={openDetail}
-                />
+                {/* Table — payment records, or the learners who owe money */}
+                {view === 'balances' ? (
+                    <DueLearnersTable
+                        data={outstanding}
+                        isLoading={isLoadingOutstanding}
+                        error={outstandingError as Error}
+                        currentPage={currentPage}
+                        onPageChange={handlePageChange}
+                    />
+                ) : (
+                    <PaymentLogsTable
+                        data={pagedData}
+                        isLoading={isLoadingPayments}
+                        error={paymentsError as Error}
+                        currentPage={currentPage}
+                        onPageChange={handlePageChange}
+                        packageSessions={packageSessionsMap}
+                        hasOrgAssociatedBatches={hasOrgAssociatedBatches}
+                        hiddenColumns={hiddenColumns}
+                        onRefresh={() => refetchPaymentLogs()}
+                        onViewDetails={openDetail}
+                    />
+                )}
 
                 {/* Filters slide-over */}
                 <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>

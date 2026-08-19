@@ -85,6 +85,8 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MentorshipSessionsIndexRouteImport } from "./routes/mentorship/sessions/index"
+import { Route as MentorshipRequestsIndexRouteImport } from "./routes/mentorship/requests/index"
 import { Route as MentorshipMyMentorshipIndexRouteImport } from "./routes/mentorship/my-mentorship/index"
 import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/mentors/index"
 import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
@@ -751,6 +753,20 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MentorshipSessionsIndexRoute = MentorshipSessionsIndexRouteImport.update({
+  id: "/mentorship/sessions/",
+  path: "/mentorship/sessions/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/sessions/index.lazy").then((d) => d.Route),
+)
+const MentorshipRequestsIndexRoute = MentorshipRequestsIndexRouteImport.update({
+  id: "/mentorship/requests/",
+  path: "/mentorship/requests/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/requests/index.lazy").then((d) => d.Route),
+)
 const MentorshipMyMentorshipIndexRoute =
   MentorshipMyMentorshipIndexRouteImport.update({
     id: "/mentorship/my-mentorship/",
@@ -903,9 +919,9 @@ const FinancialManagementCollectionDashboardIndexRoute =
     path: "/financial-management/collection-dashboard/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/financial-management/collection-dashboard/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/financial-management/collection-dashboard/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const FinancialManagementAdjustmentApprovalsIndexRoute =
   FinancialManagementAdjustmentApprovalsIndexRouteImport.update({
@@ -913,9 +929,9 @@ const FinancialManagementAdjustmentApprovalsIndexRoute =
     path: "/financial-management/adjustment-approvals/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/financial-management/adjustment-approvals/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/financial-management/adjustment-approvals/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const EvaluatorAiStudentsIndexRoute =
   EvaluatorAiStudentsIndexRouteImport.update({
@@ -1642,9 +1658,9 @@ const StudyLibraryCoursesCourseDetailsTranslationIndexRoute =
     path: "/study-library/courses/course-details/translation/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/study-library/courses/course-details/translation/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/courses/course-details/translation/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport.update({
@@ -1652,9 +1668,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
     path: "/study-library/courses/course-details/subjects/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/study-library/courses/course-details/subjects/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/courses/course-details/subjects/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingIndexRouteImport.update({
@@ -1662,9 +1678,9 @@ const StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute =
     path: "/study-library/ai-copilot/course-outline/generating/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/study-library/ai-copilot/course-outline/generating/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/ai-copilot/course-outline/generating/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute =
   HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRouteImport.update({
@@ -1672,9 +1688,9 @@ const HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute =
     path: "/homework-creation/create-assessment/$assessmentId/$examtype/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/homework-creation/create-assessment/$assessmentId/$examtype/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/homework-creation/create-assessment/$assessmentId/$examtype/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const AudienceManagerListCampaignUsersAddIndexRoute =
   AudienceManagerListCampaignUsersAddIndexRouteImport.update({
@@ -1694,9 +1710,9 @@ const AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute =
     path: "/assessment/create-assessment/$assessmentId/$examtype/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/assessment/create-assessment/$assessmentId/$examtype/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/assessment/create-assessment/$assessmentId/$examtype/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute =
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRouteImport.update({
@@ -1704,9 +1720,9 @@ const AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute =
     path: "/assessment/assessment-list/offline-entry/$assessmentId/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/assessment/assessment-list/offline-entry/$assessmentId/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/assessment/assessment-list/offline-entry/$assessmentId/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute =
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRouteImport.update({
@@ -1720,9 +1736,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute =
     path: "/study-library/courses/course-details/subjects/modules/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/study-library/courses/course-details/subjects/modules/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/courses/course-details/subjects/modules/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRouteImport.update({
@@ -1730,9 +1746,9 @@ const StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRoute =
     path: "/study-library/ai-copilot/course-outline/generating/viewer/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/study-library/ai-copilot/course-outline/generating/viewer/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/ai-copilot/course-outline/generating/viewer/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingProcessingIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingProcessingIndexRouteImport.update(
@@ -1748,9 +1764,9 @@ const EvaluationEvaluateAssessmentIdAttemptIdExamTypeIndexRoute =
     path: "/evaluation/evaluate/$assessmentId/$attemptId/$examType/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import(
-      "./routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport.update(
@@ -1760,9 +1776,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import(
-      "./routes/study-library/courses/course-details/subjects/modules/chapters/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/courses/course-details/subjects/modules/chapters/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeIndexRoute =
   EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeIndexRouteImport.update(
@@ -1772,9 +1788,9 @@ const EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeI
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import(
-      "./routes/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport.update(
@@ -1784,9 +1800,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import(
-      "./routes/study-library/courses/course-details/subjects/modules/chapters/slides/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/study-library/courses/course-details/subjects/modules/chapters/slides/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRoute =
   HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRouteImport.update(
@@ -1796,9 +1812,9 @@ const HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesss
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import(
-      "./routes/homework-creation/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/homework-creation/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRoute =
   AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRouteImport.update(
@@ -1808,9 +1824,9 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import(
-      "./routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy"
-    ).then((d) => d.Route),
+    import("./routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 
 export interface FileRoutesByFullPath {
@@ -1941,6 +1957,8 @@ export interface FileRoutesByFullPath {
   "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2147,6 +2165,8 @@ export interface FileRoutesByTo {
   "/meetings/team": typeof MeetingsTeamIndexRoute
   "/mentorship/mentors": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -2355,6 +2375,8 @@ export interface FileRoutesById {
   "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2564,6 +2586,8 @@ export interface FileRouteTypes {
     | "/meetings/team/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
+    | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2770,6 +2794,8 @@ export interface FileRouteTypes {
     | "/meetings/team"
     | "/mentorship/mentors"
     | "/mentorship/my-mentorship"
+    | "/mentorship/requests"
+    | "/mentorship/sessions"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2977,6 +3003,8 @@ export interface FileRouteTypes {
     | "/meetings/team/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
+    | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -3184,6 +3212,8 @@ export interface RootRouteChildren {
   MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
   MentorshipMentorsIndexRoute: typeof MentorshipMentorsIndexRoute
   MentorshipMyMentorshipIndexRoute: typeof MentorshipMyMentorshipIndexRoute
+  MentorshipRequestsIndexRoute: typeof MentorshipRequestsIndexRoute
+  MentorshipSessionsIndexRoute: typeof MentorshipSessionsIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -3810,6 +3840,20 @@ declare module "@tanstack/react-router" {
       path: "/planning/activity-logs"
       fullPath: "/planning/activity-logs/"
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/sessions/": {
+      id: "/mentorship/sessions/"
+      path: "/mentorship/sessions"
+      fullPath: "/mentorship/sessions/"
+      preLoaderRoute: typeof MentorshipSessionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/requests/": {
+      id: "/mentorship/requests/"
+      path: "/mentorship/requests"
+      fullPath: "/mentorship/requests/"
+      preLoaderRoute: typeof MentorshipRequestsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/mentorship/my-mentorship/": {
@@ -4856,6 +4900,8 @@ const rootRouteChildren: RootRouteChildren = {
   MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
   MentorshipMentorsIndexRoute: MentorshipMentorsIndexRoute,
   MentorshipMyMentorshipIndexRoute: MentorshipMyMentorshipIndexRoute,
+  MentorshipRequestsIndexRoute: MentorshipRequestsIndexRoute,
+  MentorshipSessionsIndexRoute: MentorshipSessionsIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,

@@ -1,12 +1,19 @@
-import { CheckCircle, HourglassMedium, Receipt, XCircle } from '@phosphor-icons/react';
+import { CheckCircle, Clock, HourglassMedium, Receipt, XCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney } from '@/utils/payment-currency';
 import type { PaymentSummary } from '../-utils/paymentSummary';
 import { bucketAmountTotal, summarizeBucketAmount } from '../-utils/paymentSummary';
 
-/** The status value each KPI card filters the table down to (total = clear the status filter). */
-export type SummaryStatusKey = 'total' | 'paid' | 'pending' | 'failed';
+/**
+ * The five KPI cards. Four describe payment records; 'due' describes a balance — money a learner
+ * owes on their enrolment, which usually has no payment record at all. Keeping them apart is the
+ * whole point: an institute can have ₹85,000 due and zero pending transactions.
+ */
+export type SummaryStatusKey = 'total' | 'paid' | 'due' | 'pending' | 'failed';
+
+/** The cards that map onto an actual payment record, so they can filter the table. */
+export type RecordStatusKey = Exclude<SummaryStatusKey, 'due'>;
 
 /**
  * Billing figures from the server: what learners were billed, what they paid, and the difference.
@@ -44,9 +51,13 @@ interface CardDef {
     label: string;
     /** Trailing word(s) on the count line, e.g. "980 settled". */
     hint: string;
+    /** One line spelling out what the number actually is, so two "pending"s can't be confused. */
+    caption: string;
     icon: typeof Receipt;
     iconClass: string;
     barClass: string;
+    /** Which summary bucket backs the amount when no server billing figures are available. */
+    bucket: 'total' | 'paid' | 'pending' | 'failed';
 }
 
 /**
@@ -60,41 +71,62 @@ const CARDS: CardDef[] = [
         key: 'total',
         label: 'Total payment',
         hint: 'payments',
+        caption: 'Billed to learners',
         icon: Receipt,
         iconClass: 'bg-primary-50 text-primary-500',
         barClass: 'bg-primary-500',
+        bucket: 'total',
     },
     {
         key: 'paid',
         label: 'Collected payment',
         hint: 'settled',
+        caption: 'Money received',
         icon: CheckCircle,
         iconClass: 'bg-success-50 text-success-600',
         barClass: 'bg-success-500',
+        bucket: 'paid',
     },
     {
-        key: 'pending',
+        key: 'due',
         label: 'Due payment',
         hint: 'awaiting payment',
+        caption: 'Balance owed on enrolments',
         icon: HourglassMedium,
         iconClass: 'bg-warning-50 text-warning-600',
         barClass: 'bg-warning-500',
+        bucket: 'pending',
+    },
+    {
+        key: 'pending',
+        label: 'Payment pending',
+        hint: 'in progress',
+        caption: 'Online transactions not completed',
+        icon: Clock,
+        iconClass: 'bg-info-50 text-info-600',
+        barClass: 'bg-info-500',
+        bucket: 'pending',
     },
     {
         key: 'failed',
         label: 'Failed payment',
         hint: 'declined',
+        caption: 'Online transactions declined',
         icon: XCircle,
         iconClass: 'bg-danger-50 text-danger-600',
         barClass: 'bg-danger-500',
+        bucket: 'failed',
     },
 ];
 
-/** Which billing figure each card shows. Failed has none — it counts gateway attempts. */
+/**
+ * Which billing figure each card shows. Pending and Failed have none by design — they count
+ * transactions at the gateway, not what anyone was billed.
+ */
 const BILLING_AMOUNT: Partial<Record<SummaryStatusKey, (b: KpiBilling) => number>> = {
     total: (b) => b.totalBilled,
     paid: (b) => b.collected,
-    pending: (b) => b.due,
+    due: (b) => b.due,
 };
 
 /** Meta line under each headline while billing figures are driving the cards. */
@@ -102,7 +134,10 @@ const BILLING_META: Partial<Record<SummaryStatusKey, (b: KpiBilling, count: numb
     total: (b) =>
         `${b.planCount.toLocaleString()} ${b.planCount === 1 ? 'enrolment' : 'enrolments'} billed`,
     paid: (b) => `${b.settledPlanCount.toLocaleString()} fully paid up`,
-    pending: (b) => `${Math.max(0, b.planCount - b.settledPlanCount).toLocaleString()} still owing`,
+    due: (b) => {
+        const owing = Math.max(0, b.planCount - b.settledPlanCount);
+        return `${owing.toLocaleString()} ${owing === 1 ? 'learner' : 'learners'} still owing`;
+    },
 };
 
 /**
@@ -127,10 +162,17 @@ export function PaymentKpiCards({
     const shareIsAmount = billedAmount > 0;
 
     return (
-        <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
+        <div
+            className={cn(
+                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
+                className
+            )}
+        >
             {CARDS.map((card) => {
-                const bucket = summary[card.key];
+                const bucket = summary[card.bucket];
                 const count = card.key === 'total' ? overallCount : bucket.count;
+                // 'due' has no record bucket of its own — without server figures it falls back to
+                // the unsettled records, which is the closest thing the rows can tell us.
                 const amount = summarizeBucketAmount(bucket.amountByCurrency);
                 const billed = billing ? BILLING_AMOUNT[card.key]?.(billing) : undefined;
                 const truncatedSuffix = card.key === 'total' && truncated && !billing ? '+' : '';
@@ -205,6 +247,8 @@ export function PaymentKpiCards({
                                         card.key === 'total' && count === 1 ? 'payment' : card.hint
                                     }`}
                         </div>
+
+                        <div className="mt-0.5 text-2xs text-neutral-400">{card.caption}</div>
 
                         <div className="mt-3 h-1 overflow-hidden rounded-full bg-neutral-100">
                             <div

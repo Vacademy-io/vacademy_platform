@@ -1,0 +1,60 @@
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import type { MentorSessionDTO } from '@/routes/mentorship/-types/mentorship-types';
+
+vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
+    useMentorSessions: () => ({
+        data: [
+            {
+                booking_instance_id: 'b1',
+                title: 'A deliberately long mentorship session title that would overflow a phone',
+                scheduled_start_utc: Date.UTC(2026, 7, 10, 9, 30),
+                duration_minutes: 30,
+                booking_status: 'CONFIRMED',
+                mentor_name: 'Asha Nair',
+                student_name: 'Riya Sharma',
+                lifecycle: 'UPCOMING',
+            } as MentorSessionDTO,
+        ],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+    }),
+    useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+import { MentorSessionsPanel } from '@/routes/mentorship/-components/MentorSessionsPanel';
+
+/**
+ * happy-dom has no layout engine, so this cannot prove how the page LOOKS on a
+ * phone. What it can do is pin the structural choices that keep it usable there —
+ * rows and filter bars that wrap instead of overflowing, and long text that
+ * truncates instead of pushing the row wide. Those are exactly the things a later
+ * edit removes by accident.
+ */
+describe('sessions panel — mobile-safe layout', () => {
+    it('the filter bar wraps rather than overflowing a narrow screen', () => {
+        const { container } = render(<MentorSessionsPanel instituteId="inst-1" />);
+        const tabBar = container.querySelector('.border-b');
+        expect(tabBar?.className).toContain('flex-wrap');
+    });
+
+    it('a session row wraps its actions instead of forcing horizontal scroll', () => {
+        render(<MentorSessionsPanel instituteId="inst-1" />);
+        const row = screen.getByRole('button', { name: /Asha Nair/ });
+        expect(row.className).toContain('flex-wrap');
+    });
+
+    it('long titles truncate, so one session cannot widen the whole list', () => {
+        const { container } = render(<MentorSessionsPanel instituteId="inst-1" />);
+        // min-w-0 is what actually lets a flex child shrink enough to truncate.
+        const shrinkable = container.querySelector('.min-w-0');
+        expect(shrinkable).not.toBeNull();
+        expect(container.querySelector('.truncate')).not.toBeNull();
+    });
+
+    it('uses no fixed pixel widths, which are the usual cause of phone overflow', () => {
+        const { container } = render(<MentorSessionsPanel instituteId="inst-1" />);
+        expect(container.innerHTML).not.toMatch(/w-\[\d+px\]/);
+    });
+});

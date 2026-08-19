@@ -19,6 +19,17 @@ import {
     unassignMentee,
     updateMentor,
     updateMyBookingPage,
+    fetchMentorRequests,
+    approveMentorRequest,
+    declineMentorRequest,
+    fetchMentorFeedback,
+    fetchMentorSessions,
+    fetchMyAwaitingReview,
+    recordSession,
+    cancelMentorSession,
+    rescheduleMentorSession,
+    fetchMentorMentees,
+    fetchMentorAvailability,
 } from '../-services/mentorship-service';
 import type {
     AssignMentorRequest,
@@ -26,6 +37,8 @@ import type {
     CreateMentorRequest,
     CreateNoteRequest,
     MentorAvailabilityRequest,
+    MentorRequestDecision,
+    RecordSessionRequest,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -35,6 +48,9 @@ export const MENTORSHIP_KEYS = {
     myMentees: 'mentorship-my-mentees',
     timeline: 'mentorship-timeline',
     calls: 'mentorship-calls',
+    requests: 'mentorship-requests',
+    feedback: 'mentorship-feedback',
+    sessions: 'mentorship-sessions',
 } as const;
 
 export const useStudentTimeline = (studentUserId: string | undefined) =>
@@ -199,5 +215,148 @@ export const useUnassignMentee = () => {
     return useMutation({
         mutationFn: (v: { id: string; instituteId: string }) => unassignMentee(v.id, v.instituteId),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.myMentees] }),
+    });
+};
+
+/**
+ * The admin review queue. Kept fresher than the mentor lists (10s) because an
+ * admin sitting on this screen is watching for requests as they land.
+ */
+export const useMentorRequests = (
+    instituteId: string | undefined,
+    status: string,
+    pageNo: number,
+    pageSize: number
+) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.requests, instituteId, status, pageNo, pageSize],
+        queryFn: () => fetchMentorRequests(instituteId ?? '', status, pageNo, pageSize),
+        enabled: !!instituteId,
+        staleTime: 10 * 1000,
+    });
+
+/**
+ * Approving creates an assignment, so the mentor lists and dashboard counts move
+ * too — both caches are invalidated, not just the queue.
+ */
+export const useDecideMentorRequest = () => {
+    const queryClient = useQueryClient();
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: {
+            id: string;
+            instituteId: string;
+            approve: boolean;
+            decision?: MentorRequestDecision;
+        }) =>
+            v.approve
+                ? approveMentorRequest(v.id, v.instituteId, v.decision)
+                : declineMentorRequest(v.id, v.instituteId, v.decision),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.requests] });
+            invalidate();
+        },
+    });
+};
+
+/** One mentor's ratings — only fetched while the feedback dialog is open. */
+export const useMentorFeedback = (mentorId: string | undefined, instituteId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.feedback, mentorId, instituteId],
+        queryFn: () => fetchMentorFeedback(mentorId ?? '', instituteId ?? ''),
+        enabled: !!mentorId && !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+/** Mentorship sessions for the admin session view. */
+export const useMentorSessions = (
+    instituteId: string | undefined,
+    filters: { mentorId?: string; studentUserId?: string; lifecycle?: string } = {}
+) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.sessions, instituteId, filters],
+        queryFn: () => fetchMentorSessions({ instituteId: instituteId ?? '', ...filters }),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+/** Sessions the calling mentor hasn't recorded an outcome for yet. */
+export const useMyAwaitingReview = (instituteId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.sessions, 'awaiting', instituteId],
+        queryFn: () => fetchMyAwaitingReview(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+/**
+ * Recording an outcome moves the dashboard counts too, so both the session views
+ * and the mentor lists are invalidated.
+ */
+export const useRecordSession = () => {
+    const queryClient = useQueryClient();
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: { instituteId: string; data: RecordSessionRequest }) =>
+            recordSession(v.instituteId, v.data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.sessions] });
+            invalidate();
+        },
+    });
+};
+
+/** One mentor's assigned students — only fetched while the detail view is open. */
+export const useMentorMentees = (mentorId: string | undefined, instituteId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.myMentees, 'of-mentor', mentorId, instituteId],
+        queryFn: () => fetchMentorMentees(mentorId ?? '', instituteId ?? ''),
+        enabled: !!mentorId && !!instituteId,
+        staleTime: 30 * 1000,
+    });
+
+/** One mentor's availability. Errors when they haven't set booking up — that's shown as a hint. */
+export const useMentorAvailability = (
+    mentorId: string | undefined,
+    instituteId: string | undefined
+) =>
+    useQuery({
+        queryKey: ['mentorship-availability', mentorId, instituteId],
+        queryFn: () => fetchMentorAvailability(mentorId ?? '', instituteId ?? ''),
+        enabled: !!mentorId && !!instituteId,
+        retry: false,
+        staleTime: 60 * 1000,
+    });
+
+/**
+ * Cancel or move a session. Both invalidate the session views and the mentor lists,
+ * because either action changes the dashboard counts too.
+ */
+export const useSessionAction = () => {
+    const queryClient = useQueryClient();
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: {
+            instituteId: string;
+            bookingInstanceId: string;
+            action: 'cancel' | 'reschedule';
+            reason?: string;
+            startTime?: string;
+            inviteeTimezone?: string;
+            asAdmin?: boolean;
+        }) =>
+            v.action === 'cancel'
+                ? cancelMentorSession(v.instituteId, v.bookingInstanceId, v.reason, v.asAdmin ?? true)
+                : rescheduleMentorSession(
+                      v.instituteId,
+                      v.bookingInstanceId,
+                      v.startTime ?? '',
+                      v.inviteeTimezone,
+                      v.asAdmin ?? true
+                  ),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.sessions] });
+            invalidate();
+        },
     });
 };

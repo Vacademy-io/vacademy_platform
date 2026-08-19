@@ -1,7 +1,15 @@
 import { useNavigate } from '@tanstack/react-router';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, CalendarCheck, Clock, GraduationCap, UsersThree, type Icon } from '@phosphor-icons/react';
+import {
+    ArrowRight,
+    CalendarCheck,
+    Clock,
+    GraduationCap,
+    TrayArrowDown,
+    UsersThree,
+    type Icon,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import { useMentorDashboard } from '@/routes/mentorship/-hooks/use-mentorship';
@@ -15,11 +23,15 @@ interface Tile {
     iconBg: string;
     iconColor: string;
     cardBg: string;
+    /** Where this tile navigates; defaults to the mentors screen. */
+    to?: string;
 }
 
 /**
  * Admin dashboard KPI card: mentors, mentees, today's and upcoming mentor
- * sessions. Data from the mentorship dashboard endpoint. Self-hides when the
+ * sessions. Learners waiting on a mentor appear as a link beside "Manage" rather
+ * than replacing a tile — the four metrics stay put so the card reads the same way
+ * every time. Data from the mentorship dashboard endpoint. Self-hides when the
  * institute has no mentors, so it only surfaces where mentorship is in use.
  */
 export default function MentorshipStatsWidget() {
@@ -30,7 +42,8 @@ export default function MentorshipStatsWidget() {
     if (!instituteId || isError) return null;
     if (!isLoading && (data?.total_mentors ?? 0) === 0) return null;
 
-    const go = () => navigate({ to: '/mentorship/mentors' });
+    const go = (to = '/mentorship/mentors') => navigate({ to });
+    const pendingRequests = data?.pending_requests ?? 0;
 
     const tiles: Tile[] = [
         {
@@ -84,17 +97,32 @@ export default function MentorshipStatsWidget() {
                     </span>
                     <div>
                         <p className="text-caption font-medium text-neutral-400">Mentorship</p>
-                        <h3 className="text-body font-semibold text-neutral-700">Mentors &amp; mentees</h3>
+                        <h3 className="text-body font-semibold text-neutral-700">
+                            Mentors &amp; mentees
+                        </h3>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={go}
-                    className="flex shrink-0 items-center gap-1 text-caption font-medium text-primary-600 hover:text-primary-700"
-                >
-                    Manage
-                    <ArrowRight size={12} weight="bold" />
-                </button>
+                <div className="flex shrink-0 items-center gap-3">
+                    {pendingRequests > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => go('/mentorship/requests')}
+                            className="flex items-center gap-1.5 rounded-full bg-danger-50 px-2.5 py-1 text-caption font-medium text-danger-600 hover:bg-danger-100"
+                            title="Learners waiting to be paired with a mentor"
+                        >
+                            <TrayArrowDown size={13} weight="bold" />
+                            {pendingRequests} to review
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => go()}
+                        className="flex items-center gap-1 text-caption font-medium text-primary-600 hover:text-primary-700"
+                    >
+                        Manage
+                        <ArrowRight size={12} weight="bold" />
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -112,7 +140,12 @@ export default function MentorshipStatsWidget() {
                     : tiles.map((t) => {
                           const StatIcon = t.Icon;
                           return (
-                              <button key={t.key} type="button" onClick={go} className="group text-left">
+                              <button
+                                  key={t.key}
+                                  type="button"
+                                  onClick={() => go(t.to)}
+                                  className="group text-left"
+                              >
                                   <Card
                                       className={cn(
                                           'relative h-full overflow-hidden p-4 shadow-sm transition-all group-hover:-translate-y-0.5 group-hover:shadow-md',
@@ -129,7 +162,11 @@ export default function MentorshipStatsWidget() {
                                                   t.iconBg
                                               )}
                                           >
-                                              <StatIcon size={18} weight="duotone" className={t.iconColor} />
+                                              <StatIcon
+                                                  size={18}
+                                                  weight="duotone"
+                                                  className={t.iconColor}
+                                              />
                                           </span>
                                       </div>
                                       <div className="mt-2 text-h2 font-semibold tabular-nums text-neutral-700">

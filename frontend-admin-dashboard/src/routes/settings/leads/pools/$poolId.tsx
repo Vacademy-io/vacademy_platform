@@ -10,9 +10,7 @@ const ALLOWED_TABS: PoolEditorTab[] = [
     'schedule',
 ];
 
-// Cast until the TanStack Router code generator regenerates routeTree.gen.ts to include this path.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute('/settings/leads/pools/$poolId' as any)({
+export const Route = createFileRoute('/settings/leads/pools/$poolId')({
     validateSearch: (search: Record<string, unknown>) => ({
         tab:
             typeof search.tab === 'string' && ALLOWED_TABS.includes(search.tab as PoolEditorTab)

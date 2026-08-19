@@ -76,6 +76,19 @@ public class UserPlanController {
         return ResponseEntity.ok(paymentLogService.getBillingSummary(request));
     }
 
+    /**
+     * Paginated drill-down behind the "Due payment" card: the learners who still owe money, with
+     * the amount, the fee type, and (for custom instalment plans) their next instalment.
+     */
+    @PostMapping("/payment-logs/outstanding-learners")
+    public ResponseEntity<Page<OutstandingLearnerDTO>> getOutstandingLearners(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody BillingSummaryRequestDTO request,
+            @RequestParam(value = "pageNo", defaultValue = "0") int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+        return ResponseEntity.ok(paymentLogService.getOutstandingLearners(request, pageNo, pageSize));
+    }
+
     @PostMapping("/payment-logs/update-tracking")
     public ResponseEntity<Void> updatePaymentLogTracking(
             @RequestAttribute("user") CustomUserDetails userDetails,

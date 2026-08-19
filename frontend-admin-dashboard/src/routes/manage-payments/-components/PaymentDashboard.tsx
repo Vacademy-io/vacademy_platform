@@ -41,7 +41,11 @@ import {
     fetchCollectionSummary,
     type CollectionSummary,
 } from '@/routes/dashboard/-services/collection-summary-service';
-import { fetchBillingSummary } from '@/services/payment-logs';
+import {
+    fetchBillingSummary,
+    fetchOutstandingLearners,
+    type OutstandingLearner,
+} from '@/services/payment-logs';
 import { GatewayBadge } from './GatewayBadge';
 import { PaymentKpiCards } from './PaymentKpiCards';
 import { DateRangeDropdown } from './DateRangeDropdown';
@@ -77,13 +81,6 @@ const CHART_PALETTE = [
     'hsl(var(--primary-300))',
     'hsl(var(--info-300))',
 ];
-
-const AGING_TONE: Record<string, string> = {
-    neutral: 'text-neutral-600',
-    warning: 'text-warning-600',
-    strong: 'text-warning-700',
-    danger: 'text-danger-600',
-};
 
 // ─── Small building blocks ──────────────────────────────────────────────────────
 
@@ -244,6 +241,25 @@ export function PaymentDashboard() {
           ? entryBilling
           : null;
 
+    /**
+     * Who the Due figure is made of. Without this the dashboard could report lakhs outstanding and
+     * offer no way to see whose money it is.
+     */
+    const { data: outstanding } = useQuery({
+        queryKey: ['payment-outstanding-dash', range],
+        queryFn: () => {
+            const w = rangeToLocalIsoWindow(range);
+            return fetchOutstandingLearners(
+                { start_date_in_utc: w.start, end_date_in_utc: w.end },
+                0,
+                6
+            );
+        },
+        staleTime: 60_000,
+        retry: false,
+    });
+    const debtors: OutstandingLearner[] = outstanding?.content ?? [];
+
     const currency = analytics.primaryCurrency || collection?.currency || '';
     const money = useMemo(() => makeMoney(currency), [currency]);
 
@@ -291,7 +307,7 @@ export function PaymentDashboard() {
                 </MyButton>
             </div>
 
-            {/* KPI row — the same Total / Collected / Due / Failed tiles as Manage Payments */}
+            {/* KPI row — the same five tiles as Manage Payments, from the same component */}
             <PaymentKpiCards
                 summary={summary}
                 billing={billing}
@@ -444,37 +460,61 @@ export function PaymentDashboard() {
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                         <SectionCard
                             title="Collection funnel"
-                            subtitle="From invoiced records to money captured"
+                            subtitle="Payment records: raised, attempted, captured"
                         >
                             <FunnelBars analytics={analytics} money={money} />
                         </SectionCard>
                         <SectionCard
-                            title="Outstanding by age"
-                            subtitle={`${money(analytics.outstanding.amount, true)} across ${analytics.outstanding.count} pending`}
+                            title="Who owes money"
+                            subtitle={
+                                outstanding
+                                    ? `${outstanding.totalElements.toLocaleString()} ${
+                                          outstanding.totalElements === 1 ? 'learner' : 'learners'
+                                      } with a balance`
+                                    : 'Outstanding balances by learner'
+                            }
+                            right={
+                                <a
+                                    href="/manage-payments"
+                                    className="text-caption font-semibold text-primary-600 hover:text-primary-700"
+                                >
+                                    See all
+                                </a>
+                            }
                         >
-                            <div className="grid grid-cols-2 gap-3">
-                                {analytics.aging.map((b) => (
-                                    <div
-                                        key={b.label}
-                                        className="rounded-lg border border-neutral-200 p-3"
-                                    >
+                            {debtors.length === 0 ? (
+                                <div className="py-8 text-center text-caption text-neutral-400">
+                                    Nothing outstanding in this period
+                                </div>
+                            ) : (
+                                <div className="space-y-2.5">
+                                    {debtors.map((learner) => (
                                         <div
-                                            className={cn(
-                                                'text-caption font-medium',
-                                                AGING_TONE[b.tone]
-                                            )}
+                                            key={learner.user_id}
+                                            className="flex items-center justify-between gap-3"
                                         >
-                                            {b.label}
+                                            <div className="min-w-0">
+                                                <div className="truncate text-body font-medium text-neutral-700">
+                                                    {learner.full_name || learner.email || '—'}
+                                                </div>
+                                                <div className="truncate text-caption text-neutral-500">
+                                                    {[learner.course_name, learner.payment_type]
+                                                        .filter(Boolean)
+                                                        .join(' · ')}
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <div className="font-semibold tabular-nums text-warning-700">
+                                                    {money(learner.due, true)}
+                                                </div>
+                                                <div className="text-caption text-neutral-400">
+                                                    of {money(learner.billed, true)}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="mt-1 text-subtitle font-semibold tabular-nums text-neutral-800">
-                                            {money(b.amount, true)}
-                                        </div>
-                                        <div className="text-caption text-neutral-500">
-                                            {b.count} {b.count === 1 ? 'payment' : 'payments'}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )}
                         </SectionCard>
                     </div>
 
@@ -526,11 +566,13 @@ export function PaymentDashboard() {
                         <span>
                             Total / Collected / Due come from the enrolments themselves — what the
                             courses were billed at, what has been paid, and the balance, so the
-                            three always reconcile. Everything below counts payment records instead,
-                            which is why a part-paid enrolment shows one settled payment here and an
-                            outstanding balance above. Bank settlement timelines and
-                            gateway-reported decline reasons aren’t available from the current API,
-                            so those panels are omitted rather than estimated.
+                            three always reconcile. Payment pending and Failed count transactions at
+                            the gateway instead, which is why an institute can show a large Due with
+                            zero pending: those learners never started a payment, they simply owe
+                            the rest of their fee. Every panel below this row counts payment records
+                            too. Bank settlement timelines and gateway-reported decline reasons
+                            aren’t available from the current API, so those panels are omitted
+                            rather than estimated.
                         </span>
                     </div>
                 </>

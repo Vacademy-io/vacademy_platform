@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MentorshipSettings from '@/routes/settings/-components/MentorshipSettings';
 import { DEFAULT_MENTORSHIP_SETTINGS } from '@/services/mentorship-settings';
 
@@ -30,9 +30,10 @@ describe('MentorshipSettings screen', () => {
         vi.clearAllMocks();
     });
 
-    it('renders all five trigger cards after loading', async () => {
+    it('renders all six trigger cards after loading', async () => {
         render(<MentorshipSettings />);
         expect(await screen.findByText('Mentor Assigned')).toBeInTheDocument();
+        expect(screen.getByText('Mentor Request')).toBeInTheDocument();
         expect(screen.getByText('Session Booked')).toBeInTheDocument();
         expect(screen.getByText('Session Cancelled')).toBeInTheDocument();
         expect(screen.getByText('Session Reminder')).toBeInTheDocument();
@@ -40,6 +41,40 @@ describe('MentorshipSettings screen', () => {
         // decluttered copy: one-line header, no per-channel explainer sentences
         expect(screen.getByText('Choose how learners are notified for each mentorship event.')).toBeInTheDocument();
         expect(screen.queryByText('Send an email notification.')).not.toBeInTheDocument();
+    });
+
+    it('mentor-request notifications are on for both sides by default', async () => {
+        render(<MentorshipSettings />);
+        await screen.findByText('Mentor Request');
+
+        expect(switchInRow('Tell the mentor someone requested them')).toHaveAttribute(
+            'aria-checked',
+            'true'
+        );
+        expect(switchInRow('Tell the learner when you decline')).toHaveAttribute(
+            'aria-checked',
+            'true'
+        );
+    });
+
+    it('spells out that approving sends no extra message', async () => {
+        render(<MentorshipSettings />);
+        await screen.findByText('Mentor Request');
+        // Without this the admin would reasonably expect an approval email too.
+        expect(screen.getByText(/Approving sends nothing extra/)).toBeInTheDocument();
+    });
+
+    it('turning off the mentor notice is saved without touching the learner one', async () => {
+        render(<MentorshipSettings />);
+        await screen.findByText('Mentor Request');
+
+        fireEvent.click(switchInRow('Tell the mentor someone requested them'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await waitFor(() => expect(saveMentorshipSettings).toHaveBeenCalled());
+        const saved = vi.mocked(saveMentorshipSettings).mock.calls[0]![0];
+        expect(saved.request.notify_mentor).toBe(false);
+        expect(saved.request.notify_student).toBe(true);
     });
 
     it('check-in nudge is off by default and reveals its config only when enabled', async () => {

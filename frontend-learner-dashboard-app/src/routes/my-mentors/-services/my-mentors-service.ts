@@ -1,5 +1,13 @@
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { MEETINGS_BY_LEAD, MENTORSHIP_MY_MENTORS } from "@/constants/urls";
+import {
+    MEETINGS_BY_LEAD,
+    MENTORSHIP_DIRECTORY,
+    MENTORSHIP_MY_MENTORS,
+    MENTORSHIP_MY_REQUESTS,
+    MENTORSHIP_MY_FEEDBACK,
+    MENTORSHIP_MY_PENDING_FEEDBACK,
+    MENTORSHIP_MY_REQUEST_BY_ID,
+} from "@/constants/urls";
 
 // snake_case — mirrors admin-core-service MentorDTO.
 export interface MyMentor {
@@ -75,3 +83,188 @@ export const handleGetMyBookings = (
     staleTime: 60 * 1000,
     enabled: !!instituteId && !!userId,
 });
+
+// ---------------------------------------------------------------- Find a mentor
+
+/**
+ * A mentor as the directory shows them. Deliberately narrower than the admin
+ * MentorDTO — the API never sends a mentor's email or phone to a learner.
+ */
+export interface DirectoryMentor {
+    id: string;
+    name?: string | null;
+    title?: string | null;
+    bio?: string | null;
+    profile_image_file_id?: string | null;
+    expertise_tags?: string[] | null;
+    /** True when the mentor has hit their mentee limit. */
+    at_capacity?: boolean | null;
+    available_slots?: number | null;
+    /** True when this mentor already mentors the caller. */
+    already_mentor?: boolean | null;
+    /** The caller's own request against this mentor, if any. */
+    request_status?: string | null;
+    request_id?: string | null;
+}
+
+/** The caller's own mentor request. */
+export interface MyMentorRequest {
+    id: string;
+    mentor_id?: string | null;
+    message?: string | null;
+    status: "PENDING" | "APPROVED" | "DECLINED" | "CANCELLED" | string;
+    decision_note?: string | null;
+    created_at?: number | null;
+    decided_at?: number | null;
+    mentor_name?: string | null;
+    mentor_title?: string | null;
+    mentor_profile_image_file_id?: string | null;
+    mentor_expertise_tags?: string[] | null;
+}
+
+export const getMentorDirectory = async ({
+    instituteId,
+    search,
+}: {
+    instituteId: string;
+    search?: string;
+}): Promise<DirectoryMentor[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: MENTORSHIP_DIRECTORY,
+        params: { instituteId, ...(search ? { search } : {}) },
+    });
+    return (response.data ?? []) as DirectoryMentor[];
+};
+
+/**
+ * The directory rarely changes, so it is cached for a minute. Search is done
+ * client-side off this one payload — an institute's mentor list is small, and
+ * per-keystroke requests would be wasteful.
+ */
+export const handleGetMentorDirectory = (instituteId: string | undefined) => ({
+    queryKey: ["GET_MENTOR_DIRECTORY", instituteId],
+    queryFn: () => getMentorDirectory({ instituteId: instituteId ?? "" }),
+    staleTime: 60 * 1000,
+    enabled: !!instituteId,
+});
+
+export const requestMentor = async ({
+    instituteId,
+    mentorId,
+    message,
+}: {
+    instituteId: string;
+    mentorId?: string;
+    message?: string;
+}): Promise<MyMentorRequest> => {
+    const response = await authenticatedAxiosInstance({
+        method: "POST",
+        url: MENTORSHIP_MY_REQUESTS,
+        params: { instituteId },
+        data: { mentor_id: mentorId, message },
+    });
+    return response.data as MyMentorRequest;
+};
+
+export const getMyMentorRequests = async ({
+    instituteId,
+}: {
+    instituteId: string;
+}): Promise<MyMentorRequest[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: MENTORSHIP_MY_REQUESTS,
+        params: { instituteId },
+    });
+    return (response.data ?? []) as MyMentorRequest[];
+};
+
+export const handleGetMyMentorRequests = (instituteId: string | undefined) => ({
+    queryKey: ["GET_MY_MENTOR_REQUESTS", instituteId],
+    queryFn: () => getMyMentorRequests({ instituteId: instituteId ?? "" }),
+    staleTime: 30 * 1000,
+    enabled: !!instituteId,
+});
+
+export const cancelMentorRequest = async ({
+    instituteId,
+    requestId,
+}: {
+    instituteId: string;
+    requestId: string;
+}): Promise<string> => {
+    const response = await authenticatedAxiosInstance({
+        method: "DELETE",
+        url: MENTORSHIP_MY_REQUEST_BY_ID(requestId),
+        params: { instituteId },
+    });
+    return response.data as string;
+};
+
+// ---------------------------------------------------------------- Session feedback
+
+/** A finished mentor session the learner hasn't rated yet. */
+export interface PendingFeedback {
+    booking_instance_id: string;
+    mentor_id: string;
+    mentor_name?: string | null;
+    mentor_profile_image_file_id?: string | null;
+    session_title?: string | null;
+    session_start_utc?: number | null;
+}
+
+/** A submitted rating. */
+export interface SessionFeedback {
+    id: string;
+    booking_instance_id: string;
+    mentor_id: string;
+    mentor_name?: string | null;
+    rating: number;
+    comment?: string | null;
+    created_at?: number | null;
+}
+
+export const getPendingFeedback = async ({
+    instituteId,
+}: {
+    instituteId: string;
+}): Promise<PendingFeedback[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: MENTORSHIP_MY_PENDING_FEEDBACK,
+        params: { instituteId },
+    });
+    return (response.data ?? []) as PendingFeedback[];
+};
+
+/**
+ * Kept short-lived: the list changes the moment a session ends or gets rated, and
+ * a stale prompt for an already-rated session is the one thing that would annoy.
+ */
+export const handleGetPendingFeedback = (instituteId: string | undefined) => ({
+    queryKey: ["GET_PENDING_MENTOR_FEEDBACK", instituteId],
+    queryFn: () => getPendingFeedback({ instituteId: instituteId ?? "" }),
+    staleTime: 30 * 1000,
+    enabled: !!instituteId,
+});
+
+export const submitSessionFeedback = async ({
+    instituteId,
+    bookingInstanceId,
+    rating,
+    comment,
+}: {
+    instituteId: string;
+    bookingInstanceId: string;
+    rating: number;
+    comment?: string;
+}): Promise<SessionFeedback> => {
+    const response = await authenticatedAxiosInstance({
+        method: "POST",
+        url: MENTORSHIP_MY_FEEDBACK,
+        params: { instituteId },
+        data: { booking_instance_id: bookingInstanceId, rating, comment },
+    });
+    return response.data as SessionFeedback;
+};

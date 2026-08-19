@@ -15,6 +15,19 @@ export interface MentorDTO {
     google_email?: string | null;
     status: string;
     assigned_student_count?: number | null;
+    /** Topics this mentor covers. */
+    expertise_tags?: string[] | null;
+    /** Capacity cap on active mentees; null = unlimited. */
+    max_mentees?: number | null;
+    /** Remaining capacity; null when uncapped. */
+    available_slots?: number | null;
+    at_capacity?: boolean | null;
+    /** Whether learners can find and request this mentor. */
+    is_discoverable?: boolean | null;
+    /** Mean of this mentor's session ratings (1 decimal); null when unrated. */
+    average_rating?: number | null;
+    /** How many ratings that average is based on. */
+    rating_count?: number | null;
     // auth-hydrated identity
     name?: string | null;
     email?: string | null;
@@ -29,6 +42,9 @@ export interface CreateMentorRequest {
     title?: string;
     profile_image_file_id?: string;
     bio?: string;
+    expertise_tags?: string[];
+    max_mentees?: number;
+    is_discoverable?: boolean;
 }
 
 export interface UpdateMentorRequest {
@@ -38,6 +54,11 @@ export interface UpdateMentorRequest {
     bio?: string;
     status?: string;
     booking_page_id?: string;
+    /** Replaces the whole tag set; an empty array clears it. */
+    expertise_tags?: string[];
+    /** 0 clears the cap (unlimited). */
+    max_mentees?: number;
+    is_discoverable?: boolean;
 }
 
 export interface AssignMentorRequest {
@@ -57,6 +78,98 @@ export interface BulkRoundRobinRequest {
 export interface AssignmentResult {
     assigned: number;
     skipped: number;
+    /** Students left unassigned because every candidate mentor was at capacity. */
+    capacity_full?: number | null;
+}
+
+/** A learner's request to be mentored, as the admin review queue sees it. */
+export interface MentorRequestDTO {
+    id: string;
+    institute_id: string;
+    student_user_id: string;
+    /** null = the learner asked for "any available mentor". */
+    mentor_id?: string | null;
+    message?: string | null;
+    status: 'PENDING' | 'APPROVED' | 'DECLINED' | 'CANCELLED' | string;
+    decision_note?: string | null;
+    assignment_id?: string | null;
+    created_at?: number | null;
+    decided_at?: number | null;
+    student_name?: string | null;
+    student_email?: string | null;
+    mentor_name?: string | null;
+    mentor_title?: string | null;
+    mentor_profile_image_file_id?: string | null;
+    mentor_expertise_tags?: string[] | null;
+    mentor_available_slots?: number | null;
+}
+
+/** One learner rating of a mentor session. */
+export interface MentorFeedbackDTO {
+    id: string;
+    booking_instance_id: string;
+    mentor_id: string;
+    mentor_name?: string | null;
+    student_user_id: string;
+    student_name?: string | null;
+    rating: number;
+    comment?: string | null;
+    created_at?: number | null;
+}
+
+/**
+ * One mentorship session: the booking, both parties, the mentor's recorded
+ * outcome and the learner's rating. `lifecycle` is the single derived status every
+ * surface displays.
+ */
+export interface MentorSessionDTO {
+    booking_instance_id: string;
+    title?: string | null;
+    scheduled_start_utc?: number | null;
+    scheduled_end_utc?: number | null;
+    duration_minutes?: number | null;
+    /** The appointment's own state: CONFIRMED | CANCELLED | RESCHEDULED. */
+    booking_status?: string | null;
+    meet_link?: string | null;
+    mentor_id?: string | null;
+    mentor_name?: string | null;
+    mentor_email?: string | null;
+    student_user_id?: string | null;
+    student_name?: string | null;
+    student_email?: string | null;
+    /** COMPLETED | NO_SHOW, or null when the mentor hasn't reviewed it. */
+    outcome?: string | null;
+    topic?: string | null;
+    /** Mentor's notes — admin/mentor only. */
+    notes?: string | null;
+    marked_at?: number | null;
+    rating?: number | null;
+    feedback_comment?: string | null;
+    lifecycle: 'UPCOMING' | 'AWAITING_REVIEW' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED' | 'RESCHEDULED' | string;
+}
+
+/** Session counts for the admin dashboard. */
+export interface SessionStats {
+    today?: number | null;
+    upcoming?: number | null;
+    completed?: number | null;
+    cancelled?: number | null;
+    no_show?: number | null;
+    awaiting_review?: number | null;
+}
+
+/** A mentor recording what happened in one of their sessions. */
+export interface RecordSessionRequest {
+    booking_instance_id: string;
+    outcome: 'COMPLETED' | 'NO_SHOW';
+    topic?: string;
+    notes?: string;
+}
+
+/** An admin's decision. `mentor_id` picks/overrides the mentor when approving. */
+export interface MentorRequestDecision {
+    mentor_id?: string;
+    note?: string;
 }
 
 export interface MenteeDTO {
@@ -77,6 +190,14 @@ export interface MentorDashboard {
     distinct_mentees: number;
     today_sessions?: number;
     upcoming_sessions?: number;
+    /** Learner requests waiting on an admin decision. */
+    pending_requests?: number;
+    completed_sessions?: number;
+    cancelled_sessions?: number;
+    no_show_sessions?: number;
+    sessions_awaiting_review?: number;
+    /** Mentors listed in the learner-facing directory. */
+    discoverable_mentors?: number;
     mentors: MentorDTO[];
 }
 

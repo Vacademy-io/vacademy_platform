@@ -161,6 +161,11 @@ export async function createCourseWithContent(
     const coursePayload = {
         id: '',
         new_course: true, // Required by backend - indicates this is a new course
+        // AI course names are deterministic (derived from the source material),
+        // so without this the backend would find the previous run's same-named
+        // course and silently append the new chapters into it. TRUE = always
+        // create a fresh course, uniquifying the name with " (n)" if taken.
+        force_new_course: true,
         course_name: courseName,
         // Only use UUID for thumbnail_file_id as it strictly expects a file ID
         thumbnail_file_id: isUuid(previewImage) ? previewImage : '',

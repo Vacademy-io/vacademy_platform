@@ -220,13 +220,31 @@ public class CourseService {
 
     public PackageEntity getCourse(AddCourseDTO addCourseDTO, String instituteId) {
         validateRequest(addCourseDTO);
-        Optional<PackageEntity> optionalPackageEntity = packageRepository
-                .findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
-                        List.of(PackageStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                        List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
-                        instituteId);
-        if (optionalPackageEntity.isPresent()) {
-            return optionalPackageEntity.get();
+        if (Boolean.TRUE.equals(addCourseDTO.getForceNewCourse())) {
+            // Never merge into an existing same-named course: uniquify the name
+            // instead. AI-generated names are deterministic (derived from the
+            // source material), so without this a regeneration silently appends
+            // its chapters into the previous run's course.
+            String baseName = addCourseDTO.getCourseName();
+            String candidate = baseName;
+            for (int n = 2; n <= 50 && packageRepository
+                    .findTopByPackageNameAndSessionStatusAndInstitute(candidate,
+                            List.of(PackageStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                            List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
+                            instituteId)
+                    .isPresent(); n++) {
+                candidate = baseName + " (" + n + ")";
+            }
+            addCourseDTO.setCourseName(candidate);
+        } else {
+            Optional<PackageEntity> optionalPackageEntity = packageRepository
+                    .findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
+                            List.of(PackageStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                            List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
+                            instituteId);
+            if (optionalPackageEntity.isPresent()) {
+                return optionalPackageEntity.get();
+            }
         }
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());

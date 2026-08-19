@@ -51,6 +51,13 @@ def _doc_content_types_block(content_types: "list | None") -> str:
     )
 
 
+
+_DESIGN_SAFETY_RULES = """**Rendering safety — every rule below exists because generated pages have ACTUALLY shipped broken this way**:
+- CONTRAST, per surface: set the text colour explicitly on EVERY surface (hero, card, band) for ALL its descendants. Dark surfaces set light text — and a LIGHT panel nested inside a dark surface must re-set its own DARK text (white-on-pale-mint has shipped invisible). Never use muted/grey text on a coloured or gradient background — text there must be white/near-white. Inline emphasis (`strong`,`b`,`em`,`mark`,`span`) always INHERITS its container's colour — never give it a fixed colour; emphasise with weight or background instead.
+- LAYOUT, no overlap: sections and cards stack in NORMAL document flow (block/flex/grid). NEVER absolutely position text, labels or footers over other content; never use negative margins to pull elements onto each other; never pin a caption with `position:absolute; bottom:0` inside a card whose content flows (labels have shipped printed across paragraphs). No fixed heights that clip or force overlap — cards grow with their content.
+- VISIBILITY: the page renders at FULL height with NO internal scrolling — never hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners starting sections at opacity:0); everything is visible on load and entrance animations play on load. Any animation touching opacity must END at opacity:1 — text frozen at partial opacity has shipped as unreadable ghost text. Honor `@media (prefers-reduced-motion: reduce)`."""
+
+
 class ContentGenerationPrompts:
     """
     Prompt templates for content generation (documents and assessments).
@@ -146,10 +153,12 @@ Stay strictly on THIS slide's own subject. Do not re-explain a sibling's topic �
 
 **Design & creativity (this is the point — make it beautiful and memorable)**:
 - Return a SINGLE full document: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"> <style>…ALL your CSS…</style></head><body>…</body></html>`.
-- Put ALL styling in one inline `<style>`. Design a cohesive visual system: a considered color palette, strong typography, generous spacing, cards/sections, clear hierarchy. Dark text on light surfaces by default; strong contrast. CONTRAST (content has shipped INVISIBLE): never give inline emphasis (`strong`,`b`,`em`,`mark`,`span`) a FIXED dark colour — on a dark card it becomes dark-on-dark and the text vanishes until selected. Inline emphasis must INHERIT its container's colour (use weight/background to emphasise, not a hard-coded colour), and every dark surface must set a light colour for ALL its descendants, not just its `p`. Never rely on the `body` colour for text sitting inside a dark card.
-- Use tasteful MOTION: CSS `@keyframes`/transitions, hover states, and small vanilla JS (one inline `<script>` at the end of `<body>`) for counters, tabs, interactive diagrams, or canvas/SVG. Motion must be smooth and purposeful — wrap non-essential motion in `@media (prefers-reduced-motion: reduce)` to disable it. CRITICAL: the page renders at FULL height with NO internal scrolling, so NEVER hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners that start sections at opacity:0 and reveal on scroll) — that content would stay INVISIBLE. All content must be visible on load; entrance animations play on load, not on scroll.
+- Put ALL styling in one inline `<style>`. Design a cohesive visual system: a considered color palette, strong typography, generous spacing, cards/sections, clear hierarchy. Dark text on light surfaces by default; strong contrast.
+- Use tasteful MOTION: CSS `@keyframes`/transitions, hover states, and small vanilla JS (one inline `<script>` at the end of `<body>`) for counters, tabs, interactive diagrams, or canvas/SVG. Motion must be smooth and purposeful — wrap non-essential motion in `@media (prefers-reduced-motion: reduce)` to disable it.
 - Responsive (mobile → desktop) and accessible (semantic tags, alt text, keyboard-friendly).
 - You MAY load Google Fonts via `<link>` and a reputable CDN library via `<script src>` if it genuinely elevates the page. Prefer inline SVG for diagrams. NEVER reference private/local URLs, analytics or trackers, and don't rely on cookies/localStorage/parent-window access.
+
+{_DESIGN_SAFETY_RULES}
 
 **Diagrams** — {diagram_emphasis} Prefer hand-crafted inline SVG or styled HTML/CSS diagrams (they always render and match your design). Use Mermaid ONLY if you also include the mermaid CDN `<script>` and initialize it; otherwise avoid it. Precede each diagram with a short sentence explaining what it shows.
 
@@ -330,7 +339,8 @@ Explanation of the code output or key concepts.
 
 **HTML & design (CRITICAL)**:
 - Return a SINGLE full document: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>...ALL your CSS...</style></head><body>...</body></html>`. Put ALL styling in one inline `<style>` — cohesive palette, strong typography, cards/sections, generous spacing, dark text on light surfaces, strong contrast, responsive.
-- The page renders at FULL height with NO internal scrolling, so NEVER hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners that start sections at opacity:0) — all content must be visible on load; honor `@media (prefers-reduced-motion: reduce)`.
+
+{_DESIGN_SAFETY_RULES}
 - Code (ONLY when the task is a coding task): `<pre data-language="python"><code class="language-python">...</code></pre>` (correct language); escape & as &amp;, < as &lt;, > as &gt;; preserve real indentation; starter code complete and valid with a clear `# TODO: implement this` for student sections.
 
 **Important**: Return ONLY the raw HTML document. No markdown, no ``` fences, no commentary. Start with `<!DOCTYPE html>`."""
@@ -360,7 +370,8 @@ Explanation of the code output or key concepts.
 
 **HTML & design (CRITICAL)**:
 - Return a SINGLE full document: `<!DOCTYPE html><html><head>...<style>...ALL your CSS...</style></head><body>...</body></html>`. All CSS inline — cohesive palette, strong typography, cards/sections, dark text on light surfaces, responsive.
-- Renders at FULL height with NO internal scrolling, so NEVER hide content behind scroll-triggered reveals; all content visible on load; honor `@media (prefers-reduced-motion: reduce)`.
+
+{_DESIGN_SAFETY_RULES}
 - Use exactly two section headings: "Hint" (first), then "Solution" (second) — never "Exact Solution".
 - Code (ONLY when the homework was a coding task): `<pre data-language="python"><code class="language-python">...</code></pre>`; escape & < >; preserve indentation; complete and runnable.
 

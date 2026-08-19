@@ -5,8 +5,15 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { SummaryStatusKey } from './PaymentKpiCards';
 
+/**
+ * What the switch below the KPI row selects. All but 'due' narrow the payment records; 'due' swaps
+ * the table for the learners who still owe money, which is a different question entirely — an
+ * unpaid balance usually has no payment record to filter to.
+ */
+export type SegmentKey = SummaryStatusKey;
+
 export interface StatusSegment {
-    key: SummaryStatusKey;
+    key: SegmentKey;
     label: string;
     count: number;
 }
@@ -15,8 +22,8 @@ interface PaymentControlBarProps {
     searchValue: string;
     onSearchChange: (value: string) => void;
     segments: StatusSegment[];
-    activeStatus: SummaryStatusKey;
-    onStatusSelect: (key: SummaryStatusKey) => void;
+    activeStatus: SegmentKey;
+    onStatusSelect: (key: SegmentKey) => void;
     filterCount: number;
     onOpenFilters: () => void;
     /** Right-aligned actions (e.g. export). */

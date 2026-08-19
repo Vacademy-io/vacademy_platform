@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
@@ -386,6 +387,129 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("endDate") LocalDateTime endDate,
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds);
+
+        /**
+         * The learners behind the "Due payment" card: who owes money, how much, and how their fee
+         * is structured. Same billing rules as {@link #getBillingSummary} — billed is the plan
+         * price, paid counts both enrolment and invoice payments, and the balance is per learner —
+         * so the rows here always add up to the card above them.
+         *
+         * CPO learners additionally get their instalment position (how many instalments are still
+         * unpaid and when the next one is due), read from student_fee_payment, which is the only
+         * place a custom instalment schedule exists per learner.
+         */
+        @Query(value = """
+                WITH billed AS (
+                  SELECT up.user_id AS user_id,
+                         SUM(COALESCE(pp.actual_price, 0)) AS billed,
+                         COUNT(*) AS plan_count,
+                         MIN(ei.name) AS course_name,
+                         MIN(up.status) AS plan_status,
+                         MIN(CASE WHEN po.type = 'CPO' THEN 'Custom Installment'
+                                  WHEN ei.tag = 'SUB_ORG' THEN 'Sub-Org Admin'
+                                  WHEN ei.tag = 'SUBORG_LEARNER' THEN 'Sub-Org Learner'
+                                  WHEN po.source = 'LIVE_SESSION' THEN 'Live Class'
+                                  WHEN po.source = 'PACKAGE_SESSION' THEN 'Course / Package'
+                                  ELSE 'Enroll Invite' END) AS payment_type,
+                         MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                            NULLIF(TRIM(ei.currency), '')))) AS currency
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    LEFT JOIN payment_option po ON po.id = up.payment_option_id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND (ei.institute_id = :instituteId
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                ), fee AS (
+                  SELECT sfp.user_id AS user_id,
+                         COUNT(*) FILTER (WHERE COALESCE(sfp.amount_paid, 0) < sfp.amount_expected)
+                           AS pending_installments,
+                         MIN(sfp.due_date) FILTER (WHERE COALESCE(sfp.amount_paid, 0) < sfp.amount_expected)
+                           AS next_due_date
+                    FROM student_fee_payment sfp
+                   WHERE sfp.institute_id = :instituteId
+                   GROUP BY sfp.user_id
+                )
+                SELECT b.user_id AS userId,
+                       b.course_name AS courseName,
+                       b.payment_type AS paymentType,
+                       b.plan_status AS planStatus,
+                       b.billed AS billed,
+                       COALESCE(p.paid, 0) AS paid,
+                       GREATEST(b.billed - COALESCE(p.paid, 0), 0) AS due,
+                       b.plan_count AS planCount,
+                       COALESCE(f.pending_installments, 0) AS pendingInstallments,
+                       f.next_due_date AS nextDueDate,
+                       b.currency AS currency
+                  FROM billed b
+                  LEFT JOIN paid p ON p.user_id = b.user_id
+                  LEFT JOIN fee f ON f.user_id = b.user_id
+                 WHERE GREATEST(b.billed - COALESCE(p.paid, 0), 0) > 0
+                 ORDER BY due DESC
+                """, countQuery = """
+                WITH billed AS (
+                  SELECT up.user_id AS user_id, SUM(COALESCE(pp.actual_price, 0)) AS billed
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND (ei.institute_id = :instituteId
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                )
+                SELECT COUNT(*)
+                  FROM billed b
+                  LEFT JOIN paid p ON p.user_id = b.user_id
+                 WHERE GREATEST(b.billed - COALESCE(p.paid, 0), 0) > 0
+                """, nativeQuery = true)
+        Page<OutstandingLearnerProjection> findOutstandingLearners(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        Pageable pageable);
 
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)

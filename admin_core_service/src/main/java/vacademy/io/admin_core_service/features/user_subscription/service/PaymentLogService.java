@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
@@ -1105,6 +1107,69 @@ public class PaymentLogService {
                         row != null && row.getSettledPlanCount() != null ? row.getSettledPlanCount() : 0L)
                 .currency(row != null ? row.getCurrency() : null)
                 .build();
+    }
+
+    /**
+     * The learners behind the "Due payment" card — who owes, how much, and how the fee is
+     * structured (a CPO learner also gets their instalment position). Same billing rules as the
+     * summary, so these rows reconcile with the card above them.
+     */
+    public Page<OutstandingLearnerDTO> getOutstandingLearners(
+            BillingSummaryRequestDTO request, int pageNo, int pageSize) {
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
+
+        Page<OutstandingLearnerProjection> page = userPlanRepository.findOutstandingLearners(
+                request.getInstituteId(),
+                startDate,
+                endDate,
+                noPackageSessions,
+                noPackageSessions ? List.of("__none__") : request.getPackageSessionIds(),
+                PageRequest.of(pageNo, pageSize));
+
+        // Names/emails/phones live in the auth service, so resolve the page's learners in one call
+        // rather than per row.
+        List<String> userIds = page.getContent().stream()
+                .map(OutstandingLearnerProjection::getUserId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, UserDTO> users = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : authService.getUsersFromAuthServiceByUserIds(userIds).stream()
+                        .filter(u -> u != null && u.getId() != null)
+                        .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
+
+        List<OutstandingLearnerDTO> content = page.getContent().stream().map(row -> {
+            UserDTO user = users.get(row.getUserId());
+            return OutstandingLearnerDTO.builder()
+                    .userId(row.getUserId())
+                    .fullName(user != null ? user.getFullName() : null)
+                    .email(user != null ? user.getEmail() : null)
+                    .mobileNumber(user != null ? user.getMobileNumber() : null)
+                    .courseName(row.getCourseName())
+                    .paymentType(row.getPaymentType())
+                    .planStatus(row.getPlanStatus())
+                    .billed(row.getBilled() != null ? row.getBilled() : 0d)
+                    .paid(row.getPaid() != null ? row.getPaid() : 0d)
+                    .due(row.getDue() != null ? row.getDue() : 0d)
+                    .planCount(row.getPlanCount() != null ? row.getPlanCount() : 0L)
+                    .pendingInstallments(
+                            row.getPendingInstallments() != null ? row.getPendingInstallments() : 0L)
+                    .nextDueDate(row.getNextDueDate())
+                    .currency(row.getCurrency())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return new PageImpl<>(content, PageRequest.of(pageNo, pageSize), page.getTotalElements());
     }
 
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(

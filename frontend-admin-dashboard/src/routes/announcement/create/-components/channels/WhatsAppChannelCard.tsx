@@ -8,7 +8,9 @@ import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
@@ -18,7 +20,7 @@ import {
     toTemplateOptions,
 } from '@/components/templates/TemplateSearchableSelect';
 import type { WhatsAppTemplateDTO } from '@/routes/communication/whatsapp-templates/-services/template-api';
-import { WHATSAPP_VALUE_SOURCES } from '../../-utils/constants';
+import { WHATSAPP_VALUE_GROUPS, WHATSAPP_VALUE_SOURCES } from '../../-utils/constants';
 import { whatsAppHeaderKind, whatsAppVariableNames } from '../../-utils/validation';
 import { EmptyState, FieldError, FieldHint, LoadFailure } from '../primitives';
 import type { FieldErrors, WhatsAppConfig, WhatsAppValueSource } from '../../-types';
@@ -37,6 +39,25 @@ interface WhatsAppChannelCardProps {
     onSync: () => void;
     errors: FieldErrors;
     showErrors: boolean;
+}
+
+/**
+ * Best guess at what a template variable wants, from its name. Meta templates are often authored
+ * with positional names ({{1}}, {{2}}), so anything unrecognised falls back to custom text.
+ */
+function guessSource(name: string): WhatsAppValueSource {
+    const key = name.toLowerCase();
+    if (/^(full_?name)$/.test(key)) return 'RECIPIENT_FULL_NAME';
+    if (/(^|_)(email)($|_)/.test(key)) return 'RECIPIENT_EMAIL';
+    if (/(phone|mobile|whatsapp_?number)/.test(key)) return 'RECIPIENT_PHONE';
+    if (/username/.test(key)) return 'RECIPIENT_USERNAME';
+    if (/name/.test(key)) return 'RECIPIENT_NAME';
+    if (/title|subject/.test(key)) return 'ANNOUNCEMENT_TITLE';
+    if (/content|message|body|detail/.test(key)) return 'ANNOUNCEMENT_CONTENT';
+    if (/sender|from|created/.test(key)) return 'SENDER_NAME';
+    if (/date/.test(key)) return 'CURRENT_DATE';
+    if (/time/.test(key)) return 'CURRENT_TIME';
+    return 'CUSTOM';
 }
 
 /** Renders the template body with its `{{variables}}` picked out, so the shape is obvious. */
@@ -96,15 +117,7 @@ export function WhatsAppChannelCard({
         if (missing.length === 0) return;
         const additions: WhatsAppConfig['variables'] = {};
         missing.forEach((name) => {
-            const lower = name.toLowerCase();
-            const source: WhatsAppValueSource = lower.includes('name')
-                ? 'RECIPIENT_NAME'
-                : lower.includes('title')
-                  ? 'ANNOUNCEMENT_TITLE'
-                  : lower.includes('content') || lower.includes('message') || lower.includes('body')
-                    ? 'ANNOUNCEMENT_CONTENT'
-                    : 'CUSTOM';
-            additions[name] = { source, customValue: '' };
+            additions[name] = { source: guessSource(name), customValue: '' };
         });
         onChange({ variables: { ...config.variables, ...additions } });
     }, [selectedTemplate, variableNames, config.variables, onChange]);
@@ -291,13 +304,20 @@ export function WhatsAppChannelCard({
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {WHATSAPP_VALUE_SOURCES.map((source) => (
-                                                    <SelectItem
-                                                        key={source.value}
-                                                        value={source.value}
-                                                    >
-                                                        {source.label}
-                                                    </SelectItem>
+                                                {WHATSAPP_VALUE_GROUPS.map((group) => (
+                                                    <SelectGroup key={group}>
+                                                        <SelectLabel>{group}</SelectLabel>
+                                                        {WHATSAPP_VALUE_SOURCES.filter(
+                                                            (source) => source.group === group
+                                                        ).map((source) => (
+                                                            <SelectItem
+                                                                key={source.value}
+                                                                value={source.value}
+                                                            >
+                                                                {source.label}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectGroup>
                                                 ))}
                                             </SelectContent>
                                         </Select>

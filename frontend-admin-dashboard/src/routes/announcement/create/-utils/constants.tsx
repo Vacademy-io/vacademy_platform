@@ -170,16 +170,51 @@ export function defaultModeSettings(mode: ModeType): ModeSettings {
 }
 
 /**
- * Values the notification service substitutes into WhatsApp `dynamic_values` at send time
- * (see `AnnouncementDeliveryService#prepareDynamicValues`). Anything else is sent verbatim.
+ * What a WhatsApp template variable can be filled with.
+ *
+ * Each entry is a token `AnnouncementDeliveryService#prepareDynamicValues` substitutes per
+ * recipient at send time — the same names the announcement email path understands, so a template
+ * built for one channel works on the other. Keep this list and that method in step.
  */
 export const WHATSAPP_VALUE_SOURCES = [
-    { value: 'RECIPIENT_NAME', label: "Recipient's name", token: '{{user_name}}' },
-    { value: 'ANNOUNCEMENT_TITLE', label: 'Announcement title', token: '{{title}}' },
-    { value: 'ANNOUNCEMENT_CONTENT', label: 'Announcement content', token: '{{content}}' },
-    { value: 'SENDER_NAME', label: 'Sender name', token: '{{created_by}}' },
-    { value: 'CUSTOM', label: 'Custom text…', token: '' },
+    // Recipient
+    { value: 'RECIPIENT_NAME', label: "Recipient's name", token: '{{name}}', group: 'Recipient' },
+    {
+        value: 'RECIPIENT_FULL_NAME',
+        label: 'Full name',
+        token: '{{full_name}}',
+        group: 'Recipient',
+    },
+    { value: 'RECIPIENT_USERNAME', label: 'Username', token: '{{username}}', group: 'Recipient' },
+    { value: 'RECIPIENT_EMAIL', label: 'Email address', token: '{{email}}', group: 'Recipient' },
+    {
+        value: 'RECIPIENT_PHONE',
+        label: 'Mobile number',
+        token: '{{mobile_number}}',
+        group: 'Recipient',
+    },
+    { value: 'RECIPIENT_ID', label: 'User id', token: '{{student_id}}', group: 'Recipient' },
+    // Announcement
+    {
+        value: 'ANNOUNCEMENT_TITLE',
+        label: 'Announcement title',
+        token: '{{title}}',
+        group: 'Announcement',
+    },
+    {
+        value: 'ANNOUNCEMENT_CONTENT',
+        label: 'Announcement content',
+        token: '{{content}}',
+        group: 'Announcement',
+    },
+    { value: 'SENDER_NAME', label: 'Sender name', token: '{{created_by}}', group: 'Announcement' },
+    // General
+    { value: 'CURRENT_DATE', label: "Today's date", token: '{{current_date}}', group: 'General' },
+    { value: 'CURRENT_TIME', label: 'Current time', token: '{{current_time}}', group: 'General' },
+    { value: 'CUSTOM', label: 'Custom text…', token: '', group: 'General' },
 ] as const;
+
+export const WHATSAPP_VALUE_GROUPS = ['Recipient', 'Announcement', 'General'] as const;
 
 export const CRON_PRESETS = [
     { id: 'DAILY_9', label: 'Every day, 9:00 AM', expression: '0 0 9 * * ?' },

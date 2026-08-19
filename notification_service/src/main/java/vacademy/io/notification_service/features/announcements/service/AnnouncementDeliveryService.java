@@ -426,6 +426,12 @@ public class AnnouncementDeliveryService {
             List<RecipientMessage> batch = page.getContent();
             if (batch.isEmpty()) break;
 
+            // Resolve the recipients' user records once per page, mirroring the email path. Without
+            // this, dynamic_values could only ever carry the announcement's own fields, so a
+            // template asking for {{name}} or {{email}} received the literal placeholder.
+            Map<String, User> userCache = batchResolveUsers(
+                    batch.stream().map(RecipientMessage::getUserId).distinct().toList());
+
             // Build unified send recipients for this batch
             List<UnifiedSendRequest.Recipient> recipients = new java.util.ArrayList<>();
             Map<String, RecipientMessage> messageByPhone = new HashMap<>();
@@ -456,7 +462,9 @@ public class AnnouncementDeliveryService {
                         continue;
                     }
 
-                    Map<String, String> userSpecificValues = prepareDynamicValues(dynamicValues, message, announcement, content);
+                    Map<String, String> userSpecificValues = prepareDynamicValues(
+                            dynamicValues, message, announcement, content,
+                            userCache.get(message.getUserId()), userPhone);
 
                     recipients.add(UnifiedSendRequest.Recipient.builder()
                             .phone(userPhone)
@@ -791,27 +799,82 @@ public class AnnouncementDeliveryService {
         return null;
     }
 
-    private Map<String, String> prepareDynamicValues(Map<String, String> template, RecipientMessage message, 
-                                                    Announcement announcement, RichTextData content) {
+    /**
+     * Resolve the WhatsApp template's dynamic values for one recipient.
+     *
+     * The admin picks a source per template variable in the announcement UI and we store it as a
+     * token (e.g. {@code {{email}}}); this substitutes those tokens per recipient. It deliberately
+     * accepts the same variable names as {@link #processHtmlVariables} so a variable that works in
+     * an announcement email also works in an announcement WhatsApp template — previously only four
+     * tokens resolved here, and everything else was delivered as the literal placeholder text.
+     */
+    private Map<String, String> prepareDynamicValues(Map<String, String> template, RecipientMessage message,
+                                                    Announcement announcement, RichTextData content,
+                                                    User user, String userPhone) {
         Map<String, String> values = new HashMap<>();
-        
-        if (template != null) {
-            for (Map.Entry<String, String> entry : template.entrySet()) {
-                String value = entry.getValue();
-                
-                // Replace placeholders with actual values
-                value = value.replace("{{title}}", announcement.getTitle());
-                value = value.replace("{{content}}", getContentPreview(content.getContent()));
-                value = value.replace("{{created_by}}", announcement.getCreatedByName() != null ? 
-                        announcement.getCreatedByName() : announcement.getCreatedBy());
-                value = value.replace("{{user_name}}", message.getUserName() != null ? 
-                        message.getUserName() : message.getUserId());
-                
-                values.put(entry.getKey(), value);
-            }
+        if (template == null) return values;
+
+        String createdBy = announcement.getCreatedByName() != null
+                ? announcement.getCreatedByName()
+                : nullToEmpty(announcement.getCreatedBy());
+
+        String fullName = user != null ? nullToEmpty(user.getFullName()) : "";
+        String username = user != null ? nullToEmpty(user.getUsername()) : "";
+        String email = user != null ? nullToEmpty(user.getEmail()) : "";
+        String phone = user != null && user.getMobileNumber() != null
+                ? user.getMobileNumber()
+                : nullToEmpty(userPhone);
+
+        // Same precedence as the email path: full name, then username, then email, then the id.
+        String displayName = fullName;
+        if (displayName.isEmpty()) displayName = username;
+        if (displayName.isEmpty()) displayName = email;
+        if (displayName.isEmpty()) {
+            displayName = message.getUserName() != null ? message.getUserName() : nullToEmpty(message.getUserId());
         }
-        
+
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("{{title}}", nullToEmpty(announcement.getTitle()));
+        tokens.put("{{content}}", getContentPreview(content != null ? content.getContent() : null));
+        tokens.put("{{created_by}}", createdBy);
+        tokens.put("{{announcement_id}}", nullToEmpty(announcement.getId()));
+        tokens.put("{{institute_id}}", nullToEmpty(announcement.getInstituteId()));
+        tokens.put("{{current_date}}", LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")));
+        tokens.put("{{current_time}}", LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm a")));
+        // Recipient identity — aliases kept in step with processHtmlVariables.
+        tokens.put("{{user_name}}", displayName);
+        tokens.put("{{name}}", displayName);
+        tokens.put("{{student_name}}", displayName);
+        tokens.put("{{full_name}}", fullName);
+        tokens.put("{{username}}", username);
+        tokens.put("{{email}}", email);
+        tokens.put("{{user_email}}", email);
+        tokens.put("{{student_email}}", email);
+        tokens.put("{{user_phone}}", phone);
+        tokens.put("{{mobile_number}}", phone);
+        tokens.put("{{student_phone}}", phone);
+        tokens.put("{{student_id}}", user != null ? nullToEmpty(user.getId()) : nullToEmpty(message.getUserId()));
+
+        for (Map.Entry<String, String> entry : template.entrySet()) {
+            String value = entry.getValue();
+            if (value == null) {
+                values.put(entry.getKey(), "");
+                continue;
+            }
+            for (Map.Entry<String, String> token : tokens.entrySet()) {
+                if (value.contains(token.getKey())) {
+                    value = value.replace(token.getKey(), token.getValue());
+                }
+            }
+            // Meta rejects a template whose body parameter is empty, so never send a blank.
+            values.put(entry.getKey(), value.isBlank() ? "-" : value);
+        }
+
         return values;
+    }
+
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 
     private String getContentPreview(String content) {

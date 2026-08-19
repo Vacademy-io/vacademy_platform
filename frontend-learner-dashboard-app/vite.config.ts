@@ -19,6 +19,12 @@ const pkgVersion: string = JSON.parse(
 export default defineConfig({
     define: {
         __APP_VERSION__: JSON.stringify(pkgVersion),
+        // Mac App Store build flag. Read from process.env at config time —
+        // Vite does NOT put process.env vars into import.meta.env (it only
+        // loads .env* files, and this project has none), so an env-var-only
+        // approach silently compiles to `false`. Build with
+        // VITE_MAC_APP_STORE=true to turn on reader mode for the MAS package.
+        __MAC_APP_STORE__: JSON.stringify(process.env.VITE_MAC_APP_STORE === "true"),
     },
     plugins: [
         TanStackRouterVite(),

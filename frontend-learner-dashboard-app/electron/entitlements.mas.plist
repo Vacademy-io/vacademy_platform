@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mandatory for the Mac App Store. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- The app is a web client: it talks to backend-stage.vacademy.io and S3/CloudFront. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Learners save/open course material and offline downloads. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+  <!-- Live classes (BBB) use camera + mic. Drop either key if the Mac build
+       is not meant to join classes — an unused entitlement invites rejection. -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <!-- Bundle id io.shikshanationapp.com on team 7XKD5M7288. The macOS platform
+       was added to the EXISTING "Shiksha Nation" app record (id 6785750270), so
+       the Mac build MUST carry the same bundle id as the iOS app — a different
+       id would create a separate listing instead of joining that record. -->
+  <key>com.apple.application-identifier</key>
+  <string>7XKD5M7288.io.shikshanationapp.com</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>7XKD5M7288</string>
+</dict>
+</plist>

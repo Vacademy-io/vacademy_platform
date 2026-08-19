@@ -29,7 +29,8 @@
     "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",
     "build:win:ssdc:fast": "./build-windows-fast.sh",
     "build:win:sevencs": "./build-windows-seven-cs.sh",
-    "build:win:shikshanation": "./build-windows-shikshanation.sh"
+    "build:win:shikshanation": "./build-windows-shikshanation.sh",
+    "build:mas:shikshanation": "npm run build && electron-builder build --mac mas -c ./electron-builder.shikshanation-mas.json --publish never"
   },
   "dependencies": {
     "@capacitor-community/electron": "^5.0.0",

@@ -296,6 +296,12 @@ public class InvoiceService {
         PLACEHOLDER_META.put("tax_registration_number", new PlaceholderMeta("Tax Registration No.", "TAX", true, "text"));
         PLACEHOLDER_META.put("hsn_code", new PlaceholderMeta("HSN/SAC Code", "TAX", true, "text"));
         PLACEHOLDER_META.put("subtotal", new PlaceholderMeta("Subtotal", "AMOUNTS", false, "text"));
+        // The gross (pre-discount) price and the discount taken off it. Templates need both to
+        // show "original → less discount → total"; without them a discounted invoice can only
+        // print the net and leaves the reader no way to see a discount was applied.
+        PLACEHOLDER_META.put("plan_price", new PlaceholderMeta("Original Price", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("discount_amount", new PlaceholderMeta("Discount", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("discount_row", new PlaceholderMeta("Discount Line (hidden when none)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("tax_amount", new PlaceholderMeta("Tax Amount", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("total_amount", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
@@ -1847,6 +1853,25 @@ public class InvoiceService {
         filled = filled.replace("{{subtotal}}",
                 invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
                         : currencySymbol + "0.00");
+
+        // Original price + discount. {{discount_amount}} was being rendered literally on live
+        // invoices because nothing ever substituted it — it was neither in this block nor in
+        // PLACEHOLDER_META, so a template author could type it and get "{{discount_amount}}" in
+        // the PDF. Both resolve to an empty string when nothing was discounted, and
+        // {{discount_row}} emits the whole labelled line (or nothing), so a template can show the
+        // discount only when there is one — the same shape {{tax_components}} already uses.
+        BigDecimal invoiceDiscount = invoiceData.getDiscountAmount();
+        boolean hasDiscount = invoiceDiscount != null && invoiceDiscount.compareTo(BigDecimal.ZERO) > 0;
+        filled = filled.replace("{{plan_price}}",
+                invoiceData.getPlanPrice() != null ? currencySymbol + invoiceData.getPlanPrice().toString()
+                        : "");
+        filled = filled.replace("{{discount_amount}}",
+                hasDiscount ? currencySymbol + invoiceDiscount.toString() : "");
+        filled = filled.replace("{{discount_row}}",
+                hasDiscount
+                        ? "<div class=\"invoice-discount-row\">Discount: -" + currencySymbol
+                                + invoiceDiscount.toString() + "</div>"
+                        : "");
         filled = filled.replace("{{tax_amount}}",
                 invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
                         : currencySymbol + "0.00");
@@ -5023,6 +5048,15 @@ public class InvoiceService {
 
         String sym = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
         d.put("subtotal", sym + (invoiceData.getSubtotal() != null ? invoiceData.getSubtotal().toString() : "0.00"));
+        // Mirrors the placeholder block in fillTemplate: empty rather than "0.00" when nothing was
+        // discounted, so a template that prints them unconditionally shows a blank, not a false zero.
+        BigDecimal disc = invoiceData.getDiscountAmount();
+        boolean discApplies = disc != null && disc.compareTo(BigDecimal.ZERO) > 0;
+        d.put("plan_price", invoiceData.getPlanPrice() != null ? sym + invoiceData.getPlanPrice().toString() : "");
+        d.put("discount_amount", discApplies ? sym + disc.toString() : "");
+        d.put("discount_row", discApplies
+                ? "<div class=\"invoice-discount-row\">Discount: -" + sym + disc.toString() + "</div>"
+                : "");
         d.put("tax_amount", sym + (invoiceData.getTaxAmount() != null ? invoiceData.getTaxAmount().toString() : "0.00"));
         d.put("total_amount", sym + (invoiceData.getTotalAmount() != null ? invoiceData.getTotalAmount().toString() : "0.00"));
         d.put("currency", nz(invoiceData.getCurrency()));

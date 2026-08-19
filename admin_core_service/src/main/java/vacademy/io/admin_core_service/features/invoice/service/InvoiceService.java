@@ -785,8 +785,13 @@ public class InvoiceService {
                 }
             }
 
-            // Calculate discount for line items display
+            // Calculate discount for line items display. Coupon/referral discounts arrive as
+            // payment_log_line_item rows; a CPO discount lives on the fee schedule instead, so
+            // fall back to that when the line items carry none.
             BigDecimal discountAmount = calculateDiscountAmount(paymentLogLineItems, planPrice);
+            if (discountAmount.compareTo(BigDecimal.ZERO) <= 0 && paymentLog.getUserPlan() != null) {
+                discountAmount = feeScheduleDiscount(paymentLog.getUserPlan().getId(), paymentAmount);
+            }
 
             totalPlanPrice = totalPlanPrice.add(planPrice);
             totalDiscountAmount = totalDiscountAmount.add(discountAmount);
@@ -885,19 +890,19 @@ public class InvoiceService {
         // installment(s) actually settled by THIS payment instead of a single course/plan line —
         // the package name was misleading on an installment invoice. Regular SUBSCRIPTION/ONE_TIME
         // payments create no ledger rows, so they fall through to the plan line item unchanged.
-        List<InvoiceLineItemData> installmentItems = buildInstallmentLineItems(paymentLogId);
+        // Resolved up-front because the installment lines want it too: an installment reads far
+        // better as "<Course> installment 2" than a bare "Installment #2".
+        String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+        if (description == null || description.trim().isEmpty()) {
+            description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
+                    : "Package Enrollment";
+            log.warn("Using fallback description for payment log: {}", paymentLogId);
+        }
+
+        List<InvoiceLineItemData> installmentItems = buildInstallmentLineItems(paymentLogId, description);
         if (!installmentItems.isEmpty()) {
             lineItems.addAll(installmentItems);
         } else {
-            // For multi-package enrollments, try to get package session details
-            String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
-
-            // Ensure description is never null or empty
-            if (description == null || description.trim().isEmpty()) {
-                description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
-                        : "Package Enrollment";
-                log.warn("Using fallback description for payment log: {}", paymentLogId);
-            }
 
             // Main plan item — show GROSS plan price (actualPrice) here so the
             // discount line items can subtract from it visually. Using the net
@@ -964,7 +969,17 @@ public class InvoiceService {
      * @param paymentLogId the payment log whose allocations should be itemized
      * @return per-installment line items (possibly empty)
      */
-    private List<InvoiceLineItemData> buildInstallmentLineItems(String paymentLogId) {
+    /** Due date ascending, nulls last — the order the fee receipt and the side-view both use. */
+    private static int compareByDueDate(StudentFeePayment a, StudentFeePayment b) {
+        java.util.Date da = a.getDueDate();
+        java.util.Date db = b.getDueDate();
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da.compareTo(db);
+    }
+
+    private List<InvoiceLineItemData> buildInstallmentLineItems(String paymentLogId, String courseLabel) {
         List<InvoiceLineItemData> items = new ArrayList<>();
         if (paymentLogId == null) {
             return items;
@@ -992,29 +1007,49 @@ public class InvoiceService {
 
             List<StudentFeePayment> sfps = studentFeePaymentRepository.findAllById(allocatedBySfp.keySet());
             // Stable, human-friendly order: by due date ascending (mirrors the fee receipt).
-            sfps.sort((a, b) -> {
-                java.util.Date da = a.getDueDate();
-                java.util.Date db = b.getDueDate();
-                if (da == null && db == null) return 0;
-                if (da == null) return 1;
-                if (db == null) return -1;
-                return da.compareTo(db);
-            });
+            sfps.sort(InvoiceService::compareByDueDate);
 
+            // Installment numbers must be the bill's position in the WHOLE plan, not its position
+            // among the bills this payment happened to settle. Numbering per payment made the
+            // second payment's line read "Installment 1" again, so two invoices for the same
+            // learner both claimed to be for the first installment.
+            Map<String, Integer> ordinalBySfp = new java.util.HashMap<>();
+            String userPlanId = sfps.stream()
+                    .map(StudentFeePayment::getUserPlanId)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(null);
+            if (userPlanId != null) {
+                List<StudentFeePayment> planBills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+                if (planBills != null && !planBills.isEmpty()) {
+                    planBills.sort(InvoiceService::compareByDueDate);
+                    int position = 1;
+                    for (StudentFeePayment bill : planBills) {
+                        ordinalBySfp.put(bill.getId(), position++);
+                    }
+                }
+            }
+
+            String label = StringUtils.hasText(courseLabel) ? courseLabel.trim() : null;
             java.text.SimpleDateFormat dueFmt = new java.text.SimpleDateFormat("dd MMM yyyy");
-            int index = 1;
+            int fallbackIndex = 1;
             for (StudentFeePayment sfp : sfps) {
                 BigDecimal amt = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
                 String due = sfp.getDueDate() != null ? dueFmt.format(sfp.getDueDate()) : "N/A";
+                int number = ordinalBySfp.getOrDefault(sfp.getId(), fallbackIndex);
+                // "<Course> installment 2 (Due: 06 Nov 2026)" — the course name first, because on a
+                // learner with several plans "Installment 2" alone says nothing about what was paid for.
+                String description = (label != null ? label + " installment " + number
+                        : "Installment #" + number)
+                        + " (Due: " + due + ")";
                 items.add(InvoiceLineItemData.builder()
                         .itemType("FEE_INSTALLMENT")
-                        .description("Installment #" + index + " (Due: " + due + ")")
+                        .description(description)
                         .quantity(1)
                         .unitPrice(amt)
                         .amount(amt)
                         .sourceId(sfp.getId())
                         .build());
-                index++;
+                fallbackIndex++;
             }
         } catch (Exception e) {
             log.warn("Failed to build CPO installment line items for paymentLog {}: {}. "
@@ -1246,6 +1281,59 @@ public class InvoiceService {
     /**
      * Calculate total discount amount from payment log line items
      */
+    /**
+     * Discount for a payment against a CPO fee schedule.
+     *
+     * <p>A CPO discount never reaches {@code payment_log_line_item} — it is written straight onto
+     * {@code student_fee_payment.amount_expected} by CpoDiscountService, leaving
+     * {@code original_amount} as the pre-discount figure. So the line-item scan below finds nothing
+     * and the invoice reported a zero discount while the plan price still showed the gross: a
+     * ₹70,000 plan discounted to ₹62,000 printed "₹70,000" with no explanation of the ₹8,000 gap.
+     *
+     * <p>Apportioned by how much of the plan this payment covers, so a part payment carries its
+     * share of the discount rather than the whole of it. Returns zero for plans with no fee
+     * schedule (the non-CPO tracks), leaving their existing behaviour untouched.
+     */
+    private BigDecimal feeScheduleDiscount(String userPlanId, BigDecimal paymentAmount) {
+        if (!StringUtils.hasText(userPlanId) || paymentAmount == null
+                || paymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            List<StudentFeePayment> bills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+            if (bills == null || bills.isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+            BigDecimal gross = BigDecimal.ZERO;
+            BigDecimal net = BigDecimal.ZERO;
+            for (StudentFeePayment bill : bills) {
+                BigDecimal expected = bill.getAmountExpected() != null
+                        ? bill.getAmountExpected()
+                        : BigDecimal.ZERO;
+                // original_amount is backfilled/@PrePersist-set, but fall back to the net so a
+                // missing value reads as "no discount" rather than as a discount of the whole bill.
+                BigDecimal original = bill.getOriginalAmount() != null
+                        ? bill.getOriginalAmount()
+                        : expected;
+                gross = gross.add(original);
+                net = net.add(expected);
+            }
+            BigDecimal totalDiscount = gross.subtract(net);
+            if (totalDiscount.compareTo(BigDecimal.ZERO) <= 0 || net.compareTo(BigDecimal.ZERO) <= 0) {
+                return BigDecimal.ZERO;
+            }
+            // Share of the discount proportional to the slice of the plan being paid for, capped
+            // so a payment larger than the outstanding net can't over-report the discount.
+            BigDecimal share = totalDiscount
+                    .multiply(paymentAmount.min(net))
+                    .divide(net, 2, RoundingMode.HALF_UP);
+            return share.min(totalDiscount);
+        } catch (Exception e) {
+            log.warn("Could not derive fee-schedule discount for userPlan {}: {}", userPlanId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
     private BigDecimal calculateDiscountAmount(List<PaymentLogLineItem> lineItems, BigDecimal planPrice) {
         BigDecimal totalDiscount = BigDecimal.ZERO;
 

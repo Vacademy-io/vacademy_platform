@@ -545,6 +545,45 @@ export const CourseStructureDetails = ({
   useEffect(() => {}, [instituteId, userHasDonated, isEnrolledInCourse]);
   // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
+  // course_depth decides which levels a course exposes: 5 shows
+  // subject -> module -> chapter -> slide, 4 drops the subject, 3 also drops
+  // the module, and 2 is slides only. The hidden levels still exist in the
+  // data — a course created below depth 5 gets a seeded subject/module/chapter
+  // named "DEFAULT" to hang content off — which is why a 2-level course used
+  // to render three "Default" rows above every slide.
+  //
+  // Depth alone is NOT enough to hide a level, though: a level is only safe to
+  // drop when it collapses to that single placeholder. Some older depth-3
+  // courses really do carry several subjects/modules, and there the crumbs are
+  // the learner's only route to the siblings the preselect effect skipped —
+  // hiding them would strand that content.
+  const allModulesFlat = useMemo(
+    () => Object.values(subjectModulesMap).flat(),
+    [subjectModulesMap],
+  );
+  const allChaptersFlat = useMemo(
+    () => allModulesFlat.flatMap((mod) => mod.chapters ?? []),
+    [allModulesFlat],
+  );
+  const isPlaceholderName = (name?: string | null) =>
+    (name || "").trim().toLowerCase() === "default";
+
+  const showsSubjectLevel = !(
+    courseStructure < 5 &&
+    studyLibraryData.length === 1 &&
+    isPlaceholderName(studyLibraryData[0]?.subject_name)
+  );
+  const showsModuleLevel = !(
+    courseStructure < 4 &&
+    allModulesFlat.length === 1 &&
+    isPlaceholderName(allModulesFlat[0]?.module.module_name)
+  );
+  const chapterLevelIsPlaceholder =
+    courseStructure < 3 &&
+    allChaptersFlat.length === 1 &&
+    isPlaceholderName(allChaptersFlat[0]?.chapter_name);
+  const showsChapterLevel = !chapterLevelIsPlaceholder;
+
   // Evaluate drip conditions for chapters
   const chapterEvaluations = useMemo(() => {
     // Build progress data for all chapters
@@ -1274,11 +1313,17 @@ export const CourseStructureDetails = ({
                 </label>
               </div>
             </div>
+            {/* Hidden only when the outline really is a flat slide list —
+                the depth-2 courses that fall back to the chapter view still
+                have collapsibles to expand. */}
             <Button
               variant="outline"
               size="sm"
               onClick={isAllExpanded ? collapseAll : expandAll}
-              className="h-7 px-3 text-xs border-neutral-300 hover:border-primary-300 hover:bg-primary-50/50"
+              className={cn(
+                "h-7 px-3 text-xs border-neutral-300 hover:border-primary-300 hover:bg-primary-50/50",
+                courseStructure === 2 && chapterLevelIsPlaceholder && "hidden",
+              )}
             >
               {isAllExpanded ? (
                 <>
@@ -2115,8 +2160,12 @@ export const CourseStructureDetails = ({
                 );
               });
             })()}
-          {/* Depth 3: chapters only (no subject, no module) */}
-          {courseStructure === 3 && (
+          {/* Depth 3: chapters only (no subject, no module). Also the fallback
+              for the handful of depth-2 courses that carry more than the one
+              seeded chapter — flattening those to a bare slide list would drop
+              the only grouping they have. */}
+          {(courseStructure === 3 ||
+            (courseStructure === 2 && !chapterLevelIsPlaceholder)) && (
             <div className="space-y-0.5">
               {(() => {
                 const chaptersWithContext: Array<{
@@ -2357,324 +2406,183 @@ export const CourseStructureDetails = ({
             </div>
           )}
 
-          {courseStructure === 2 &&
-            studyLibraryData?.map((subject: SubjectType, idx: number) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleTrigger
-                    className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
-                      // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink",
-                    )}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      <CaretRight
-                        size={18}
-                        weight="bold"
-                        className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
-                      />
-                      {renderStatusIcon(calculateSubjectProgress(subject.id), {
-                        size: 18,
-                      })}
-                      {showContentPrefixes && (
-                        <span className="w-7 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
-                          S{idx + 1}
-                        </span>
-                      )}
-                      <span
-                        className="min-w-0 flex-1 break-words"
-                        title={toTitleCase(subject.subject_name)}
-                      >
-                        {toTitleCase(subject.subject_name)}
-                      </span>
-                      {/* Subject keeps the ONLY progress bar in its branch. */}
-                      <div className="flex items-center gap-2 ms-auto shrink-0">
-                        {(() => {
-                          const progress = calculateSubjectProgress(subject.id);
-                          return (
-                            <>
-                              <div className="w-16 hidden sm:block">
-                                {renderProgressBar(progress, "sm")}
-                              </div>
-                              {renderCompletionBadge(progress, {
-                                onDark: true,
-                              })}
-                            </>
-                          );
-                        })()}
-                        {/* Download the whole subject. The structure page offered offline
-                            controls only at chapter and slide level, so "save this subject"
-                            meant tapping every chapter inside it. */}
-                        <DownloadNodeButton
-                          nodeId={subject.id}
-                          nodeType="SUBJECT"
-                          packageSessionId={packageSessionId}
-                          compact
-                        />
-                      </div>
-                    </div>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative ps-3 border-s border-border">
-                      {(subjectModulesMap[subject.id] ?? []).map(
-                        (mod, modIdx) => {
-                          const isModuleOpen = openModules.has(mod.module.id);
-                          return (
-                            <Collapsible
-                              key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
-                            >
-                              <CollapsibleTrigger
-                                className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-sm font-medium hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink",
-                                )}
-                              >
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  <CaretRight
-                                    size={16}
-                                    weight="bold"
-                                    className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
-                                  />
-                                  {renderStatusIcon(
-                                    calculateModuleProgress(mod),
-                                  )}
-                                  {showContentPrefixes && (
-                                    <span className="w-6 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
-                                      M{modIdx + 1}
-                                    </span>
-                                  )}
-                                  <span
-                                    className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
-                                    title={toTitleCase(mod.module.module_name)}
-                                  >
-                                    {toTitleCase(mod.module.module_name)}
-                                  </span>
-                                  {/* Module progress: % text only */}
-                                  <span className="ms-auto flex shrink-0 items-center gap-2">
-                                    {renderCompletionBadge(
-                                      calculateModuleProgress(mod),
-                                    )}
-                                    {/* Download the whole module — same reasoning as the subject
-                                        control above. */}
-                                    <DownloadNodeButton
-                                      nodeId={mod.module.id}
-                                      nodeType="MODULE"
-                                      packageSessionId={packageSessionId}
-                                      compact
-                                    />
-                                  </span>
-                                </div>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className={`py-1 ps-2`}>
-                                <div className="space-y-0.5 border-s border-border ps-2.5">
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id,
-                                    );
+          {/* Depth 2: slides only — no subject, module or chapter row.
+              A 2-level course still stores its slides under a seeded
+              subject/module/chapter all literally named "DEFAULT" (see
+              add-course-form on the admin side); rendering those placeholder
+              rows is what made a 2-level course read as a 5-level one, with
+              three "Default" headers above every slide. */}
+          {!isModulesLoading && courseStructure === 2 && chapterLevelIsPlaceholder && (
+            <div className="space-y-px">
+              {(() => {
+                const slidesWithContext: Array<{
+                  subject: SubjectType;
+                  mod: ModuleWithChapters;
+                  ch: Chapter;
+                  slide: Slide;
+                  chapterLocked: boolean;
+                  chapterUnlockMessage?: string;
+                }> = [];
+                const chapterIds: string[] = [];
+                studyLibraryData?.forEach((subject: SubjectType) => {
+                  (subjectModulesMap[subject.id] ?? []).forEach((mod) => {
+                    (mod.chapters ?? []).forEach((ch) => {
+                      const chapterEval = chapterEvaluations[ch.id];
+                      if (chapterEval && shouldFilterItem(chapterEval)) return;
+                      // There is no chapter row left to carry a drip lock at
+                      // this depth, so it moves onto the slides themselves —
+                      // dropping them instead would leave the learner staring
+                      // at "No slides" with nothing explaining why.
+                      const chapterLocked = !!(
+                        chapterEval && isItemLocked(chapterEval)
+                      );
+                      chapterIds.push(ch.id);
+                      filterSlides(slidesMap[ch.id] ?? []).forEach((slide) => {
+                        const slideEval = slideEvaluations[slide.id];
+                        if (slideEval && shouldFilterItem(slideEval)) return;
+                        slidesWithContext.push({
+                          subject,
+                          mod,
+                          ch,
+                          slide,
+                          chapterLocked,
+                          ...(chapterEval?.unlockMessage && {
+                            chapterUnlockMessage: chapterEval.unlockMessage,
+                          }),
+                        });
+                      });
+                    });
+                  });
+                });
 
-                                    return (
-                                      <Collapsible
-                                        key={ch.id}
-                                        open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
-                                      >
-                                        <CollapsibleTrigger
-                                          className={cn(
-                                            "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm hover:bg-muted/60 data-[state=open]:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                                            "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink [.ui-play_&]:data-[state=open]:bg-play-navy-soft [.ui-play_&]:data-[state=open]:text-play-navy-soft-ink",
-                                          )}
-                                        >
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            <CaretRight
-                                              size={14}
-                                              weight="bold"
-                                              className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
-                                            />
-                                            {renderStatusIcon(
-                                              calculateChapterProgress(ch.id),
-                                            )}
-                                            {showContentPrefixes && (
-                                              <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
-                                                C{chIdx + 1}
-                                              </span>
-                                            )}
-                                            <span
-                                              className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
-                                              title={toTitleCase(
-                                                ch.chapter_name,
-                                              )}
-                                            >
-                                              {toTitleCase(ch.chapter_name)}
-                                            </span>
-                                            {/* Earned-only slide count */}
-                                            <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                                              {(() => {
-                                                const slidesForChapter =
-                                                  slidesMap[ch.id] || [];
-                                                const completedSlides =
-                                                  slidesForChapter.filter(
-                                                    (slide) =>
-                                                      (slide.percentage_completed ||
-                                                        0) >=
-                                                      getSlideCompletionThreshold(),
-                                                  ).length;
-                                                const totalSlides =
-                                                  slidesForChapter.length;
-                                                return (
-                                                  slidesMap[ch.id] !==
-                                                    undefined &&
-                                                  totalSlides > 0 &&
-                                                  completedSlides > 0 && (
-                                                    <span
-                                                      className={cn(
-                                                        "min-w-8 text-end text-caption tabular-nums",
-                                                        completedSlides ===
-                                                          totalSlides
-                                                          ? "text-success-500"
-                                                          : "text-muted-foreground",
-                                                        "[.ui-play_&]:text-play-navy-soft-ink",
-                                                      )}
-                                                    >
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
-                                                  )
-                                                );
-                                              })()}
-                                              {/* Offline download for the whole chapter (plan B7). Renders
-                                                  nothing on unsupported platforms; stops propagation itself
-                                                  so it never toggles the collapsible. */}
-                                              <DownloadNodeButton
-                                                nodeId={ch.id}
-                                                nodeType="CHAPTER"
-                                                packageSessionId={packageSessionId}
-                                                compact
-                                              />
-                                            </span>
-                                          </div>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ps-2 relative">
-                                            {(slidesMap[ch.id] ?? []).length ===
-                                            0 ? (
-                                              <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                No{" "}
-                                                {getTerminologyPlural(
-                                                  ContentTerms.Slides,
-                                                  SystemTerms.Slides,
-                                                )}{" "}
-                                                in this{" "}
-                                                {getTerminology(
-                                                  ContentTerms.Chapters,
-                                                  SystemTerms.Chapters,
-                                                )}
-                                                .
-                                              </div>
-                                            ) : (
-                                              (slidesMap[ch.id] ?? []).map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className={cn(
-                                                      getSlideStyling(),
-                                                      "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors",
-                                                    )}
-                                                    onClick={() => {
-                                                      handleSlideNavigation(
-                                                        subject.id,
-                                                        mod.module.id,
-                                                        ch.id,
-                                                        slide.id,
-                                                      );
-                                                    }}
-                                                  >
-                                                    {showContentPrefixes && (
-                                                      <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
-                                                        {sIdx + 1}
-                                                      </span>
-                                                    )}
-                                                    <span
-                                                      className="shrink-0"
-                                                      title={
-                                                        getSlideTypeDisplay(
-                                                          slide,
-                                                        ) || undefined
-                                                      }
-                                                    >
-                                                      {getIcon(slide, "4")}
-                                                    </span>
-                                                    <span
-                                                      className="min-w-0 flex-1 truncate text-sm text-foreground"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                    {renderContinueChip(
-                                                      slide.id,
-                                                    )}
-                                                    {/* Slide Meta */}
-                                                    <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
-                                                      {getSlideMetaText(
-                                                        slide,
-                                                      ) && (
-                                                        <span>
-                                                          {getSlideMetaText(
-                                                            slide,
-                                                          )}
-                                                        </span>
-                                                      )}
-                                                      {renderStatusIcon(
-                                                        slide.percentage_completed ||
-                                                          0,
-                                                        {
-                                                          size: 14,
-                                                          hideEmpty: true,
-                                                        },
-                                                      )}
-                                                      {/* Offline download for this single slide, mirroring the chapter
-                                                          control above. Renders nothing on unsupported platforms or when
-                                                          the admin hasn't allowed this slide offline; stops propagation
-                                                          itself so tapping it never navigates into the slide. */}
-                                                      <DownloadNodeButton
-                                                        nodeId={slide.id}
-                                                        nodeType="SLIDE"
-                                                        packageSessionId={packageSessionId}
-                                                        compact
-                                                      />
-                                                    </span>
-                                                  </div>
-                                                ),
-                                              )
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      </Collapsible>
-                                    );
-                                  })}
-                                </div>
-                              </CollapsibleContent>
-                            </Collapsible>
-                          );
-                        },
+                const stillLoading = chapterIds.some((id) => {
+                  const status = slidesLoadingStatus[id] ?? "idle";
+                  return status === "idle" || status === "loading";
+                });
+
+                if (slidesWithContext.length === 0 && stillLoading) {
+                  return (
+                    <div className="pe-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 px-2 py-1"
+                        >
+                          <Skeleton className="w-5 h-5 rounded" />
+                          <Skeleton className="h-4 w-32" />
+                          <div className="ms-auto flex items-center gap-2">
+                            <Skeleton className="h-3 w-16" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (slidesWithContext.length === 0) {
+                  return (
+                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                      No{" "}
+                      {getTerminologyPlural(
+                        ContentTerms.Slides,
+                        SystemTerms.Slides,
                       )}
                     </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+                  );
+                }
+
+                return slidesWithContext.map(
+                  (
+                    {
+                      subject,
+                      mod,
+                      ch,
+                      slide,
+                      chapterLocked,
+                      chapterUnlockMessage,
+                    },
+                    sIdx,
+                  ) => {
+                    const slideEval = slideEvaluations[slide.id];
+                    const isSlideLocked =
+                      chapterLocked || !!(slideEval && isItemLocked(slideEval));
+
+                    return (
+                      <div
+                        key={slide.id}
+                        className={cn(
+                          getSlideStyling(),
+                          // Vibrant Styles
+                          "[.ui-vibrant_&]:hover:bg-primary/5",
+                          // Play Styles — solid, bold, Duolingo-style
+                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors",
+                        )}
+                        onClick={
+                          isSlideClickable() && !isSlideLocked
+                            ? () => {
+                                handleSlideNavigation(
+                                  subject.id,
+                                  mod.module.id,
+                                  ch.id,
+                                  slide.id,
+                                );
+                              }
+                            : undefined
+                        }
+                      >
+                        {showContentPrefixes && (
+                          <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                            {sIdx + 1}
+                          </span>
+                        )}
+                        <span
+                          className="shrink-0"
+                          title={getSlideTypeDisplay(slide) || undefined}
+                        >
+                          {getIcon(slide, "4")}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-sm text-foreground"
+                          title={slide.title}
+                        >
+                          {slide.title}
+                        </span>
+                        {renderContinueChip(slide.id)}
+                        {isSlideLocked && (
+                          <LockedBadge
+                            size="sm"
+                            unlockMessage={
+                              slideEval?.unlockMessage ?? chapterUnlockMessage
+                            }
+                          />
+                        )}
+                        {/* Meta: one quiet fact + earned-only status */}
+                        <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
+                          {getSlideMetaText(slide) && (
+                            <span>{getSlideMetaText(slide)}</span>
+                          )}
+                          {renderStatusIcon(slide.percentage_completed || 0, {
+                            size: 14,
+                            hideEmpty: true,
+                          })}
+                          {/* Offline download for this single slide. Renders
+                              nothing on unsupported platforms; stops
+                              propagation itself so tapping it never
+                              navigates into the slide. */}
+                          <DownloadNodeButton
+                            nodeId={slide.id}
+                            nodeType="SLIDE"
+                            packageSessionId={packageSessionId}
+                            compact
+                          />
+                        </span>
+                      </div>
+                    );
+                  },
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
     ),
@@ -2697,78 +2605,99 @@ export const CourseStructureDetails = ({
           </div>
         </div>
 
-        {/* Breadcrumbs */}
-        <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-6 bg-neutral-50/50 p-2.5 rounded-lg border border-neutral-100">
-          <button
-            type="button"
-            className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-              !selectedSubjectId && !selectedModuleId && !selectedChapterId
-                ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                : "hover:bg-neutral-200/60 hover:text-neutral-900"
-            }`}
-            onClick={() => {
-              setSelectedSubjectId(null);
-              setSelectedModuleId(null);
-              setSelectedChapterId(null);
-            }}
-          >
-            {getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects)}
-          </button>
+        {/* Breadcrumbs — only for the levels this course actually exposes.
+            The full subject > module > chapter trail on a shallower course put
+            the seeded "DEFAULT" levels back in front of the learner: the crumbs
+            claimed a hierarchy that isn't theirs, and clicking one dropped them
+            into a grid holding a single card called "Default". A flat 2-level
+            course has no trail left, so the bar goes away entirely; the last
+            condition keeps it from rendering as an empty strip. */}
+        {!isModulesLoading &&
+          showsChapterLevel &&
+          (showsSubjectLevel ||
+            (showsModuleLevel && selectedSubjectId) ||
+            selectedModuleId ||
+            selectedChapterId) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-6 bg-neutral-50/50 p-2.5 rounded-lg border border-neutral-100">
+            {showsSubjectLevel && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  !selectedSubjectId && !selectedModuleId && !selectedChapterId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedSubjectId(null);
+                  setSelectedModuleId(null);
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Subjects,
+                  SystemTerms.Subjects,
+                )}
+              </button>
+            )}
 
-          {selectedSubjectId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+            {showsSubjectLevel && showsModuleLevel && selectedSubjectId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
 
-          {selectedSubjectId && (
-            <button
-              type="button"
-              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-                selectedSubjectId && !selectedModuleId
-                  ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                  : "hover:bg-neutral-200/60 hover:text-neutral-900"
-              }`}
-              onClick={() => {
-                setSelectedModuleId(null);
-                setSelectedChapterId(null);
-              }}
-            >
-              {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
-            </button>
-          )}
+            {showsModuleLevel && selectedSubjectId && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  selectedSubjectId && !selectedModuleId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedModuleId(null);
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Modules,
+                  SystemTerms.Modules,
+                )}
+              </button>
+            )}
 
-          {selectedModuleId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+            {showsModuleLevel && selectedModuleId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
 
-          {selectedModuleId && (
-            <button
-              type="button"
-              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-                selectedModuleId && !selectedChapterId
-                  ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                  : "hover:bg-neutral-200/60 hover:text-neutral-900"
-              }`}
-              onClick={() => {
-                setSelectedChapterId(null);
-              }}
-            >
-              {getTerminologyPlural(
-                ContentTerms.Chapters,
-                SystemTerms.Chapters,
-              )}
-            </button>
-          )}
+            {selectedModuleId && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  selectedModuleId && !selectedChapterId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Chapters,
+                  SystemTerms.Chapters,
+                )}
+              </button>
+            )}
 
-          {selectedChapterId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+            {selectedChapterId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
 
-          {selectedChapterId && (
-            <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
-              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
-            </span>
-          )}
-        </div>
+            {selectedChapterId && (
+              <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
+                {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Card-grid shimmer while modules load — mirrors the Outline tab's
             skeleton; every drill-down grid below is gated on !isModulesLoading,
@@ -2792,8 +2721,12 @@ export const CourseStructureDetails = ({
           </div>
         )}
 
-        {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
-        {!isModulesLoading && !selectedSubjectId && (
+        {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth.
+            Each grid is also gated on its level being visible at this depth,
+            so the seeded "DEFAULT" subject/module/chapter can never surface
+            as a card — not even for the frame before the preselect effect
+            runs. */}
+        {!isModulesLoading && showsSubjectLevel && !selectedSubjectId && (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {studyLibraryData?.map((subject, idx) => (
               <Card
@@ -2871,7 +2804,7 @@ export const CourseStructureDetails = ({
         )}
 
         {/* Modules */}
-        {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
+        {!isModulesLoading && showsModuleLevel && selectedSubjectId && !selectedModuleId && (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {(subjectModulesMap[selectedSubjectId] || []).map((m, idx) => (
               <Card
@@ -2948,6 +2881,7 @@ export const CourseStructureDetails = ({
 
         {/* Chapters */}
         {!isModulesLoading &&
+          showsChapterLevel &&
           selectedSubjectId &&
           selectedModuleId &&
           !selectedChapterId && (
@@ -3165,6 +3099,21 @@ export const CourseStructureDetails = ({
             })()}
           </div>
         )}
+
+        {/* Every drill-down above is gated on both the selection state and the
+            level being visible at this depth, so a course whose content was
+            never created (a 2-level course with no chapter, say) would land on
+            all four gates closed and render a blank tab. */}
+        {!isModulesLoading &&
+          !selectedChapterId &&
+          !(showsSubjectLevel && !selectedSubjectId) &&
+          !(showsModuleLevel && selectedSubjectId && !selectedModuleId) &&
+          !(showsChapterLevel && selectedSubjectId && selectedModuleId) && (
+            <div className="text-sm px-2 py-6 text-center text-neutral-400 italic">
+              No{" "}
+              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
+            </div>
+          )}
       </div>
     ),
     [TabType.TEACHERS]: (
@@ -3253,6 +3202,29 @@ export const CourseStructureDetails = ({
       }
     });
   }, [openChapters, slidesLoadingStatus, getSlidesWithChapterId]);
+
+  // A 2-level outline is a flat slide list, so no chapter ever opens and the
+  // effect above never fires. The bulk load in fetchModules normally covers
+  // every chapter already; this is the fallback for when it didn't, without
+  // which the list would sit empty.
+  useEffect(() => {
+    if (courseStructure !== 2) return;
+    Object.values(subjectModulesMap).forEach((modules) => {
+      modules.forEach((mod) => {
+        (mod.chapters ?? []).forEach((ch) => {
+          const status = slidesLoadingStatus[ch.id] ?? "idle";
+          if (status === "idle") {
+            getSlidesWithChapterId(ch.id);
+          }
+        });
+      });
+    });
+  }, [
+    courseStructure,
+    subjectModulesMap,
+    slidesLoadingStatus,
+    getSlidesWithChapterId,
+  ]);
 
   useEffect(() => {
     handleLoadingChangeRef.current = handleLoadingChange;

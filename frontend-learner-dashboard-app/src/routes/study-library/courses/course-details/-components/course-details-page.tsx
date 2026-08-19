@@ -615,9 +615,14 @@ export const CourseDetailsPage = () => {
                     selectedSession,
                     selectedLevel,
                   )}
-                  courseStructure={form.getValues(
-                    "courseData.courseStructure",
-                  )}
+                  // Same resolution as the structure block below: the form's
+                  // courseStructure is still its placeholder until the reset
+                  // lands, and the sidebar now hides level counts by depth.
+                  courseStructure={
+                    courseStructureFromApi ??
+                    stableCourseData?.courseData?.courseStructure ??
+                    5
+                  }
                   instructorsCount={
                     form.getValues("courseData").instructors.length
                   }

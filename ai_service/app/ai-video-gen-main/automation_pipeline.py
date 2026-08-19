@@ -5800,6 +5800,17 @@ class VideoGenerationPipeline:
                         except Exception as _pg_err:
                             print(f"   ⚠️ dialogue clip pre-generation failed: {_pg_err}")
 
+                    # ── Support visuals (visual beats) ──────────────────
+                    # Resolve every shot's planner-authored support_visuals
+                    # into real image URLs / inline icons BEFORE the HTML
+                    # loop, so the per-shot LLM receives ready assets it is
+                    # REQUIRED to embed narration-synced. Best-effort: a
+                    # failed image just drops that item, never the shot.
+                    try:
+                        self._resolve_support_visuals(_director_plan["shots"], run_dir)
+                    except Exception as _sv_err:
+                        print(f"   ⚠️ support-visuals resolve failed: {_sv_err}")
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -9304,6 +9315,101 @@ class VideoGenerationPipeline:
         except Exception as _qc_err:
             print(f"   ⚠️ clip QC unavailable (shot {shot.get('shot_index')}): {_qc_err}")
             return None
+
+    def _resolve_support_visuals(
+        self, shots: List[Dict[str, Any]], run_dir: Path,
+    ) -> None:
+        """Visual-beats pre-pass: turn every shot's planner-authored
+        `support_visuals` into READY assets before HTML generation —
+        icons from the bundled inline set, photos AI-generated + uploaded.
+        Identical concepts share one image across shots. Best-effort per
+        item; resolved URLs persist on the shots (→ shot_plan.json) so a
+        resume leg never regenerates. Cap bounds the per-run image spend."""
+        try:
+            from support_visuals import pick_icon
+        except ImportError:
+            return
+        _SKIP_TYPES = {"DIALOGUE_SCENE", "KINETIC_TITLE", "KINETIC_TEXT", "LOWER_THIRD"}
+        photo_queue: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+        icons = 0
+        for s in shots:
+            if not isinstance(s, dict):
+                continue
+            if str(s.get("shot_type") or "").upper() in _SKIP_TYPES:
+                continue
+            for it in (s.get("support_visuals") or []):
+                if not isinstance(it, dict) or it.get("url") or it.get("icon_svg"):
+                    continue
+                if it.get("kind") == "icon":
+                    svg = pick_icon(it.get("concept", ""))
+                    if svg:
+                        it["icon_svg"] = svg
+                        icons += 1
+                        continue
+                    # no icon match → promote to photo
+                photo_queue.append((s, it))
+
+        MAX_PHOTOS = 20
+        generated: Dict[str, str] = {}  # concept_norm -> url (cross-shot reuse)
+        if photo_queue:
+            if not getattr(self, "_ai_video_s3_service", None):
+                self._build_ai_video_uploaders()
+            svc = getattr(self, "_ai_video_s3_service", None)
+            run_name = getattr(self, "_run_name", None) or "run"
+            if svc:
+                import concurrent.futures as _cf
+
+                def _norm(c: str) -> str:
+                    return re.sub(r"[^a-z0-9]+", "_", c.lower()).strip("_")[:48]
+
+                # Unique concepts only, bounded.
+                unique: Dict[str, str] = {}
+                for _s, it in photo_queue:
+                    k = _norm(it["concept"])
+                    if k and k not in unique and len(unique) < MAX_PHOTOS:
+                        unique[k] = it["concept"]
+
+                def _gen(kv):
+                    key, concept = kv
+                    try:
+                        img, _ = self._call_image_generation_llm(
+                            f"{concept}. Photorealistic, clean modern composition, "
+                            "soft natural light, no text or captions in frame.",
+                            width=1024, height=576,
+                            model_override="bytedance-seed/seedream-4.5",
+                        )
+                        if not img:
+                            return key, None
+                        local = run_dir / "support" / f"{key}.png"
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        local.write_bytes(img)
+                        return key, svc.upload_file(
+                            local,
+                            s3_key=f"ai-videos/{run_name}/support/{key}.png",
+                            content_type="image/png",
+                        )
+                    except Exception as _g_err:
+                        print(f"   ⚠️ support visual '{concept[:40]}' failed: {_g_err}")
+                        return key, None
+
+                with _cf.ThreadPoolExecutor(max_workers=6) as ex:
+                    for key, url in ex.map(_gen, unique.items()):
+                        if url:
+                            generated[key] = url
+
+                for _s, it in photo_queue:
+                    u = generated.get(_norm(it["concept"]))
+                    if u:
+                        it["url"] = u
+
+        n_url = sum(
+            1 for s in shots if isinstance(s, dict)
+            for it in (s.get("support_visuals") or []) if it.get("url")
+        )
+        if icons or n_url:
+            print(f"   🖼️  Support visuals resolved: {n_url} photo placement(s) "
+                  f"({len(generated)} unique image(s)), {icons} icon(s)")
+            self._persist_dialogue_plan(run_dir, shots=shots)
 
     def _pregenerate_dialogue_clips(
         self, shots: List[Dict[str, Any]], run_dir: Path,
@@ -18933,6 +19039,14 @@ class VideoGenerationPipeline:
                 # deterministic template would re-render the identical frame
                 # and silently discard the user's input.
                 and not _has_user_directive
+                # Resolved support visuals need the LLM path too: templates
+                # have NO image slots, so the deterministic render would
+                # silently discard the narration-synced imagery — the exact
+                # "2 images in a 2.5-minute video" density failure.
+                and not any(
+                    isinstance(_svi, dict) and (_svi.get("url") or _svi.get("icon_svg"))
+                    for _svi in (shot.get("support_visuals") or [])
+                )
             ):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
@@ -19589,6 +19703,18 @@ class VideoGenerationPipeline:
                     "packaging on a vintage Indian tea stall')."
                 )
                 user_prompt = user_prompt + "\n".join(_brand_parts)
+
+            # ── Support visuals (visual beats) — narration-synced imagery ──
+            # Pre-resolved by _resolve_support_visuals; the block carries
+            # ready URLs / inline icon SVGs + per-item reveal times and a
+            # hard embed requirement. Empty string when nothing resolved.
+            try:
+                from support_visuals import build_support_visuals_block
+                _sv_block = build_support_visuals_block(shot)
+                if _sv_block:
+                    user_prompt = user_prompt + _sv_block
+            except ImportError:
+                pass
 
             # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
             # Both apply to EVERY shot (host or non-host). Surfaces:

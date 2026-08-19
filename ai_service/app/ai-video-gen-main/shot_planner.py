@@ -260,6 +260,16 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "narrated shots: narrator sets up → characters play the moment → narrator resolves.\n\n"
 
     "**RULES**:\n"
+    "0. **Support visuals (MANDATORY per shot).** Every non-title shot MUST "
+    "carry `support_visuals`: 2-4 items, each `{\"concept\": <short label of a "
+    "CONCRETE, imageable thing the narration mentions>, \"phrase\": <the exact "
+    "3-6 words of the narration_brief it belongs to>, \"kind\": \"photo\"|"
+    "\"icon\"}`. Use \"photo\" for tangible scenes/objects/people (a patient "
+    "walking, a goniometer on a knee, hands writing notes) and \"icon\" for "
+    "abstract concepts (a step, a goal, a warning, a quiz). The pipeline "
+    "pre-generates these into real imagery revealed AS the narrator speaks "
+    "each phrase — this is what makes the video visual instead of a wall of "
+    "text. Skip only for KINETIC_TITLE/KINETIC_TEXT/LOWER_THIRD.\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
     "(VIDEO_HERO / IMAGE_HERO for real-world openers, KINETIC_TITLE for bold-text hooks, "
     "INFOGRAPHIC_SVG for concept-first openers, PRODUCT_HERO for brand/subject reels).\n"
@@ -1022,6 +1032,9 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "scene_continuity",
         "emotional_beat",
         "time_of_day",
+        # Narration-synced imagery (visual beats) — resolved to real
+        # images/icons by the pipeline pre-pass before HTML generation.
+        "support_visuals",
         "location",
         # Asset-request gate answers (assist): real user assets + figures.
         "user_asset_url",
@@ -1030,6 +1043,15 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
     ):
         if field in raw and raw[field] is not None:
             out[field] = raw[field]
+
+    if "support_visuals" in out:
+        try:
+            from support_visuals import normalize_support_visuals
+            out["support_visuals"] = normalize_support_visuals(out["support_visuals"])
+        except ImportError:
+            pass  # keep raw list; the resolver normalizes defensively too
+        if not out.get("support_visuals"):
+            out.pop("support_visuals", None)
 
     return out
 

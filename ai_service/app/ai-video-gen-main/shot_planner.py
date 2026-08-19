@@ -1594,7 +1594,40 @@ def plan_shots(
         max_tokens=max_tokens,
         response_format={"type": "json_object"},
     )
-    parsed = _parse_shot_plan(text or "")
+    try:
+        parsed = _parse_shot_plan(text or "")
+    except ShotPlanError as _fmt_err:
+        # Reasoning models sometimes answer with pure analysis prose and no
+        # JSON at all ("Let me analyze this request carefully…"), despite
+        # response_format. Prod: this failed BOTH attempts and dropped the
+        # whole run to the v2 path. A format-corrective turn is far cheaper
+        # (and far more likely to work) than re-running the same prompt,
+        # which just reproduces the same behaviour.
+        print(f"   ⚠️ ShotPlanner returned non-JSON ({_fmt_err}) — retrying with a format-corrective turn")
+        _fix_messages = messages + [
+            {"role": "assistant", "content": (text or "")[:2000]},
+            {"role": "user", "content": (
+                "That response was not valid JSON. Do NOT explain, analyze, or "
+                "add any commentary. Reply with ONE JSON object and nothing "
+                "else — first character '{', last character '}' — containing "
+                "the `shots` array (and the other top-level keys) exactly as "
+                "specified above."
+            )},
+        ]
+        _t2, _u2 = llm_chat(
+            _fix_messages,
+            model=model,
+            temperature=0.1,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        parsed = _parse_shot_plan(_t2 or "")
+        text = _t2 or text
+        for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            try:
+                usage[_k] = int((usage or {}).get(_k, 0) or 0) + int((_u2 or {}).get(_k, 0) or 0)
+            except Exception:
+                pass
 
     # Validation pass — strip any `template_id` the LLM invented despite the
     # whitelist constraint. Catches `image_hero_standard` / `process_3_steps`

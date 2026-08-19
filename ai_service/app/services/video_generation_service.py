@@ -422,6 +422,12 @@ class VideoGenerationService:
         _conditional = {
             dg.GateType.ASSET_REQUEST.value: "asset_requests",
             dg.GateType.STYLEFRAME.value: "design_identity",
+            # SHOT_PLAN is conditional too: when v3 ShotPlanning fails the run
+            # falls back to v2, where shots are planned by the Director at the
+            # HTML stage — so at the script boundary there is NO plan yet and
+            # the gate rendered as an unanswerable "0-shot plan" card (prod
+            # vid_1787133865366). Skip it instead; the v2 Director still runs.
+            dg.GateType.SHOT_PLAN.value: "shots",
         }
         plan_key = _conditional.get(gate_type)
         if plan_key is None:

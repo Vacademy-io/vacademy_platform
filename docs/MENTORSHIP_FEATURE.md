@@ -284,11 +284,16 @@ as distinct — one open-ended request per student needs its own index.
 
 ## 7. Verification status
 
+End-to-end testing — including how to prove the Meet link is minted under the
+right Google account for admin, mentor and learner — is in
+[`MENTORSHIP_E2E_TESTING.md`](./MENTORSHIP_E2E_TESTING.md).
+
+
 | Area | State |
 |---|---|
 | Backend | 121 tests (assignment/capacity, discovery/requests, feedback, sessions, cancel/reschedule, double-booking, removal, scheduler, notifications) |
 | Admin FE | 305 tests across the app; 103 mentorship |
-| Learner FE | 155 tests |
+| Learner FE | 163 tests |
 | Migrations | V454–V458 applied against PostgreSQL and behaviour-verified: constraints, idempotency, triggers, duplicate-tolerant index creation |
 | Dashboard | Verified against **production data** — every KPI, outcome count and workload figure computed from the prod DB and matched what renders |
 | Responsive | Rendered at 1440 / 834 / 390px, zero horizontal overflow; zero-data state checked |

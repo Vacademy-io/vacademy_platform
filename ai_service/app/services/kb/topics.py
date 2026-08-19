@@ -137,6 +137,11 @@ RULES THAT MATTER:
   section headings as subtopic titles, in the material's own order — teachers review these titles
   against their book, and re-themed names read as missing content. Re-theme titles only when
   merging genuinely overlapping sources.
+- GRANULARITY for a single text: aim for roughly ONE subtopic per section heading of the material
+  (each becomes one course page) — do NOT compress a chapter's sections into 2 broad subtopics;
+  a reviewer comparing against the book reads merged subtopics as dropped content. Never merge
+  two different nerves/organs/procedures into one subtopic when the material treats them
+  separately.
 """
 
 

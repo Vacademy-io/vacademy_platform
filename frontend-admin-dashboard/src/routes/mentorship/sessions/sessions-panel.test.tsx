@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import type { MentorSessionDTO } from '@/routes/mentorship/-types/mentorship-types';
 
 const useMentorSessionsMock = vi.fn();
@@ -7,6 +9,8 @@ const sessionActionMutate = vi.fn(async () => ({}));
 vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useMentorSessions: (...args: unknown[]) => useMentorSessionsMock(...args),
     useSessionAction: () => ({ mutateAsync: sessionActionMutate, isPending: false }),
+    // Feeds the "all mentors" filter next to the tabs.
+    useMentorDashboard: () => ({ data: { mentors: [{ id: 'm1', display_name: 'Asha Nair' }] } }),
 }));
 
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
@@ -37,6 +41,16 @@ const result = (sessions: MentorSessionDTO[]) => ({
     isError: false,
     refetch: vi.fn(),
 });
+
+/** MyTable mounts shared dialogs that expect a QueryClient, so every render needs one. */
+const render = (ui: ReactElement) =>
+    rtlRender(
+        <QueryClientProvider
+            client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+            {ui}
+        </QueryClientProvider>
+    );
 
 describe('MentorSessionsPanel', () => {
     beforeEach(() => {
@@ -103,14 +117,17 @@ describe('MentorSessionsPanel', () => {
             ])
         );
         render(<MentorSessionsPanel instituteId="inst-1" />);
-        fireEvent.click(screen.getByRole('button', { name: /Asha Nair/ }));
+        // Exact name: the row's "view" action also carries the mentor's name.
+        fireEvent.click(screen.getByRole('button', { name: 'Asha Nair' }));
 
         expect(await screen.findByText('Session details')).toBeInTheDocument();
-        expect(screen.getByText('asha@example.com')).toBeInTheDocument();
-        expect(screen.getByText('riya@example.com')).toBeInTheDocument();
-        expect(screen.getByText('Rotational motion')).toBeInTheDocument();
-        expect(screen.getByText('Needs torque practice')).toBeInTheDocument();
-        expect(screen.getByText('5/5')).toBeInTheDocument();
+        // Scoped to the dialog: topic and rating are also columns in the table behind it.
+        const dialog = within(screen.getByRole('dialog'));
+        expect(dialog.getByText('asha@example.com')).toBeInTheDocument();
+        expect(dialog.getByText('riya@example.com')).toBeInTheDocument();
+        expect(dialog.getByText('Rotational motion')).toBeInTheDocument();
+        expect(dialog.getByText('Needs torque practice')).toBeInTheDocument();
+        expect(dialog.getByText('5/5')).toBeInTheDocument();
     });
 
     it('offers cancel and reschedule only on a session that can still change', () => {

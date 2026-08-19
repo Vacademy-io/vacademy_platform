@@ -104,7 +104,7 @@ describe('MentorshipDashboard', () => {
     it('uses singular wording for a single item', () => {
         useMentorDashboardMock.mockReturnValue(ok(dashboard({ pending_requests: 1 })));
         render(<MentorshipDashboard instituteId="inst-1" />);
-        expect(screen.getByText(/learner waiting to be paired/)).toBeInTheDocument();
+        expect(screen.getByText(/1 learner is waiting to be paired/)).toBeInTheDocument();
     });
 
     it('labels every outcome, so colour is never the only cue', () => {
@@ -119,14 +119,14 @@ describe('MentorshipDashboard', () => {
             )
         );
         render(<MentorshipDashboard instituteId="inst-1" />);
-        for (const label of ['Completed', 'No-show', 'Cancelled', 'Awaiting review']) {
+        for (const label of ['Completed', 'No-shows', 'Cancelled', 'Awaiting review']) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
 
     it('explains an empty outcome period instead of drawing an empty bar', () => {
         render(<MentorshipDashboard instituteId="inst-1" />);
-        expect(screen.getByText(/No sessions in this period yet/)).toBeInTheDocument();
+        expect(screen.getByText(/No sessions yet/)).toBeInTheDocument();
     });
 
     it('ranks mentors by load and flags anyone at capacity', () => {
@@ -158,7 +158,7 @@ describe('MentorshipDashboard', () => {
         render(<MentorshipDashboard instituteId="inst-1" />);
         const names = screen.getAllByText(/Busy|Quiet/).map((n) => n.textContent);
         expect(names[0]).toBe('Busy');
-        expect(screen.getByText(/8\/8 · full/)).toBeInTheDocument();
+        expect(screen.getByText(/8 \/ 8 · full/)).toBeInTheDocument();
     });
 
     it('lists what is coming up', () => {

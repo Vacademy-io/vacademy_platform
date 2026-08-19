@@ -16,6 +16,7 @@ import { MyInput } from '@/components/design-system/input';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDecideMentorRequest, useMentorRequests, useMentors } from '../-hooks/use-mentorship';
+import { MentorshipPageHeader } from './MentorshipPageHeader';
 import type { MentorDTO, MentorRequestDTO } from '../-types/mentorship-types';
 import { MentorAvatar } from './MentorAvatar';
 import { reportApiError } from '@/lib/report-api-error';
@@ -39,7 +40,7 @@ function initials(name?: string | null): string {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
     return (
-        (parts[0]?.[0] ?? '').concat(parts.length > 1 ? (parts[1]?.[0] ?? '') : '').toUpperCase() ||
+        (parts[0]?.[0] ?? '').concat(parts.length > 1 ? parts[1]?.[0] ?? '' : '').toUpperCase() ||
         '?'
     );
 }
@@ -73,12 +74,10 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
 
     return (
         <div className="flex flex-col gap-6 p-6">
-            <div className="flex flex-col">
-                <h2 className="text-title font-semibold text-neutral-700">Mentor requests</h2>
-                <p className="text-body text-neutral-500">
-                    Learners who asked for a mentor. Approving pairs them and notifies both sides.
-                </p>
-            </div>
+            <MentorshipPageHeader
+                title="Mentor requests"
+                subtitle="Learners who asked for a mentor. Approving pairs them and notifies both sides."
+            />
 
             <div className="flex flex-wrap gap-2 border-b border-neutral-200">
                 {TABS.map((tab) => (

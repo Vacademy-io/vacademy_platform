@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
     CalendarBlank,
+    CalendarPlus,
     CheckCircle,
     Clock,
-    CaretRight,
+    Eye,
     Star,
     UserMinus,
     VideoCamera,
@@ -13,7 +14,10 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMentorSessions } from '../-hooks/use-mentorship';
+import { MyTable } from '@/components/design-system/table';
+import { MyDropdown } from '@/components/design-system/dropdown';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMentorDashboard, useMentorSessions } from '../-hooks/use-mentorship';
 import { dayOfMonth, sessionDateTime, shortMonth, timeOfDay } from '../-utils/format-session-time';
 import { SessionActionDialog } from './SessionActionDialog';
 import { MentorAvatar } from './MentorAvatar';
@@ -45,35 +49,246 @@ export function MentorSessionsPanel({
     studentUserId?: string;
 }) {
     const [lifecycle, setLifecycle] = useState<string>('');
+    // Only offered when the panel isn't already scoped to one mentor — inside a
+    // mentor's own detail view the filter would be a no-op.
+    const [mentorFilter, setMentorFilter] = useState<string>('');
     const [detail, setDetail] = useState<MentorSessionDTO | null>(null);
     const [acting, setActing] = useState<{
         session: MentorSessionDTO;
         action: 'cancel' | 'reschedule';
     } | null>(null);
     const { data, isLoading, isError, refetch } = useMentorSessions(instituteId, {
-        mentorId,
+        mentorId: mentorId ?? (mentorFilter || undefined),
         studentUserId,
         lifecycle: lifecycle || undefined,
     });
     const sessions = data ?? [];
 
+    // The mentor list is already cached by the dashboard query, so the filter costs
+    // nothing extra on a screen an admin has usually arrived at from there.
+    const mentorsQuery = useMentorDashboard(mentorId ? undefined : instituteId);
+    const mentorOptions = useMemo(
+        () => [
+            { label: 'All mentors', value: '' },
+            ...(mentorsQuery.data?.mentors ?? []).map((m) => ({
+                label: m.display_name || m.name || 'Mentor',
+                value: m.id,
+            })),
+        ],
+        [mentorsQuery.data]
+    );
+    const mentorFilterLabel =
+        mentorOptions.find((o) => o.value === mentorFilter)?.label ?? 'All mentors';
+
+    const columns = useMemo<ColumnDef<MentorSessionDTO>[]>(
+        () => [
+            {
+                id: 'mentor',
+                header: 'Mentor',
+                size: 200,
+                cell: ({ row }) => {
+                    const s = row.original;
+                    return (
+                        <div className="flex min-w-0 items-center gap-2.5">
+                            <MentorAvatar
+                                fileId={null}
+                                name={s.mentor_name}
+                                className="size-8 shrink-0 text-caption"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setDetail(s)}
+                                className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
+                                title="Open session details"
+                            >
+                                {s.mentor_name || 'Mentor'}
+                            </button>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'mentee',
+                header: 'Mentee',
+                size: 170,
+                cell: ({ row }) => (
+                    <span className="truncate text-body text-neutral-600">
+                        {row.original.student_name || 'Learner'}
+                    </span>
+                ),
+            },
+            {
+                id: 'when',
+                header: 'Date & time',
+                size: 170,
+                cell: ({ row }) => {
+                    const s = row.original;
+                    return (
+                        <span className="flex items-center gap-2.5">
+                            {/* Leading date block — turns a wall of rows into something scannable. */}
+                            <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-lg bg-neutral-50 leading-none text-neutral-600">
+                                <span className="text-body font-semibold tabular-nums">
+                                    {dayOfMonth(s.scheduled_start_utc)}
+                                </span>
+                                <span className="text-caption font-medium tracking-wide text-neutral-400">
+                                    {shortMonth(s.scheduled_start_utc)}
+                                </span>
+                            </span>
+                            <span className="text-caption text-neutral-500">
+                                {timeOfDay(s.scheduled_start_utc)}
+                            </span>
+                        </span>
+                    );
+                },
+            },
+            {
+                id: 'duration',
+                header: 'Duration',
+                size: 100,
+                cell: ({ row }) => (
+                    <span className="text-body tabular-nums text-neutral-600">
+                        {row.original.duration_minutes
+                            ? `${row.original.duration_minutes} min`
+                            : '—'}
+                    </span>
+                ),
+            },
+            {
+                id: 'topic',
+                header: 'Topic',
+                size: 180,
+                cell: ({ row }) => (
+                    <span
+                        className="line-clamp-2 text-body text-neutral-600"
+                        title={row.original.topic ?? undefined}
+                    >
+                        {row.original.topic || row.original.title || '—'}
+                    </span>
+                ),
+            },
+            {
+                id: 'status',
+                header: 'Status',
+                size: 150,
+                cell: ({ row }) => <LifecycleBadge lifecycle={row.original.lifecycle} />,
+            },
+            {
+                id: 'rating',
+                header: 'Rating',
+                size: 100,
+                cell: ({ row }) =>
+                    typeof row.original.rating === 'number' ? (
+                        <span className="flex w-fit items-center gap-1 rounded-full bg-warning-50 px-2 py-1 text-caption text-warning-700">
+                            <Star size={12} weight="fill" className="text-warning-500" />
+                            {row.original.rating}
+                        </span>
+                    ) : (
+                        <span className="text-caption text-neutral-300">—</span>
+                    ),
+            },
+            {
+                id: 'actions',
+                header: 'Actions',
+                size: 140,
+                cell: ({ row }) => {
+                    const s = row.original;
+                    const who = `${s.mentor_name || 'mentor'} and ${s.student_name || 'learner'}`;
+                    if (s.lifecycle !== 'UPCOMING') {
+                        return (
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setDetail(s)}
+                                aria-label={`View session with ${who}`}
+                                title="View session details"
+                            >
+                                <Eye size={18} />
+                            </MyButton>
+                        );
+                    }
+                    return (
+                        <div className="flex items-center gap-1">
+                            {s.meet_link && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    scale="small"
+                                    layoutVariant="icon"
+                                    onClick={() =>
+                                        window.open(
+                                            s.meet_link as string,
+                                            '_blank',
+                                            'noopener,noreferrer'
+                                        )
+                                    }
+                                    aria-label={`Join session with ${who}`}
+                                    title="Join the meeting"
+                                >
+                                    <VideoCamera size={18} />
+                                </MyButton>
+                            )}
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setActing({ session: s, action: 'reschedule' })}
+                                aria-label="Reschedule"
+                                title="Move this session to another slot"
+                            >
+                                <CalendarPlus size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setActing({ session: s, action: 'cancel' })}
+                                aria-label="Cancel"
+                                title="Cancel this session"
+                            >
+                                <XCircle size={18} className="text-danger-500" />
+                            </MyButton>
+                        </div>
+                    );
+                },
+            },
+        ],
+        []
+    );
+
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-1 border-b border-neutral-200">
-                {FILTERS.map((f) => (
-                    <button
-                        key={f.key || 'all'}
-                        type="button"
-                        onClick={() => setLifecycle(f.key)}
-                        className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
-                            lifecycle === f.key
-                                ? 'border-primary-500 font-medium text-primary-600'
-                                : 'border-transparent text-neutral-500 hover:text-neutral-700'
-                        }`}
-                    >
-                        {f.label}
-                    </button>
-                ))}
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-neutral-200">
+                <div className="flex flex-wrap gap-1">
+                    {FILTERS.map((f) => (
+                        <button
+                            key={f.key || 'all'}
+                            type="button"
+                            onClick={() => setLifecycle(f.key)}
+                            className={`-mb-px border-b-2 px-3 py-2 text-body transition-colors ${
+                                lifecycle === f.key
+                                    ? 'border-primary-500 font-medium text-primary-600'
+                                    : 'border-transparent text-neutral-500 hover:text-neutral-700'
+                            }`}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+                {!mentorId && (
+                    <div className="pb-2">
+                        <MyDropdown
+                            currentValue={mentorFilterLabel}
+                            dropdownList={mentorOptions}
+                            handleChange={(v: string) => setMentorFilter(v)}
+                            placeholder="All mentors"
+                            contentClassName="max-h-72 overflow-y-auto"
+                        />
+                    </div>
+                )}
             </div>
 
             {isLoading ? (
@@ -108,91 +323,22 @@ export function MentorSessionsPanel({
                     </p>
                 </div>
             ) : (
-                <div className="flex flex-col gap-2">
-                    {sessions.map((s) => (
-                        <button
-                            key={s.booking_instance_id}
-                            type="button"
-                            onClick={() => setDetail(s)}
-                            className="group flex w-full flex-wrap items-center gap-4 rounded-xl border border-neutral-200 bg-white p-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/30"
-                        >
-                            {/* Leading date block — turns a wall of rows into something scannable. */}
-                            <span className="flex size-12 shrink-0 flex-col items-center justify-center rounded-lg bg-neutral-50 leading-none text-neutral-600 group-hover:bg-white">
-                                <span className="text-body font-semibold tabular-nums">
-                                    {dayOfMonth(s.scheduled_start_utc)}
-                                </span>
-                                <span className="text-caption font-medium tracking-wide text-neutral-400">
-                                    {shortMonth(s.scheduled_start_utc)}
-                                </span>
-                            </span>
-
-                            <span className="flex min-w-0 flex-1 basis-1/2 flex-col gap-1">
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                    <MentorAvatar
-                                        fileId={null}
-                                        name={s.mentor_name}
-                                        className="size-5 shrink-0 text-caption"
-                                    />
-                                    <span className="truncate text-body font-medium text-neutral-700">
-                                        {s.mentor_name || 'Mentor'}
-                                    </span>
-                                    <CaretRight
-                                        size={11}
-                                        weight="bold"
-                                        className="shrink-0 text-neutral-300"
-                                    />
-                                    <span className="truncate text-body text-neutral-600">
-                                        {s.student_name || 'Learner'}
-                                    </span>
-                                </span>
-                                <span className="truncate text-caption text-neutral-400">
-                                    {timeOfDay(s.scheduled_start_utc)}
-                                    {s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}
-                                    {s.topic ? ` · ${s.topic}` : ''}
-                                </span>
-                            </span>
-
-                            <span className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
-                                {s.lifecycle === 'UPCOMING' && (
-                                    <>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="secondary"
-                                            scale="small"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setActing({ session: s, action: 'reschedule' });
-                                            }}
-                                        >
-                                            Reschedule
-                                        </MyButton>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="secondary"
-                                            scale="small"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setActing({ session: s, action: 'cancel' });
-                                            }}
-                                        >
-                                            Cancel
-                                        </MyButton>
-                                    </>
-                                )}
-                                {typeof s.rating === 'number' && (
-                                    <span className="flex items-center gap-1 rounded-full bg-warning-50 px-2 py-1 text-caption text-warning-700">
-                                        <Star
-                                            size={12}
-                                            weight="fill"
-                                            className="text-warning-500"
-                                        />
-                                        {s.rating}
-                                    </span>
-                                )}
-                                <LifecycleBadge lifecycle={s.lifecycle} />
-                            </span>
-                        </button>
-                    ))}
+                <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                    <MyTable<MentorSessionDTO>
+                        data={{
+                            content: sessions,
+                            total_pages: 1,
+                            page_no: 0,
+                            page_size: sessions.length,
+                            total_elements: sessions.length,
+                            last: true,
+                        }}
+                        columns={columns}
+                        isLoading={false}
+                        error={null}
+                        currentPage={0}
+                        scrollable
+                    />
                 </div>
             )}
 

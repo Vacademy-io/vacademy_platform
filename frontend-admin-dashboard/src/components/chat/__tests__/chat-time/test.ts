@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toUtcDate } from '@/components/chat/chatTime';
+import { formatClockTime, formatDateAndClockTime, toUtcDate } from '@/components/chat/chatTime';
 
 /**
  * The regression this guards: a message sent at 2:17 PM IST is stored as the UTC wall clock
@@ -30,5 +30,35 @@ describe('toUtcDate', () => {
         expect(toUtcDate(null)).toBeNull();
         expect(toUtcDate('')).toBeNull();
         expect(toUtcDate('not a date')).toBeNull();
+    });
+});
+
+/** Modern ICU separates the AM/PM marker with a narrow no-break space. */
+const normalise = (s: string) => s.replace(/[\u202f\u00a0]/g, ' ');
+
+describe('formatClockTime', () => {
+    // 2026-08-19T08:46Z is 2:16 PM in IST, the zone every institute runs in.
+    const afternoon = new Date('2026-08-19T08:46:00Z');
+    const morning = new Date('2026-08-19T03:16:00Z');
+
+    it('renders a 12-hour clock even for a locale that defaults to 24-hour', () => {
+        // en-GB is what produced the reported "14:16".
+        expect(normalise(formatClockTime(afternoon, 'en-GB'))).toBe('2:16 PM');
+    });
+
+    it('uppercases the marker for locales that spell it lowercase', () => {
+        expect(normalise(formatClockTime(afternoon, 'en-IN'))).toBe('2:16 PM');
+        expect(normalise(formatClockTime(afternoon, 'en-US'))).toBe('2:16 PM');
+    });
+
+    it('marks morning times AM', () => {
+        expect(normalise(formatClockTime(morning, 'en-GB'))).toBe('8:46 AM');
+    });
+});
+
+describe('formatDateAndClockTime', () => {
+    it('pairs the date with a 12-hour clock', () => {
+        const at = new Date('2026-08-19T08:46:00Z');
+        expect(normalise(formatDateAndClockTime(at, 'en-GB'))).toBe('19 Aug, 2:16 PM');
     });
 });

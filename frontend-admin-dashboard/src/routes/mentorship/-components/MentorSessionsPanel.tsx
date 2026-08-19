@@ -210,25 +210,35 @@ export function MentorSessionsPanel({
                     }
                     return (
                         <div className="flex items-center gap-1">
-                            {s.meet_link && (
-                                <MyButton
-                                    type="button"
-                                    buttonType="text"
-                                    scale="small"
-                                    layoutVariant="icon"
-                                    onClick={() =>
-                                        window.open(
-                                            s.meet_link as string,
-                                            '_blank',
-                                            'noopener,noreferrer'
-                                        )
-                                    }
-                                    aria-label={`Join session with ${who}`}
-                                    title="Join the meeting"
-                                >
-                                    <VideoCamera size={18} />
-                                </MyButton>
-                            )}
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                disable={!s.meet_link}
+                                onClick={() =>
+                                    window.open(
+                                        s.meet_link as string,
+                                        '_blank',
+                                        'noopener,noreferrer'
+                                    )
+                                }
+                                aria-label={
+                                    s.meet_link
+                                        ? `Join session with ${who}`
+                                        : `No meeting link yet for the session with ${who}`
+                                }
+                                // Shown disabled rather than hidden: a missing link means
+                                // Meet allocation hasn't landed (or failed), and that is
+                                // something an admin needs to see, not something to hide.
+                                title={
+                                    s.meet_link
+                                        ? 'Join the meeting'
+                                        : 'No meeting link yet — check the mentor’s Google connection'
+                                }
+                            >
+                                <VideoCamera size={18} />
+                            </MyButton>
                             <MyButton
                                 type="button"
                                 buttonType="text"

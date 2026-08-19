@@ -174,7 +174,7 @@ export function MyMentorsWidget() {
                             <span className="text-xs text-neutral-500">
                                 {fmtWhen(nextSession.scheduled_start_utc)}
                             </span>
-                            {nextSession.meet_link && (
+                            {nextSession.meet_link ? (
                                 <a
                                     href={nextSession.meet_link}
                                     target="_blank"
@@ -183,6 +183,16 @@ export function MyMentorsWidget() {
                                 >
                                     <VideoCamera size={14} /> Join
                                 </a>
+                            ) : (
+                                // The link is minted after the booking commits, so a fresh
+                                // booking can have none yet. Saying so beats a row that
+                                // silently offers no way in.
+                                <span
+                                    className="text-xs text-neutral-400"
+                                    title="Your mentor's meeting link is still being created. Check back shortly."
+                                >
+                                    Link coming soon
+                                </span>
                             )}
                         </div>
                     </div>

@@ -63,7 +63,8 @@ describe('sessions panel — mobile-safe layout', () => {
         // scrolls sideways.
         const shell = container.querySelector('.overflow-hidden');
         expect(shell).not.toBeNull();
-        expect(screen.getByRole('button', { name: /Asha Nair/ })).toBeInTheDocument();
+        // Exact name: the row's join action also carries the mentor's name.
+        expect(screen.getByRole('button', { name: 'Asha Nair' })).toBeInTheDocument();
     });
 
     it('long titles truncate, so one session cannot widen the whole list', () => {

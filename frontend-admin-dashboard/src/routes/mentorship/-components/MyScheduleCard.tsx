@@ -102,7 +102,17 @@ export function MyScheduleCard({ instituteId }: MyScheduleCardProps) {
                                 >
                                     <VideoCamera size={16} /> Join
                                 </a>
-                            ) : null}
+                            ) : (
+                                // Meet links are minted after the booking commits, so a
+                                // brand-new session can legitimately have none yet — and a
+                                // row with no control at all reads as broken.
+                                <span
+                                    className="shrink-0 text-caption text-neutral-400"
+                                    title="The meeting link is still being created. If it doesn't appear, ask your admin to check the Google connection."
+                                >
+                                    Link pending
+                                </span>
+                            )}
                         </div>
                     ))}
                 </div>

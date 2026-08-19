@@ -136,7 +136,7 @@ function MyMentorshipPage() {
     return (
         <div className="flex flex-col gap-6 p-6">
             <MentorshipPageHeader
-                title="My mentorship"
+                title="My Mentorship"
                 subtitle="Your mentees, availability and booking link"
             />
 
@@ -167,9 +167,9 @@ function MyMentorshipPage() {
             )}
 
             {profile && (
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">
                     {/* Who learners see when they open the booking link. */}
-                    <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex h-full items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4">
                         <MentorAvatar
                             fileId={profile.profile_image_file_id}
                             name={profile.display_name || profile.name}
@@ -190,31 +190,40 @@ function MyMentorshipPage() {
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    {/* Stacked, not side-by-side: at a third of the row an inline
+                        layout cannot shrink a Google address or a booking URL, and
+                        both were being cut off mid-word. */}
+                    <div className="flex h-full flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
                                 <GoogleLogo size={20} weight="bold" className="text-primary-600" />
                             </span>
-                            <div className="flex flex-col">
-                                <span className="text-body font-medium text-neutral-700">
-                                    Google Calendar
-                                </span>
-                                <span className="text-caption text-neutral-500">
-                                    {profile.google_connected
-                                        ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
-                                        : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
-                                </span>
-                            </div>
-                        </div>
-                        {profile.google_connected ? (
-                            <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
-                                <CheckCircle size={14} weight="fill" /> Connected
+                            <span className="min-w-0 flex-1 text-body font-medium text-neutral-700">
+                                Google Calendar
                             </span>
+                            {profile.google_connected && (
+                                <span className="flex shrink-0 items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                                    <CheckCircle size={14} weight="fill" /> Connected
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-caption text-neutral-500">
+                            {profile.google_connected
+                                ? 'Your bookings appear on your own calendar with a Meet link.'
+                                : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
+                        </p>
+                        {profile.google_connected ? (
+                            profile.google_email && (
+                                <span className="truncate text-caption text-neutral-400">
+                                    {profile.google_email}
+                                </span>
+                            )
                         ) : (
                             <MyButton
                                 type="button"
                                 buttonType="primary"
                                 scale="small"
+                                className="mt-auto w-fit"
                                 onClick={connectGoogle}
                                 disable={connecting}
                             >
@@ -223,33 +232,33 @@ function MyMentorshipPage() {
                         )}
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                    <div className="flex h-full flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
                                 <CalendarCheck
                                     size={20}
                                     weight="bold"
                                     className="text-primary-600"
                                 />
                             </span>
-                            <div className="flex flex-col">
-                                <span className="text-body font-medium text-neutral-700">
-                                    Your 1:1 booking link
-                                </span>
-                                <span className="text-caption text-neutral-500">
-                                    {myBookingUrl
-                                        ? 'Share this link so learners can book a session with you.'
-                                        : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
-                                </span>
-                                {myBookingUrl && (
-                                    <span className="mt-1 flex items-center gap-1 text-caption text-neutral-400">
-                                        <LinkSimple size={12} />
-                                        <span className="max-w-sm truncate">{myBookingUrl}</span>
-                                    </span>
-                                )}
-                            </div>
+                            <span className="min-w-0 flex-1 text-body font-medium text-neutral-700">
+                                Your 1:1 booking link
+                            </span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <p className="text-caption text-neutral-500">
+                            {myBookingUrl
+                                ? 'Share this link so learners can book a session with you.'
+                                : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
+                        </p>
+                        {myBookingUrl && (
+                            <span className="flex min-w-0 items-center gap-1 text-caption text-neutral-400">
+                                <LinkSimple size={12} className="shrink-0" />
+                                <span className="truncate" title={myBookingUrl}>
+                                    {myBookingUrl}
+                                </span>
+                            </span>
+                        )}
+                        <div className="mt-auto flex flex-wrap items-center gap-2">
                             <MyButton
                                 type="button"
                                 buttonType="secondary"

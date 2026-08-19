@@ -9,7 +9,7 @@ import {
     type ChatReportResponse,
     type ReportStatus,
 } from '@/services/chat/chatApi';
-import { toUtcDate } from './chatTime';
+import { formatDateAndClockTime, toUtcDate } from './chatTime';
 
 const STATUS_FILTERS: { label: string; value?: ReportStatus }[] = [
     { label: 'Open', value: 'OPEN' },
@@ -43,14 +43,7 @@ const statusBadgeClass = (status: string): string => {
 
 const formatDate = (iso: string): string => {
     const d = toUtcDate(iso);
-    return !d
-        ? ''
-        : d.toLocaleString(undefined, {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
+    return d ? formatDateAndClockTime(d) : '';
 };
 
 export function ReportsReviewQueue() {

@@ -5,7 +5,7 @@ import type {
     ChatConversationResponse,
     ChatMessageResponse,
 } from '@/services/chat/chatApi';
-import { toUtcDate } from './chatTime';
+import { formatClockTime, toUtcDate } from './chatTime';
 
 export interface ThreadMessage extends ChatMessageResponse {
     /** Local-only dedup key threaded through the optimistic send for reconciliation/retry. */
@@ -49,8 +49,7 @@ const dayKey = (iso: string): string => {
 
 const timeLabel = (iso: string): string => {
     const d = toUtcDate(iso);
-    if (!d) return '';
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return d ? formatClockTime(d) : '';
 };
 
 export function ChatThread({

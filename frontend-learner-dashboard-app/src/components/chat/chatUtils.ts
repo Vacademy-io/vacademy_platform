@@ -39,14 +39,27 @@ export function dayLabel(iso: string): string {
   });
 }
 
+/**
+ * Formats on a 12-hour dial and uppercases the AM/PM marker. Without `hour12` a browser
+ * reporting en-GB renders "14:16", and en-GB/en-IN both spell the marker lowercase ("pm"),
+ * so the clock would read differently for each learner depending on their locale.
+ * `locale` is for tests; the UI passes none and follows the browser.
+ */
+export function formatClockTime(date: Date, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .formatToParts(date)
+    .map((part) => (part.type === "dayPeriod" ? part.value.toUpperCase() : part.value))
+    .join("");
+}
+
 /** Short clock time for a message bubble, e.g. "3:07 PM". */
 export function timeLabel(iso: string): string {
   const d = toUtcDate(iso);
-  if (!d) return "";
-  return d.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return d ? formatClockTime(d) : "";
 }
 
 /** Initials for an avatar fallback. */

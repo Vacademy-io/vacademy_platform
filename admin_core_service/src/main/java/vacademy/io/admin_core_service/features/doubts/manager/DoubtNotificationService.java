@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.doubts.manager;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -104,7 +105,12 @@ public class DoubtNotificationService {
      *  {@code admin.<domain>} / {@code learner.<domain>} naming convention. */
     private static final String FALLBACK_ADMIN_SUBDOMAIN = "admin";
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * Lenient on purpose — see DoubtsManager. An unknown key written by a newer frontend must not
+     * cost this institute its notification preferences.
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /**
      * @param assigneeUserIds recipients for push/email. For "raised" event these are the auto- or

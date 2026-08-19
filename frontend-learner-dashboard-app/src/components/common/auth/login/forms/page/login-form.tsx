@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { isIOSNative } from "@/utils/ios-iap-compliance";
+import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -178,9 +178,15 @@ export function LoginForm({
     })();
   }, [setPrimaryColor]);
   // Providers from stored flags
+  // Apple 4.8: the Mac App Store build offers no third-party login at all (the
+  // Sign in with Apple plugin is iOS-only, so it cannot be paired with them
+  // there). Forced off at the source so the buttons, the "or continue with"
+  // divider and the Apple gate below all follow — including on a fresh install,
+  // where allowGoogleAuth/allowGithubAuth default to TRUE.
+  const hideThirdPartyLogin = shouldHideThirdPartyLogin();
   const authProviders = {
-    google: providerFlags.allowGoogleAuth,
-    github: providerFlags.allowGithubAuth,
+    google: !hideThirdPartyLogin && providerFlags.allowGoogleAuth,
+    github: !hideThirdPartyLogin && providerFlags.allowGithubAuth,
   };
 
   useEffect(() => {

@@ -393,9 +393,18 @@ public class AnnouncementDeliveryService {
         String templateName = (String) whatsAppConfig.get("template_name");
         @SuppressWarnings("unchecked")
         Map<String, String> dynamicValues = (Map<String, String>) whatsAppConfig.get("dynamic_values");
+        // Honour the template's own language. Hard-coding "en" made every non-English approved
+        // template resolve to a language Meta has no copy of, failing the whole batch.
+        String languageCode = (String) whatsAppConfig.getOrDefault("language_code", "en");
+        // Media-header templates are rejected for every recipient unless the header component is
+        // supplied on the send, so thread the admin's chosen media through.
+        String headerType = (String) whatsAppConfig.get("header_type");
+        String headerUrl = (String) whatsAppConfig.get("header_url");
 
         if (templateName == null) {
-            log.error("WhatsApp template name not configured for announcement: {}", announcement.getId());
+            log.error("WhatsApp medium for announcement {} has no template_name in its config ({}); "
+                            + "nothing was sent. The creator must pick an approved template.",
+                    announcement.getId(), whatsAppConfig.keySet());
             return;
         }
 
@@ -475,9 +484,11 @@ public class AnnouncementDeliveryService {
                             .instituteId(instituteId)
                             .channel("WHATSAPP")
                             .templateName(templateName)
-                            .languageCode("en")
+                            .languageCode(languageCode)
                             .recipients(recipients)
                             .options(UnifiedSendRequest.SendOptions.builder()
+                                    .headerType(headerType)
+                                    .headerUrl(headerUrl)
                                     .source("announcement-service")
                                     .sourceId(announcement.getId())
                                     .build())

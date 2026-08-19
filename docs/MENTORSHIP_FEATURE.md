@@ -198,16 +198,22 @@ mid-send drops one notification rather than double-sending.
 
 | Route | Purpose |
 |---|---|
-| `dashboard` | KPIs, needs-attention, session outcomes, mentor workload, coming up |
-| `mentors` | The list: search, expertise, capacity and rating chips, assign, edit, detail |
-| `sessions` | Every session, filterable by lifecycle, scopeable per mentor/learner, with detail |
-| `requests` | Learner request queue |
-| `my-mentorship` | A mentor's own view: mentees, availability, booking link, sessions to record |
+| `dashboard` | KPIs, session outcomes, mentor workload, needs-attention, upcoming sessions |
+| `mentors` | Table: mentor, expertise, assigned students, upcoming sessions, capacity, status, actions |
+| `mentors/$mentorId` | One mentor: overview, students, availability, sessions, feedback |
+| `sessions` | Table of every session, filterable by lifecycle and mentor |
+| `requests` | Learner request queue — pending / approved / declined / withdrawn |
+| `my-mentorship` | A mentor's own view: profile, calendar, booking link, sessions to record |
 
-The first four are one section, so they share a `MentorshipTabs` strip (Overview /
-Mentors / Sessions / Requests) with a count badge on Requests. The sidebar carries
-only two entries — **Mentorship** and **My Mentorship** — because the admin side is
-one destination with tabs, not four sidebar items.
+Navigation is the sidebar group (Overview / Mentors / Sessions / Requests / My
+Mentorship) and nothing else. Each screen opens with a `MentorshipPageHeader` —
+title, one line of subtitle, its own actions — so there is no second navigation
+strip repeating what the sidebar already shows.
+
+`mentors/$mentorId` is a route rather than a modal: the tab lives in the URL
+(`?tab=sessions`), so a mentor's session history is linkable and the back button
+does what you expect. The mentor itself comes out of the dashboard query the list
+screen already loaded, so opening one costs no extra request.
 
 ### Learner
 
@@ -219,7 +225,12 @@ not stuck at a dead end.
 ### Design notes
 
 The dashboard follows the existing widget vocabulary (Card, tinted icon square,
-Skeleton, drill-through link). Two deliberate choices:
+Skeleton, drill-through link). Lists that are scanned and compared — mentors and
+sessions — use `MyTable`, the design system's table, rather than card rows; a data
+table is wider than a phone by nature, so it scrolls inside its own container and
+the page body never scrolls sideways.
+
+Two deliberate choices:
 
 - **No donut for outcomes.** Four statuses that are often mostly zero read better as
   a segmented bar with labelled counts, and degrade to a real empty state.
@@ -276,7 +287,7 @@ as distinct — one open-ended request per student needs its own index.
 | Area | State |
 |---|---|
 | Backend | 121 tests (assignment/capacity, discovery/requests, feedback, sessions, cancel/reschedule, double-booking, removal, scheduler, notifications) |
-| Admin FE | 285 tests across the app; 103 mentorship |
+| Admin FE | 305 tests across the app; 103 mentorship |
 | Learner FE | 155 tests |
 | Migrations | V454–V458 applied against PostgreSQL and behaviour-verified: constraints, idempotency, triggers, duplicate-tolerant index creation |
 | Dashboard | Verified against **production data** — every KPI, outcome count and workload figure computed from the prod DB and matched what renders |

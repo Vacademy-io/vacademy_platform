@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import type { MentorDTO } from '@/routes/mentorship/-types/mentorship-types';
 
 const useMentorMenteesMock = vi.fn();
+const useMentorDashboardMock = vi.fn();
 const useMentorAvailabilityMock = vi.fn();
 const useMentorFeedbackMock = vi.fn();
 
@@ -12,12 +15,23 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useMentorFeedback: (...a: unknown[]) => useMentorFeedbackMock(...a),
     useMentorSessions: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
     useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useMentorDashboard: (...a: unknown[]) => useMentorDashboardMock(...a),
+}));
+// The view links back to the list; the test has no router around it.
+vi.mock('@tanstack/react-router', () => ({
+    Link: ({ children, ...rest }: { children?: React.ReactNode; to?: string }) => (
+        <a {...rest}>{children}</a>
+    ),
 }));
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
     MentorAvatar: () => <span data-testid="avatar" />,
 }));
 
-import { MentorDetailDialog } from '@/routes/mentorship/-components/MentorDetailDialog';
+import { useState } from 'react';
+import {
+    MentorDetailView,
+    type MentorDetailTab,
+} from '@/routes/mentorship/-components/MentorDetailView';
 
 const mentor = (over: Partial<MentorDTO> = {}): MentorDTO => ({
     id: 'm1',
@@ -33,16 +47,37 @@ const mentor = (over: Partial<MentorDTO> = {}): MentorDTO => ({
 
 const idle = { data: undefined, isLoading: false, isError: false };
 
-describe('MentorDetailDialog', () => {
+/** MyTable mounts shared dialogs that expect a QueryClient, so every render needs one. */
+const render = (ui: ReactElement) =>
+    rtlRender(
+        <QueryClientProvider
+            client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+            {ui}
+        </QueryClientProvider>
+    );
+
+/** Real tab state, so clicking a tab behaves as it does behind the router. */
+function Harness({ mentorId = 'm1' }: { mentorId?: string }) {
+    const [tab, setTab] = useState<MentorDetailTab>('overview');
+    return (
+        <MentorDetailView mentorId={mentorId} instituteId="inst-1" tab={tab} onTabChange={setTab} />
+    );
+}
+
+describe('MentorDetailView', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         useMentorMenteesMock.mockReturnValue({ ...idle, data: [] });
         useMentorAvailabilityMock.mockReturnValue({ ...idle, data: null });
         useMentorFeedbackMock.mockReturnValue({ ...idle, data: [] });
+        useMentorDashboardMock.mockReturnValue({ ...idle, data: { mentors: [mentor()] } });
     });
 
-    const open = (m: MentorDTO = mentor()) =>
-        render(<MentorDetailDialog mentor={m} instituteId="inst-1" open onOpenChange={vi.fn()} />);
+    const open = (m: MentorDTO = mentor()) => {
+        useMentorDashboardMock.mockReturnValue({ ...idle, data: { mentors: [m] } });
+        return render(<Harness mentorId={m.id} />);
+    };
 
     it('shows the profile and email the admin brief asks for', () => {
         open();
@@ -52,17 +87,20 @@ describe('MentorDetailDialog', () => {
 
     it('shows load against capacity when a cap is set', () => {
         open(mentor({ assigned_student_count: 3, max_mentees: 10 }));
-        expect(screen.getByText('3/10 students')).toBeInTheDocument();
+        expect(screen.getByText('3/10')).toBeInTheDocument();
+        expect(screen.getByText('Maximum capacity')).toBeInTheDocument();
     });
 
-    it('shows a bare count when the mentor is uncapped', () => {
+    it('says "unlimited" rather than inventing a cap the mentor does not have', () => {
         open(mentor({ assigned_student_count: 4, max_mentees: null }));
-        expect(screen.getByText('4 students')).toBeInTheDocument();
+        expect(screen.getByText('Unlimited')).toBeInTheDocument();
+        expect(screen.getByText('∞')).toBeInTheDocument();
     });
 
     it('shows the rating only when someone has actually rated them', () => {
         open(mentor({ average_rating: 4.6, rating_count: 9 }));
-        expect(screen.getByText('4.6 (9)')).toBeInTheDocument();
+        expect(screen.getByText('4.6')).toBeInTheDocument();
+        expect(screen.getByText('Rated sessions')).toBeInTheDocument();
     });
 
     it('hides the rating when the count is zero, rather than implying a score', () => {
@@ -116,7 +154,7 @@ describe('MentorDetailDialog', () => {
             ],
         });
         open();
-        fireEvent.click(screen.getByRole('button', { name: 'Students' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Students/ }));
         expect(screen.getByText('Riya Sharma')).toBeInTheDocument();
         expect(screen.getByText('Auto-assigned')).toBeInTheDocument();
     });
@@ -126,7 +164,7 @@ describe('MentorDetailDialog', () => {
         // Overview is showing: the feedback hook must be told not to fetch.
         expect(useMentorFeedbackMock).toHaveBeenLastCalledWith(undefined, 'inst-1');
 
-        fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Feedback/ }));
         expect(useMentorFeedbackMock).toHaveBeenLastCalledWith('m1', 'inst-1');
     });
 
@@ -137,10 +175,10 @@ describe('MentorDetailDialog', () => {
         expect(screen.getByRole('button', { name: 'Awaiting review' })).toBeInTheDocument();
     });
 
-    it('renders nothing at all without a mentor', () => {
-        const { container } = render(
-            <MentorDetailDialog mentor={null} instituteId="inst-1" open onOpenChange={vi.fn()} />
-        );
-        expect(container).toBeEmptyDOMElement();
+    it('says so plainly when the id does not match a mentor on the team', () => {
+        useMentorDashboardMock.mockReturnValue({ ...idle, data: { mentors: [] } });
+        render(<Harness mentorId="gone" />);
+        expect(screen.getByText(/no longer on your team/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Back to mentors' })).toBeInTheDocument();
     });
 });

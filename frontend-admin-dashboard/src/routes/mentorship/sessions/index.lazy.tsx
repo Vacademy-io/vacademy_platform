@@ -4,7 +4,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { MentorSessionsPanel } from '../-components/MentorSessionsPanel';
-import { MentorshipTabs } from '../-components/MentorshipTabs';
+import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
 
 export const Route = createLazyFileRoute('/mentorship/sessions/')({
     component: MentorSessionsRoute,
@@ -19,13 +19,10 @@ function MentorSessionsRoute() {
     return (
         <LayoutContainer>
             <div className="flex flex-col gap-6 p-6">
-                <div className="flex flex-col">
-                    <h2 className="text-title font-semibold text-neutral-700">Sessions</h2>
-                    <p className="text-body text-neutral-500">
-                        Every mentor session, what came of it, and how learners rated it.
-                    </p>
-                </div>
-                <MentorshipTabs />
+                <MentorshipPageHeader
+                    title="Sessions"
+                    subtitle="Track and manage all mentorship sessions"
+                />
                 <MentorSessionsPanel instituteId={getInstituteId()} />
             </div>
         </LayoutContainer>

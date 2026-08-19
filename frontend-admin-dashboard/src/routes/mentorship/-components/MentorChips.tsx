@@ -1,4 +1,5 @@
 import { Star } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import type { MentorDTO } from '../-types/mentorship-types';
 
 /**
@@ -66,5 +67,44 @@ export function CapacityChip({ mentor }: { mentor: MentorDTO }) {
             {count}/{cap}
             {full ? ' · full' : ' students'}
         </span>
+    );
+}
+
+/**
+ * How full a mentor is, as a bar. The chip above answers "how many"; this answers
+ * "how much room is left", which is the question an admin is actually asking when
+ * they scan the list looking for someone to assign to.
+ */
+export function CapacityMeter({ mentor }: { mentor: MentorDTO }) {
+    const count = mentor.assigned_student_count ?? 0;
+    const cap = mentor.max_mentees ?? null;
+    const full = cap != null && (mentor.at_capacity ?? count >= cap);
+
+    return (
+        <div className="flex w-full min-w-0 flex-col gap-1">
+            <span
+                className={cn(
+                    'text-caption tabular-nums',
+                    full ? 'text-danger-600' : 'text-neutral-600'
+                )}
+            >
+                {count} / {cap ?? '∞'}
+                {full ? ' · full' : ''}
+            </span>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div
+                    className={cn(
+                        'h-full rounded-full',
+                        full ? 'bg-danger-500' : cap ? 'bg-primary-500' : 'bg-primary-300'
+                    )}
+                    // Data-driven width. Without a cap there is no "full", so an
+                    // uncapped mentor shows a token sliver rather than a bar that
+                    // would imply a limit they don't have.
+                    style={{
+                        width: cap ? `${Math.min(100, Math.max(4, (count / cap) * 100))}%` : '18%',
+                    }}
+                />
+            </div>
+        </div>
     );
 }

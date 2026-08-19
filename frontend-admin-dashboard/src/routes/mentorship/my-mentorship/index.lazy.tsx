@@ -29,6 +29,8 @@ import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 import { AvailabilityDialog } from '../-components/AvailabilityDialog';
 import { MyScheduleCard } from '../-components/MyScheduleCard';
+import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
+import { MentorAvatar } from '../-components/MentorAvatar';
 import { RecordSessionDialog } from '../-components/RecordSessionDialog';
 import { useMyAwaitingReview } from '../-hooks/use-mentorship';
 import type { MentorSessionDTO } from '../-types/mentorship-types';
@@ -49,7 +51,10 @@ function MyMentorshipRoute() {
 function initials(name?: string | null): string {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
-    return (parts[0]?.[0] ?? '').concat(parts.length > 1 ? (parts[1]?.[0] ?? '') : '').toUpperCase() || '?';
+    return (
+        (parts[0]?.[0] ?? '').concat(parts.length > 1 ? parts[1]?.[0] ?? '' : '').toUpperCase() ||
+        '?'
+    );
 }
 
 function MyMentorshipPage() {
@@ -130,12 +135,10 @@ function MyMentorshipPage() {
 
     return (
         <div className="flex flex-col gap-6 p-6">
-            <div className="flex flex-col">
-                <h2 className="text-title font-semibold text-neutral-700">My mentorship</h2>
-                <p className="text-body text-neutral-500">
-                    Your mentees, availability and booking link.
-                </p>
-            </div>
+            <MentorshipPageHeader
+                title="My mentorship"
+                subtitle="Your mentees, availability and booking link"
+            />
 
             {profileQuery.isLoading && (
                 <div className="flex flex-col gap-3">
@@ -164,94 +167,122 @@ function MyMentorshipPage() {
             )}
 
             {profile && (
-                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-                    <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
-                            <GoogleLogo size={20} weight="bold" className="text-primary-600" />
-                        </span>
-                        <div className="flex flex-col">
-                            <span className="text-body font-medium text-neutral-700">Google Calendar</span>
-                            <span className="text-caption text-neutral-500">
-                                {profile.google_connected
-                                    ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
-                                    : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                    {/* Who learners see when they open the booking link. */}
+                    <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                        <MentorAvatar
+                            fileId={profile.profile_image_file_id}
+                            name={profile.display_name || profile.name}
+                            className="size-12 shrink-0 text-body"
+                        />
+                        <div className="flex min-w-0 flex-col">
+                            <span className="truncate text-body font-medium text-neutral-700">
+                                {profile.display_name || profile.name || 'You'}
+                            </span>
+                            <span className="truncate text-caption text-neutral-500">
+                                {profile.title || 'Mentor'}
+                            </span>
+                            <span className="truncate text-caption text-neutral-400">
+                                {(profile.assigned_student_count ?? 0) === 1
+                                    ? '1 mentee assigned'
+                                    : `${profile.assigned_student_count ?? 0} mentees assigned`}
                             </span>
                         </div>
                     </div>
-                    {profile.google_connected ? (
-                        <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
-                            <CheckCircle size={14} weight="fill" /> Connected
-                        </span>
-                    ) : (
-                        <MyButton
-                            type="button"
-                            buttonType="primary"
-                            scale="small"
-                            onClick={connectGoogle}
-                            disable={connecting}
-                        >
-                            {connecting ? 'Redirecting…' : 'Connect Google'}
-                        </MyButton>
-                    )}
-                </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-                    <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
-                            <CalendarCheck size={20} weight="bold" className="text-primary-600" />
-                        </span>
-                        <div className="flex flex-col">
-                            <span className="text-body font-medium text-neutral-700">
-                                Your 1:1 booking link
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                        <div className="flex items-center gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                                <GoogleLogo size={20} weight="bold" className="text-primary-600" />
                             </span>
-                            <span className="text-caption text-neutral-500">
-                                {myBookingUrl
-                                    ? 'Share this link so learners can book a session with you.'
-                                    : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
-                            </span>
-                            {myBookingUrl && (
-                                <span className="mt-1 flex items-center gap-1 text-caption text-neutral-400">
-                                    <LinkSimple size={12} />
-                                    <span className="max-w-sm truncate">{myBookingUrl}</span>
+                            <div className="flex flex-col">
+                                <span className="text-body font-medium text-neutral-700">
+                                    Google Calendar
                                 </span>
+                                <span className="text-caption text-neutral-500">
+                                    {profile.google_connected
+                                        ? `Connected${profile.google_email ? ` · ${profile.google_email}` : ''} — your bookings appear on your own calendar with a Meet link.`
+                                        : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
+                                </span>
+                            </div>
+                        </div>
+                        {profile.google_connected ? (
+                            <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                                <CheckCircle size={14} weight="fill" /> Connected
+                            </span>
+                        ) : (
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="small"
+                                onClick={connectGoogle}
+                                disable={connecting}
+                            >
+                                {connecting ? 'Redirecting…' : 'Connect Google'}
+                            </MyButton>
+                        )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+                        <div className="flex items-center gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50">
+                                <CalendarCheck
+                                    size={20}
+                                    weight="bold"
+                                    className="text-primary-600"
+                                />
+                            </span>
+                            <div className="flex flex-col">
+                                <span className="text-body font-medium text-neutral-700">
+                                    Your 1:1 booking link
+                                </span>
+                                <span className="text-caption text-neutral-500">
+                                    {myBookingUrl
+                                        ? 'Share this link so learners can book a session with you.'
+                                        : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
+                                </span>
+                                {myBookingUrl && (
+                                    <span className="mt-1 flex items-center gap-1 text-caption text-neutral-400">
+                                        <LinkSimple size={12} />
+                                        <span className="max-w-sm truncate">{myBookingUrl}</span>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setAvailabilityOpen(true)}
+                                title="Set your weekly hours, meeting location and session types"
+                            >
+                                <Clock size={16} /> Edit availability
+                            </MyButton>
+                            {myBookingUrl && (
+                                <>
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={copyMyBookingLink}
+                                        title="Copy your booking link to share with learners"
+                                    >
+                                        <Copy size={16} /> Copy link
+                                    </MyButton>
+                                    <a
+                                        href={myBookingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-caption font-medium text-primary-500 hover:text-primary-600"
+                                        title="Open your booking page in a new tab"
+                                    >
+                                        Open
+                                    </a>
+                                </>
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="small"
-                            onClick={() => setAvailabilityOpen(true)}
-                            title="Set your weekly hours, meeting location and session types"
-                        >
-                            <Clock size={16} /> Edit availability
-                        </MyButton>
-                        {myBookingUrl && (
-                            <>
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={copyMyBookingLink}
-                                    title="Copy your booking link to share with learners"
-                                >
-                                    <Copy size={16} /> Copy link
-                                </MyButton>
-                                <a
-                                    href={myBookingUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-caption font-medium text-primary-500 hover:text-primary-600"
-                                    title="Open your booking page in a new tab"
-                                >
-                                    Open
-                                </a>
-                            </>
-                        )}
-                    </div>
-                </div>
                 </div>
             )}
 
@@ -307,7 +338,9 @@ function MyMentorshipPage() {
                         </span>
                     )}
                 </h3>
-                <p className="text-caption text-neutral-500">Students assigned to you for mentorship.</p>
+                <p className="text-caption text-neutral-500">
+                    Students assigned to you for mentorship.
+                </p>
             </div>
 
             {isLoading ? (
@@ -332,9 +365,16 @@ function MyMentorshipPage() {
                 <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                     <div className="flex items-center gap-2">
                         <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">Couldn&apos;t load your mentees.</p>
+                        <p className="text-body text-danger-600">
+                            Couldn&apos;t load your mentees.
+                        </p>
                     </div>
-                    <MyButton type="button" buttonType="secondary" scale="small" onClick={() => refetch()}>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => refetch()}
+                    >
                         Retry
                     </MyButton>
                 </div>
@@ -342,7 +382,9 @@ function MyMentorshipPage() {
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
                     <div className="flex flex-col gap-1">
-                        <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
+                        <p className="text-body font-medium text-neutral-700">
+                            No students assigned yet
+                        </p>
                         <p className="text-caption text-neutral-500">
                             Your admin will assign students to you here.
                         </p>
@@ -364,7 +406,9 @@ function MyMentorshipPage() {
                                         {mentee.name || mentee.student_user_id}
                                     </span>
                                     {mentee.email && (
-                                        <span className="text-caption text-neutral-400">{mentee.email}</span>
+                                        <span className="text-caption text-neutral-400">
+                                            {mentee.email}
+                                        </span>
                                     )}
                                 </div>
                             </div>

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import type { MentorSessionDTO } from '@/routes/mentorship/-types/mentorship-types';
 
 vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
@@ -21,6 +23,7 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
         refetch: vi.fn(),
     }),
     useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useMentorDashboard: () => ({ data: { mentors: [] } }),
 }));
 
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
@@ -36,6 +39,16 @@ import { MentorSessionsPanel } from '@/routes/mentorship/-components/MentorSessi
  * truncates instead of pushing the row wide. Those are exactly the things a later
  * edit removes by accident.
  */
+/** MyTable mounts shared dialogs that expect a QueryClient, so every render needs one. */
+const render = (ui: ReactElement) =>
+    rtlRender(
+        <QueryClientProvider
+            client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+            {ui}
+        </QueryClientProvider>
+    );
+
 describe('sessions panel — mobile-safe layout', () => {
     it('the filter bar wraps rather than overflowing a narrow screen', () => {
         const { container } = render(<MentorSessionsPanel instituteId="inst-1" />);
@@ -43,10 +56,14 @@ describe('sessions panel — mobile-safe layout', () => {
         expect(tabBar?.className).toContain('flex-wrap');
     });
 
-    it('a session row wraps its actions instead of forcing horizontal scroll', () => {
-        render(<MentorSessionsPanel instituteId="inst-1" />);
-        const row = screen.getByRole('button', { name: /Asha Nair/ });
-        expect(row.className).toContain('flex-wrap');
+    it('the session table scrolls inside its own box, not the whole page', () => {
+        const { container } = render(<MentorSessionsPanel instituteId="inst-1" />);
+        // A data table is wider than a phone by nature. The rule is that the
+        // overflow stays inside the table's container so the page body never
+        // scrolls sideways.
+        const shell = container.querySelector('.overflow-hidden');
+        expect(shell).not.toBeNull();
+        expect(screen.getByRole('button', { name: /Asha Nair/ })).toBeInTheDocument();
     });
 
     it('long titles truncate, so one session cannot widen the whole list', () => {

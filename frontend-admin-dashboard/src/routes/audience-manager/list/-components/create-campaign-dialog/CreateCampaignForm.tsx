@@ -29,6 +29,10 @@ import createCampaignLink from '../../-utils/createCampaignLink';
 import CampaignLink from './CampaignLink';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import { getCampaignCustomFieldsAsync } from '../../-utils/getCampaignCustomFields';
+import {
+    convertExistingCustomFields,
+    convertFieldsToPayload,
+} from '../../-utils/campaignFormFields';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -39,131 +43,6 @@ const parseEmailsFromCsv = (value?: string | null) => {
         .split(',')
         .map((email) => email.trim())
         .filter((email) => email.length > 0);
-};
-
-const generateKeyFromName = (name: string): string =>
-    name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-
-const mapApiFieldTypeToUi = (type?: string): string => {
-    const normalized = (type || '').toLowerCase();
-    if (normalized === 'select') return 'dropdown';
-    if (normalized === 'textfield') return 'text';
-    return normalized || 'text';
-};
-
-const parseFieldsInput = (fields?: any[] | string | null) => {
-    if (!fields) {
-        return null;
-    }
-
-    if (Array.isArray(fields)) {
-        return fields;
-    }
-
-    if (typeof fields === 'string') {
-        try {
-            const parsed = JSON.parse(fields);
-            if (Array.isArray(parsed)) {
-                return parsed;
-            }
-            // console.warn('⚠️ [convertExistingCustomFields] Parsed custom fields is not an array');
-        } catch (error) {
-            console.error(
-                '❌ [convertExistingCustomFields] Failed to parse custom fields JSON:',
-                error
-            );
-        }
-    }
-
-    return null;
-};
-
-const convertExistingCustomFields = (fields?: any[] | string | null) => {
-    const normalizedFields = parseFieldsInput(fields);
-
-    if (!normalizedFields || normalizedFields.length === 0) {
-        console.log('📋 [convertExistingCustomFields] No custom fields to convert');
-        return null;
-    }
-
-    // Seeded keys: Full Name / Email / Phone Number must stay locked even in
-    // edit mode. The previous code hardcoded `oldKey: false` which let admins
-    // delete these system fields when editing an existing audience campaign.
-    const SEEDED_KEYS = ['full_name', 'name', 'email', 'phone_number', 'phone', 'mobile_number'];
-    const SEEDED_NAMES = ['full name', 'name', 'email', 'phone number', 'phone', 'mobile number'];
-
-    const converted = normalizedFields
-        .map((field, index) => {
-            const meta = field?.custom_field || {};
-            const fieldName = meta.fieldName || field.field_name || `Field ${index + 1}`;
-            const fieldKey = meta.fieldKey || generateKeyFromName(fieldName);
-            const normalizedKey = fieldKey ? fieldKey.toLowerCase() : '';
-            const normalizedName = (fieldName || '').toLowerCase();
-            const isSeeded =
-                SEEDED_KEYS.includes(normalizedKey) || SEEDED_NAMES.includes(normalizedName);
-            const configOptions =
-                typeof meta.config === 'string' && meta.config.length > 0
-                    ? meta.config
-                          .split(',')
-                          .map((value: string) => value.trim())
-                          .filter(Boolean)
-                    : undefined;
-
-            // Preserve status from API - default to ACTIVE if not present
-            const fieldStatus = field.status || 'ACTIVE';
-
-            const convertedField = {
-                id: field.id || meta.id || field.field_id || `${index}`,
-                _id: meta.id || field.id || field.field_id,
-                field_id: field.field_id || meta.id || field.id,
-                type: mapApiFieldTypeToUi(meta.fieldType || field.type),
-                name: fieldName,
-                oldKey: isSeeded,
-                isRequired:
-                    typeof meta.isMandatory === 'boolean'
-                        ? meta.isMandatory
-                        : field.isRequired ?? true,
-                key: fieldKey,
-                // Order by the per-form mapping order (individual_order) so the editor
-                // matches what the public form renders. Fall back to the master formOrder
-                // (1-based) only when the mapping has no order, then to array index.
-                order:
-                    typeof field.individual_order === 'number'
-                        ? field.individual_order
-                        : typeof meta.formOrder === 'number'
-                          ? Math.max(meta.formOrder - 1, 0)
-                          : index,
-                options: configOptions
-                    ? configOptions.map((value: string, optIndex: number) => ({
-                          id: `${field.id || meta.id || field.field_id || index}_opt_${optIndex}`,
-                          value,
-                          disabled: true,
-                      }))
-                    : undefined,
-                // Preserve all original field data for payload
-                status: fieldStatus,
-                institute_id: field.institute_id,
-                type_id: field.type_id,
-                group_name: field.group_name || meta.groupName,
-                individual_order: field.individual_order,
-                group_internal_order: field.group_internal_order,
-                // Store full custom_field object for payload
-                custom_field_data: meta,
-            };
-
-            return convertedField;
-        })
-        .filter((field) => field.status !== 'DELETED') // Filter out deleted fields from display
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((field, index) => ({
-            ...field,
-            order: index,
-        }));
-
-    return converted;
 };
 
 const formatDateToDateInput = (value?: string | null, fallback?: string) => {
@@ -762,102 +641,6 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('dropdownOptions', []);
     };
 
-    const mapFieldTypeToPayload = (type?: string) => {
-        if (!type) return 'TEXT';
-        const normalized = type.toLowerCase();
-        switch (normalized) {
-            case 'text':
-            case 'textfield':
-            case 'textarea':
-                return 'TEXT';
-            case 'number':
-                return 'NUMBER';
-            case 'email':
-                return 'EMAIL';
-            case 'date':
-                return 'DATE';
-            case 'dropdown':
-            case 'select':
-                return 'DROPDOWN';
-            default:
-                return normalized.toUpperCase();
-        }
-    };
-
-    const convertFieldsToPayload = (fields: any[], instituteId: string) => {
-        if (!Array.isArray(fields) || fields.length === 0) return [];
-
-        return fields.map((field, index) => {
-            const options =
-                Array.isArray(field.options) && field.options.length > 0
-                    ? field.options.map((option: any) => option.value?.trim()).filter(Boolean)
-                    : undefined;
-
-            // Use existing field data if available (from API), otherwise create new structure
-            const fieldId = field.id || field._id || field.field_id;
-            const customFieldData = field.custom_field_data || field.custom_field || {};
-
-            // Build the payload according to the required structure
-            const payload: any = {
-                ...(fieldId && { id: fieldId }),
-                field_id: field.field_id || customFieldData.id || fieldId,
-                institute_id: field.institute_id || instituteId,
-                type: '',
-                type_id: '',
-                group_name: field.group_name || customFieldData.groupName || '',
-                status: field.status || 'ACTIVE', // Preserve status (ACTIVE or DELETED)
-                // Persist the current on-screen order so reordering in the editor
-                // actually updates the effective per-form order the public form reads.
-                individual_order: field.order ?? index,
-                group_internal_order: field.group_internal_order ?? 0,
-                custom_field: {
-                    ...((customFieldData.id || field._id) && {
-                        id: customFieldData.id || field._id,
-                    }),
-                    ...(customFieldData.guestId && { guestId: customFieldData.guestId }),
-                    fieldKey:
-                        field.key || customFieldData.fieldKey || generateKeyFromName(field.name),
-                    fieldName: field.name || customFieldData.fieldName || `Field ${index + 1}`,
-                    fieldType: mapFieldTypeToPayload(field.type || customFieldData.fieldType),
-                    defaultValue: customFieldData.defaultValue || '',
-                    config: options
-                        ? JSON.stringify(
-                              options.map((v: string, i: number) => ({
-                                  id: i + 1,
-                                  value: v,
-                                  label: v,
-                              }))
-                          )
-                        : customFieldData.config || '',
-                    formOrder:
-                        typeof field.order === 'number'
-                            ? field.order + 1
-                            : customFieldData.formOrder || index + 1,
-                    isMandatory: Boolean(
-                        typeof field.isRequired === 'boolean'
-                            ? field.isRequired
-                            : customFieldData.isMandatory ?? true
-                    ),
-                    isFilter: customFieldData.isFilter ?? false,
-                    isSortable: customFieldData.isSortable ?? false,
-                    isHidden: customFieldData.isHidden ?? false,
-                    ...(customFieldData.createdAt && { createdAt: customFieldData.createdAt }),
-                    ...(customFieldData.updatedAt && { updatedAt: customFieldData.updatedAt }),
-                    ...(customFieldData.sessionId && { sessionId: customFieldData.sessionId }),
-                    ...(customFieldData.liveSessionId && {
-                        liveSessionId: customFieldData.liveSessionId,
-                    }),
-                    customFieldValue: customFieldData.customFieldValue || '',
-                    groupName: field.group_name || customFieldData.groupName || '',
-                    groupInternalOrder: field.group_internal_order ?? 0,
-                    individualOrder: field.order ?? index,
-                },
-            };
-
-            return payload;
-        });
-    };
-
     const onFormSubmit = handleSubmit(async (data: AudienceCampaignForm) => {
         if (!instituteDetails?.id) {
             toast.error('Institute context unavailable. Please refresh and try again.');
@@ -1423,6 +1206,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 handleDeleteOptionField={handleDeleteOptionField}
                 handleAddDropdownOptions={handleAddDropdownOptions}
                 handleEditFieldAt={handleEditFieldAt}
+                campaignId={editingCampaignId}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
             />

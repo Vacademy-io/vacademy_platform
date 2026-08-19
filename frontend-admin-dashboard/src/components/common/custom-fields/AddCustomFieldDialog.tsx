@@ -93,6 +93,11 @@ interface AddCustomFieldDialogProps {
     /** Controlled open state. Pass a `key` per edited field so the prefill re-runs. */
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /**
+     * Shown under the header. Used to warn that the field being edited is shared
+     * with other forms, since its type and label live on one row.
+     */
+    notice?: React.ReactNode;
 }
 
 const hasOptionsType = (type: CustomFieldType) =>
@@ -108,6 +113,7 @@ export const AddCustomFieldDialog = ({
     supportedTypes,
     mode = 'add',
     initialField,
+    notice,
     open: controlledOpen,
     onOpenChange,
 }: AddCustomFieldDialogProps) => {
@@ -263,6 +269,8 @@ export const AddCustomFieldDialog = ({
                         </p>
                     </div>
                 </div>
+
+                {notice && <div className="shrink-0 px-6 pt-4">{notice}</div>}
 
                 <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
                     {/* ---------------- Left: the form ---------------- */}

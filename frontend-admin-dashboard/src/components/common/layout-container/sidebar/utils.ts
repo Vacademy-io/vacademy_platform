@@ -609,15 +609,15 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
-                subItem: 'Mentors',
-                subItemLink: '/mentorship/mentors',
-                subItemId: 'mentorship-mentors',
+                subItem: 'Dashboard',
+                subItemLink: '/mentorship/dashboard',
+                subItemId: 'mentorship-dashboard',
                 adminOnly: true,
             },
             {
-                subItem: 'Requests',
-                subItemLink: '/mentorship/requests',
-                subItemId: 'mentorship-requests',
+                subItem: 'Mentors',
+                subItemLink: '/mentorship/mentors',
+                subItemId: 'mentorship-mentors',
                 adminOnly: true,
             },
             {

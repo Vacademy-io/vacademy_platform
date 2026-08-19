@@ -1,6 +1,7 @@
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
+import { isOptionFieldType, parseFieldOptionsForForm } from './parseFieldOptions';
 
 /**
  * Interface for campaign form custom field
@@ -158,27 +159,10 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
                 status: 'ACTIVE',
             };
 
-            if ((fieldType === 'dropdown' || fieldType === 'radio') && cf.config) {
-                try {
-                    const parsed = JSON.parse(cf.config);
-                    if (Array.isArray(parsed)) {
-                        transformed.options = parsed.map((opt: any, i: number) => ({
-                            id: `${index}_opt_${i}`,
-                            value: opt.value || opt.label || opt,
-                            disabled: true,
-                        }));
-                    } else if (parsed.coommaSepartedOptions) {
-                        transformed.options = parsed.coommaSepartedOptions
-                            .split(',')
-                            .map((v: string, i: number) => ({
-                                id: `${index}_opt_${i}`,
-                                value: v.trim(),
-                                disabled: true,
-                            }));
-                    }
-                } catch {
-                    // ignore parse errors — the field still renders as its base type
-                }
+            // Every choice type, not just dropdown/radio — gating on those two left
+            // multi-select fields with no options at all.
+            if (isOptionFieldType(fieldType) && cf.config) {
+                transformed.options = parseFieldOptionsForForm(cf.config, index);
             }
 
             result.push(transformed);

@@ -9,6 +9,17 @@ import {
 
 const INSTITUTE = 'inst-1';
 
+/**
+ * First converted field, asserted present. `convertExistingCustomFields` returns
+ * `null` for an empty input and its elements are index-access checked, so the
+ * assertion belongs in one place rather than at every call site.
+ */
+const firstField = (converted: ReturnType<typeof convertExistingCustomFields>) => {
+    const field = converted?.[0];
+    if (!field) throw new Error('expected at least one converted field');
+    return field;
+};
+
 /** One field as the campaign API returns it. */
 const apiField = (over: Record<string, unknown> = {}) => ({
     id: 'map-1',
@@ -115,7 +126,7 @@ describe('field type mapping', () => {
 
 describe('convertExistingCustomFields', () => {
     it('shows a dropdown with its real options, not JSON fragments', () => {
-        const [field] = convertExistingCustomFields([apiField()])!;
+        const field = firstField(convertExistingCustomFields([apiField()]));
         expect(field.type).toBe('dropdown');
         expect(field.options?.map((o) => o.value)).toEqual(['SOCIAL MEDIA', 'FRIEND']);
     });
@@ -158,9 +169,9 @@ describe('convertExistingCustomFields', () => {
     });
 
     it('does not attach options to a field that is no longer a choice type', () => {
-        const [field] = convertExistingCustomFields([
+        const field = firstField(convertExistingCustomFields([
             apiField({ custom_field: { ...apiField().custom_field, fieldType: 'TEXT' } }),
-        ])!;
+        ]));
         expect(field.type).toBe('text');
         expect(field.options).toBeUndefined();
     });
@@ -168,11 +179,11 @@ describe('convertExistingCustomFields', () => {
 
 describe('convertFieldsToPayload', () => {
     it('sends the edited type and options for a field that already exists', () => {
-        const [field] = convertExistingCustomFields([
+        const field = firstField(convertExistingCustomFields([
             apiField({
                 custom_field: { ...apiField().custom_field, fieldType: 'TEXT', config: '' },
             }),
-        ])!;
+        ]));
 
         // The admin switches the field to a multi-select and adds options.
         const edited = {
@@ -194,7 +205,7 @@ describe('convertFieldsToPayload', () => {
     });
 
     it('drops a stale option list when the field stops being a choice type', () => {
-        const [field] = convertExistingCustomFields([apiField()])!;
+        const field = firstField(convertExistingCustomFields([apiField()]));
         const [payload] = convertFieldsToPayload(
             [{ ...field, type: 'text', options: undefined }],
             INSTITUTE
@@ -205,11 +216,11 @@ describe('convertFieldsToPayload', () => {
 
     it('keeps a settings config that is not an option list', () => {
         const settings = '{"helpText":"Upload your CV","maxSizeMB":5}';
-        const [field] = convertExistingCustomFields([
+        const field = firstField(convertExistingCustomFields([
             apiField({
                 custom_field: { ...apiField().custom_field, fieldType: 'FILE', config: settings },
             }),
-        ])!;
+        ]));
         const [payload] = convertFieldsToPayload([field], INSTITUTE);
         expect(payload.custom_field.config).toBe(settings);
     });
@@ -242,7 +253,7 @@ describe('convertFieldsToPayload', () => {
     });
 
     it('carries the required flag on the mapping as well as the field', () => {
-        const [field] = convertExistingCustomFields([apiField()])!;
+        const field = firstField(convertExistingCustomFields([apiField()]));
         const [payload] = convertFieldsToPayload([{ ...field, isRequired: false }], INSTITUTE);
         expect(payload.is_mandatory).toBe(false);
         expect(payload.custom_field.isMandatory).toBe(false);

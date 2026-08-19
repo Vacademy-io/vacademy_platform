@@ -108,10 +108,11 @@ const CampaignCustomFieldsCard = ({
     // used and say so before the admin changes it.
     const editingField = editingIndex !== null ? customFieldsArray[editingIndex] : null;
     const editingFieldMasterId = (editingField as unknown as { _id?: string } | null)?._id;
+    const instituteId = instituteDetails?.id;
     const { data: fieldUsages } = useQuery({
-        queryKey: ['custom-field-usages', instituteDetails?.id, editingFieldMasterId],
-        queryFn: () => getCustomFieldUsages(instituteDetails!.id, editingFieldMasterId!),
-        enabled: Boolean(instituteDetails?.id && editingFieldMasterId),
+        queryKey: ['custom-field-usages', instituteId, editingFieldMasterId],
+        queryFn: () => getCustomFieldUsages(instituteId!, editingFieldMasterId!),
+        enabled: Boolean(instituteId && editingFieldMasterId),
         staleTime: 60_000,
     });
     const otherFormsUsingField = (fieldUsages ?? []).filter(

@@ -1,0 +1,65 @@
+"""Undefined `var(--x)` with no fallback voids the whole declaration, so a
+font-size collapses to the inherited ~16px and a padding to 0. The repair
+pass must give every survivor a fallback of the RIGHT KIND — handing
+`font-size` a font family leaves it exactly as broken."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app" / "ai-video-gen-main"))
+
+from html_contract_repair import (  # noqa: E402
+    repair_dark_bed_text,
+    repair_undefined_css_vars,
+)
+
+_SIZE_STARTS = ("clamp(", "calc(", "min(", "max(")
+
+
+def _repair_value(css: str) -> str:
+    out, _ = repair_undefined_css_vars(f'<div style="{css}"></div>')
+    return out[out.index('style="') + 7 : out.index('"></div>')]
+
+
+def test_defined_vars_are_left_alone():
+    html = "<style>:root{--brand-text:#0f172a}.a{color:var(--brand-text)}</style>"
+    out, fixed = repair_undefined_css_vars(html)
+    assert fixed == []
+    assert out == html
+
+
+def test_font_sizes_always_get_a_size():
+    for token in ("--font-scale-h1", "--font-scale-label", "--font-scale-micro",
+                  "--font-title-size", "--hero-type", "--whatever"):
+        value = _repair_value(f"font-size:var({token})")
+        fallback = value.split(",", 1)[1].strip().rstrip(")")
+        assert fallback.startswith(_SIZE_STARTS) or fallback.endswith(("px", "rem")), (
+            f"{token} got a non-size fallback: {value}"
+        )
+
+
+def test_font_families_never_get_a_size():
+    value = _repair_value("font-family:var(--font-scale-h1)")
+    assert "clamp(" not in value.split(",", 1)[1]
+
+
+def test_spacing_scale_is_respected():
+    assert "8px" in _repair_value("padding:var(--spacing-xs)")
+    assert "96px" in _repair_value("padding:var(--spacing-2xl)")
+    assert "6%" in _repair_value("padding:var(--spacing-safe_area)")
+
+
+def test_repair_is_idempotent():
+    once, first = repair_undefined_css_vars('<div style="padding:var(--spacing-lg)"></div>')
+    twice, second = repair_undefined_css_vars(once)
+    assert first and second == [] and twice == once
+
+
+def test_dark_bed_only_fires_with_a_dark_media_bed():
+    dark = ('<style>#shot-root{--text:var(--brand-text, #ffffff)}'
+            '.o{background:linear-gradient(90deg,rgba(0,0,0,0.85),transparent)}</style>'
+            '<video src="x.mp4"></video>')
+    out, fixes = repair_dark_bed_text(dark)
+    assert fixes and "--text:#ffffff" in out.replace(" ", "")
+
+    light = '<style>#shot-root{--text:var(--brand-text, #ffffff)}</style><div>copy</div>'
+    assert repair_dark_bed_text(light)[1] == []

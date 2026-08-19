@@ -374,6 +374,12 @@ _FAMILY_FALLBACKS: List[Tuple[str, str]] = [
     ("font-scale-h1", "clamp(2rem, min(6vw, 10.7vh), 7.25rem)"),
     ("font-scale-h2", "clamp(1.5rem, min(4vw, 7vh), 4.75rem)"),
     ("font-scale-body", "clamp(1rem, min(1.7vw, 3vh), 2rem)"),
+    # Any other font-scale-* (caption/label/micro/…) is still a SIZE. This
+    # must precede the bare "font" entry below, or e.g. --font-scale-label
+    # would be handed a font FAMILY and the font-size declaration would stay
+    # invalid — the exact bug this pass exists to prevent.
+    ("font-scale", "clamp(0.9rem, 1.2vmin, 1.25rem)"),
+    ("font-size", "clamp(1rem, min(1.7vw, 3vh), 2rem)"),
     ("display", "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)"),
     ("h1", "clamp(2rem, min(6vw, 10.7vh), 7.25rem)"),
     ("h2", "clamp(1.5rem, min(4vw, 7vh), 4.75rem)"),
@@ -390,6 +396,7 @@ _FAMILY_FALLBACKS: List[Tuple[str, str]] = [
     ("spacing-md", "24px"),
     ("spacing-lg", "40px"),
     ("spacing-xl", "64px"),
+    ("spacing-2xl", "96px"),
     ("spacing", "24px"),
     ("padding", "24px"),
     ("margin", "24px"),
@@ -413,12 +420,22 @@ _SIZE_PROPS = (
 )
 
 
+_SIZE_LIKE_RE = re.compile(r"^\s*(?:clamp\(|calc\(|min\(|max\(|-?[0-9.]+\s*(?:px|rem|em|%|vw|vh|vmin|vmax)\b)")
+
+
 def _infer_var_fallback(token: str, property_name: str = "") -> str:
     name = token.lower().lstrip("-")
+    prop = (property_name or "").lower()
     for needle, value in _FAMILY_FALLBACKS:
         if needle in name:
+            # Name-based guesses lose to the property when they disagree about
+            # kind: handing `font-size` a font family (or a color) leaves the
+            # declaration just as invalid as the undefined var did.
+            if prop == "font-size" and not _SIZE_LIKE_RE.match(value):
+                return "clamp(1rem, min(1.7vw, 3vh), 2rem)"
+            if prop.startswith("font-family") and _SIZE_LIKE_RE.match(value):
+                return "var(--font-body, 'Inter', sans-serif)"
             return value
-    prop = (property_name or "").lower()
     if prop == "font-size":
         return "clamp(1rem, min(1.7vw, 3vh), 2rem)"
     if prop.startswith("font-family"):

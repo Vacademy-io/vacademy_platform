@@ -23586,11 +23586,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               width: 100%;
               height: 100%;
               display: flex;
-              flex-direction: column;
               align-items: center;
               justify-content: center;
               transform-origin: center center;
               will-change: transform;
+            }}
+            /* `flex-direction: column` applies ONLY when stage-drift is the
+               element's sole class. It is documented as a MOTION helper, so the
+               model also drops it onto containers that already have a layout —
+               `class="process-container stage-drift"`. Those containers rarely
+               declare a direction of their own, so the column here won
+               unopposed and turned an intended flex ROW into a stack twice the
+               height of the frame, clipping its last line. Elements that use
+               stage-drift alone are pure wrappers and keep the old behaviour. */
+            [class="stage-drift"] {{
+              flex-direction: column;
             }}
 
             /* --- DRAFT/BLUEPRINT guides (two-phase SVG reveal) ---

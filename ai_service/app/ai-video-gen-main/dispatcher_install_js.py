@@ -1163,6 +1163,161 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 } catch (_fserr) { /* never break the shot */ }
                             };
 
+                            // MID-WORD BREAK GUARD.
+                            // The foundation CSS sets overflow-wrap:break-word so
+                            // long strings cannot escape their box. The cost is
+                            // that a single word wider than its column is split
+                            // across lines — 'HUMAN PARTICIPAT/ION'. The existing
+                            // fit-text sweep cannot see this: the text WRAPS, so
+                            // scrollWidth never exceeds clientWidth. Measure the
+                            // widest word directly and shrink the type until it
+                            // fits, which is what a designer would do.
+                            var __wordCtx = null;
+                            var __widestWord = function (text, font) {
+                                if (!__wordCtx) {
+                                    __wordCtx = document.createElement('canvas').getContext('2d');
+                                }
+                                __wordCtx.font = font;
+                                var words = String(text || '').split(/\s+/);
+                                var max = 0;
+                                for (var i = 0; i < words.length; i++) {
+                                    if (!words[i]) continue;
+                                    var w = __wordCtx.measureText(words[i]).width;
+                                    if (w > max) max = w;
+                                }
+                                return max;
+                            };
+                            var __fitWordsSweep = function () {
+                                try {
+                                    var root = scope.querySelector('#shot-root');
+                                    if (!root) return;
+                                    var nodes = root.querySelectorAll('*');
+                                    for (var i = 0; i < nodes.length; i++) {
+                                        var el = nodes[i];
+                                        // Own text only — measuring a container
+                                        // would shrink type that already fits.
+                                        var text = '';
+                                        for (var c = 0; c < el.childNodes.length; c++) {
+                                            var n = el.childNodes[c];
+                                            if (n.nodeType === 3) text += ' ' + n.nodeValue;
+                                        }
+                                        if (!text.trim()) continue;
+                                        var cs = getComputedStyle(el);
+                                        var fsPx = parseFloat(cs.fontSize);
+                                        if (!fsPx || fsPx < 28) continue;
+                                        if (cs.whiteSpace === 'nowrap' || cs.whiteSpace === 'pre') continue;
+                                        var avail = el.clientWidth -
+                                            (parseFloat(cs.paddingLeft) || 0) -
+                                            (parseFloat(cs.paddingRight) || 0);
+                                        if (avail <= 20) continue;
+                                        var font = cs.fontStyle + ' ' + cs.fontWeight + ' ' +
+                                                   cs.fontSize + ' ' + cs.fontFamily;
+                                        var longest = __widestWord(text, font);
+                                        if (longest <= avail - 1) continue;
+                                        var scale = Math.max(0.55, (avail - 1) / longest);
+                                        el.style.fontSize = (fsPx * scale) + 'px';
+                                        try {
+                                            console.log('[FIT-WORD shot=${e.id}] "' +
+                                                text.trim().slice(0, 22) + '" ' + Math.round(fsPx) +
+                                                'px -> ' + Math.round(fsPx * scale) + 'px');
+                                        } catch (_wl) {}
+                                    }
+                                } catch (_werr) { /* never break the shot */ }
+                            };
+
+                            // FRAME-FIT GUARD.
+                            // Nothing may render outside the 1920x1080 frame.
+                            // The shot pack's type scale is sized for a full
+                            // frame, so when the model spends it on a narrow
+                            // column (an h2 label inside a 420px card) the
+                            // column grows taller than the canvas and the last
+                            // line is simply cut off — 'HUMAN PARTICIPAT/ION'.
+                            // scrollWidth/scrollHeight are LAYOUT metrics: they
+                            // count content that overflows even under
+                            // overflow:hidden, and they ignore transforms, so an
+                            // element parked off-frame by its entrance
+                            // animation does not read as overflow here.
+                            //
+                            // The repair is a zoom-out, not a crop: the content
+                            // gets a LARGER canvas (frame / k) and is scaled
+                            // back down by k. Full-bleed layers still cover the
+                            // frame exactly, so there are no white gaps at the
+                            // edges, and the design keeps its proportions
+                            // instead of losing its last line.
+                            var __fitFrameSweep = function () {
+                                try {
+                                    var root = scope.querySelector('#shot-root');
+                                    if (!root) return;
+                                    if (root.firstElementChild &&
+                                        root.firstElementChild.getAttribute &&
+                                        root.firstElementChild.getAttribute('data-vx-fitframe')) return;
+                                    var cw = root.clientWidth, ch = root.clientHeight;
+                                    if (cw < 10 || ch < 10) return;
+                                    // VERTICAL overflow only. Horizontal bleed is
+                                    // almost always deliberate — a decorative ring
+                                    // parked at right:-5% inflates scrollWidth by
+                                    // exactly its bleed, and shrinking the whole
+                                    // shot to accommodate an ornament is worse than
+                                    // the ornament. Text that overruns its column
+                                    // horizontally is already handled by the
+                                    // fit-text sweep above.
+                                    var sh = root.scrollHeight;
+                                    if (sh - ch <= 8) return;
+                                    var k = ch / sh;
+                                    if (k >= 0.995) return;
+                                    // The wrapper becomes the children's new
+                                    // parent, so it must reproduce whatever layout
+                                    // role the root was playing. Skipping this
+                                    // silently drops the root's flex centering and
+                                    // padding: the content re-flows to the top-left
+                                    // and grows TALLER, which is worse than the
+                                    // overflow being repaired.
+                                    var rcs = getComputedStyle(root);
+                                    var wrap = document.createElement('div');
+                                    wrap.setAttribute('data-vx-fitframe', '1');
+                                    wrap.style.cssText =
+                                        'position:absolute;left:0;top:0;transform-origin:0 0;' +
+                                        'box-sizing:border-box;';
+                                    ['display', 'flexDirection', 'flexWrap', 'justifyContent',
+                                     'alignItems', 'alignContent', 'gap', 'rowGap', 'columnGap',
+                                     'gridTemplateColumns', 'gridTemplateRows', 'gridAutoFlow',
+                                     'padding', 'textAlign', 'perspective'].forEach(function (prop) {
+                                        try {
+                                            var v = rcs[prop];
+                                            if (v) wrap.style[prop] = v;
+                                        } catch (_cp) {}
+                                    });
+                                    // The root keeps painting its own background and
+                                    // border; the wrapper owns the padding now, so
+                                    // clear it on the root to avoid applying it twice.
+                                    root.style.padding = '0';
+                                    while (root.firstChild) wrap.appendChild(root.firstChild);
+                                    root.appendChild(wrap);
+                                    // Converge: a taller canvas does not shrink
+                                    // fixed-px cards, so one pass undershoots.
+                                    // Each pass re-measures in the canvas the
+                                    // previous one produced.
+                                    var applied = 1;
+                                    for (var pass = 0; pass < 4; pass++) {
+                                        // Never shrink past readability: below this
+                                        // a clipped frame is the lesser evil, and
+                                        // the overflow is a design bug worth seeing.
+                                        k = Math.max(0.62, k);
+                                        wrap.style.width = (cw / k) + 'px';
+                                        wrap.style.height = (ch / k) + 'px';
+                                        wrap.style.transform = 'scale(' + k + ')';
+                                        applied = k;
+                                        var innerH = wrap.clientHeight, innerScroll = wrap.scrollHeight;
+                                        if (innerScroll - innerH <= 8 || k <= 0.62) break;
+                                        k = k * (innerH / innerScroll);
+                                    }
+                                    try {
+                                        console.log('[FIT-FRAME shot=${e.id}] content height ' + sh +
+                                                    ' exceeded ' + ch + ' -> scale ' + applied.toFixed(3));
+                                    } catch (_fl) {}
+                                } catch (_ferr) { /* never break the shot */ }
+                            };
+
                             // CONTRAST AUTO-FIX.
                             // The brand palette is injected as CSS vars tuned for
                             // the run's page background (a light palette means
@@ -1353,13 +1508,17 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                             // applied before we measure.
                                             requestAnimationFrame(function () {
                                                 __fitTextSweep();
+                                                __fitWordsSweep();
                                                 __fixContrastSweep();
+                                                __fitFrameSweep();
                                             });
                                         });
                                     } else {
                                         requestAnimationFrame(function () {
                                             __fitTextSweep();
+                                            __fitWordsSweep();
                                             __fixContrastSweep();
+                                            __fitFrameSweep();
                                         });
                                     }
                                 } catch (_se) {

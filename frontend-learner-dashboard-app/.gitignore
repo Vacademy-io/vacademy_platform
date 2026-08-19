@@ -30,3 +30,10 @@ dist-ssr
 .env.development
 docker-compose.override.yml
 logs/
+
+# Mac App Store provisioning profile (per-Apple-account, never commit)
+electron/embedded.provisionprofile
+# Per-account signing material and store build output — never commit these.
+electron/embedded-zoe.provisionprofile
+electron/dist-mas
+electron/dist-mas-zoe

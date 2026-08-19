@@ -146,6 +146,55 @@ describe('Query types — built-in Doubt routing', () => {
         expect(savedType('DOUBT').assignee).toBeUndefined();
     });
 
+    it('keeps a teacher route AND adds named staff on top of it', async () => {
+        renderScreen();
+        await screen.findByText('Query types');
+
+        const card = typeCard('Doubt');
+        fireEvent.change(routeSelect('Doubt'), { target: { value: 'SUBJECT_TEACHER' } });
+
+        fireEvent.click(within(card).getByText('Staff…'));
+        fireEvent.click(await screen.findByText(/Asha Rao/));
+        fireEvent.click(await screen.findByText(/Vikram Shah/));
+
+        await save();
+        expect(savedType('DOUBT').assignee).toEqual({
+            source: 'SUBJECT_TEACHER',
+            also_user_ids: ['u-1', 'u-2'],
+        });
+    });
+
+    it('adds a role on top of the route without replacing it', async () => {
+        renderScreen();
+        await screen.findByText('Query types');
+
+        const card = typeCard('Technical Issue');
+        fireEvent.click(within(card).getByText('Roles…'));
+        // Scope to the popover — the card's ROLE <select> also carries an "ADMIN" option.
+        fireEvent.click(within(await screen.findByRole('listbox')).getByText('ADMIN'));
+
+        await save();
+        expect(savedType('TECHNICAL').assignee).toMatchObject({
+            source: 'ROLE',
+            also_roles: ['ADMIN'],
+        });
+    });
+
+    it('additive handlers survive switching the route back to the default', async () => {
+        renderScreen();
+        await screen.findByText('Query types');
+
+        const card = typeCard('Doubt');
+        fireEvent.click(within(card).getByText('Staff…'));
+        fireEvent.click(await screen.findByText(/Asha Rao/));
+        fireEvent.change(routeSelect('Doubt'), { target: { value: 'BATCH_TEACHER' } });
+        fireEvent.change(routeSelect('Doubt'), { target: { value: 'DEFAULT' } });
+
+        await save();
+        // No source override, but the named handler still rides on the institute default.
+        expect(savedType('DOUBT').assignee).toEqual({ also_user_ids: ['u-1'] });
+    });
+
     it('offers the staff picker on the Doubt type and saves the picked handlers', async () => {
         renderScreen();
         await screen.findByText('Query types');

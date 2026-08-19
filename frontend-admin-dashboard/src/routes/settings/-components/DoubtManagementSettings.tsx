@@ -31,9 +31,14 @@ type QueryTypeAssigneeSource =
     | 'NONE';
 
 interface QueryTypeAssignee {
-    source: QueryTypeAssigneeSource;
+    /** Absent = no override; the institute-wide "Default auto-assignment" is the base. */
+    source?: QueryTypeAssigneeSource;
     role?: string | null;
     user_ids?: string[];
+    /** Roles assigned IN ADDITION to whatever `source` resolves to. */
+    also_roles?: string[];
+    /** Staff assigned IN ADDITION to whatever `source` resolves to. */
+    also_user_ids?: string[];
 }
 
 interface QueryTypeConfig {
@@ -146,6 +151,8 @@ const DEFAULT_QUERY_TYPES: QueryTypeConfig[] = [
 // Roles offered when a type routes by ROLE.
 const ROLE_OPTIONS = ['ADMIN', 'TEACHER', 'EVALUATOR', 'CONTENT CREATOR', 'ASSESSMENT CREATOR'];
 
+const ROLE_CHIP_OPTIONS = ROLE_OPTIONS.map((r) => ({ label: r, value: r }));
+
 /**
  * Frontend-only sentinel for "no per-type override" — the type defers to the institute-wide
  * "Default auto-assignment" radio above. It is never persisted as a source string: picking it
@@ -163,6 +170,24 @@ const ASSIGNEE_SOURCE_OPTIONS: { value: RouteSelectValue; label: string }[] = [
     { value: 'SPECIFIC_USERS', label: 'Specific staff' },
     { value: 'NONE', label: 'No one (no notifications sent)' },
 ];
+
+/**
+ * Strips empty additive arrays and collapses an assignee that no longer says anything to
+ * `undefined`. Sending `also_user_ids: []` would be harmless but writes noise into every institute's
+ * settings blob, and an assignee of `{}` reads as "configured" while behaving as "not configured".
+ */
+const normalizeAssignee = (assignee: QueryTypeAssignee | null | undefined) => {
+    if (!assignee) return undefined;
+    const alsoRoles = (assignee.also_roles ?? []).filter(Boolean);
+    const alsoUsers = (assignee.also_user_ids ?? []).filter(Boolean);
+    const next: QueryTypeAssignee = { ...assignee };
+    delete next.also_roles;
+    delete next.also_user_ids;
+    if (alsoRoles.length) next.also_roles = alsoRoles;
+    if (alsoUsers.length) next.also_user_ids = alsoUsers;
+    if (!next.source && !next.also_roles && !next.also_user_ids) return undefined;
+    return next;
+};
 
 /** UPPER_SNAKE slug used as a stable type key when the admin adds a new type. */
 const slugifyKey = (label: string): string =>
@@ -468,10 +493,10 @@ export default function DoubtManagementSettings() {
                 ...t,
                 key,
                 label: label || t.label,
-                // Every type — the built-in DOUBT included — may carry its own routing. A null
-                // assignee means the admin chose "Default auto-assignment", so it's dropped from
-                // the payload and the backend keeps falling back to default_assignee_source.
-                assignee: t.assignee ?? undefined,
+                // Every type — the built-in DOUBT included — may carry its own routing. An
+                // assignee that says nothing (no source, no additive handlers) is dropped so the
+                // backend keeps falling back to default_assignee_source for that type.
+                assignee: normalizeAssignee(t.assignee),
             });
         }
         save({ ...settings, query_types: normalizedTypes });
@@ -957,6 +982,11 @@ function QueryTypesCard({
                     {types.map((t, i) => {
                         const source: RouteSelectValue = t.assignee?.source ?? INHERIT_DEFAULT;
                         const pickedStaff = t.assignee?.user_ids ?? [];
+                        const alsoStaff = t.assignee?.also_user_ids ?? [];
+                        const alsoRoles = t.assignee?.also_roles ?? [];
+                        // With SPECIFIC_USERS the base list already IS a staff picker; a second one
+                        // would just be two lists doing the same job.
+                        const showAlsoStaff = source !== 'SPECIFIC_USERS';
                         return (
                             <div
                                 key={i}
@@ -1019,9 +1049,17 @@ function QueryTypesCard({
                                         onChange={(e) => {
                                             const next = e.target.value as RouteSelectValue;
                                             // The sentinel isn't a source — clear the override so
-                                            // the type falls back to the global default again.
+                                            // the type falls back to the global default again,
+                                            // keeping any additive handlers on top of it.
                                             if (next === INHERIT_DEFAULT) {
-                                                onUpdate(i, { assignee: null });
+                                                const keep =
+                                                    alsoRoles.length || alsoStaff.length
+                                                        ? {
+                                                              also_roles: alsoRoles,
+                                                              also_user_ids: alsoStaff,
+                                                          }
+                                                        : null;
+                                                onUpdate(i, { assignee: keep });
                                                 return;
                                             }
                                             onUpdate(i, {
@@ -1127,6 +1165,66 @@ function QueryTypesCard({
                                         ) : null}
                                     </div>
                                 )}
+
+                                <div className="space-y-2 rounded-md bg-neutral-50 p-2">
+                                    <span className="text-xs font-semibold text-neutral-600">
+                                        Also always assign
+                                    </span>
+                                    <p className="text-xs text-neutral-500">
+                                        Added on top of “Route to” — pick a teacher route and still
+                                        keep these people on every query of this type.
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <SelectChips
+                                            placeholder="Roles…"
+                                            options={ROLE_CHIP_OPTIONS}
+                                            selected={ROLE_CHIP_OPTIONS.filter((o) =>
+                                                alsoRoles.includes(o.value)
+                                            )}
+                                            onChange={(picked) =>
+                                                onUpdate(i, {
+                                                    assignee: {
+                                                        ...t.assignee,
+                                                        also_roles: picked.map((p) => p.value),
+                                                    },
+                                                })
+                                            }
+                                            multiSelect={true}
+                                            hasClearFilter={true}
+                                            className="min-w-44"
+                                        />
+                                        {showAlsoStaff && (
+                                            <SelectChips
+                                                placeholder="Staff…"
+                                                options={assigneeOptions}
+                                                selected={assigneeOptions.filter((o) =>
+                                                    alsoStaff.includes(o.value)
+                                                )}
+                                                onChange={(picked) =>
+                                                    onUpdate(i, {
+                                                        assignee: {
+                                                            ...t.assignee,
+                                                            // Keep ids that aren't in the loaded
+                                                            // staff page so they aren't dropped.
+                                                            also_user_ids: [
+                                                                ...picked.map((p) => p.value),
+                                                                ...alsoStaff.filter(
+                                                                    (id) =>
+                                                                        !assigneeOptions.some(
+                                                                            (o) => o.value === id
+                                                                        )
+                                                                ),
+                                                            ],
+                                                        },
+                                                    })
+                                                }
+                                                multiSelect={true}
+                                                hasClearFilter={true}
+                                                className="min-w-60"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         );
                     })}

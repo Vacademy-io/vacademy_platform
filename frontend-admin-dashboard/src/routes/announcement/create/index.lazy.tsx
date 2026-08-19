@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Eye, PaperPlaneTilt } from '@phosphor-icons/react';
+import { Eye, ListChecks, PaperPlaneTilt } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
+import { MyDialog } from '@/components/design-system/dialog';
 import { AnnouncementService, type MediumType, type ModeType } from '@/services/announcement';
 import { getUserId, getUserName } from '@/utils/userDetails';
 import {
@@ -12,7 +13,6 @@ import {
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { WizardRail } from './-components/WizardRail';
 import { PreviewRail } from './-components/PreviewRail';
 import { IssueSummary } from './-components/primitives';
 import { BasicInfoStep } from './-components/steps/BasicInfoStep';
@@ -21,10 +21,10 @@ import { DisplayLocationsStep } from './-components/steps/DisplayLocationsStep';
 import { DeliveryStep } from './-components/steps/DeliveryStep';
 import { ReviewStep } from './-components/steps/ReviewStep';
 import { useAnnouncementDraft } from './-hooks/useAnnouncementDraft';
-import { ANNOUNCEMENT_PRESETS, WIZARD_STEPS, defaultModeSettings } from './-utils/constants';
-import { mergeErrors, validateAll, validateStep } from './-utils/validation';
+import { ANNOUNCEMENT_PRESETS, FORM_SECTIONS, defaultModeSettings } from './-utils/constants';
+import { mergeErrors, validateAll } from './-utils/validation';
 import { buildCreatePayload, expandRecipients, interpretApiError } from './-utils/payload';
-import type { FieldErrors, WizardStepId } from './-types';
+import type { FieldErrors, FormSectionId } from './-types';
 
 export const Route = createLazyFileRoute('/announcement/create/')({
     component: () => (
@@ -39,19 +39,27 @@ export const Route = createLazyFileRoute('/announcement/create/')({
     ),
 });
 
+/** Anchors so the review summary's "Edit" links can jump to the right section. */
+const SECTION_ID: Record<FormSectionId, string> = {
+    basics: 'announcement-basics',
+    recipients: 'announcement-recipients',
+    placements: 'announcement-placements',
+    delivery: 'announcement-delivery',
+    review: 'announcement-basics',
+};
+
 function CreateAnnouncementPage() {
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
     const draft = useAnnouncementDraft();
 
-    const [step, setStep] = useState<WizardStepId>('basics');
-    const [visited, setVisited] = useState<Set<WizardStepId>>(new Set(['basics']));
-    /** Steps the user has tried to leave — only these show blocking errors. */
-    const [attempted, setAttempted] = useState<Set<WizardStepId>>(new Set());
     const [contentView, setContentView] = useState<'editor' | 'source'>('editor');
     const [submitting, setSubmitting] = useState(false);
+    /** Errors stay hidden until the first create attempt, so a fresh form isn't a wall of red. */
+    const [attempted, setAttempted] = useState(false);
     const [serverErrors, setServerErrors] = useState<FieldErrors>({});
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [reviewOpen, setReviewOpen] = useState(false);
 
     useEffect(() => {
         setNavHeading('Create Announcement');
@@ -114,57 +122,39 @@ function CreateAnnouncementPage() {
     );
 
     const validation = useMemo(() => validateAll(validationInput), [validationInput]);
-    const currentValidation = useMemo(
-        () => validateStep(step, validationInput),
-        [step, validationInput]
-    );
 
     const errors = useMemo<FieldErrors>(
         () => ({ ...mergeErrors(validation), ...serverErrors }),
         [validation, serverErrors]
     );
 
-    const issues = useMemo(
+    /** Every blocker on the page, in section order, so the summary reads top to bottom. */
+    const blockers = useMemo(
         () =>
-            WIZARD_STEPS.reduce<Record<WizardStepId, number>>(
-                (acc, definition) => {
-                    acc[definition.id] = validation[definition.id].blockers.length;
-                    return acc;
-                },
-                {} as Record<WizardStepId, number>
+            FORM_SECTIONS.filter((definition) => definition.id !== 'review').flatMap(
+                (definition) => validation[definition.id].blockers
             ),
         [validation]
     );
 
-    const totalBlockers = Object.values(issues).reduce((sum, count) => sum + count, 0);
+    const warnings = useMemo(
+        () =>
+            FORM_SECTIONS.filter((definition) => definition.id !== 'review').flatMap(
+                (definition) => validation[definition.id].warnings
+            ),
+        [validation]
+    );
 
-    // ------------------------------------------------------------------ navigation
-    const goToStep = useCallback((next: WizardStepId) => {
-        setStep(next);
-        setVisited((prev) => new Set(prev).add(next));
-        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    /** Has the user actually begun filling this in? Gates the advisory notes. */
+    const started = draft.title.trim().length > 0 || draft.contentText.trim().length > 0;
+
+    const scrollToSection = useCallback((section: FormSectionId) => {
+        setReviewOpen(false);
+        if (typeof document === 'undefined') return;
+        document
+            .getElementById(SECTION_ID[section])
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, []);
-
-    const stepIndex = WIZARD_STEPS.findIndex((definition) => definition.id === step);
-
-    const handleNext = () => {
-        setAttempted((prev) => new Set(prev).add(step));
-        if (currentValidation.blockers.length > 0) {
-            toast.error(
-                currentValidation.blockers.length === 1
-                    ? currentValidation.blockers[0]
-                    : `${currentValidation.blockers.length} things need fixing on this step.`
-            );
-            return;
-        }
-        const next = WIZARD_STEPS[stepIndex + 1];
-        if (next) goToStep(next.id);
-    };
-
-    const handleBack = () => {
-        const previous = WIZARD_STEPS[stepIndex - 1];
-        if (previous) goToStep(previous.id);
-    };
 
     // ------------------------------------------------------------------ presets
     const applyPreset = (presetId: 'GENERAL' | 'PINNED') => {
@@ -182,27 +172,29 @@ function CreateAnnouncementPage() {
     };
 
     // ------------------------------------------------------------------ submit
-    const recipientsPreview = useMemo(
+    const tagNameById = useMemo(
         () =>
-            expandRecipients(
-                draft.rules,
-                draft.batchById,
-                Object.fromEntries(Object.entries(draft.tagById).map(([id, t]) => [id, t.tagName]))
-            ),
-        [draft.rules, draft.batchById, draft.tagById]
+            Object.fromEntries(Object.entries(draft.tagById).map(([id, tag]) => [id, tag.tagName])),
+        [draft.tagById]
+    );
+
+    const recipientsPreview = useMemo(
+        () => expandRecipients(draft.rules, draft.batchById, tagNameById),
+        [draft.rules, draft.batchById, tagNameById]
     );
 
     const handleCreate = async () => {
-        setAttempted(new Set(WIZARD_STEPS.map((definition) => definition.id)));
+        setAttempted(true);
         setServerErrors({});
 
-        const firstBrokenStep = WIZARD_STEPS.find(
-            (definition) => validation[definition.id].blockers.length > 0
-        );
-        if (firstBrokenStep) {
-            goToStep(firstBrokenStep.id);
+        if (blockers.length > 0) {
+            const firstBroken = FORM_SECTIONS.find(
+                (definition) =>
+                    definition.id !== 'review' && validation[definition.id].blockers.length > 0
+            );
+            if (firstBroken) scrollToSection(firstBroken.id);
             toast.error(
-                `Fix ${totalBlockers} ${totalBlockers === 1 ? 'issue' : 'issues'} before creating this announcement.`
+                `Fix ${blockers.length} ${blockers.length === 1 ? 'issue' : 'issues'} before creating this announcement.`
             );
             return;
         }
@@ -218,9 +210,7 @@ function CreateAnnouncementPage() {
                 createdByRole: draft.primaryRole,
                 rules: draft.rules,
                 batchById: draft.batchById,
-                tagNameById: Object.fromEntries(
-                    Object.entries(draft.tagById).map(([id, tag]) => [id, tag.tagName])
-                ),
+                tagNameById,
                 modes: draft.modes,
                 modeSettings: draft.modeSettings,
                 mediums: draft.mediums,
@@ -246,7 +236,7 @@ function CreateAnnouncementPage() {
             const failure = interpretApiError(err);
             setServerErrors(failure.fieldErrors);
             toast.error(failure.message);
-            if (failure.step) goToStep(failure.step);
+            if (failure.section) scrollToSection(failure.section);
         } finally {
             setSubmitting(false);
         }
@@ -277,26 +267,42 @@ function CreateAnnouncementPage() {
         draft.rules.length,
     ]);
 
-    const showErrors = attempted.has(step);
+    const reviewSummary = (
+        <ReviewStep
+            title={draft.title}
+            previewText={draft.previewText}
+            contentText={draft.contentText}
+            rules={draft.rules}
+            batchById={draft.batchById}
+            tagNameById={tagNameById}
+            recipients={recipientsPreview}
+            modes={draft.modes}
+            mediums={draft.mediums}
+            emailSenderLabel={emailSenderLabel}
+            whatsappTemplateName={draft.whatsapp.templateName}
+            scheduleType={draft.scheduleType}
+            timezone={draft.timezone}
+            oneTimeStart={draft.oneTimeStart}
+            cronExpression={draft.cronExpression}
+            batchNounPlural={batchNounPlural}
+            onEditSection={scrollToSection}
+        />
+    );
 
     return (
         <div className="flex min-h-full flex-1 flex-col">
-            {/* Deliberately not sticky: the app navbar is already `sticky top-0 z-50`, so anything
-                pinned here would scroll underneath it. The footer bar carries the step indicator. */}
-            <div className="border-b bg-card px-4 py-3 sm:px-6">
-                <WizardRail current={step} visited={visited} issues={issues} onSelect={goToStep} />
-            </div>
-
             <div className="flex-1 px-4 py-6 sm:px-6">
                 <div className="mx-auto grid w-full max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
                     <div className="min-w-0 space-y-6">
+                        {/* A pristine form shouldn't greet the user with advice about content
+                            they haven't written yet. */}
                         <IssueSummary
-                            blockers={currentValidation.blockers}
-                            warnings={currentValidation.warnings}
-                            showBlockers={showErrors}
+                            blockers={blockers}
+                            warnings={started || attempted ? warnings : []}
+                            showBlockers={attempted}
                         />
 
-                        {step === 'basics' && (
+                        <section id={SECTION_ID.basics} className="scroll-mt-24">
                             <BasicInfoStep
                                 title={draft.title}
                                 onTitleChange={draft.setTitle}
@@ -310,11 +316,11 @@ function CreateAnnouncementPage() {
                                 mediums={draft.mediums}
                                 onApplyPreset={applyPreset}
                                 errors={errors}
-                                showErrors={showErrors}
+                                showErrors={attempted}
                             />
-                        )}
+                        </section>
 
-                        {step === 'recipients' && (
+                        <section id={SECTION_ID.recipients} className="scroll-mt-24">
                             <RecipientsStep
                                 rules={draft.rules}
                                 onAddRule={draft.addRule}
@@ -338,11 +344,11 @@ function CreateAnnouncementPage() {
                                 tagReach={draft.tagReach}
                                 tagReachLoading={draft.tagReachLoading}
                                 errors={errors}
-                                showErrors={showErrors}
+                                showErrors={attempted}
                             />
-                        )}
+                        </section>
 
-                        {step === 'placements' && (
+                        <section id={SECTION_ID.placements} className="scroll-mt-24">
                             <DisplayLocationsStep
                                 modes={draft.modes}
                                 modeSettings={draft.modeSettings}
@@ -351,11 +357,11 @@ function CreateAnnouncementPage() {
                                 onToggle={draft.toggleMode}
                                 onSettingsChange={draft.updateModeSettings}
                                 errors={errors}
-                                showErrors={showErrors}
+                                showErrors={attempted}
                             />
-                        )}
+                        </section>
 
-                        {step === 'delivery' && (
+                        <section id={SECTION_ID.delivery} className="scroll-mt-24">
                             <DeliveryStep
                                 mediums={draft.mediums}
                                 onToggleMedium={draft.toggleMedium}
@@ -402,36 +408,9 @@ function CreateAnnouncementPage() {
                                 cronExpression={draft.cronExpression}
                                 onCronExpressionChange={draft.setCronExpression}
                                 errors={errors}
-                                showErrors={showErrors}
+                                showErrors={attempted}
                             />
-                        )}
-
-                        {step === 'review' && (
-                            <ReviewStep
-                                title={draft.title}
-                                previewText={draft.previewText}
-                                contentText={draft.contentText}
-                                rules={draft.rules}
-                                batchById={draft.batchById}
-                                tagNameById={Object.fromEntries(
-                                    Object.entries(draft.tagById).map(([id, tag]) => [
-                                        id,
-                                        tag.tagName,
-                                    ])
-                                )}
-                                recipients={recipientsPreview}
-                                modes={draft.modes}
-                                mediums={draft.mediums}
-                                emailSenderLabel={emailSenderLabel}
-                                whatsappTemplateName={draft.whatsapp.templateName}
-                                scheduleType={draft.scheduleType}
-                                timezone={draft.timezone}
-                                oneTimeStart={draft.oneTimeStart}
-                                cronExpression={draft.cronExpression}
-                                batchNounPlural={batchNounPlural}
-                                onEditStep={goToStep}
-                            />
-                        )}
+                        </section>
                     </div>
 
                     {/* Always mounted so the footer's Preview button can open the dialog on
@@ -461,56 +440,74 @@ function CreateAnnouncementPage() {
             </div>
 
             <div className="sticky bottom-0 z-20 border-t bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-                <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3">
+                <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-end gap-3">
+                    <MyButton
+                        buttonType="text"
+                        scale="small"
+                        className="xl:hidden"
+                        onClick={() => setPreviewOpen(true)}
+                    >
+                        <Eye className="mr-1 size-4" />
+                        Preview
+                    </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
-                        onClick={handleBack}
-                        disable={stepIndex === 0 || submitting}
+                        onClick={() => setReviewOpen(true)}
+                        disable={submitting}
                     >
-                        <ArrowLeft className="mr-1 size-4" />
-                        Back
+                        <ListChecks className="mr-1 size-4" />
+                        Review
                     </MyButton>
-
-                    <div className="flex items-center gap-3">
-                        <p className="hidden text-caption text-muted-foreground sm:block">
-                            Step {stepIndex + 1} of {WIZARD_STEPS.length} ·{' '}
-                            {WIZARD_STEPS[stepIndex]?.title}
-                        </p>
-                        <MyButton
-                            buttonType="text"
-                            scale="small"
-                            className="xl:hidden"
-                            onClick={() => setPreviewOpen(true)}
-                        >
-                            <Eye className="mr-1 size-4" />
-                            Preview
-                        </MyButton>
-                    </div>
-
-                    {step === 'review' ? (
-                        <MyButton
-                            buttonType="primary"
-                            scale="large"
-                            onClick={handleCreate}
-                            disable={submitting}
-                            loadingText="Creating…"
-                        >
-                            <PaperPlaneTilt className="mr-1 size-4" />
-                            {submitting
-                                ? 'Creating…'
-                                : draft.scheduleType === 'IMMEDIATE'
-                                  ? 'Create and send'
-                                  : 'Schedule announcement'}
-                        </MyButton>
-                    ) : (
-                        <MyButton buttonType="primary" scale="medium" onClick={handleNext}>
-                            Continue
-                            <ArrowRight className="ml-1 size-4" />
-                        </MyButton>
-                    )}
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={handleCreate}
+                        disable={submitting}
+                        loadingText="Creating…"
+                    >
+                        <PaperPlaneTilt className="mr-1 size-4" />
+                        {submitting
+                            ? 'Creating…'
+                            : draft.scheduleType === 'IMMEDIATE'
+                              ? 'Create and send'
+                              : 'Schedule announcement'}
+                    </MyButton>
                 </div>
             </div>
+
+            <MyDialog
+                heading="Review announcement"
+                open={reviewOpen}
+                onOpenChange={setReviewOpen}
+                dialogWidth="max-w-3xl"
+                footer={
+                    <>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={() => setReviewOpen(false)}
+                        >
+                            Keep editing
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            disable={submitting}
+                            onClick={() => {
+                                setReviewOpen(false);
+                                void handleCreate();
+                            }}
+                        >
+                            {draft.scheduleType === 'IMMEDIATE'
+                                ? 'Create and send'
+                                : 'Schedule announcement'}
+                        </MyButton>
+                    </>
+                }
+            >
+                {reviewSummary}
+            </MyDialog>
         </div>
     );
 }

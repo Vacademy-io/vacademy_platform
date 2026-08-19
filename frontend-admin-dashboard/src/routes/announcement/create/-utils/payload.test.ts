@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCreatePayload, expandRecipients, interpretApiError } from './payload';
-import { validateStep } from './validation';
+import { validateSection } from './validation';
 import type { AudienceRule, BatchOption, WhatsAppConfig } from '../-types';
 import type { WhatsAppTemplateDTO } from '@/routes/communication/whatsapp-templates/-services/template-api';
 
@@ -221,7 +221,7 @@ describe('buildCreatePayload — scheduling', () => {
     });
 });
 
-describe('validateStep', () => {
+describe('validateSection', () => {
     const input = {
         title: 'Hi',
         htmlContent: '<p>Body</p>',
@@ -243,11 +243,11 @@ describe('validateStep', () => {
     };
 
     it('blocks an empty audience', () => {
-        expect(validateStep('recipients', input).blockers).toHaveLength(1);
+        expect(validateSection('recipients', input).blockers).toHaveLength(1);
     });
 
     it('blocks a batch rule with no batch selected', () => {
-        const result = validateStep('recipients', {
+        const result = validateSection('recipients', {
             ...input,
             rules: [rule({ key: 'r1', type: 'PACKAGE_SESSION' })],
         });
@@ -255,7 +255,7 @@ describe('validateStep', () => {
     });
 
     it('requires a sub-organisation role when an org batch is selected', () => {
-        const result = validateStep('recipients', {
+        const result = validateSection('recipients', {
             ...input,
             rules: [rule({ key: 'r1', type: 'PACKAGE_SESSION', packageSessionIds: ['org'] })],
             batchById: { org: batch('org', true) },
@@ -264,7 +264,7 @@ describe('validateStep', () => {
     });
 
     it('requires a media URL for a media-header WhatsApp template', () => {
-        const result = validateStep('delivery', {
+        const result = validateSection('delivery', {
             ...input,
             mediums: ['WHATSAPP'] as never,
             selectedWaTemplate: template,
@@ -274,7 +274,7 @@ describe('validateStep', () => {
     });
 
     it('requires custom text when a variable is bound to “Custom”', () => {
-        const result = validateStep('delivery', {
+        const result = validateSection('delivery', {
             ...input,
             mediums: ['WHATSAPP'] as never,
             selectedWaTemplate: template,
@@ -291,7 +291,7 @@ describe('validateStep', () => {
 });
 
 describe('interpretApiError', () => {
-    it('maps a scheduling field error onto the delivery step', () => {
+    it('maps a scheduling field error onto the delivery section', () => {
         const failure = interpretApiError({
             response: {
                 status: 400,
@@ -299,7 +299,7 @@ describe('interpretApiError', () => {
             },
         });
         expect(failure.fieldErrors['schedule.startDate']).toBe('Must be future');
-        expect(failure.step).toBe('delivery');
+        expect(failure.section).toBe('delivery');
     });
 
     it('explains a permission failure rather than showing a bare status', () => {

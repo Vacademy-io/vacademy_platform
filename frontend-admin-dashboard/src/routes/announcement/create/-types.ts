@@ -108,18 +108,18 @@ export interface WhatsAppConfig {
     variables: Record<string, WhatsAppVariableBinding>;
 }
 
-export interface StepDefinition {
-    id: WizardStepId;
+export interface SectionDefinition {
+    id: FormSectionId;
     title: string;
     caption: string;
 }
 
-export type WizardStepId = 'basics' | 'recipients' | 'placements' | 'delivery' | 'review';
+export type FormSectionId = 'basics' | 'recipients' | 'placements' | 'delivery' | 'review';
 
 /** Field-level errors keyed by a dotted path, e.g. `whatsapp.template` or `rule.<key>.batches`. */
 export type FieldErrors = Record<string, string>;
 
-export interface StepValidation {
+export interface SectionValidation {
     /** Field errors produced by this step, keyed by path. */
     errors: FieldErrors;
     /** Human-readable blockers, shown in the step's error summary. */

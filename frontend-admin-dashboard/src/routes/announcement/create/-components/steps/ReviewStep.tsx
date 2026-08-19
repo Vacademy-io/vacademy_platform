@@ -4,7 +4,7 @@ import type { MediumType, ModeType } from '@/services/announcement';
 import type { CreateAnnouncementRequest } from '@/services/announcement';
 import { MEDIUM_META, MODE_META } from '../../-utils/constants';
 import { SectionCard, SummaryRow } from '../primitives';
-import type { AudienceRule, BatchOption, ScheduleType, WizardStepId } from '../../-types';
+import type { AudienceRule, BatchOption, ScheduleType, FormSectionId } from '../../-types';
 
 interface ReviewStepProps {
     title: string;
@@ -23,7 +23,7 @@ interface ReviewStepProps {
     oneTimeStart: string;
     cronExpression: string;
     batchNounPlural: string;
-    onEditStep: (step: WizardStepId) => void;
+    onEditSection: (step: FormSectionId) => void;
 }
 
 const Chip = ({ children }: { children: React.ReactNode }) => (
@@ -81,8 +81,8 @@ export function ReviewStep(props: ReviewStepProps) {
               ? `${props.oneTimeStart.replace('T', ', ') || '—'} (${props.timezone})`
               : `Repeating — ${props.cronExpression || '—'} (${props.timezone})`;
 
-    const EditButton = ({ step }: { step: WizardStepId }) => (
-        <MyButton buttonType="text" scale="small" onClick={() => props.onEditStep(step)}>
+    const EditButton = ({ step }: { step: FormSectionId }) => (
+        <MyButton buttonType="text" scale="small" onClick={() => props.onEditSection(step)}>
             <PencilSimple className="mr-1 size-4" />
             Edit
         </MyButton>

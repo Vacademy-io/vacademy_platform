@@ -8,14 +8,14 @@ import type {
     ModeSettings,
     PushConfig,
     ScheduleType,
-    StepValidation,
+    SectionValidation,
     WhatsAppConfig,
-    WizardStepId,
+    FormSectionId,
 } from '../-types';
 
-const empty = (): StepValidation => ({ errors: {}, blockers: [], warnings: [] });
+const empty = (): SectionValidation => ({ errors: {}, blockers: [], warnings: [] });
 
-const add = (v: StepValidation, path: string, message: string) => {
+const add = (v: SectionValidation, path: string, message: string) => {
     v.errors[path] = message;
     v.blockers.push(message);
 };
@@ -64,7 +64,7 @@ export function whatsAppHeaderKind(
 const hasNonTextContent = (html: string) =>
     /<(img|video|iframe|table|hr|embed|picture)\b/i.test(html);
 
-function validateBasics(input: ValidationInput): StepValidation {
+function validateBasics(input: ValidationInput): SectionValidation {
     const v = empty();
     if (!input.title.trim()) add(v, 'title', 'Give the announcement a title.');
     // Matches the backend's @Size(max = 500) so the user is stopped here rather than by a 400.
@@ -80,7 +80,7 @@ function validateBasics(input: ValidationInput): StepValidation {
     return v;
 }
 
-function validateRecipients(input: ValidationInput): StepValidation {
+function validateRecipients(input: ValidationInput): SectionValidation {
     const v = empty();
     if (input.rules.length === 0) {
         add(v, 'recipients', 'Add at least one audience — nobody receives this yet.');
@@ -154,7 +154,7 @@ function validateRecipients(input: ValidationInput): StepValidation {
     return v;
 }
 
-function validateModeSettings(mode: ModeType, settings: ModeSettings, v: StepValidation): void {
+function validateModeSettings(mode: ModeType, settings: ModeSettings, v: SectionValidation): void {
     const path = `modes.${mode}`;
     switch (mode) {
         case 'SYSTEM_ALERT':
@@ -213,7 +213,7 @@ function validateModeSettings(mode: ModeType, settings: ModeSettings, v: StepVal
     }
 }
 
-function validatePlacements(input: ValidationInput): StepValidation {
+function validatePlacements(input: ValidationInput): SectionValidation {
     const v = empty();
     if (input.modes.length === 0) {
         add(v, 'modes', 'Choose at least one place for this announcement to appear.');
@@ -223,7 +223,7 @@ function validatePlacements(input: ValidationInput): StepValidation {
     return v;
 }
 
-function validateDelivery(input: ValidationInput): StepValidation {
+function validateDelivery(input: ValidationInput): SectionValidation {
     const v = empty();
 
     if (input.mediums.length === 0) {
@@ -306,7 +306,7 @@ function validateDelivery(input: ValidationInput): StepValidation {
     return v;
 }
 
-export function validateStep(step: WizardStepId, input: ValidationInput): StepValidation {
+export function validateSection(step: FormSectionId, input: ValidationInput): SectionValidation {
     switch (step) {
         case 'basics':
             return validateBasics(input);
@@ -318,8 +318,8 @@ export function validateStep(step: WizardStepId, input: ValidationInput): StepVa
             return validateDelivery(input);
         case 'review': {
             const merged = empty();
-            (['basics', 'recipients', 'placements', 'delivery'] as WizardStepId[]).forEach((s) => {
-                const result = validateStep(s, input);
+            (['basics', 'recipients', 'placements', 'delivery'] as FormSectionId[]).forEach((s) => {
+                const result = validateSection(s, input);
                 Object.assign(merged.errors, result.errors);
                 merged.blockers.push(...result.blockers);
                 merged.warnings.push(...result.warnings);
@@ -331,17 +331,17 @@ export function validateStep(step: WizardStepId, input: ValidationInput): StepVa
     }
 }
 
-export function validateAll(input: ValidationInput): Record<WizardStepId, StepValidation> {
+export function validateAll(input: ValidationInput): Record<FormSectionId, SectionValidation> {
     return {
-        basics: validateStep('basics', input),
-        recipients: validateStep('recipients', input),
-        placements: validateStep('placements', input),
-        delivery: validateStep('delivery', input),
+        basics: validateSection('basics', input),
+        recipients: validateSection('recipients', input),
+        placements: validateSection('placements', input),
+        delivery: validateSection('delivery', input),
         review: { errors: {}, blockers: [], warnings: [] },
     };
 }
 
-export function mergeErrors(map: Record<WizardStepId, StepValidation>): FieldErrors {
+export function mergeErrors(map: Record<FormSectionId, SectionValidation>): FieldErrors {
     return Object.values(map).reduce<FieldErrors>(
         (acc, step) => Object.assign(acc, step.errors),
         {}

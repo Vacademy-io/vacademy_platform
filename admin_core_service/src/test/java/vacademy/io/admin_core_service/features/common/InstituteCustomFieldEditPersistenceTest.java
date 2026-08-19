@@ -229,4 +229,41 @@ class InstituteCustomFieldEditPersistenceTest {
         assertEquals(0, mappings.getValue().get(0).getIndividualOrder(),
                 "the per-form position is the mapping's individual_order");
     }
+
+    @Test
+    void aShreddedOptionListNeverOverwritesTheStoredOptions() {
+        String options = "[{\"id\":1,\"value\":\"SOCIAL MEDIA\",\"label\":\"SOCIAL MEDIA\"},"
+                + "{\"id\":2,\"value\":\"WEBSITE\",\"label\":\"WEBSITE\"}]";
+        CustomFields master = masterField("MULTI_SELECT", options);
+        stubExistingRows(master, existingMapping());
+
+        // What a client that comma-split `options` sends back: each shard of the JSON
+        // offered up as an option of its own. On 19 Aug 2026 this reached the DB and
+        // turned Vasco Maritime's public lead form into a wall of `[{"id":1` checkboxes.
+        String shredded = "[{\"id\":1,\"value\":\"[{\\\"id\\\":1\",\"label\":\"[{\\\"id\\\":1\"},"
+                + "{\"id\":2,\"value\":\"\\\"value\\\":\\\"SOCIAL MEDIA\\\"\","
+                + "\"label\":\"\\\"value\\\":\\\"SOCIAL MEDIA\\\"\"}]";
+        service.addOrUpdateCustomField(List.of(editDto(editedField("MULTI_SELECT", shredded), 0)));
+
+        ArgumentCaptor<CustomFields> saved = ArgumentCaptor.forClass(CustomFields.class);
+        verify(customFieldRepository).save(saved.capture());
+        assertEquals(options, saved.getValue().getConfig(),
+                "shards carry nothing the stored config does not already hold");
+    }
+
+    @Test
+    void anOrdinaryOptionListStillSaves() {
+        CustomFields master = masterField("DROPDOWN", "[{\"id\":1,\"value\":\"A\",\"label\":\"A\"}]");
+        stubExistingRows(master, existingMapping());
+
+        // Guarding against shards must not block a real edit — including labels that
+        // merely contain punctuation the shard check looks for.
+        String edited = "[{\"id\":1,\"value\":\"A\",\"label\":\"A\"},"
+                + "{\"id\":2,\"value\":\"Other: {please specify}\",\"label\":\"Other: {please specify}\"}]";
+        service.addOrUpdateCustomField(List.of(editDto(editedField("DROPDOWN", edited), 0)));
+
+        ArgumentCaptor<CustomFields> saved = ArgumentCaptor.forClass(CustomFields.class);
+        verify(customFieldRepository).save(saved.capture());
+        assertEquals(edited, saved.getValue().getConfig());
+    }
 }

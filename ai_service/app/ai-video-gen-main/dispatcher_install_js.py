@@ -1205,9 +1205,28 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                     for (var i = 0; i < media.length; i++) {
                                         var mr = media[i].getBoundingClientRect();
                                         if ((mr.width * mr.height) / area >= 0.6) return media[i];
+                                        // A hero video that has not loaded yet measures 0x0,
+                                        // but it WILL cover the frame by the time the shot is
+                                        // captured. Trust the CSS intent, not the current box.
+                                        var ms = getComputedStyle(media[i]);
+                                        if ((ms.width === '100%' || ms.height === '100%' ||
+                                             ms.objectFit === 'cover') &&
+                                            (ms.position === 'absolute' || ms.position === 'fixed' ||
+                                             __coversFrame(media[i].parentElement, rootEl))) {
+                                            return media[i];
+                                        }
                                     }
                                 } catch (_mb) {}
                                 return null;
+                            };
+                            var __coversFrame = function (el, rootEl) {
+                                if (!el || el === rootEl) return false;
+                                try {
+                                    var cs = getComputedStyle(el);
+                                    if (cs.position !== 'absolute' && cs.position !== 'fixed') return false;
+                                    return (cs.inset === '0px' || (cs.top === '0px' && cs.left === '0px' &&
+                                            cs.right === '0px' && cs.bottom === '0px'));
+                                } catch (_cf) { return false; }
                             };
                             // Best-effort luminance of a media bed: a black-ish
                             // gradient overlay or a brightness()<0.8 filter means
@@ -1258,37 +1277,49 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                         var fg = __parseRGB(cs.color);
                                         if (!fg) continue;
                                         // Walk ancestors for the first opaque-ish backdrop.
+                                        // A background painted by an ANCESTOR OF THE MEDIA
+                                        // BED sits BEHIND that bed and is not what the text
+                                        // reads against: #shot-root carries
+                                        // background:var(--brand-bg) (white) while a
+                                        // full-bleed dark video covers it, so trusting it
+                                        // inverts a correct white headline to near-black.
+                                        // Skip those; only paint in front of the bed counts.
                                         var bg = null, p = el;
                                         while (p && p !== rootEl.parentNode) {
+                                            if (mediaEl && p.contains && p.contains(mediaEl)) { p = p.parentElement; continue; }
                                             var pb = __parseRGB(getComputedStyle(p).backgroundColor);
                                             if (pb && pb[3] >= 0.5) { bg = pb; break; }
                                             p = p.parentElement;
                                         }
                                         if (!bg) {
-                                            // No painted backdrop above the bed: the
-                                            // text sits directly on the media (or the
-                                            // page background).
+                                            // Nothing painted in front of the bed. If the
+                                            // shot has a media bed we can only proceed when
+                                            // we measured it as dark — otherwise we have no
+                                            // idea what the text reads against.
+                                            //
+                                            // The root's own background is NOT evidence: it
+                                            // is the thing beds, gradients and full-bleed
+                                            // panels cover. Trusting it once flipped a
+                                            // correct white headline to near-black on a dark
+                                            // hero. When in doubt, leave the text alone —
+                                            // a missed fix is recoverable, an inverted one
+                                            // ships an invisible headline.
                                             if (mediaEl) {
-                                                var mr = mediaEl.getBoundingClientRect();
-                                                var overlaps = !(r.right < mr.left || r.left > mr.right ||
-                                                                 r.bottom < mr.top || r.top > mr.bottom);
-                                                if (overlaps) {
-                                                    if (!mediaDark) continue;   // unknown bed — don't guess
-                                                    bg = [0, 0, 0, 1];
-                                                }
+                                                if (!mediaDark) continue;
+                                                bg = [0, 0, 0, 1];
+                                            } else {
+                                                bg = pageBG;
                                             }
-                                            if (!bg) bg = pageBG;
                                         }
                                         if (__contrast(fg, bg) >= 3.0) continue;
                                         var light = [255, 255, 255], dark = [15, 23, 42];
                                         var pick = __contrast(light, bg) >= __contrast(dark, bg) ? '#ffffff' : '#0f172a';
                                         el.style.setProperty('color', pick, 'important');
-                                        if (el.getAttribute && (el.getAttribute('stroke') === 'currentColor' ||
-                                                                (cs.fill && cs.fill.indexOf('rgb') === 0))) {
+                                        if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
                                             el.style.setProperty('fill', 'currentColor', 'important');
                                         }
                                         // Text on a photo needs a scrim even at 3:1.
-                                        if (mediaEl && !bgWasPainted(el, rootEl)) {
+                                        if (mediaEl && !bgWasPainted(el, rootEl, mediaEl)) {
                                             el.style.setProperty('text-shadow', '0 2px 12px rgba(0,0,0,0.55)');
                                         }
                                         if (el.setAttribute) el.setAttribute('data-vx-contrast', '1');
@@ -1299,9 +1330,10 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                     }
                                 } catch (_cerr) { /* never break the shot */ }
                             };
-                            function bgWasPainted(el, rootEl) {
+                            function bgWasPainted(el, rootEl, mediaEl) {
                                 var p = el;
                                 while (p && p !== rootEl.parentNode) {
+                                    if (mediaEl && p.contains && p.contains(mediaEl)) { p = p.parentElement; continue; }
                                     var pb = __parseRGB(getComputedStyle(p).backgroundColor);
                                     if (pb && pb[3] >= 0.5) return true;
                                     p = p.parentElement;

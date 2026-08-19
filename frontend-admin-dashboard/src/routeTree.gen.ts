@@ -89,6 +89,7 @@ import { Route as MentorshipSessionsIndexRouteImport } from "./routes/mentorship
 import { Route as MentorshipRequestsIndexRouteImport } from "./routes/mentorship/requests/index"
 import { Route as MentorshipMyMentorshipIndexRouteImport } from "./routes/mentorship/my-mentorship/index"
 import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/mentors/index"
+import { Route as MentorshipDashboardIndexRouteImport } from "./routes/mentorship/dashboard/index"
 import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
 import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
@@ -782,6 +783,14 @@ const MentorshipMentorsIndexRoute = MentorshipMentorsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/mentorship/mentors/index.lazy").then((d) => d.Route),
 )
+const MentorshipDashboardIndexRoute =
+  MentorshipDashboardIndexRouteImport.update({
+    id: "/mentorship/dashboard/",
+    path: "/mentorship/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/mentorship/dashboard/index.lazy").then((d) => d.Route),
+  )
 const MeetingsTeamIndexRoute = MeetingsTeamIndexRouteImport.update({
   id: "/meetings/team/",
   path: "/meetings/team/",
@@ -1955,6 +1964,7 @@ export interface FileRoutesByFullPath {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
@@ -2163,6 +2173,7 @@ export interface FileRoutesByTo {
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests": typeof MentorshipRequestsIndexRoute
@@ -2373,6 +2384,7 @@ export interface FileRoutesById {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
@@ -2584,6 +2596,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/dashboard/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
     | "/mentorship/requests/"
@@ -2792,6 +2805,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list"
     | "/meetings/my-schedule"
     | "/meetings/team"
+    | "/mentorship/dashboard"
     | "/mentorship/mentors"
     | "/mentorship/my-mentorship"
     | "/mentorship/requests"
@@ -3001,6 +3015,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/dashboard/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
     | "/mentorship/requests/"
@@ -3210,6 +3225,7 @@ export interface RootRouteChildren {
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
   MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
   MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
+  MentorshipDashboardIndexRoute: typeof MentorshipDashboardIndexRoute
   MentorshipMentorsIndexRoute: typeof MentorshipMentorsIndexRoute
   MentorshipMyMentorshipIndexRoute: typeof MentorshipMyMentorshipIndexRoute
   MentorshipRequestsIndexRoute: typeof MentorshipRequestsIndexRoute
@@ -3868,6 +3884,13 @@ declare module "@tanstack/react-router" {
       path: "/mentorship/mentors"
       fullPath: "/mentorship/mentors/"
       preLoaderRoute: typeof MentorshipMentorsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/dashboard/": {
+      id: "/mentorship/dashboard/"
+      path: "/mentorship/dashboard"
+      fullPath: "/mentorship/dashboard/"
+      preLoaderRoute: typeof MentorshipDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/meetings/team/": {
@@ -4898,6 +4921,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
   MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
   MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
+  MentorshipDashboardIndexRoute: MentorshipDashboardIndexRoute,
   MentorshipMentorsIndexRoute: MentorshipMentorsIndexRoute,
   MentorshipMyMentorshipIndexRoute: MentorshipMyMentorshipIndexRoute,
   MentorshipRequestsIndexRoute: MentorshipRequestsIndexRoute,

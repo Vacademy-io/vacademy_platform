@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDecideMentorRequest, useMentorRequests, useMentors } from '../-hooks/use-mentorship';
 import type { MentorDTO, MentorRequestDTO } from '../-types/mentorship-types';
 import { MentorAvatar } from './MentorAvatar';
+import { reportApiError } from '@/lib/report-api-error';
 
 const PAGE_SIZE = 20;
 
@@ -379,13 +380,20 @@ function DecisionDialog({
             });
             toast.success(approve ? 'Request approved — mentor assigned' : 'Request declined');
             onOpenChange(false);
-        } catch (e) {
+        } catch (error) {
             // The server rejects capacity overflows and already-decided requests with a
-            // readable reason; surfacing it beats a generic failure toast.
-            const message =
-                (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                (approve ? 'Failed to approve the request' : 'Failed to decline the request');
-            toast.error(message);
+            // readable reason; surfacing it beats a generic failure toast. Those are
+            // expected 4xx, so they breadcrumb rather than burn Sentry quota.
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: {
+                    'mentorship.action': approve ? 'approve-request' : 'decline-request',
+                },
+                extra: { requestId: request.id, mentorId: mentorId || request.mentor_id },
+                fallbackMessage: approve
+                    ? 'Failed to approve the request'
+                    : 'Failed to decline the request',
+            });
         } finally {
             setSubmitting(false);
         }

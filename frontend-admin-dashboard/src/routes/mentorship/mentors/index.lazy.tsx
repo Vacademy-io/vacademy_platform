@@ -49,6 +49,7 @@ import {
     useProvisionBookingPage,
 } from '../-hooks/use-mentorship';
 import { MyPagination } from '@/components/design-system/pagination';
+import { reportApiError } from '@/lib/report-api-error';
 
 const MENTORS_PAGE_SIZE = 20;
 import type { MentorDTO } from '../-types/mentorship-types';
@@ -117,8 +118,13 @@ function MentorsPage() {
         try {
             await deleteMentor.mutateAsync({ id: m.id, instituteId });
             toast.success('Mentor removed');
-        } catch {
-            toast.error('Failed to remove mentor');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'remove-mentor' },
+                extra: { mentorId: m.id, assignedStudents: m.assigned_student_count },
+                fallbackMessage: 'Failed to remove mentor',
+            });
         }
     };
 
@@ -128,8 +134,13 @@ function MentorsPage() {
         try {
             await provisionBooking.mutateAsync({ id: m.id, instituteId });
             toast.success('Booking page set up');
-        } catch {
-            toast.error('Failed to set up booking page');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'provision-booking-page' },
+                extra: { mentorId: m.id },
+                fallbackMessage: 'Failed to set up booking page',
+            });
         } finally {
             setBookingId(null);
         }
@@ -299,7 +310,7 @@ function MentorsPage() {
                         Retry
                     </MyButton>
                 </div>
-            ) : (mentorsPage.data?.total_elements ?? 0) === 0 ? (
+            ) : pagedMentors.length === 0 && mentors.length === 0 ? (
                 <EmptyMentors onAdd={() => setAddOpen(true)} />
             ) : visibleMentors.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">

@@ -41,6 +41,7 @@ import type {
     TimelineEvent,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
+import { normalizePage } from '../-utils/page-response';
 
 export const fetchMentors = async (instituteId: string): Promise<MentorDTO[]> => {
     const res = await authenticatedAxiosInstance({
@@ -61,7 +62,7 @@ export const fetchMentorsPaged = async (
         url: MENTORSHIP_MENTORS,
         params: { instituteId, pageNo, pageSize },
     });
-    return res.data as PageResponse<MentorDTO>;
+    return normalizePage<MentorDTO>(res.data);
 };
 
 export const fetchDashboard = async (instituteId: string): Promise<MentorDashboard> => {
@@ -151,7 +152,7 @@ export const fetchMentorRequests = async (
         url: MENTORSHIP_REQUESTS,
         params: { instituteId, status, pageNo, pageSize },
     });
-    return res.data as PageResponse<MentorRequestDTO>;
+    return normalizePage<MentorRequestDTO>(res.data);
 };
 
 /** Approve a request — creates the mentor↔student assignment server-side. */
@@ -279,7 +280,7 @@ export const fetchMyMenteesPaged = async (
         url: MENTORSHIP_MY_MENTEES,
         params: { instituteId, pageNo, pageSize },
     });
-    return res.data as PageResponse<MenteeDTO>;
+    return normalizePage<MenteeDTO>(res.data);
 };
 
 /** A mentee's notes/activity from the shared timeline system (pinned first). */

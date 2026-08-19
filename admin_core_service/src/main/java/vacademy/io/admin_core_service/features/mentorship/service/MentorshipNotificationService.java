@@ -187,6 +187,7 @@ public class MentorshipNotificationService {
             }
         } catch (Exception e) {
             log.warn("mentorship assignment notification failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-assignment", instituteId);
         }
     }
 
@@ -219,6 +220,7 @@ public class MentorshipNotificationService {
                     trigger, vars, cancelled ? CANCELLATION : BOOKING);
         } catch (Exception e) {
             log.warn("mentorship booking notification failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-booking", instituteId);
         }
     }
 
@@ -245,6 +247,7 @@ public class MentorshipNotificationService {
             deliverToLearner(instituteId, inviteeUserId, invitee, email, phone, trigger, vars, SESSION_REMINDER);
         } catch (Exception e) {
             log.warn("mentorship session reminder failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-session-reminder", instituteId);
         }
     }
 
@@ -265,6 +268,7 @@ public class MentorshipNotificationService {
                     student != null ? student.getMobileNumber() : null, trigger, vars, CHECKIN_REMINDER);
         } catch (Exception e) {
             log.warn("mentorship check-in reminder failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-checkin-reminder", instituteId);
         }
     }
 
@@ -305,6 +309,7 @@ public class MentorshipNotificationService {
             }
         } catch (Exception e) {
             log.warn("mentorship request notification failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-request-submitted", instituteId);
         }
     }
 
@@ -332,6 +337,7 @@ public class MentorshipNotificationService {
                     student != null ? student.getMobileNumber() : null, trigger, vars, REQUEST_DECLINED);
         } catch (Exception e) {
             log.warn("mentorship request decline notification failed (institute {}): {}", instituteId, e.getMessage());
+            MentorshipErrorReporter.report(e, "notify-request-declined", instituteId);
         }
     }
 

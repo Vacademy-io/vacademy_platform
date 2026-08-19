@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarPlus, ChatCircle } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { reportApiError } from "@/lib/report-api-error";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard, ModernCardContent } from "@/components/design-system/modern-card";
 import { openDirectConversation } from "@/services/chat/chatApi";
@@ -38,8 +38,13 @@ export function MentorCard({
                 targetUserRole: "TEACHER",
             });
             navigate({ to: "/chat", search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            reportApiError(error, {
+                feature: "mentorship",
+                tags: { "mentorship.action": "open-mentor-chat" },
+                extra: { mentorUserId: mentor.user_id },
+                fallbackMessage: "Couldn't open the chat. Please try again.",
+            });
         } finally {
             setMessaging(false);
         }

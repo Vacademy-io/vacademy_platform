@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorStudentAssignmentRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorshipNotificationLogRepository;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorshipErrorReporter;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorshipNotificationService;
 
 import java.sql.Timestamp;
@@ -112,6 +113,9 @@ public class MentorshipReminderScheduler {
                 sent++;
             } catch (Exception e) {
                 log.warn("mentorship session reminder skipped for booking {}: {}", booking.getId(), e.getMessage());
+                // A skipped booking means one learner silently never got their reminder.
+                MentorshipErrorReporter.report(e, "scheduler-session-reminder",
+                        booking.getInstituteId(), Map.of("booking_id", String.valueOf(booking.getId())));
             }
         }
         if (sent > 0) log.info("mentorship session reminders sent: {}", sent);
@@ -159,6 +163,8 @@ public class MentorshipReminderScheduler {
                 sent++;
             } catch (Exception e) {
                 log.warn("mentorship check-in nudge skipped for assignment {}: {}", assignment.getId(), e.getMessage());
+                MentorshipErrorReporter.report(e, "scheduler-checkin-nudge",
+                        assignment.getInstituteId(), Map.of("assignment_id", String.valueOf(assignment.getId())));
             }
         }
         if (sent > 0) log.info("mentorship check-in nudges sent: {}", sent);
@@ -179,6 +185,10 @@ public class MentorshipReminderScheduler {
             return true;
         } catch (Exception e) {
             log.warn("mentorship notification claim failed ({} {}): {}", type, refId, e.getMessage());
+            // A failed claim drops the notification entirely — the ledger row is the
+            // send permit, so nothing else will retry it.
+            MentorshipErrorReporter.report(e, "notification-claim", instituteId,
+                    Map.of("notification_type", String.valueOf(type), "ref_id", String.valueOf(refId)));
             return false;
         }
     }

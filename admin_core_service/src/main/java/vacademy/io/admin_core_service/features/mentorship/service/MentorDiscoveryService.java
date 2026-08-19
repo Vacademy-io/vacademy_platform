@@ -388,6 +388,9 @@ public class MentorDiscoveryService {
             }
             return map;
         } catch (Exception e) {
+            // Names/emails simply go missing rather than the screen failing, so this
+            // is invisible without reporting it.
+            MentorshipErrorReporter.report(e, "hydrate-users", null);
             return Map.of();
         }
     }

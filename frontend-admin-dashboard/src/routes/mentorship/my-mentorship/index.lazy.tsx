@@ -29,6 +29,7 @@ import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 import { AvailabilityDialog } from '../-components/AvailabilityDialog';
 import { MyScheduleCard } from '../-components/MyScheduleCard';
+import { reportApiError } from '@/lib/report-api-error';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -77,8 +78,12 @@ function MyMentorshipPage() {
         try {
             const { oauth_url } = await initiateMyGoogle(instituteId);
             window.location.href = oauth_url;
-        } catch {
-            toast.error("Couldn't start Google connect. Please try again.");
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'connect-google' },
+                fallbackMessage: "Couldn't start Google connect. Please try again.",
+            });
             setConnecting(false);
         }
     };
@@ -106,8 +111,13 @@ function MyMentorshipPage() {
                 targetUserRole: 'STUDENT',
             });
             navigate({ to: '/chat', search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'open-mentee-chat' },
+                extra: { studentUserId: mentee.student_user_id },
+                fallbackMessage: "Couldn't open the chat. Please try again.",
+            });
         } finally {
             setMessagingId(null);
         }
@@ -282,7 +292,7 @@ function MyMentorshipPage() {
                         Retry
                     </MyButton>
                 </div>
-            ) : (data?.total_elements ?? 0) === 0 ? (
+            ) : mentees.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
                     <div className="flex flex-col gap-1">

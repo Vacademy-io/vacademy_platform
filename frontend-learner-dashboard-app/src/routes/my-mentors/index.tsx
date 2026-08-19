@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MagnifyingGlass, Star, UserPlus, UsersThree } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { reportApiError } from "@/lib/report-api-error";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { MyButton } from "@/components/design-system/button";
 import { MyInput } from "@/components/design-system/input";
@@ -347,7 +348,12 @@ function MyRequestsTab({
             queryClient.invalidateQueries({ queryKey: ["GET_MY_MENTOR_REQUESTS"] });
             queryClient.invalidateQueries({ queryKey: ["GET_MENTOR_DIRECTORY"] });
         },
-        onError: () => toast.error("Couldn't withdraw the request."),
+        onError: (error: unknown) =>
+            reportApiError(error, {
+                feature: "mentorship",
+                tags: { "mentorship.action": "withdraw-request" },
+                fallbackMessage: "Couldn't withdraw the request.",
+            }),
     });
 
     if (isLoading) return <LoadingState variant="list" count={2} />;

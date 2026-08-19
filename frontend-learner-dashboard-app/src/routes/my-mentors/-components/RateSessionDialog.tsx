@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Star } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { reportApiError } from "@/lib/report-api-error";
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,12 +53,13 @@ export function RateSessionDialog({
             queryClient.invalidateQueries({ queryKey: ["GET_PENDING_MENTOR_FEEDBACK"] });
             onOpenChange(false);
         },
-        onError: (e: unknown) => {
-            const message =
-                (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                "Couldn't save your feedback. Please try again.";
-            toast.error(message);
-        },
+        onError: (error: unknown) =>
+            reportApiError(error, {
+                feature: "mentorship",
+                tags: { "mentorship.action": "submit-feedback" },
+                extra: { bookingInstanceId: session?.booking_instance_id, rating },
+                fallbackMessage: "Couldn't save your feedback. Please try again.",
+            }),
     });
 
     if (!session) return null;

@@ -335,7 +335,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
                     -- Net obligation for plans that carry a fee schedule. amount_expected is
                     -- post-discount, so a discounted plan is billed at what the learner actually
-                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
                     -- discount itself as an outstanding due. Pre-aggregated rather than
                     -- correlated for the same reason the paid CTE is — see the note above.
                     LEFT JOIN (
@@ -428,7 +428,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
                     -- Net obligation for plans that carry a fee schedule. amount_expected is
                     -- post-discount, so a discounted plan is billed at what the learner actually
-                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
                     -- discount itself as an outstanding due. Pre-aggregated rather than
                     -- correlated for the same reason the paid CTE is — see the note above.
                     LEFT JOIN (
@@ -495,7 +495,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
                     -- Net obligation for plans that carry a fee schedule. amount_expected is
                     -- post-discount, so a discounted plan is billed at what the learner actually
-                    -- owes; pp.actual_price is the undiscounted list price and would report the
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
                     -- discount itself as an outstanding due. Pre-aggregated rather than
                     -- correlated for the same reason the paid CTE is — see the note above.
                     LEFT JOIN (

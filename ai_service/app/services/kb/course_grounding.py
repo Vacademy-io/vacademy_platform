@@ -239,7 +239,7 @@ def outline_grounding_block(
         else "Give every slide a title that names its subject plainly rather than "
         "a marketing phrase — a vague title retrieves vague pages. When you rename "
         "or merge a source section, append the source's original section name in "
-        "brackets — e.g. 'Reading the Patient's Story (Subjective Assessment)' — "
+        "brackets — 'New Engaging Title (Original Section Name)' — "
         "so teachers can still find the material in their book."
     )
 
@@ -389,7 +389,13 @@ def slide_prompt_block(grounding: SlideGrounding, mode: str = "STRICT") -> str:
         "citations or invented case studies. A shorter slide that matches the "
         "material is correct; a fuller slide containing anything you added is "
         "wrong and will be rejected. Cover what the passages DO say completely — "
-        "do not summarise away their lists, steps or classifications."
+        "do not summarise away their lists, steps or classifications.\n"
+        "TERMINOLOGY: teach the material's OWN terms, sequence and framework as "
+        "the primary one. If you know a standard model or classification that "
+        "uses different terms for the same ideas, do NOT merge, relabel or "
+        "'correct' the material's version with it — mention the other framework "
+        "only if the passages themselves do, and then keep the two distinct, "
+        "presented the way the material presents them."
         if mode == "STRICT"
         else "Write this slide primarily from the passages above, matching their "
         "notation and terminology. You may add brief connective explanation, but "

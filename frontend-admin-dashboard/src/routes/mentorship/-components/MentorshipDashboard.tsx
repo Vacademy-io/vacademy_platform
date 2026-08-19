@@ -7,6 +7,7 @@ import {
     GraduationCap,
     Star,
     UserMinus,
+    TrayArrowDown,
     UsersThree,
     WarningCircle,
     XCircle,
@@ -17,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { useMentorDashboard, useMentorSessions } from '../-hooks/use-mentorship';
+import { dayOfMonth, relativeDay, shortMonth, timeOfDay } from '../-utils/format-session-time';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { MentorAvatar } from './MentorAvatar';
 
@@ -63,6 +65,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
     const attention = [
         {
             key: 'requests',
+            icon: TrayArrowDown,
             count: data?.pending_requests ?? 0,
             label: 'learner waiting to be paired with a mentor',
             pluralLabel: 'learners waiting to be paired with a mentor',
@@ -71,6 +74,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
         },
         {
             key: 'awaiting',
+            icon: Clock,
             count: data?.sessions_awaiting_review ?? 0,
             label: 'session held but not recorded — it counts nowhere until it is',
             pluralLabel: 'sessions held but not recorded — they count nowhere until they are',
@@ -116,30 +120,32 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
             </section>
 
             {attention.length > 0 && (
-                <section className="flex flex-col gap-2">
-                    {attention.map((a) => (
-                        <div
-                            key={a.key}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3"
-                        >
-                            <span className="flex items-center gap-2 text-body text-neutral-700">
-                                <Clock
-                                    size={16}
-                                    weight="fill"
-                                    className="shrink-0 text-warning-600"
-                                />
-                                <span>
-                                    <b>{a.count}</b> {a.count === 1 ? a.label : a.pluralLabel}
+                <Card className="flex flex-col divide-y divide-warning-100 border-warning-200 bg-warning-50/60 p-0 shadow-sm">
+                    {attention.map((a) => {
+                        const AttentionIcon = a.icon;
+                        return (
+                            <div
+                                key={a.key}
+                                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                            >
+                                <span className="flex items-center gap-2.5 text-body text-neutral-700">
+                                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-warning-100 text-warning-700">
+                                        <AttentionIcon size={14} weight="fill" />
+                                    </span>
+                                    <span>
+                                        <b className="tabular-nums">{a.count}</b>{' '}
+                                        {a.count === 1 ? a.label : a.pluralLabel}
+                                    </span>
                                 </span>
-                            </span>
-                            <Link to={a.to}>
-                                <MyButton type="button" buttonType="secondary" scale="small">
-                                    {a.cta}
-                                </MyButton>
-                            </Link>
-                        </div>
-                    ))}
-                </section>
+                                <Link to={a.to}>
+                                    <MyButton type="button" buttonType="secondary" scale="small">
+                                        {a.cta}
+                                    </MyButton>
+                                </Link>
+                            </div>
+                        );
+                    })}
+                </Card>
             )}
 
             <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
@@ -348,12 +354,20 @@ function WorkloadCard({ mentors, loading }: { mentors: MentorDTO[]; loading: boo
                                         <div
                                             className={cn(
                                                 'h-full rounded-full',
-                                                full ? 'bg-danger-500' : 'bg-primary-500'
+                                                full
+                                                    ? 'bg-danger-500'
+                                                    : cap
+                                                      ? 'bg-primary-500'
+                                                      : 'bg-primary-300'
                                             )}
-                                            // Data-driven width; floored at 2% so a
-                                            // mentor with one student still shows a mark.
+                                            // Data-driven width. With a cap this is a true
+                                            // fill; without one it is only relative to the
+                                            // busiest mentor, so it tops out at 80% — a full
+                                            // bar would imply a limit that doesn't exist.
                                             style={{
-                                                width: `${Math.max(2, (count / (cap ?? peak)) * 100)}%`,
+                                                width: cap
+                                                    ? `${Math.max(2, (count / cap) * 100)}%`
+                                                    : `${Math.max(2, (count / peak) * 80)}%`,
                                             }}
                                         />
                                     </div>
@@ -398,24 +412,28 @@ function UpcomingCard({
                     <CalendarBlank size={14} /> Nothing booked yet.
                 </p>
             ) : (
-                <ul className="flex flex-col divide-y divide-neutral-100">
+                <ul className="flex flex-col gap-2">
                     {sessions.slice(0, 5).map((s) => (
                         <li
                             key={s.booking_instance_id}
-                            className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                            className="flex items-center gap-3 rounded-lg bg-neutral-50 p-2"
                         >
-                            <span className="truncate text-caption text-neutral-700">
-                                {s.mentor_name || 'Mentor'} &rarr; {s.student_name || 'Learner'}
+                            <span className="flex size-9 shrink-0 flex-col items-center justify-center rounded-md bg-white leading-none text-neutral-600">
+                                <span className="text-caption font-semibold tabular-nums">
+                                    {dayOfMonth(s.scheduled_start_utc)}
+                                </span>
+                                <span className="text-caption font-medium leading-none tracking-wide text-neutral-400">
+                                    {shortMonth(s.scheduled_start_utc)}
+                                </span>
                             </span>
-                            <span className="shrink-0 text-caption tabular-nums text-neutral-400">
-                                {s.scheduled_start_utc
-                                    ? new Date(s.scheduled_start_utc).toLocaleString(undefined, {
-                                          day: 'numeric',
-                                          month: 'short',
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                      })
-                                    : ''}
+                            <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate text-caption text-neutral-700">
+                                    {s.mentor_name || 'Mentor'} &rarr; {s.student_name || 'Learner'}
+                                </span>
+                                <span className="text-caption text-neutral-400">
+                                    {relativeDay(s.scheduled_start_utc)} ·{' '}
+                                    {timeOfDay(s.scheduled_start_utc)}
+                                </span>
                             </span>
                         </li>
                     ))}

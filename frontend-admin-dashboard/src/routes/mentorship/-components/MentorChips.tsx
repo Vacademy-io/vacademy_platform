@@ -9,16 +9,9 @@ export function RatingChip({ mentor, onClick }: { mentor: MentorDTO; onClick: ()
     const avg = mentor.average_rating;
     const count = mentor.rating_count ?? 0;
 
-    if (avg == null || count === 0) {
-        return (
-            <span
-                className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-400"
-                title="No sessions rated yet — learners are asked after a session takes place"
-            >
-                Not rated
-            </span>
-        );
-    }
+    // Nothing is drawn for an unrated mentor: a row of greyed "Not rated" chips is
+    // noise, and the absence of a score already carries the same meaning.
+    if (avg == null || count === 0) return null;
     return (
         <button
             type="button"
@@ -45,7 +38,7 @@ export function CapacityChip({ mentor }: { mentor: MentorDTO }) {
     if (!cap) {
         return (
             <span
-                className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
+                className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
                 title="Students currently assigned to this mentor (no limit set)"
             >
                 {count} students
@@ -63,14 +56,15 @@ export function CapacityChip({ mentor }: { mentor: MentorDTO }) {
 
     return (
         <span
-            className={`rounded-full px-2.5 py-1 text-caption ${tone}`}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-caption ${tone}`}
             title={
                 full
                     ? `At capacity — no new students can be assigned until the limit is raised or a mentee is unassigned`
                     : `${cap - count} of ${cap} places still open`
             }
         >
-            {count}/{cap} students{full ? ' · Full' : ''}
+            {count}/{cap}
+            {full ? ' · full' : ' students'}
         </span>
     );
 }

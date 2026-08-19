@@ -9,6 +9,10 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useSessionAction: () => ({ mutateAsync: sessionActionMutate, isPending: false }),
 }));
 
+vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
+    MentorAvatar: () => <span data-testid="avatar" />,
+}));
+
 import { MentorSessionsPanel } from '@/routes/mentorship/-components/MentorSessionsPanel';
 
 const session = (over: Partial<MentorSessionDTO> = {}): MentorSessionDTO => ({
@@ -42,7 +46,8 @@ describe('MentorSessionsPanel', () => {
 
     it('lists a session with both parties, as the admin view requires', () => {
         render(<MentorSessionsPanel instituteId="inst-1" />);
-        expect(screen.getByText(/Asha Nair.*Riya Sharma/)).toBeInTheDocument();
+        expect(screen.getByText('Asha Nair')).toBeInTheDocument();
+        expect(screen.getByText('Riya Sharma')).toBeInTheDocument();
         expect(screen.getByText(/30 min/)).toBeInTheDocument();
     });
 
@@ -98,7 +103,7 @@ describe('MentorSessionsPanel', () => {
             ])
         );
         render(<MentorSessionsPanel instituteId="inst-1" />);
-        fireEvent.click(screen.getByText(/Asha Nair.*Riya Sharma/));
+        fireEvent.click(screen.getByRole('button', { name: /Asha Nair/ }));
 
         expect(await screen.findByText('Session details')).toBeInTheDocument();
         expect(screen.getByText('asha@example.com')).toBeInTheDocument();
@@ -141,7 +146,9 @@ describe('MentorSessionsPanel', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
         // Copy unique to the dialog — "Cancel session" is also its submit button.
-        expect(await screen.findByText(/calendar entry and reminders are removed/)).toBeInTheDocument();
+        expect(
+            await screen.findByText(/calendar entry and reminders are removed/)
+        ).toBeInTheDocument();
         // Destructive actions must never fire straight off a row click.
         expect(sessionActionMutate).not.toHaveBeenCalled();
     });

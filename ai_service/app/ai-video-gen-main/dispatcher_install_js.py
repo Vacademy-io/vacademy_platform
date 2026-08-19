@@ -1171,7 +1171,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // overlay — still resolves var(--brand-text) to
                             // near-black, so its headline renders black-on-black
                             // and is simply invisible. The model even writes
-                            // `var(--brand-text, #ffffff)` believing the white
+                            // var(--brand-text, #ffffff) believing the white
                             // fallback applies; it never does, because the var IS
                             // defined. No amount of prompt wording fixes this
                             // reliably, so measure the rendered result instead:

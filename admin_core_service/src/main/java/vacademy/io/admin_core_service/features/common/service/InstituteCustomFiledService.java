@@ -73,7 +73,24 @@ public class InstituteCustomFiledService {
                 if (existingCF.isEmpty()) {
                     throw new VacademyException("Custom Field Not Found");
                 }
-                cf = existingCF.get();
+                CustomFields loaded = existingCF.get();
+                // The master row holds the field's definition — type, label, options.
+                // Loading it without applying the incoming edits meant every change an
+                // admin made to a field that already existed (switching TEXT to
+                // DROPDOWN, renaming it, editing its options) was accepted by the API
+                // and silently dropped; only the mapping's order survived the save.
+                //
+                // Required-ness is deliberately NOT written here. A master row is shared
+                // by every form that reuses the field, and editors do force it on: the
+                // enroll-invite builder sends `isMandatory: true` for seeded Email /
+                // Phone whatever the row says. Writing that back would re-require Email
+                // on the institute's other forms — including the lead forms that accept
+                // email-less leads. The per-form flag is the mapping's is_mandatory,
+                // written below.
+                applyDefinitionUpdates(loaded, cfDto);
+                // Single assignment: `cf` is captured by the lambda below, so it has
+                // to stay effectively final.
+                cf = customFieldRepository.save(loaded);
 
             } else {
                 String fieldKey = keyGenerator.generateFieldKey(cfDto.getFieldName(), dto.getInstituteId());
@@ -182,8 +199,28 @@ public class InstituteCustomFiledService {
     }
 
     private void applyMutableFieldUpdates(CustomFields existing, CustomFieldDTO cfDto) {
+        applyDefinitionUpdates(existing, cfDto);
+        if (cfDto.getIsMandatory() != null) {
+            existing.setIsMandatory(cfDto.getIsMandatory());
+        }
+    }
+
+    /**
+     * The parts of a field that live only on the master row and have no per-form
+     * home: its type, its label and its option list. Editing any of them in a form
+     * builder has to reach {@code custom_fields} or the edit is lost.
+     */
+    private void applyDefinitionUpdates(CustomFields existing, CustomFieldDTO cfDto) {
         if (StringUtils.hasText(cfDto.getConfig())) {
             existing.setConfig(cfDto.getConfig());
+        } else if (StringUtils.hasText(cfDto.getFieldType())
+                && !typeTakesOptions(cfDto.getFieldType())
+                && holdsOptionList(existing.getConfig())) {
+            // The field was a choice type and is not any more. Leaving the old option
+            // list on the row makes those options reappear the moment it is switched
+            // back to a choice type. A settings config (help text, file limits) is left
+            // alone — only an option list is cleared.
+            existing.setConfig(null);
         }
         if (StringUtils.hasText(cfDto.getFieldName())) {
             existing.setFieldName(cfDto.getFieldName());
@@ -191,9 +228,38 @@ public class InstituteCustomFiledService {
         if (StringUtils.hasText(cfDto.getFieldType())) {
             existing.setFieldType(cfDto.getFieldType());
         }
-        if (cfDto.getIsMandatory() != null) {
-            existing.setIsMandatory(cfDto.getIsMandatory());
+        // form_order is deliberately NOT written here. It is the shared catalog
+        // position; a per-form reorder belongs in institute_custom_fields.individual_order,
+        // and writing it back would let one form reshuffle every other form that
+        // reuses the same field.
+    }
+
+    /** Field types that render an option list, so a config full of options belongs to them. */
+    private boolean typeTakesOptions(String fieldType) {
+        if (!StringUtils.hasText(fieldType)) {
+            return false;
         }
+        String normalized = fieldType.trim().toUpperCase();
+        return FieldTypeEnum.DROPDOWN.name().equals(normalized)
+                || FieldTypeEnum.RADIO.name().equals(normalized)
+                || FieldTypeEnum.MULTI_SELECT.name().equals(normalized)
+                || "SELECT".equals(normalized);
+    }
+
+    /**
+     * True when the stored config is an option list rather than field settings.
+     * Covers the three shapes in the wild: a bare JSON array, an object holding
+     * {@code options}, and the legacy {@code coommaSepartedOptions} spelling.
+     */
+    private boolean holdsOptionList(String config) {
+        if (!StringUtils.hasText(config)) {
+            return false;
+        }
+        String trimmed = config.trim();
+        return trimmed.startsWith("[")
+                || trimmed.contains("coommaSepartedOptions")
+                || trimmed.contains("commaSeparatedOptions")
+                || trimmed.contains("\"options\"");
     }
 
     /**

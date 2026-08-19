@@ -15,6 +15,9 @@ public interface MentorSessionFeedbackRepository extends JpaRepository<MentorSes
     Optional<MentorSessionFeedback> findByBookingInstanceIdAndStudentUserId(
             String bookingInstanceId, String studentUserId);
 
+    /** Ratings for a set of sessions — decorates a page of the admin session list in one query. */
+    List<MentorSessionFeedback> findByBookingInstanceIdIn(List<String> bookingInstanceIds);
+
     /** The learner's own ratings — used to hide sessions they've already rated. */
     List<MentorSessionFeedback> findByInstituteIdAndStudentUserId(String instituteId, String studentUserId);
 

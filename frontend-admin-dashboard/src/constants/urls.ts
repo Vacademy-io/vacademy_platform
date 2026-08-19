@@ -1289,6 +1289,16 @@ export const MENTORSHIP_REQUESTS = `${MENTORSHIP_BASE}/requests`;
 export const MENTORSHIP_REQUEST_APPROVE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/approve`;
 export const MENTORSHIP_REQUEST_DECLINE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/decline`;
 export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
+export const MENTORSHIP_SESSIONS = `${MENTORSHIP_BASE}/sessions`;
+export const MENTORSHIP_SESSION_STATS = `${MENTORSHIP_BASE}/sessions/stats`;
+export const MENTORSHIP_MY_SESSIONS_AWAITING = `${MENTORSHIP_BASE}/my-sessions/awaiting-review`;
+export const MENTORSHIP_MY_SESSION_RECORD = `${MENTORSHIP_BASE}/my-sessions/record`;
+export const MENTORSHIP_SESSION_CANCEL = `${MENTORSHIP_BASE}/sessions/cancel`;
+export const MENTORSHIP_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/sessions/reschedule`;
+export const MENTORSHIP_MY_SESSION_CANCEL = `${MENTORSHIP_BASE}/my-sessions/cancel`;
+export const MENTORSHIP_MY_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/my-sessions/reschedule`;
+export const MENTORSHIP_MENTOR_MENTEES = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/mentees`;
+export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/availability`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;

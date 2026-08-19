@@ -621,6 +621,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 adminOnly: true,
             },
             {
+                subItem: 'Sessions',
+                subItemLink: '/mentorship/sessions',
+                subItemId: 'mentorship-sessions',
+                adminOnly: true,
+            },
+            {
                 subItem: 'My Mentorship',
                 subItemLink: '/mentorship/my-mentorship',
                 subItemId: 'mentorship-my-mentorship',

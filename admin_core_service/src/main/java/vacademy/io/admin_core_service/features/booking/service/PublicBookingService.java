@@ -255,9 +255,24 @@ public class PublicBookingService {
     @Transactional
     public PublicBookingDTOs.PublicBookingViewDTO cancel(String manageToken,
                                                          PublicBookingDTOs.PublicCancelRequestDTO request) {
-        BookingInstance instance = instanceByToken(manageToken);
+        return cancelInstance(instanceByToken(manageToken), request != null ? request.getReason() : null);
+    }
+
+    /**
+     * Cancel a booking that the caller has ALREADY been authorized to touch.
+     *
+     * <p>Split out of {@link #cancel(String, PublicBookingDTOs.PublicCancelRequestDTO)} so an
+     * authenticated actor (an admin, or the mentor hosting the session) goes through exactly
+     * this code — the same mutability guard, the same live-session and reminder teardown, the
+     * same Google Calendar cleanup, the same notification. The only difference between the two
+     * entry points is how the caller proved they may act; there is no second cancel path.
+     *
+     * <p>Callers are responsible for authorization: this method performs none.
+     */
+    @Transactional
+    public PublicBookingDTOs.PublicBookingViewDTO cancelInstance(BookingInstance instance, String reason) {
         assertMutable(instance);
-        cancelUnderlying(instance, request != null ? request.getReason() : null);
+        cancelUnderlying(instance, reason);
         notifyMentorshipCancellation(instance);
         return toView(instance, pageOf(instance));
     }
@@ -309,6 +324,24 @@ public class PublicBookingService {
     public PublicBookingDTOs.PublicBookingViewDTO reschedule(String manageToken,
                                                              PublicBookingDTOs.PublicRescheduleRequestDTO request) {
         BookingInstance old = instanceByToken(manageToken);
+        BookingInstance replacement = rescheduleInstance(old, request);
+        return toView(replacement, pageOf(replacement));
+    }
+
+    /**
+     * Move a booking the caller has ALREADY been authorized to touch, to a new start time.
+     *
+     * <p>Shares every safeguard with the invitee-facing path: the slot must still be free, the
+     * old row is claimed first under its optimistic {@code @Version} (so two concurrent
+     * reschedules can't both create a replacement), a failure to create the replacement
+     * restores the previous status, and the replacement records {@code rescheduleOfInstanceId}
+     * so history stays linked rather than duplicated.
+     *
+     * <p>Callers are responsible for authorization: this method performs none.
+     */
+    @Transactional
+    public BookingInstance rescheduleInstance(
+            BookingInstance old, PublicBookingDTOs.PublicRescheduleRequestDTO request) {
         assertMutable(old);
         BookingPage page = pageOf(old);
         if (page == null || !"ACTIVE".equals(page.getStatus())) {
@@ -359,8 +392,7 @@ public class PublicBookingService {
         BookingInstance replacement = bookingInstanceRepository.findById(created.getId())
                 .orElseThrow(() -> new VacademyException("Booking not found after reschedule"));
         replacement.setRescheduleOfInstanceId(old.getId());
-        replacement = bookingInstanceRepository.save(replacement);
-        return toView(replacement, page);
+        return bookingInstanceRepository.save(replacement);
     }
 
     // ---------- helpers ----------

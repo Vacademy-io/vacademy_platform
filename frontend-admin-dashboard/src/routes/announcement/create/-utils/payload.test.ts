@@ -180,8 +180,35 @@ describe('buildCreatePayload — WhatsApp medium', () => {
         });
         const config = payload.mediums[0]?.config as Record<string, unknown>;
         expect(config.dynamic_values).toEqual({
-            name: '{{user_name}}',
+            name: '{{name}}',
             message: 'Class starts Monday',
+        });
+    });
+
+    it('supports the wider recipient variable set, not just the announcement fields', () => {
+        const payload = buildCreatePayload({
+            ...basePayloadInput,
+            mediums: ['WHATSAPP'],
+            selectedWaTemplate: {
+                ...template,
+                bodyVariableNames: ['who', 'mail', 'cell', 'day'],
+            },
+            whatsapp: {
+                ...whatsapp,
+                variables: {
+                    who: { source: 'RECIPIENT_FULL_NAME', customValue: '' },
+                    mail: { source: 'RECIPIENT_EMAIL', customValue: '' },
+                    cell: { source: 'RECIPIENT_PHONE', customValue: '' },
+                    day: { source: 'CURRENT_DATE', customValue: '' },
+                },
+            },
+        });
+        const config = payload.mediums[0]?.config as Record<string, unknown>;
+        expect(config.dynamic_values).toEqual({
+            who: '{{full_name}}',
+            mail: '{{email}}',
+            cell: '{{mobile_number}}',
+            day: '{{current_date}}',
         });
     });
 

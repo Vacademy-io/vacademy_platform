@@ -88,12 +88,9 @@ export interface EmailConfig {
     subjectOverride: string;
 }
 
+/** Derived from WHATSAPP_VALUE_SOURCES so the two can never drift apart. */
 export type WhatsAppValueSource =
-    | 'ANNOUNCEMENT_TITLE'
-    | 'ANNOUNCEMENT_CONTENT'
-    | 'SENDER_NAME'
-    | 'RECIPIENT_NAME'
-    | 'CUSTOM';
+    (typeof import('./-utils/constants').WHATSAPP_VALUE_SOURCES)[number]['value'];
 
 export interface WhatsAppVariableBinding {
     source: WhatsAppValueSource;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Eye, ListChecks, PaperPlaneTilt } from '@phosphor-icons/react';
+import { ListChecks, PaperPlaneTilt } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
@@ -13,7 +13,7 @@ import {
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { PreviewRail } from './-components/PreviewRail';
+import { PreviewPanel } from './-components/PreviewPanel';
 import { IssueSummary } from './-components/primitives';
 import { BasicInfoStep } from './-components/steps/BasicInfoStep';
 import { RecipientsStep } from './-components/steps/RecipientsStep';
@@ -58,7 +58,6 @@ function CreateAnnouncementPage() {
     /** Errors stay hidden until the first create attempt, so a fresh form isn't a wall of red. */
     const [attempted, setAttempted] = useState(false);
     const [serverErrors, setServerErrors] = useState<FieldErrors>({});
-    const [previewOpen, setPreviewOpen] = useState(false);
     const [reviewOpen, setReviewOpen] = useState(false);
 
     useEffect(() => {
@@ -250,49 +249,48 @@ function CreateAnnouncementPage() {
         return sender ? `${sender.name} (${sender.email})` : '';
     }, [draft.emailSenders, draft.email.fromKey]);
 
-    const tips = useMemo(() => {
-        const list: string[] = [];
-        if (!draft.previewText.trim()) list.push('Add preview text so the inbox line reads well.');
-        if (draft.title.length > 60)
-            list.push('Shorter titles survive truncation on mobile inboxes.');
-        if (draft.mediums.includes('WHATSAPP') && !draft.whatsapp.templateName)
-            list.push('WhatsApp needs an approved template before it can send.');
-        if (draft.rules.length === 0) list.push('Nobody is targeted yet.');
-        return list.slice(0, 3);
-    }, [
-        draft.previewText,
-        draft.title,
-        draft.mediums,
-        draft.whatsapp.templateName,
-        draft.rules.length,
-    ]);
-
-    const reviewSummary = (
-        <ReviewStep
-            title={draft.title}
-            previewText={draft.previewText}
-            contentText={draft.contentText}
-            rules={draft.rules}
-            batchById={draft.batchById}
-            tagNameById={tagNameById}
-            recipients={recipientsPreview}
-            modes={draft.modes}
-            mediums={draft.mediums}
-            emailSenderLabel={emailSenderLabel}
-            whatsappTemplateName={draft.whatsapp.templateName}
-            scheduleType={draft.scheduleType}
-            timezone={draft.timezone}
-            oneTimeStart={draft.oneTimeStart}
-            cronExpression={draft.cronExpression}
-            batchNounPlural={batchNounPlural}
-            onEditSection={scrollToSection}
-        />
+    const reviewBody = (
+        <div className="space-y-6">
+            <ReviewStep
+                title={draft.title}
+                previewText={draft.previewText}
+                contentText={draft.contentText}
+                rules={draft.rules}
+                batchById={draft.batchById}
+                tagNameById={tagNameById}
+                recipients={recipientsPreview}
+                modes={draft.modes}
+                mediums={draft.mediums}
+                emailSenderLabel={emailSenderLabel}
+                whatsappTemplateName={draft.whatsapp.templateName}
+                scheduleType={draft.scheduleType}
+                timezone={draft.timezone}
+                oneTimeStart={draft.oneTimeStart}
+                cronExpression={draft.cronExpression}
+                batchNounPlural={batchNounPlural}
+                onEditSection={scrollToSection}
+            />
+            <div className="space-y-2">
+                <h3 className="text-subtitle font-semibold">How it will look</h3>
+                <PreviewPanel
+                    title={draft.title}
+                    previewText={draft.previewText}
+                    htmlContent={draft.htmlContent}
+                    contentText={draft.contentText}
+                    modes={draft.modes}
+                    push={draft.push}
+                    whatsapp={draft.whatsapp}
+                    whatsappTemplate={draft.selectedWaTemplate}
+                    senderName={emailSenderLabel}
+                />
+            </div>
+        </div>
     );
 
     return (
         <div className="flex min-h-full flex-1 flex-col">
             <div className="flex-1 px-4 py-6 sm:px-6">
-                <div className="mx-auto grid w-full max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                <div className="mx-auto w-full max-w-5xl">
                     <div className="min-w-0 space-y-6">
                         {/* A pristine form shouldn't greet the user with advice about content
                             they haven't written yet. */}
@@ -412,44 +410,11 @@ function CreateAnnouncementPage() {
                             />
                         </section>
                     </div>
-
-                    {/* Always mounted so the footer's Preview button can open the dialog on
-                        narrow screens; only the inline card is hidden below xl. */}
-                    <aside className="min-w-0">
-                        {/* top-24 clears the sticky app navbar (max 72px tall). */}
-                        <div className="sticky top-24">
-                            <PreviewRail
-                                title={draft.title}
-                                previewText={draft.previewText}
-                                htmlContent={draft.htmlContent}
-                                contentText={draft.contentText}
-                                modes={draft.modes}
-                                mediums={draft.mediums}
-                                push={draft.push}
-                                whatsapp={draft.whatsapp}
-                                whatsappTemplate={draft.selectedWaTemplate}
-                                senderName={emailSenderLabel}
-                                tips={tips}
-                                expanded={previewOpen}
-                                onExpandedChange={setPreviewOpen}
-                                cardClassName="hidden xl:block"
-                            />
-                        </div>
-                    </aside>
                 </div>
             </div>
 
             <div className="sticky bottom-0 z-20 border-t bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-                <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-end gap-3">
-                    <MyButton
-                        buttonType="text"
-                        scale="small"
-                        className="xl:hidden"
-                        onClick={() => setPreviewOpen(true)}
-                    >
-                        <Eye className="mr-1 size-4" />
-                        Preview
-                    </MyButton>
+                <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-end gap-3">
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
@@ -457,7 +422,7 @@ function CreateAnnouncementPage() {
                         disable={submitting}
                     >
                         <ListChecks className="mr-1 size-4" />
-                        Review
+                        Review &amp; preview
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -477,10 +442,10 @@ function CreateAnnouncementPage() {
             </div>
 
             <MyDialog
-                heading="Review announcement"
+                heading="Review & preview"
                 open={reviewOpen}
                 onOpenChange={setReviewOpen}
-                dialogWidth="max-w-3xl"
+                dialogWidth="max-w-4xl"
                 footer={
                     <>
                         <MyButton
@@ -506,7 +471,7 @@ function CreateAnnouncementPage() {
                     </>
                 }
             >
-                {reviewSummary}
+                {reviewBody}
             </MyDialog>
         </div>
     );

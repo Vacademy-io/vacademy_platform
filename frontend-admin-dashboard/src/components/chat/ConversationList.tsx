@@ -20,6 +20,7 @@ import type {
     ChatBatchResponse,
     ChatPersonResponse,
 } from '@/services/chat/chatApi';
+import { toUtcDate } from './chatTime';
 
 interface ConversationListProps {
     conversations: ChatConversationResponse[];
@@ -67,9 +68,8 @@ const conversationTitle = (c: ChatConversationResponse): string => {
 };
 
 const formatTime = (iso?: string): string => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
+    const d = toUtcDate(iso);
+    if (!d) return '';
     const now = new Date();
     const sameDay =
         d.getFullYear() === now.getFullYear() &&

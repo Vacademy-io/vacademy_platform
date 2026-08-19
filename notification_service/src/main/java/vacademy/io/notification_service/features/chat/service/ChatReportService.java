@@ -20,6 +20,7 @@ import vacademy.io.notification_service.features.chat.repository.ChatConversatio
 import vacademy.io.notification_service.features.chat.repository.ChatConversationRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatMessageReportRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatMessageRepository;
+import vacademy.io.notification_service.features.chat.util.ChatTimeUtil;
 
 import java.time.LocalDateTime;
 
@@ -124,8 +125,8 @@ public class ChatReportService {
                 .details(r.getDetails())
                 .status(r.getStatus())
                 .reviewedBy(r.getReviewedBy())
-                .reviewedAt(r.getReviewedAt())
-                .createdAt(r.getCreatedAt());
+                .reviewedAt(ChatTimeUtil.toInstant(r.getReviewedAt()))
+                .createdAt(ChatTimeUtil.toInstant(r.getCreatedAt()));
         // Only expose the single reported message — never arbitrary conversation history.
         if (r.getMessageId() != null) {
             messageRepository.findById(r.getMessageId()).ifPresent(m -> b.reportedMessage(messageMapper.toResponse(m)));

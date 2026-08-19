@@ -117,6 +117,55 @@ export interface MentorFeedbackDTO {
     created_at?: number | null;
 }
 
+/**
+ * One mentorship session: the booking, both parties, the mentor's recorded
+ * outcome and the learner's rating. `lifecycle` is the single derived status every
+ * surface displays.
+ */
+export interface MentorSessionDTO {
+    booking_instance_id: string;
+    title?: string | null;
+    scheduled_start_utc?: number | null;
+    scheduled_end_utc?: number | null;
+    duration_minutes?: number | null;
+    /** The appointment's own state: CONFIRMED | CANCELLED | RESCHEDULED. */
+    booking_status?: string | null;
+    meet_link?: string | null;
+    mentor_id?: string | null;
+    mentor_name?: string | null;
+    mentor_email?: string | null;
+    student_user_id?: string | null;
+    student_name?: string | null;
+    student_email?: string | null;
+    /** COMPLETED | NO_SHOW, or null when the mentor hasn't reviewed it. */
+    outcome?: string | null;
+    topic?: string | null;
+    /** Mentor's notes — admin/mentor only. */
+    notes?: string | null;
+    marked_at?: number | null;
+    rating?: number | null;
+    feedback_comment?: string | null;
+    lifecycle: 'UPCOMING' | 'AWAITING_REVIEW' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED' | 'RESCHEDULED' | string;
+}
+
+/** Session counts for the admin dashboard. */
+export interface SessionStats {
+    today?: number | null;
+    upcoming?: number | null;
+    completed?: number | null;
+    cancelled?: number | null;
+    no_show?: number | null;
+    awaiting_review?: number | null;
+}
+
+/** A mentor recording what happened in one of their sessions. */
+export interface RecordSessionRequest {
+    booking_instance_id: string;
+    outcome: 'COMPLETED' | 'NO_SHOW';
+    topic?: string;
+    notes?: string;
+}
+
 /** An admin's decision. `mentor_id` picks/overrides the mentor when approving. */
 export interface MentorRequestDecision {
     mentor_id?: string;
@@ -143,6 +192,10 @@ export interface MentorDashboard {
     upcoming_sessions?: number;
     /** Learner requests waiting on an admin decision. */
     pending_requests?: number;
+    completed_sessions?: number;
+    cancelled_sessions?: number;
+    no_show_sessions?: number;
+    sessions_awaiting_review?: number;
     /** Mentors listed in the learner-facing directory. */
     discoverable_mentors?: number;
     mentors: MentorDTO[];

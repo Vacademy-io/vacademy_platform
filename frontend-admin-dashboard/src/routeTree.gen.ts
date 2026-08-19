@@ -85,6 +85,7 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MentorshipSessionsIndexRouteImport } from "./routes/mentorship/sessions/index"
 import { Route as MentorshipRequestsIndexRouteImport } from "./routes/mentorship/requests/index"
 import { Route as MentorshipMyMentorshipIndexRouteImport } from "./routes/mentorship/my-mentorship/index"
 import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/mentors/index"
@@ -752,6 +753,13 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MentorshipSessionsIndexRoute = MentorshipSessionsIndexRouteImport.update({
+  id: "/mentorship/sessions/",
+  path: "/mentorship/sessions/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/sessions/index.lazy").then((d) => d.Route),
+)
 const MentorshipRequestsIndexRoute = MentorshipRequestsIndexRouteImport.update({
   id: "/mentorship/requests/",
   path: "/mentorship/requests/",
@@ -1950,6 +1958,7 @@ export interface FileRoutesByFullPath {
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2157,6 +2166,7 @@ export interface FileRoutesByTo {
   "/mentorship/mentors": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -2366,6 +2376,7 @@ export interface FileRoutesById {
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2576,6 +2587,7 @@ export interface FileRouteTypes {
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
     | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2783,6 +2795,7 @@ export interface FileRouteTypes {
     | "/mentorship/mentors"
     | "/mentorship/my-mentorship"
     | "/mentorship/requests"
+    | "/mentorship/sessions"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2991,6 +3004,7 @@ export interface FileRouteTypes {
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
     | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -3199,6 +3213,7 @@ export interface RootRouteChildren {
   MentorshipMentorsIndexRoute: typeof MentorshipMentorsIndexRoute
   MentorshipMyMentorshipIndexRoute: typeof MentorshipMyMentorshipIndexRoute
   MentorshipRequestsIndexRoute: typeof MentorshipRequestsIndexRoute
+  MentorshipSessionsIndexRoute: typeof MentorshipSessionsIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -3825,6 +3840,13 @@ declare module "@tanstack/react-router" {
       path: "/planning/activity-logs"
       fullPath: "/planning/activity-logs/"
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/sessions/": {
+      id: "/mentorship/sessions/"
+      path: "/mentorship/sessions"
+      fullPath: "/mentorship/sessions/"
+      preLoaderRoute: typeof MentorshipSessionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/mentorship/requests/": {
@@ -4879,6 +4901,7 @@ const rootRouteChildren: RootRouteChildren = {
   MentorshipMentorsIndexRoute: MentorshipMentorsIndexRoute,
   MentorshipMyMentorshipIndexRoute: MentorshipMyMentorshipIndexRoute,
   MentorshipRequestsIndexRoute: MentorshipRequestsIndexRoute,
+  MentorshipSessionsIndexRoute: MentorshipSessionsIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,

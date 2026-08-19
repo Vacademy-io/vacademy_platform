@@ -20,6 +20,15 @@ import {
     MENTORSHIP_REQUEST_APPROVE,
     MENTORSHIP_REQUEST_DECLINE,
     MENTORSHIP_MENTOR_FEEDBACK,
+    MENTORSHIP_SESSIONS,
+    MENTORSHIP_MY_SESSIONS_AWAITING,
+    MENTORSHIP_MY_SESSION_RECORD,
+    MENTORSHIP_SESSION_CANCEL,
+    MENTORSHIP_SESSION_RESCHEDULE,
+    MENTORSHIP_MY_SESSION_CANCEL,
+    MENTORSHIP_MY_SESSION_RESCHEDULE,
+    MENTORSHIP_MENTOR_MENTEES,
+    MENTORSHIP_MENTOR_AVAILABILITY,
 } from '@/constants/urls';
 import type {
     AssignMentorRequest,
@@ -35,6 +44,8 @@ import type {
     MentorDashboard,
     MentorFeedbackDTO,
     MentorRequestDTO,
+    MentorSessionDTO,
+    RecordSessionRequest,
     MentorRequestDecision,
     PageResponse,
     StudentRow,
@@ -196,6 +207,121 @@ export const fetchMentorFeedback = async (
         params: { instituteId },
     });
     return (res.data ?? []) as MentorFeedbackDTO[];
+};
+
+/**
+ * Mentorship sessions for the admin session view. Optionally narrowed to one
+ * mentor, one learner, or one lifecycle state.
+ */
+export const fetchMentorSessions = async (params: {
+    instituteId: string;
+    mentorId?: string;
+    studentUserId?: string;
+    lifecycle?: string;
+    historyDays?: number;
+}): Promise<MentorSessionDTO[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_SESSIONS,
+        params: {
+            instituteId: params.instituteId,
+            ...(params.mentorId ? { mentorId: params.mentorId } : {}),
+            ...(params.studentUserId ? { studentUserId: params.studentUserId } : {}),
+            ...(params.lifecycle ? { lifecycle: params.lifecycle } : {}),
+            ...(params.historyDays ? { historyDays: params.historyDays } : {}),
+        },
+    });
+    return (res.data ?? []) as MentorSessionDTO[];
+};
+
+/** Sessions the calling mentor still has to record an outcome for. */
+export const fetchMyAwaitingReview = async (instituteId: string): Promise<MentorSessionDTO[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MY_SESSIONS_AWAITING,
+        params: { instituteId },
+    });
+    return (res.data ?? []) as MentorSessionDTO[];
+};
+
+/** The mentor records what happened in a session. */
+export const recordSession = async (
+    instituteId: string,
+    data: RecordSessionRequest
+): Promise<MentorSessionDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_MY_SESSION_RECORD,
+        params: { instituteId },
+        data,
+    });
+    return res.data as MentorSessionDTO;
+};
+
+/**
+ * Cancel a mentorship session. `asAdmin` picks the endpoint: admins may cancel any
+ * session in the institute, a mentor only their own — the server enforces both.
+ */
+export const cancelMentorSession = async (
+    instituteId: string,
+    bookingInstanceId: string,
+    reason?: string,
+    asAdmin = true
+): Promise<MentorSessionDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: asAdmin ? MENTORSHIP_SESSION_CANCEL : MENTORSHIP_MY_SESSION_CANCEL,
+        params: { instituteId },
+        data: { booking_instance_id: bookingInstanceId, reason },
+    });
+    return res.data as MentorSessionDTO;
+};
+
+/** Move a session to a new time. Returns the REPLACEMENT booking, not the retired one. */
+export const rescheduleMentorSession = async (
+    instituteId: string,
+    bookingInstanceId: string,
+    startTime: string,
+    inviteeTimezone?: string,
+    asAdmin = true
+): Promise<MentorSessionDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: asAdmin ? MENTORSHIP_SESSION_RESCHEDULE : MENTORSHIP_MY_SESSION_RESCHEDULE,
+        params: { instituteId },
+        data: {
+            booking_instance_id: bookingInstanceId,
+            start_time: startTime,
+            invitee_timezone: inviteeTimezone,
+        },
+    });
+    return res.data as MentorSessionDTO;
+};
+
+/** One mentor's assigned students, for the admin mentor detail view. */
+export const fetchMentorMentees = async (
+    id: string,
+    instituteId: string
+): Promise<MenteeDTO[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MENTOR_MENTEES(id),
+        params: { instituteId },
+    });
+    return (res.data ?? []) as MenteeDTO[];
+};
+
+/** One mentor's bookable availability, read-only for admins. */
+export const fetchMentorAvailability = async (
+    id: string,
+    instituteId: string
+): Promise<MentorBookingPage> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MENTORSHIP_MENTOR_AVAILABILITY(id),
+        params: { instituteId },
+    });
+    return res.data as MentorBookingPage;
 };
 
 /** The caller's own mentor profile (incl. Google-connected status). */

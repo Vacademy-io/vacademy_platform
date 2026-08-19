@@ -4,6 +4,8 @@ import {
     ArrowSquareOut,
     CalendarCheck,
     CalendarPlus,
+    CheckCircle,
+    Clock,
     Copy,
     DotsThreeVertical,
     Eye,
@@ -15,8 +17,10 @@ import {
     Star,
     Trash,
     TrayArrowDown,
+    UserMinus,
     UsersThree,
     WarningCircle,
+    XCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -59,6 +63,7 @@ import { BulkAssignDialog } from '../-components/BulkAssignDialog';
 import { MentorAvatar } from '../-components/MentorAvatar';
 import { EditMentorDialog } from '../-components/EditMentorDialog';
 import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
+import { MentorDetailDialog } from '../-components/MentorDetailDialog';
 import { CapacityChip, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
 
@@ -93,6 +98,7 @@ function MentorsPage() {
     const [search, setSearch] = useState('');
     const [editMentor, setEditMentor] = useState<MentorDTO | null>(null);
     const [feedbackMentor, setFeedbackMentor] = useState<MentorDTO | null>(null);
+    const [detailMentor, setDetailMentor] = useState<MentorDTO | null>(null);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [assignMentor, setAssignMentor] = useState<MentorDTO | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
@@ -225,6 +231,43 @@ function MentorsPage() {
                 />
             </div>
 
+            {/* Session outcomes: only meaningful once sessions have actually run. */}
+            {((data?.completed_sessions ?? 0) > 0 ||
+                (data?.no_show_sessions ?? 0) > 0 ||
+                (data?.sessions_awaiting_review ?? 0) > 0) && (
+                <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                    <Stat
+                        icon={<CheckCircle size={20} weight="duotone" />}
+                        label="Completed"
+                        value={data?.completed_sessions ?? 0}
+                        hint="Sessions the mentor recorded"
+                        to="/mentorship/sessions"
+                    />
+                    <Stat
+                        icon={<UserMinus size={20} weight="duotone" />}
+                        label="No-shows"
+                        value={data?.no_show_sessions ?? 0}
+                        hint="Learner didn't attend"
+                        to="/mentorship/sessions"
+                    />
+                    <Stat
+                        icon={<XCircle size={20} weight="duotone" />}
+                        label="Cancelled"
+                        value={data?.cancelled_sessions ?? 0}
+                        hint="Called off or moved"
+                        to="/mentorship/sessions"
+                    />
+                    <Stat
+                        icon={<Clock size={20} weight="duotone" />}
+                        label="Awaiting review"
+                        value={data?.sessions_awaiting_review ?? 0}
+                        hint="Held, but no outcome recorded"
+                        to="/mentorship/sessions"
+                        highlight={(data?.sessions_awaiting_review ?? 0) > 0}
+                    />
+                </div>
+            )}
+
             {(data?.pending_requests ?? 0) > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
                     <span className="text-body text-neutral-700">
@@ -336,9 +379,14 @@ function MentorsPage() {
                                     className="size-10 text-body"
                                 />
                                 <div className="flex min-w-0 flex-col">
-                                    <span className="truncate text-body font-medium text-neutral-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDetailMentor(m)}
+                                        className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
+                                        title="Open this mentor's profile, students, availability and sessions"
+                                    >
                                         {m.display_name || m.name || 'Mentor'}
-                                    </span>
+                                    </button>
                                     <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
                                     {(m.expertise_tags?.length ?? 0) > 0 && (
                                         <span className="mt-1 flex flex-wrap gap-1">
@@ -488,6 +536,14 @@ function MentorsPage() {
                     }}
                 />
             )}
+            <MentorDetailDialog
+                mentor={detailMentor}
+                instituteId={instituteId}
+                open={!!detailMentor}
+                onOpenChange={(o) => {
+                    if (!o) setDetailMentor(null);
+                }}
+            />
             <MentorFeedbackDialog
                 mentor={feedbackMentor}
                 instituteId={instituteId}

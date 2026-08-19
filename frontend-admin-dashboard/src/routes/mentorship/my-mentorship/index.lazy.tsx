@@ -29,6 +29,9 @@ import type { MenteeDTO } from '../-types/mentorship-types';
 import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 import { AvailabilityDialog } from '../-components/AvailabilityDialog';
 import { MyScheduleCard } from '../-components/MyScheduleCard';
+import { RecordSessionDialog } from '../-components/RecordSessionDialog';
+import { useMyAwaitingReview } from '../-hooks/use-mentorship';
+import type { MentorSessionDTO } from '../-types/mentorship-types';
 import { reportApiError } from '@/lib/report-api-error';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
@@ -68,6 +71,8 @@ function MyMentorshipPage() {
     const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [availabilityOpen, setAvailabilityOpen] = useState(false);
+    const [recordSession, setRecordSession] = useState<MentorSessionDTO | null>(null);
+    const awaitingReview = useMyAwaitingReview(instituteId);
 
     const mentees = data?.content ?? [];
     const profile = profileQuery.data;
@@ -252,6 +257,47 @@ function MyMentorshipPage() {
 
             <MyScheduleCard instituteId={instituteId} />
 
+            {(awaitingReview.data?.length ?? 0) > 0 && (
+                <div className="flex flex-col gap-3 rounded-lg border border-warning-200 bg-warning-50 p-4">
+                    <div className="flex flex-col">
+                        <span className="text-body font-medium text-neutral-700">
+                            {awaitingReview.data?.length} session
+                            {(awaitingReview.data?.length ?? 0) === 1 ? '' : 's'} to record
+                        </span>
+                        <span className="text-caption text-neutral-500">
+                            Until you record it, a session doesn&apos;t count as delivered anywhere.
+                        </span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        {(awaitingReview.data ?? []).slice(0, 5).map((session) => (
+                            <div
+                                key={session.booking_instance_id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white p-3"
+                            >
+                                <div className="flex min-w-0 flex-col">
+                                    <span className="truncate text-body text-neutral-700">
+                                        {session.student_name || 'Mentee'}
+                                    </span>
+                                    <span className="truncate text-caption text-neutral-400">
+                                        {session.scheduled_start_utc
+                                            ? new Date(session.scheduled_start_utc).toLocaleString()
+                                            : ''}
+                                    </span>
+                                </div>
+                                <MyButton
+                                    type="button"
+                                    buttonType="primary"
+                                    scale="small"
+                                    onClick={() => setRecordSession(session)}
+                                >
+                                    Record
+                                </MyButton>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col">
                 <h3 className="flex items-center gap-2 text-title font-semibold text-neutral-700">
                     Mentees
@@ -361,6 +407,15 @@ function MyMentorshipPage() {
                 open={!!detailMentee}
                 onOpenChange={(o) => {
                     if (!o) setDetailMentee(null);
+                }}
+            />
+
+            <RecordSessionDialog
+                session={recordSession}
+                instituteId={instituteId}
+                open={!!recordSession}
+                onOpenChange={(o) => {
+                    if (!o) setRecordSession(null);
                 }}
             />
 

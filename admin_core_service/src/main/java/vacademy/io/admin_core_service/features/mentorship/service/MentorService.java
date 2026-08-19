@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorReques
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs;
 import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
 import vacademy.io.admin_core_service.features.mentorship.entity.MentorRequest;
@@ -62,6 +63,7 @@ public class MentorService {
     private final AuthService authService;
     private final MentorRequestRepository mentorRequestRepository;
     private final MentorFeedbackService mentorFeedbackService;
+    private final MentorSessionService mentorSessionService;
 
     @Transactional
     public MentorDTO create(CreateMentorRequest req, CustomUserDetails user) {
@@ -282,6 +284,19 @@ public class MentorService {
         return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
     }
 
+    /**
+     * A mentor's availability for the admin detail view. Unlike the mentor's own read
+     * this never provisions a page — an admin looking at a mentor who hasn't set up
+     * booking should see "not set up", not silently create one for them.
+     */
+    public BookingPageDTO getAvailabilityForAdmin(String mentorId, String instituteId) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+        if (mentor.getBookingPageId() == null || mentor.getBookingPageId().isBlank()) {
+            throw new VacademyException("This mentor hasn't set up booking yet");
+        }
+        return bookingPageService.getById(mentor.getBookingPageId(), instituteId);
+    }
+
     private Mentor getMyMentorOrThrow(String instituteId, CustomUserDetails user) {
         return mentorRepository
                 .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
@@ -325,11 +340,19 @@ public class MentorService {
                     java.sql.Timestamp.from(now.plus(java.time.Duration.ofDays(7))));
         }
 
+        // Outcome counts come from the session layer; best-effort like the other
+        // additive numbers so the dashboard can't start failing because of them.
+        MentorSessionDTOs.SessionStatsDTO sessionStats = sessionStats(instituteId);
+
         return MentorDashboardDTO.builder()
                 .totalMentors(mentors.size())
                 .totalActiveAssignments(active.size())
                 .distinctMentees(distinctMentees)
                 .pendingRequests(pendingRequestCount(instituteId))
+                .completedSessions(sessionStats.getCompleted())
+                .cancelledSessions(sessionStats.getCancelled())
+                .noShowSessions(sessionStats.getNoShow())
+                .sessionsAwaitingReview(sessionStats.getAwaitingReview())
                 .discoverableMentors((int) mentors.stream()
                         .filter(m -> Boolean.TRUE.equals(m.getIsDiscoverable())).count())
                 .todaySessions(todaySessions)
@@ -418,6 +441,16 @@ public class MentorService {
                 .mobileNumber(u != null ? u.getMobileNumber() : null)
                 .profilePicFileId(u != null ? u.getProfilePicFileId() : null)
                 .build();
+    }
+
+    /** Session outcome counts, defaulting to zeros if the session layer fails. */
+    private MentorSessionDTOs.SessionStatsDTO sessionStats(String instituteId) {
+        try {
+            return mentorSessionService.stats(instituteId);
+        } catch (Exception e) {
+            return MentorSessionDTOs.SessionStatsDTO.builder()
+                    .today(0).upcoming(0).completed(0).cancelled(0).noShow(0).awaitingReview(0).build();
+        }
     }
 
     /**

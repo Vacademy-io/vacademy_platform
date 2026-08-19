@@ -10,11 +10,13 @@ import vacademy.io.admin_core_service.features.mentorship.dto.MentorDirectoryDTO
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorFeedbackDTOs;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestCreateDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorDiscoveryService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorFeedbackService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorSessionService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -37,6 +39,7 @@ public class MyMentorshipController {
     private final MentorService mentorService;
     private final MentorDiscoveryService discoveryService;
     private final MentorFeedbackService feedbackService;
+    private final MentorSessionService sessionService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     /**
@@ -135,6 +138,51 @@ public class MyMentorshipController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(feedbackService.submit(instituteId, user, request));
+    }
+
+    // ==================== SESSION OUTCOMES ====================
+
+    /** Sessions the calling mentor has held but not yet recorded an outcome for. */
+    @GetMapping("/my-sessions/awaiting-review")
+    public ResponseEntity<List<MentorSessionDTOs.MentorSessionDTO>> myAwaitingReview(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.myAwaitingReview(instituteId, user));
+    }
+
+    /** The mentor records what happened: COMPLETED or NO_SHOW, plus topic and notes. */
+    @PostMapping("/my-sessions/record")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> recordSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RecordSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.record(instituteId, user, request));
+    }
+
+    /** The mentor cancels one of their OWN sessions. */
+    @PostMapping("/my-sessions/cancel")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> cancelMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.CancelSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        // asAdmin=false: the service refuses any session this mentor doesn't host.
+        return ResponseEntity.ok(sessionService.cancelSession(instituteId, user,
+                request.getBookingInstanceId(), request.getReason(), false));
+    }
+
+    /** The mentor moves one of their OWN sessions to a new time. */
+    @PostMapping("/my-sessions/reschedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> rescheduleMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RescheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.rescheduleSession(instituteId, user,
+                request.getBookingInstanceId(), request.getStartTime(),
+                request.getInviteeTimezone(), false));
     }
 
     /** The caller's own mentor profile (incl. Google-connected status) — for the Connect Google card. */

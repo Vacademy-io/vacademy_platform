@@ -6,6 +6,7 @@ import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
 import { getUserId } from '@/utils/userDetails';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { reportApiError } from '@/lib/report-api-error';
 import { useUpdateMentor } from '../-hooks/use-mentorship';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { MentorProfileFields, type MentorProfileValues } from './MentorProfileFields';
@@ -86,8 +87,12 @@ export function EditMentorDialog({
                 setPhotoFileId(fileId);
                 setPhotoUrl(await getPublicUrl(fileId));
             }
-        } catch {
-            toast.error('Photo upload failed');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'upload-mentor-photo' },
+                fallbackMessage: 'Photo upload failed',
+            });
         } finally {
             setUploadingPhoto(false);
         }
@@ -113,8 +118,13 @@ export function EditMentorDialog({
             });
             toast.success('Mentor updated');
             onOpenChange(false);
-        } catch {
-            toast.error('Failed to update mentor');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'update-mentor' },
+                extra: { mentorId: mentor.id },
+                fallbackMessage: 'Failed to update mentor',
+            });
         } finally {
             setSubmitting(false);
         }

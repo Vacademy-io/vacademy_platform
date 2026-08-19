@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MenteePicker } from './MenteePicker';
+import { reportApiError } from '@/lib/report-api-error';
 import { assignmentNeedsAttention, assignmentResultMessage } from '../-utils/assignment-result';
 import { useAssignMentees } from '../-hooks/use-mentorship';
 import type { MentorDTO, StudentRow } from '../-types/mentorship-types';
@@ -41,8 +42,13 @@ export function AssignMenteesDialog({ mentor, instituteId, open, onOpenChange }:
             else toast.success(message);
             setSelected([]);
             onOpenChange(false);
-        } catch {
-            toast.error('Failed to assign students');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'assign-mentees' },
+                extra: { mentorId: mentor.id, studentCount: selected.length },
+                fallbackMessage: 'Failed to assign students',
+            });
         } finally {
             setSubmitting(false);
         }

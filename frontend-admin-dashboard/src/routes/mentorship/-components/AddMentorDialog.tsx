@@ -7,6 +7,7 @@ import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
 import { getUserId } from '@/utils/userDetails';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { reportApiError } from '@/lib/report-api-error';
 import {
     fetchEligibleOrgUsers,
     type InstituteUser,
@@ -110,8 +111,12 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
                 setPhotoFileId(fileId);
                 setPhotoUrl(await getPublicUrl(fileId));
             }
-        } catch {
-            toast.error('Photo upload failed');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'upload-mentor-photo' },
+                fallbackMessage: 'Photo upload failed',
+            });
         } finally {
             setUploadingPhoto(false);
         }
@@ -139,8 +144,15 @@ export function AddMentorDialog({ instituteId, open, onOpenChange }: AddMentorDi
             toast.success('Mentor added');
             reset();
             onOpenChange(false);
-        } catch {
-            toast.error('Failed to add mentor');
+        } catch (error) {
+            // Duplicate-mentor and validation refusals come back with a readable
+            // reason; showing it beats "Failed to add mentor".
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'create-mentor' },
+                extra: { userId: selected.id },
+                fallbackMessage: 'Failed to add mentor',
+            });
         } finally {
             setSubmitting(false);
         }

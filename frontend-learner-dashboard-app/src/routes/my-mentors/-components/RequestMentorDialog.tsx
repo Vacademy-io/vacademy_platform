@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { reportApiError } from "@/lib/report-api-error";
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,14 +50,16 @@ export function RequestMentorDialog({
             queryClient.invalidateQueries({ queryKey: ["GET_MY_MENTOR_REQUESTS"] });
             onOpenChange(false);
         },
-        onError: (e: unknown) => {
+        onError: (error: unknown) =>
             // The server explains refusals precisely (already requested, mentor full,
             // already your mentor) — showing that beats a generic failure message.
-            const message =
-                (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                "Couldn't send your request. Please try again.";
-            toast.error(message);
-        },
+            // Those are expected 4xx, so they breadcrumb rather than burn Sentry quota.
+            reportApiError(error, {
+                feature: "mentorship",
+                tags: { "mentorship.action": "request-mentor" },
+                extra: { mentorId: mentor?.id ?? "any" },
+                fallbackMessage: "Couldn't send your request. Please try again.",
+            }),
     });
 
     return (

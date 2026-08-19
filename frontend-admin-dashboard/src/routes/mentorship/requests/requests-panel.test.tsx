@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { AxiosError, AxiosHeaders } from 'axios';
 import type { MentorDTO, MentorRequestDTO } from '@/routes/mentorship/-types/mentorship-types';
 
 const decideMutate = vi.fn(async () => ({}) as MentorRequestDTO);
@@ -183,9 +184,23 @@ describe('MentorRequestsPanel', () => {
     });
 
     it('surfaces the server’s reason when a decision is refused', async () => {
-        decideMutate.mockRejectedValueOnce({
-            response: { data: { message: 'Asha Nair is at capacity (3 mentees).' } },
-        });
+        // A real AxiosError, because that is what axios throws and what the error
+        // reporter reads the backend message off — a plain object would silently
+        // fall back to the generic text and prove nothing.
+        const refusal = new AxiosError(
+            'Request failed with status code 400',
+            'ERR_BAD_REQUEST',
+            undefined,
+            undefined,
+            {
+                status: 400,
+                data: { message: 'Asha Nair is at capacity (3 mentees).' },
+                statusText: 'Bad Request',
+                headers: {},
+                config: { headers: new AxiosHeaders() },
+            }
+        );
+        decideMutate.mockRejectedValueOnce(refusal);
         const { toast } = await import('sonner');
         render(<MentorRequestsPanel instituteId="inst-1" />);
 
@@ -194,7 +209,27 @@ describe('MentorRequestsPanel', () => {
         fireEvent.click(screen.getByRole('button', { name: /Approve & assign/ }));
 
         await waitFor(() =>
-            expect(toast.error).toHaveBeenCalledWith('Asha Nair is at capacity (3 mentees).')
+            expect(toast.error).toHaveBeenCalledWith(
+                'Asha Nair is at capacity (3 mentees).',
+                expect.anything()
+            )
+        );
+    });
+
+    it('falls back to a readable message when the server gives no reason', async () => {
+        decideMutate.mockRejectedValueOnce(new Error('Network Error'));
+        const { toast } = await import('sonner');
+        render(<MentorRequestsPanel instituteId="inst-1" />);
+
+        fireEvent.click(screen.getByRole('button', { name: /Decline$/ }));
+        await screen.findByText('Decline mentor request');
+        fireEvent.click(screen.getByRole('button', { name: /Decline request/ }));
+
+        await waitFor(() =>
+            expect(toast.error).toHaveBeenCalledWith(
+                'Failed to decline the request',
+                expect.anything()
+            )
         );
     });
 });

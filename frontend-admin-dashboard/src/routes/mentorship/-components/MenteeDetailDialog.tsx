@@ -7,6 +7,7 @@ import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Progress } from '@/components/ui/progress';
 import { createDirectConversation } from '@/services/chat/chatApi';
+import { reportApiError } from '@/lib/report-api-error';
 import { useLearnerPackagesQuery } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { useCreateNote, useMenteeCalls, useStudentTimeline } from '../-hooks/use-mentorship';
 import type { MenteeDTO } from '../-types/mentorship-types';
@@ -53,8 +54,13 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
             await createNote.mutateAsync({ studentUserId, title: note.trim() });
             setNote('');
             toast.success('Note added');
-        } catch {
-            toast.error('Failed to add note');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'add-mentee-note' },
+                extra: { studentUserId },
+                fallbackMessage: 'Failed to add note',
+            });
         } finally {
             setSaving(false);
         }
@@ -70,8 +76,13 @@ export function MenteeDetailDialog({ mentee, instituteId, open, onOpenChange }: 
                 targetUserRole: 'STUDENT',
             });
             navigate({ to: '/chat', search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'open-mentee-chat' },
+                extra: { studentUserId },
+                fallbackMessage: "Couldn't open the chat. Please try again.",
+            });
         } finally {
             setMessaging(false);
         }

@@ -269,6 +269,10 @@ async def ground_slide(
     mode: str = "STRICT",
     faithful: bool = True,
     node_id: Optional[str] = None,
+    # The slide's section page span (deterministic outlines stamp it on the
+    # todo) — retrieval bridge when node_id linkage yields nothing.
+    page_start: Optional[int] = None,
+    page_end: Optional[int] = None,
 ) -> SlideGrounding:
     """Retrieve the material for one slide.
 
@@ -318,6 +322,27 @@ async def ground_slide(
                     ]
         except Exception:  # noqa: BLE001
             logger.warning("Node-scoped grounding failed for node %s", node_id, exc_info=True)
+            hits = []
+
+    # Page-span retrieval: the bridge for KBs whose chunks are linked to nodes
+    # no slide uses (section-only linkage shipped twice — the slide's node has
+    # no chunks even though its section's pages do). Pages are the one join
+    # both trees share, and deterministic slides carry their section's span.
+    if not hits and page_start is not None and page_end is not None:
+        try:
+            hits = repo.get_chunks_for_pages(
+                kb_id=kb_id, institute_id=kb["institute_id"],
+                page_start=int(page_start), page_end=int(page_end),
+            )
+            if hits:
+                all_fids = [fid for h in hits for fid in h.get("figure_ids", [])]
+                figs = repo.get_figures_by_ids(all_fids)
+                for h in hits:
+                    h["figures"] = [
+                        figs[fid] for fid in h.get("figure_ids", []) if fid in figs
+                    ]
+        except Exception:  # noqa: BLE001
+            logger.warning("Page-span grounding failed for pages %s-%s", page_start, page_end, exc_info=True)
             hits = []
 
     if not hits:

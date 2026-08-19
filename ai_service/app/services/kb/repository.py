@@ -781,14 +781,25 @@ class KbRepository:
                       SELECT DISTINCT ON (ch.id) ch.id AS chunk_id, nd.id
                       FROM kb_chunk ch
                       JOIN knowledge_base_node nd
-                        ON nd.source_id = ch.source_id
-                       AND nd.level = 'section'
+                        ON (
+                             -- summary-tree sections belong to this source;
+                             -- topic-tree subtopics are KB-wide (source_id NULL)
+                             nd.source_id = ch.source_id
+                             OR (nd.source_id IS NULL
+                                 AND nd.knowledge_base_id = ch.knowledge_base_id)
+                           )
+                       AND nd.level IN ('section', 'subtopic')
                        AND nd.page_start IS NOT NULL
                        AND nd.page_end IS NOT NULL
                        AND ch.page_start IS NOT NULL
                        AND ch.page_start BETWEEN nd.page_start AND nd.page_end
                       WHERE ch.source_id = :source_id
-                      ORDER BY ch.id, (nd.page_end - nd.page_start) ASC
+                      -- narrowest containing node wins; on a tie prefer the
+                      -- SUBTOPIC — that is the node course slides retrieve by,
+                      -- and section-only linkage left every chunk invisible
+                      -- to node-scoped grounding (two client audits hit this)
+                      ORDER BY ch.id, (nd.page_end - nd.page_start) ASC,
+                               CASE nd.level WHEN 'subtopic' THEN 0 ELSE 1 END
                   ) AS n
                  WHERE c.id = n.chunk_id
                 """
@@ -987,6 +998,44 @@ class KbRepository:
                 "kb_id": kb_id, "institute_id": institute_id,
                 "node_id": node_id, "limit": limit,
             },
+        ).fetchall()
+        return [
+            {
+                "chunk_id": r[0], "content_text": r[1], "page_start": r[2], "page_end": r[3],
+                "figure_ids": list(r[4] or []), "lang": r[5], "metadata": r[6] or {},
+                "source_id": r[7], "source_title": r[8],
+                "similarity_score": 1.0,
+            }
+            for r in rows
+        ]
+
+    def get_chunks_for_pages(
+        self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40
+    ) -> List[Dict[str, Any]]:
+        """Every chunk within a page span, in source order.
+
+        The generation-time bridge for KBs whose chunks were linked to nodes no
+        slide uses (section-only linkage shipped twice): a deterministic slide
+        knows its section's PAGE SPAN even when node_id retrieval comes back
+        empty, and pages are the one join both trees share."""
+        rows = self.db.execute(
+            text(
+                """
+                SELECT c.id, c.content_text, c.page_start, c.page_end, c.figure_ids,
+                       c.lang, c.meta_data, c.source_id, s.title AS source_title
+                FROM kb_chunk c
+                JOIN knowledge_base_source s ON s.id = c.source_id
+                WHERE c.knowledge_base_id = :kb_id
+                  AND c.institute_id = :institute_id
+                  AND c.page_start IS NOT NULL
+                  AND c.page_start BETWEEN :ps AND :pe
+                  AND s.is_active = TRUE
+                ORDER BY c.page_start, c.chunk_index
+                LIMIT :limit
+                """
+            ),
+            {"kb_id": kb_id, "institute_id": institute_id,
+             "ps": page_start, "pe": page_end, "limit": limit},
         ).fetchall()
         return [
             {

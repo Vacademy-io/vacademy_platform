@@ -313,8 +313,12 @@ class CourseOutlineGenerationService:
                             db, kb_id=kb_id, institute_id=institute_id,
                             query=query, mode=mode, faithful=faithful,
                             # Deterministic outlines stamp the section's tree id
-                            # onto the todo → whole-section grounding.
+                            # onto the todo → whole-section grounding; the page
+                            # span is the fallback when that node has no linked
+                            # chunks (section-only linkage shipped twice).
                             node_id=(todo.metadata or {}).get("node_id"),
+                            page_start=(todo.metadata or {}).get("kb_page_start"),
+                            page_end=(todo.metadata or {}).get("kb_page_end"),
                         )
                 except Exception:  # noqa: BLE001
                     logger.warning("KB grounding failed for %s", todo.path, exc_info=True)

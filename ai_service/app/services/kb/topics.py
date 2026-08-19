@@ -112,6 +112,7 @@ Return STRICT JSON, no prose, no markdown fence:
       "subtopics": [
         {{
           "title": "a narrower testable area, e.g. 'Definite integrals and properties'",
+          "summary": "one line NAMING the specific tests, tables, named methods and concepts this subtopic covers in the material — e.g. 'Snellen chart, Ishihara plates, accommodation reflex, fundoscopy'. Course slides are generated from these names; a vague summary loses content.",
           "keywords": ["the concepts a question on this would use"]
         }}
       ]
@@ -132,6 +133,10 @@ RULES THAT MATTER:
 - At most {MAX_TOPICS} topics. If the material is broad, group at the level a syllabus would —
   prefer "Thermodynamics" over fifteen separate laws.
 - Order topics the way a syllabus would, not the way the files happened to be uploaded.
+- SINGLE COHERENT TEXT (one book/chapter rather than many mixed papers): keep the material's OWN
+  section headings as subtopic titles, in the material's own order — teachers review these titles
+  against their book, and re-themed names read as missing content. Re-theme titles only when
+  merging genuinely overlapping sources.
 """
 
 

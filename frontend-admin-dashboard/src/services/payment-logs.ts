@@ -130,3 +130,68 @@ export const updatePaymentLogTracking = async (
 ): Promise<void> => {
     await authenticatedAxiosInstance.post(UPDATE_PAYMENT_LOG_TRACKING_URL, request);
 };
+
+export const OUTSTANDING_LEARNERS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/outstanding-learners`;
+
+/** A learner who still owes money — the drill-down behind the "Due payment" card. */
+export interface OutstandingLearner {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    mobile_number: string | null;
+    course_name: string | null;
+    /** Custom Installment (CPO), Course / Package, Live Class, Sub-Org … */
+    payment_type: string | null;
+    plan_status: string | null;
+    billed: number;
+    paid: number;
+    due: number;
+    plan_count: number;
+    /** CPO only: instalments still unpaid on their schedule. */
+    pending_installments: number;
+    /** CPO only: when the next unpaid instalment falls due (YYYY-MM-DD). */
+    next_due_date: string | null;
+    currency: string | null;
+}
+
+export interface OutstandingLearnersPage {
+    content: OutstandingLearner[];
+    totalPages: number;
+    totalElements: number;
+    number: number;
+    size: number;
+    last: boolean;
+}
+
+/**
+ * Who owes what. The payment-logs endpoint can't answer this — a part-paid instalment plan leaves
+ * one PAID row and an enrolment that never paid leaves none — so the balance is computed against
+ * the enrolments themselves, learner by learner.
+ */
+export const fetchOutstandingLearners = async (
+    requestBody: BillingSummaryRequest = {},
+    pageNo = 0,
+    pageSize = 20
+): Promise<OutstandingLearnersPage> => {
+    const instituteId = getCurrentInstituteId();
+
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+
+    const response = await authenticatedAxiosInstance.post(
+        OUTSTANDING_LEARNERS_URL,
+        { ...requestBody, institute_id: instituteId },
+        { params: { pageNo, pageSize } }
+    );
+
+    const d = (response.data ?? {}) as Partial<OutstandingLearnersPage>;
+    return {
+        content: Array.isArray(d.content) ? d.content : [],
+        totalPages: typeof d.totalPages === 'number' ? d.totalPages : 1,
+        totalElements: typeof d.totalElements === 'number' ? d.totalElements : 0,
+        number: typeof d.number === 'number' ? d.number : pageNo,
+        size: typeof d.size === 'number' ? d.size : pageSize,
+        last: d.last ?? true,
+    };
+};

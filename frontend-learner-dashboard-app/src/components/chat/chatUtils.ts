@@ -1,16 +1,30 @@
 /** Small presentation helpers shared across chat components. */
 
+/**
+ * Chat timestamps are recorded in UTC, but service builds before the Instant switch serialise
+ * them without a zone marker — and `new Date("2026-08-19T08:47:03")` reads a bare value as
+ * *local* time, so a 2:17 PM IST message rendered as 8:47 AM. Force UTC when the marker is
+ * missing; values that already carry one (including our optimistic `toISOString()` echoes)
+ * pass through untouched.
+ */
+export function toUtcDate(raw?: string | null): Date | null {
+  if (!raw) return null;
+  const hasZone = /Z$|[+-]\d{2}:?\d{2}$/i.test(raw);
+  const d = new Date(hasZone ? raw : `${raw.replace(" ", "T")}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** Returns a YYYY-MM-DD day key for grouping messages into day buckets. */
 export function dayKey(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = toUtcDate(iso);
+  if (!d) return "";
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
 /** Human-friendly day label: "Today", "Yesterday", or a full date. */
 export function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = toUtcDate(iso);
+  if (!d) return "";
   const now = new Date();
   const startOf = (x: Date) =>
     new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
@@ -27,8 +41,8 @@ export function dayLabel(iso: string): string {
 
 /** Short clock time for a message bubble, e.g. "3:07 PM". */
 export function timeLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = toUtcDate(iso);
+  if (!d) return "";
   return d.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",

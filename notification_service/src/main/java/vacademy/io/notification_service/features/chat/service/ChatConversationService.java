@@ -25,6 +25,7 @@ import vacademy.io.notification_service.features.chat.event.ChatFanoutEvent;
 import vacademy.io.notification_service.features.chat.repository.ChatConversationMemberRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatConversationRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatMessageRepository;
+import vacademy.io.notification_service.features.chat.util.ChatTimeUtil;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -392,7 +393,7 @@ public class ChatConversationService {
                 .otherUserId(otherUserId)
                 .lastMessagePreview(c.getLastMessagePreview())
                 .lastMessageSenderId(c.getLastMessageSenderId())
-                .lastMessageAt(c.getLastMessageAt())
+                .lastMessageAt(ChatTimeUtil.toInstant(c.getLastMessageAt()))
                 .lastMessageSeq(c.getLastMessageSeq())
                 .unreadCount(unread)
                 .memberRole(callerMember != null ? callerMember.getMemberRole() : null)

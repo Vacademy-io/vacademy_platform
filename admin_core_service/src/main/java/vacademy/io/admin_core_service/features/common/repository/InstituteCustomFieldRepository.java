@@ -17,12 +17,22 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
         @Transactional
         void deleteByCustomFieldId(String customFieldId);
 
+        /**
+         * Per-feature field list, ordered the way the admin arranged it on THAT form.
+         *
+         * <p>{@code icf.individualOrder} is the per-mapping position the feature's form
+         * builder writes on every drag; {@code cf.formOrder} is the master catalog order
+         * shared by every form that reuses the same custom field. Ordering by the master
+         * order made a reordered form render in whatever sequence the field was first
+         * created in — the arrangement saved in the builder was simply ignored. Fall back
+         * to the master order only for legacy mappings that never got an individual order.
+         */
         @Query("SELECT icf, cf FROM InstituteCustomField icf, CustomFields cf " +
                         "WHERE cf.id = icf.customFieldId " +
                         "AND icf.instituteId = :instituteId " +
                         "AND icf.type = :type " +
                         "AND icf.typeId = :typeId " +
-                        "ORDER BY cf.formOrder ASC")
+                        "ORDER BY COALESCE(icf.individualOrder, cf.formOrder) ASC, cf.formOrder ASC")
         List<Object[]> findInstituteCustomFieldsWithDetails(
                         @Param("instituteId") String instituteId,
                         @Param("type") String type,

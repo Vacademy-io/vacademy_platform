@@ -1,26 +1,18 @@
 import { useEffect, useState } from 'react';
-import { createLazyFileRoute, Link } from '@tanstack/react-router';
+import { createLazyFileRoute } from '@tanstack/react-router';
 import {
     ArrowSquareOut,
     CalendarCheck,
     CalendarPlus,
-    CheckCircle,
-    Clock,
     Copy,
     DotsThreeVertical,
-    Eye,
-    GraduationCap,
-    Handshake,
     MagnifyingGlass,
     NotePencil,
     Plus,
     Star,
     Trash,
-    TrayArrowDown,
-    UserMinus,
     UsersThree,
     WarningCircle,
-    XCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -66,6 +58,7 @@ import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
 import { MentorDetailDialog } from '../-components/MentorDetailDialog';
 import { CapacityChip, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
+import { filterMentors } from '../-utils/filter-mentors';
 
 export const Route = createLazyFileRoute('/mentorship/mentors/')({
     component: MentorsRoute,
@@ -109,15 +102,8 @@ function MentorsPage() {
     // Searching switches from the server-paginated page to a filter over the full
     // mentor list the dashboard already loaded — a page-local filter would silently
     // hide matches sitting on other pages.
-    const query = search.trim().toLowerCase();
-    const searching = query.length > 0;
-    const visibleMentors = searching
-        ? mentors.filter((m) =>
-              [m.display_name, m.name, m.title, m.email, ...(m.expertise_tags ?? [])].some(
-                  (field) => (field ?? '').toLowerCase().includes(query)
-              )
-          )
-        : pagedMentors;
+    const searching = search.trim().length > 0;
+    const visibleMentors = searching ? filterMentors(mentors, search) : pagedMentors;
 
     const remove = async (m: MentorDTO) => {
         if (!instituteId) return;
@@ -194,97 +180,6 @@ function MentorsPage() {
                     </MyButton>
                 </div>
             </div>
-
-            {/* The flow in one glance — clears up "what do I do here?" for new admins. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-                <HowStep n={1} text="Add a mentor from your team" />
-                <HowStep n={2} text="Assign students to them" />
-                <HowStep n={3} text="Learners book 1:1s & message them from their app" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Stat
-                    icon={<UsersThree size={20} weight="duotone" />}
-                    label="Mentors"
-                    value={data?.total_mentors ?? 0}
-                    hint="Team members mentoring students"
-                />
-                <Stat
-                    icon={<Handshake size={20} weight="duotone" />}
-                    label="Active assignments"
-                    value={data?.total_active_assignments ?? 0}
-                    hint="Mentor–student pairs right now"
-                />
-                <Stat
-                    icon={<GraduationCap size={20} weight="duotone" />}
-                    label="Students mentored"
-                    value={data?.distinct_mentees ?? 0}
-                    hint="Students with at least one mentor"
-                />
-                <Stat
-                    icon={<TrayArrowDown size={20} weight="duotone" />}
-                    label="Requests to review"
-                    value={data?.pending_requests ?? 0}
-                    hint="Learners waiting on a mentor"
-                    to="/mentorship/requests"
-                    highlight={(data?.pending_requests ?? 0) > 0}
-                />
-            </div>
-
-            {/* Session outcomes: only meaningful once sessions have actually run. */}
-            {((data?.completed_sessions ?? 0) > 0 ||
-                (data?.no_show_sessions ?? 0) > 0 ||
-                (data?.sessions_awaiting_review ?? 0) > 0) && (
-                <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-                    <Stat
-                        icon={<CheckCircle size={20} weight="duotone" />}
-                        label="Completed"
-                        value={data?.completed_sessions ?? 0}
-                        hint="Sessions the mentor recorded"
-                        to="/mentorship/sessions"
-                    />
-                    <Stat
-                        icon={<UserMinus size={20} weight="duotone" />}
-                        label="No-shows"
-                        value={data?.no_show_sessions ?? 0}
-                        hint="Learner didn't attend"
-                        to="/mentorship/sessions"
-                    />
-                    <Stat
-                        icon={<XCircle size={20} weight="duotone" />}
-                        label="Cancelled"
-                        value={data?.cancelled_sessions ?? 0}
-                        hint="Called off or moved"
-                        to="/mentorship/sessions"
-                    />
-                    <Stat
-                        icon={<Clock size={20} weight="duotone" />}
-                        label="Awaiting review"
-                        value={data?.sessions_awaiting_review ?? 0}
-                        hint="Held, but no outcome recorded"
-                        to="/mentorship/sessions"
-                        highlight={(data?.sessions_awaiting_review ?? 0) > 0}
-                    />
-                </div>
-            )}
-
-            {(data?.pending_requests ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
-                    <span className="text-body text-neutral-700">
-                        <b>
-                            {data?.pending_requests} learner
-                            {data?.pending_requests === 1 ? '' : 's'}
-                        </b>{' '}
-                        {data?.pending_requests === 1 ? 'is' : 'are'} waiting to be paired with a
-                        mentor.
-                    </span>
-                    <Link to="/mentorship/requests">
-                        <MyButton type="button" buttonType="primary" scale="small">
-                            Review requests
-                        </MyButton>
-                    </Link>
-                </div>
-            )}
 
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="relative w-full sm:w-80">
@@ -390,7 +285,7 @@ function MentorsPage() {
                                     <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
                                     {(m.expertise_tags?.length ?? 0) > 0 && (
                                         <span className="mt-1 flex flex-wrap gap-1">
-                                            {m.expertise_tags?.slice(0, 3).map((tag) => (
+                                            {m.expertise_tags?.slice(0, 2).map((tag) => (
                                                 <span
                                                     key={tag}
                                                     className="rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600"
@@ -398,12 +293,12 @@ function MentorsPage() {
                                                     {tag}
                                                 </span>
                                             ))}
-                                            {(m.expertise_tags?.length ?? 0) > 3 && (
+                                            {(m.expertise_tags?.length ?? 0) > 2 && (
                                                 <span
                                                     className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500"
-                                                    title={m.expertise_tags?.slice(3).join(', ')}
+                                                    title={m.expertise_tags?.slice(2).join(', ')}
                                                 >
-                                                    +{(m.expertise_tags?.length ?? 0) - 3}
+                                                    +{(m.expertise_tags?.length ?? 0) - 2}
                                                 </span>
                                             )}
                                         </span>
@@ -413,29 +308,6 @@ function MentorsPage() {
                             <div className="flex flex-wrap items-center gap-2">
                                 <CapacityChip mentor={m} />
                                 <RatingChip mentor={m} onClick={() => setFeedbackMentor(m)} />
-                                {m.is_discoverable && (
-                                    <span
-                                        className="flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-caption text-primary-600"
-                                        title="Learners can find and request this mentor"
-                                    >
-                                        <Eye size={14} weight="bold" /> In directory
-                                    </span>
-                                )}
-                                {m.booking_page_slug ? (
-                                    <span
-                                        className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600"
-                                        title="Learners can book 1:1 sessions with this mentor"
-                                    >
-                                        <CalendarCheck size={14} weight="bold" /> Booking enabled
-                                    </span>
-                                ) : (
-                                    <span
-                                        className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-400"
-                                        title="No 1:1 booking page yet — enable it from the ⋯ menu"
-                                    >
-                                        Booking off
-                                    </span>
-                                )}
                                 <MyButton
                                     type="button"
                                     buttonType="secondary"
@@ -605,65 +477,6 @@ function MentorsPage() {
                 </AlertDialogContent>
             </AlertDialog>
         </div>
-    );
-}
-
-function HowStep({ n, text }: { n: number; text: string }) {
-    return (
-        <span className="flex items-center gap-2 text-caption text-neutral-500">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-600">
-                {n}
-            </span>
-            {text}
-        </span>
-    );
-}
-
-function Stat({
-    icon,
-    label,
-    value,
-    hint,
-    to,
-    highlight,
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: number;
-    hint: string;
-    /** When set the whole tile links here — used for the requests queue. */
-    to?: string;
-    /** Draws attention when the number is something the admin should act on. */
-    highlight?: boolean;
-}) {
-    const body = (
-        <div
-            className={`flex h-full items-start gap-3 rounded-lg border bg-white p-4 ${
-                highlight ? 'border-primary-300 ring-1 ring-primary-100' : 'border-neutral-200'
-            } ${to ? 'transition-colors hover:border-primary-300 hover:bg-primary-50/40' : ''}`}
-        >
-            <span
-                className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${
-                    highlight ? 'bg-primary-100 text-primary-600' : 'bg-primary-50 text-primary-500'
-                }`}
-            >
-                {icon}
-            </span>
-            <div className="flex min-w-0 flex-col">
-                <span className="text-h2 font-semibold leading-tight text-neutral-700">{value}</span>
-                <span className="text-caption font-medium text-neutral-600">{label}</span>
-                <span className="truncate text-caption text-neutral-400" title={hint}>
-                    {hint}
-                </span>
-            </div>
-        </div>
-    );
-    return to ? (
-        <Link to={to} className="block">
-            {body}
-        </Link>
-    ) : (
-        body
     );
 }
 

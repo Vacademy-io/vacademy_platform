@@ -663,63 +663,102 @@ def repair_inline_flex_direction(html: str) -> Tuple[str, List[str]]:
 # the callback would have fired (delay + duration). A tween is seek-safe; a
 # callback is not.
 
-_ONCOMPLETE_RE = re.compile(
-    r"gsap\.(?:to|fromTo)\(\s*(['\"])(?P<sel>[^'\"]+)\1\s*,(?P<args>[\s\S]{0,600}?)"
-    r"onComplete\s*:\s*\(\s*\)\s*=>\s*\{(?P<body>[\s\S]{0,600}?)\}\s*\}\s*\)\s*;",
-    re.I,
-)
-_INNER_SET_RE = re.compile(
-    r"gsap\.set\(\s*(['\"])(?P<sel>[^'\"]+)\1\s*,\s*\{(?P<props>[^{}]{0,200})\}\s*\)\s*;",
-    re.I,
-)
 _HOIST_MARKER = "vx: state changes hoisted"
 _DELAY_RE = re.compile(r"\bdelay\s*:\s*([0-9.]+)")
 _DURATION_RE = re.compile(r"\bduration\s*:\s*([0-9.]+)")
+_ONCOMPLETE_RE = re.compile(r"onComplete\s*:\s*\(\s*\)\s*=>\s*")
+_DELAYED_CALL_RE = re.compile(r"gsap\.delayedCall\(\s*([0-9.]+)\s*,\s*\(\s*\)\s*=>\s*")
+# set / to / fromTo inside a callback body — the act swap is written with any
+# of the three, so matching only `set` missed the video that rendered black.
+_INNER_TWEEN_RE = re.compile(
+    r"gsap\.(?:set|to|fromTo)\(\s*(['\"])(?P<sel>[^'\"]+)\1\s*,\s*\{(?P<props>[^{}]{0,400})\}",
+    re.I,
+)
+
+
+def _balanced_body(text: str, brace_idx: int) -> str:
+    """Contents of the {...} block starting at `brace_idx`.
+
+    Callback bodies contain nested calls that each end in `});`, so a
+    non-greedy regex stops at the first one and misses everything after it —
+    which is exactly where the act show/hide sits.
+    """
+    if brace_idx < 0 or brace_idx >= len(text) or text[brace_idx] != "{":
+        return ""
+    depth = 0
+    for i in range(brace_idx, min(len(text), brace_idx + 4000)):
+        c = text[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace_idx + 1:i]
+    return ""
+
+
+def _hoistable(body: str, base_time: float) -> List[Tuple[str, str, float]]:
+    """(target, props, absolute_time) for each visibility change in a body."""
+    out: List[Tuple[str, str, float]] = []
+    for m in _INNER_TWEEN_RE.finditer(body):
+        props = " ".join(m.group("props").split())
+        if "opacity" not in props.lower():
+            continue
+        inner = _DELAY_RE.search(props)
+        at = round(base_time + (float(inner.group(1)) if inner else 0.0), 3)
+        props = re.sub(r",?\s*\bdelay\s*:\s*[0-9.]+", "", props).strip().strip(",")
+        out.append((m.group("sel"), props, at))
+    return out
 
 
 def repair_callback_state_changes(html: str) -> Tuple[str, List[str]]:
-    """Promote `gsap.set` calls inside tween callbacks to timeline tweens.
+    """Promote visibility changes out of tween callbacks onto the timeline.
 
-    Returns `(html, applied_fixes)`. Only touches `gsap.set` inside an
-    `onComplete` arrow body — nested tweens, conditionals and every other
-    callback statement are left exactly where the author put them, and the
-    callback itself is preserved so playback behaviour is unchanged.
+    Multi-act shots swap acts from `onComplete` or `gsap.delayedCall`. Both are
+    correct for playback and wrong for rendering: the renderer frame-steps by
+    seeking gsap.globalTimeline in parallel chunks, so a worker whose range
+    starts after the callback's time never fires it. The acts then keep their
+    authored initial state — every act visible at once in one video, and 22
+    seconds of black background in another where acts 2 and 3 start hidden.
+
+    The callback is left in place, so playback is unchanged; only a seek-safe
+    duplicate is added. Returns `(html, applied_fixes)` and is idempotent.
     """
-    if not html or "onComplete" not in html:
+    if not html or ("onComplete" not in html and "delayedCall" not in html):
         return html, []
+    if _HOIST_MARKER in html:
+        return html, []
+
     fixes: List[str] = []
     additions: List[str] = []
 
-    if _HOIST_MARKER in html:
-        return html, []                      # already repaired
-
     for m in _ONCOMPLETE_RE.finditer(html):
-        args, body = m.group("args"), m.group("body")
-        # The non-greedy span can reach back across a neighbouring tween, so
-        # take the delay/duration CLOSEST to onComplete — they belong to the
-        # tween that actually owns this callback. Using the first match put an
-        # act swap at 1.06s that really fires at 9.42s.
-        _d = _DELAY_RE.findall(args)
-        _u = _DURATION_RE.findall(args)
-        delay = float(_d[-1]) if _d else 0.0
-        dur = float(_u[-1]) if _u else 0.0
-        fire_at = round(delay + dur, 3)
-        for sm in _INNER_SET_RE.finditer(body):
-            props = " ".join(sm.group("props").split())
-            if "opacity" not in props.lower():
-                continue
-            target = sm.group("sel")
-            additions.append(
-                f"gsap.to('{target}', {{{props}, duration: 0.001, delay: {fire_at}}});"
-            )
-            fixes.append(f"hoisted {target} state change to t={fire_at}s")
+        body = _balanced_body(html, html.find("{", m.end()))
+        if not body:
+            continue
+        # The owning tween's delay/duration decide when it fires — read the
+        # declarations closest to the callback, not a neighbouring tween's.
+        head = html[max(0, m.start() - 400):m.start()]
+        d, u = _DELAY_RE.findall(head), _DURATION_RE.findall(head)
+        fire_at = round((float(d[-1]) if d else 0.0) + (float(u[-1]) if u else 0.0), 3)
+        for target, props, at in _hoistable(body, fire_at):
+            additions.append(f"gsap.to('{target}', {{{props}, duration: 0.001, delay: {at}}});")
+            fixes.append(f"hoisted {target} to t={at}s (onComplete)")
+
+    for m in _DELAYED_CALL_RE.finditer(html):
+        body = _balanced_body(html, html.find("{", m.end()))
+        if not body:
+            continue
+        for target, props, at in _hoistable(body, float(m.group(1))):
+            additions.append(f"gsap.to('{target}', {{{props}, duration: 0.001, delay: {at}}});")
+            fixes.append(f"hoisted {target} to t={at}s (delayedCall)")
 
     if not additions:
         return html, []
 
     block = (
-        "\n<script>/* vx: state changes hoisted out of tween callbacks — a "
-        "frame-stepped render seeks the timeline and never fires them */\n"
+        f"\n<script>/* {_HOIST_MARKER} out of tween callbacks — a frame-stepped "
+        "render seeks the timeline and never fires them */\n"
         + "\n".join(additions)
         + "\n</script>"
     )

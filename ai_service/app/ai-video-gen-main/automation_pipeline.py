@@ -2195,6 +2195,16 @@ class GoogleCloudTTSClient:
         raw_json_path.write_text(json.dumps(word_entries, indent=2))
 
 
+def _hex_is_dark(value: str) -> bool:
+    """True when a hex colour is dark enough that light artwork reads better on it."""
+    v = str(value or "").strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+        return False
+    r, g, b = int(v[1:3], 16), int(v[3:5], 16), int(v[5:7], 16)
+    # Rec. 601 luma — cheap and adequate for a light/dark decision.
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 128
+
+
 def _colour_name_for_hex(value: str) -> str:
     """Nearest plain-English colour name for a hex string.
 
@@ -9475,20 +9485,30 @@ class VideoGenerationPipeline:
         if not (wants_diagram or rejects_photo):
             return ("Photorealistic, clean modern composition, soft natural light, "
                     "no text or captions in frame.")
-        palette = ""
+        # The ground the art sits on must match the deck. Hardcoding a white
+        # background put glowing white rectangles on a dark-themed video —
+        # the illustration read as a pasted card rather than part of the slide.
+        bg_hex, accent_name = "", ""
         try:
             _sg = getattr(self, "_current_style_guide", None) or {}
             _pal = (_sg.get("palette") or {}) if isinstance(_sg, dict) else {}
-            _primary = str(_pal.get("primary") or "").strip()
-            _name = _colour_name_for_hex(_primary)
-            if _name:
-                palette = f" Single {_name} accent colour on white."
+            bg_hex = str(_pal.get("background") or "").strip()
+            accent_name = _colour_name_for_hex(str(_pal.get("primary") or "").strip())
         except Exception:
             pass
-        return ("Clean editorial line-art diagram, precise vector linework on a "
-                "plain white background, flat colour, no shading, no photographic "
-                "texture. No text, captions, labels, numbers or colour codes "
-                f"anywhere in the frame.{palette}")
+        dark_deck = _hex_is_dark(bg_hex) or str(
+            getattr(self, "_current_background_type", "") or ""
+        ).lower() == "black"
+        if dark_deck:
+            ground = ("a plain dark charcoal background, light strokes that read "
+                      "clearly against dark")
+            palette = f" Single {accent_name} accent colour." if accent_name else ""
+        else:
+            ground = "a plain white background"
+            palette = f" Single {accent_name} accent colour on white." if accent_name else ""
+        return (f"Clean editorial line-art diagram, precise vector linework on {ground}, "
+                "flat colour, no shading, no photographic texture. No text, captions, "
+                f"labels, numbers or colour codes anywhere in the frame.{palette}")
 
     def _resolve_support_visuals(
         self, shots: List[Dict[str, Any]], run_dir: Path,

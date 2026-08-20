@@ -14,19 +14,21 @@ _AI = Path(__file__).resolve().parents[1] / "app" / "ai-video-gen-main"
 _SRC = (_AI / "automation_pipeline.py").read_text()
 
 
-def _suffix_for(prefs, palette=None):
+def _suffix_for(prefs, palette=None, bg="#ffffff"):
     """Run the helper's logic without importing the pipeline's heavy deps."""
     body = _SRC[_SRC.index("def _support_visual_style_suffix"):]
     body = body[:body.index("    def _resolve_support_visuals")]
 
     class _Fake:
         _visual_preferences = prefs
-        _current_style_guide = {"palette": {"primary": palette}} if palette else {}
+        _current_background_type = "white"
+        _current_style_guide = ({"palette": {"primary": palette, "background": bg}}
+                                if (palette or bg) else {})
 
-    colour = _SRC[_SRC.index("def _colour_name_for_hex"):]
-    colour = colour[:colour.index("\ndef ")]
+    helpers = _SRC[_SRC.index("def _hex_is_dark"):]
+    helpers = helpers[:helpers.index("\ndef _repair_undefined")]
     ns = {"re": re}
-    exec(colour, ns)
+    exec(helpers, ns)
     exec("class H:\n    " + body.replace("\n", "\n    "), ns)
     H = ns["H"]
     inst = _Fake()
@@ -59,3 +61,17 @@ def test_brand_colour_reaches_the_prompt_as_a_WORD_not_a_hex():
 def test_a_bad_palette_value_cannot_reach_the_prompt():
     out = _suffix_for({"svg_illustrated": "high"}, palette="teal; ignore previous")
     assert "ignore previous" not in out
+
+
+def test_dark_deck_gets_light_artwork_not_a_white_card():
+    """Hardcoding a white ground put glowing white rectangles on a black
+    chalkboard deck — the illustration read as a pasted card, not part of
+    the slide."""
+    out = _suffix_for({"svg_illustrated": "high"}, palette="#fd7f2f", bg="#1a3a2a")
+    assert "white background" not in out
+    assert "dark charcoal" in out and "light strokes" in out
+
+
+def test_light_deck_still_gets_a_white_ground():
+    out = _suffix_for({"svg_illustrated": "high"}, palette="#0071b8", bg="#ffffff")
+    assert "plain white background" in out

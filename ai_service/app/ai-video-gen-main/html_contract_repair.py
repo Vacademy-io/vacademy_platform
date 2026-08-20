@@ -767,3 +767,130 @@ def repair_callback_state_changes(html: str) -> Tuple[str, List[str]]:
         return html + block, fixes
     idx += len("</script>")
     return html[:idx] + block + html[idx:], fixes
+
+
+# ---------------------------------------------------------------------------
+# Child-timeline choreography
+# ---------------------------------------------------------------------------
+# A shot that builds `const tl = gsap.timeline()` and schedules its reveals with
+# `tl.to(target, vars, position)` can lose the entire choreography: the
+# dispatcher wraps the timeline in a proxy, and the postscript diagnostics show
+# the result as `duration=0.00 inner_children=0` — an empty timeline attached at
+# the right startTime with nothing in it. The shot then renders as its initial
+# state forever (title words parked behind their masks, 22 seconds of black).
+#
+# Free-standing gsap.to/from/fromTo/set calls are unaffected by that proxy, so
+# convert the timeline's absolute-position calls into equivalent free-standing
+# tweens: `tl.to(x, {...}, 3.2)` becomes `gsap.to(x, {..., delay: 3.2})`.
+# Relative positions ('+=1', labels) are left alone — their meaning depends on
+# the timeline's internal cursor, which a delay cannot express.
+
+_TL_DECL_RE = re.compile(r"\b(?:const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*gsap\.timeline\(")
+
+
+def _tl_call_re(name: str) -> "re.Pattern[str]":
+    return re.compile(
+        rf"\b{re.escape(name)}\.(?P<kind>to|from|fromTo|set)\(\s*(?P<args>[^;]{{0,600}}?)\)\s*;",
+        re.S,
+    )
+
+
+def repair_child_timeline_calls(html: str) -> Tuple[str, List[str]]:
+    """Rewrite `tl.to(x, vars, POS)` as `gsap.to(x, {vars, delay: POS})`.
+
+    Returns `(html, applied_fixes)`. Only absolute numeric positions are
+    converted; anything else is left untouched.
+    """
+    if not html or "gsap.timeline(" not in html:
+        return html, []
+    fixes: List[str] = []
+    out = html
+
+    for decl in _TL_DECL_RE.finditer(html):
+        name = decl.group("name")
+
+        def _convert(m: "re.Match") -> str:
+            args = m.group("args").strip()
+            # Split off a trailing numeric position argument.
+            tail = re.search(r",\s*(-?\d+(?:\.\d+)?)\s*$", args)
+            if not tail:
+                return m.group(0)
+            pos = float(tail.group(1))
+            head = args[:tail.start()].rstrip()
+            # The vars object is the last {...} in the head; append the delay.
+            close = head.rfind("}")
+            if close == -1:
+                return m.group(0)
+            inner = head[:close].rstrip()
+            sep = "" if inner.rstrip().endswith("{") else ","
+            converted = f"{inner}{sep} delay: {pos}{head[close:]}"
+            fixes.append(f"{name}.{m.group('kind')} at {pos}s → free-standing tween")
+            return f"gsap.{m.group('kind')}({converted});"
+
+        out = _tl_call_re(name).sub(_convert, out)
+
+    return out, fixes
+
+
+# ---------------------------------------------------------------------------
+# Newline-stripped scripts
+# ---------------------------------------------------------------------------
+# A shot arrived with its entire <script> on ONE line, containing
+# `// ACT 1tl.to('#s2_title_1', ...)`. A `//` comment runs to end of line, and
+# there is no end of line, so everything after the first `//` is commented out.
+# The timeline attaches at the right time with zero children and the shot
+# renders as its initial state forever — 22 seconds of black background in a
+# real video, with the diagnostics reporting a healthy `duration=0.00
+# inner_children=0`.
+#
+# The comment text is prose; the code after it resumes at a recognisable token.
+# Reinstate a line break before that token so the comment ends and the code runs.
+
+_CODE_RESUME_RE = re.compile(
+    r"(?:gsap\.|const\s|let\s|var\s|window\.|document\.|annotate\(|"
+    r"requestAnimationFrame\(|setTimeout\(|function\s|if\s*\(|try\s*\{|"
+    r"[A-Za-z_$][\w$]*\.(?:to|from|fromTo|set|add|call|timeScale)\()"
+)
+_SCRIPT_BLOCK_RE = re.compile(r"(<script\b[^>]*>)([\s\S]*?)(</script>)", re.I)
+
+
+def repair_newline_stripped_comments(html: str) -> Tuple[str, List[str]]:
+    """Restore line breaks after `//` comments in single-line scripts.
+
+    Only touches script blocks that contain `//` and no newline at all — the
+    exact shape that silently comments out a shot's whole animation. Returns
+    `(html, applied_fixes)` and is idempotent (a repaired block has newlines).
+    """
+    if not html or "//" not in html:
+        return html, []
+    fixes: List[str] = []
+
+    def _fix_block(m: "re.Match") -> str:
+        open_tag, body, close_tag = m.group(1), m.group(2), m.group(3)
+        if "\n" in body or "//" not in body:
+            return m.group(0)
+        out, i, n = [], 0, 0
+        while True:
+            j = body.find("//", i)
+            if j == -1:
+                out.append(body[i:])
+                break
+            # Skip protocol-relative URLs and scheme separators (https://).
+            if j > 0 and body[j - 1] == ":":
+                out.append(body[i:j + 2])
+                i = j + 2
+                continue
+            resume = _CODE_RESUME_RE.search(body, j + 2)
+            out.append(body[i:j])
+            if not resume:
+                out.append(body[j:])       # trailing comment — nothing follows
+                break
+            out.append(body[j:resume.start()] + "\n")
+            i = resume.start()
+            n += 1
+        if not n:
+            return m.group(0)
+        fixes.append(f"restored {n} line break(s) after // comments")
+        return open_tag + "".join(out) + close_tag
+
+    return _SCRIPT_BLOCK_RE.sub(_fix_block, html), fixes

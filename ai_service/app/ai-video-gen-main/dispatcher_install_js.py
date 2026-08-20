@@ -300,6 +300,17 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                   })();
                   const _gtlPreStashKey = '__sd_gtl_pre_' + e.id;
                   window[_gtlPreStashKey] = _gtlPreSet;
+                  // Where the global clock actually stood when this shot mounted.
+                  // gsap.timeline() attaches at gtl.totalTime(), and under a
+                  // PARALLEL chunk render that is the chunk's start — not the
+                  // shot's inTime. A worker rendering 60-120s mounts shot 1
+                  // (inTime 11.9) at t=60, so its reveals land during a later
+                  // shot and the shot renders as its initial state: 22 seconds
+                  // of black background in a real video.
+                  const _gtlPreTimeKey = '__sd_gtl_pre_t_' + e.id;
+                  try {
+                      window[_gtlPreTimeKey] = window.gsap.globalTimeline.totalTime();
+                  } catch (_e) { window[_gtlPreTimeKey] = 0; }
                   const scripts = wrapper.querySelectorAll('script');
                   scripts.forEach(oldScript => {
                       // ── External script (src=...) — DO NOT activate ──
@@ -1591,6 +1602,35 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                   if (_preSet.has(_gk)) continue;
                                   _newKids.push(_gk);
                               }
+                              // Re-anchor: shift every child this shot created by
+                              // the gap between where it mounted and where the shot
+                              // belongs. Shifting (rather than pinning to inTime)
+                              // preserves each tween's own delay and the timeline's
+                              // internal positions — only the whole group moves.
+                              try {
+                                  var _mountT = window[_gtlPreTimeKey] || 0;
+                                  var _wantT = e.inTime || 0;
+                                  var _shift = _wantT - _mountT;
+                                  if (Math.abs(_shift) > 0.01) {
+                                      var _moved = 0;
+                                      for (var _s = 0; _s < _newKids.length; _s++) {
+                                          var _kid = _newKids[_s];
+                                          if (!_kid || typeof _kid.startTime !== 'function') continue;
+                                          try { _kid.startTime(_kid.startTime() + _shift); _moved++; }
+                                          catch (_e2) {}
+                                      }
+                                      if (_moved) {
+                                          console.log('[per-shot-timeline-anchor] ' + e.id
+                                              + ' shifted ' + _moved + ' child(ren) by '
+                                              + _shift.toFixed(2) + 's (mounted at '
+                                              + _mountT.toFixed(2) + ', shot starts at '
+                                              + _wantT.toFixed(2) + ')');
+                                      }
+                                  }
+                              } catch (_anchorErr) {
+                                  console.warn('[per-shot-timeline-anchor] failed:',
+                                      _anchorErr && _anchorErr.message);
+                              }
                               console.log('[per-shot-timeline-postscript-gtl] ' + e.id
                                   + ' new_gtl_children=' + _newKids.length
                                   + ' total_gtl_children=' + _gtlKids.length
@@ -1640,6 +1680,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                   // run — keeps a strong ref to dead tweens until they're GSAP-killed
                   // at the next segment boundary.
                   try { delete window[_gtlPreStashKey]; } catch (_e) {}
+                  try { delete window[_gtlPreTimeKey]; } catch (_e) {}
 
                   // Force-show all registered Rough Notation annotations after layout settles
                   // Use double-rAF to ensure layout is computed before annotations measure positions

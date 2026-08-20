@@ -2244,6 +2244,7 @@ def _repair_undefined_css_vars(html: str) -> str:
             repair_dark_bed_text as _rdb,
             repair_inline_flex_direction as _rfd,
             repair_callback_state_changes as _rcb,
+            repair_newline_stripped_comments as _rnl,
         )
         repaired, fixed = _ruv(html)
         if fixed:
@@ -2254,6 +2255,12 @@ def _repair_undefined_css_vars(html: str) -> str:
         repaired, flex_fixes = _rfd(repaired)
         if flex_fixes:
             print(f"   \U0001f3a8 flex-direction repair: {len(flex_fixes)} container(s)")
+        # Must run BEFORE the callback hoist: on a newline-stripped script the
+        # callbacks are inside a comment, so there is nothing to hoist until
+        # the line breaks come back.
+        repaired, nl_fixes = _rnl(repaired)
+        if nl_fixes:
+            print(f"   \U0001f3a8 script newline repair: {nl_fixes}")
         repaired, cb_fixes = _rcb(repaired)
         if cb_fixes:
             print(f"   \U0001f3a8 act-swap repair: {len(cb_fixes)} callback state change(s) "

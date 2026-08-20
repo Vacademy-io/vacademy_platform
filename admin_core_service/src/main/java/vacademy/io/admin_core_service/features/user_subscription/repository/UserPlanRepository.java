@@ -324,7 +324,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * 8,380 live plans, and 172 ms this way.
          */
         @Query(value = """
-                WITH billed AS (
+                WITH billed_plans AS (
                   SELECT up.user_id AS user_id,
                          SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS price,
                          COUNT(*) AS plans,
@@ -354,6 +354,38 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                               AND psli.status = 'ACTIVE'
                               AND psli.package_session_id IN (:packageSessionIds)))
                    GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Invoices raised against the institute directly. These carry no user_plan, so
+                  -- without this arm an invoice an admin raised was owed by nobody as far as this
+                  -- card was concerned — it appeared in neither Total nor Due.
+                  --
+                  -- Scoped to invoices with no payment_log at all, which is exactly the set the
+                  -- listing now surfaces as its own rows, so the table and these totals describe
+                  -- the same money. REJECTED is excluded: a voided invoice stays visible in the
+                  -- table (struck through) but is neither collected nor owed.
+                  --
+                  -- plans = 0 so the "N enrolments billed" caption keeps counting enrolments.
+                  SELECT inv.user_id AS user_id,
+                         SUM(COALESCE(inv.total_amount, 0)) AS price,
+                         0 AS plans,
+                         MAX(UPPER(NULLIF(TRIM(inv.currency), ''))) AS cur
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     -- An invoice has no package session, so it is counted only for the whole
+                     -- institute, never leaked into a course-filtered view (mirrors `paid`).
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(price) AS price, SUM(plans) AS plans, MAX(cur) AS cur
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
                 ), paid AS (
                   SELECT COALESCE(up.user_id, inv.user_id) AS user_id,
                          SUM(pl.payment_amount) AS amt,
@@ -409,7 +441,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * place a custom instalment schedule exists per learner.
          */
         @Query(value = """
-                WITH billed AS (
+                WITH billed_plans AS (
                   SELECT up.user_id AS user_id,
                          SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed,
                          COUNT(*) AS plan_count,
@@ -448,6 +480,34 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                               AND psli.status = 'ACTIVE'
                               AND psli.package_session_id IN (:packageSessionIds)))
                    GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Mirrors billed_invoices in getBillingSummary. Without it the Due CARD would
+                  -- include invoice obligations while this LIST did not, and the rows would stop
+                  -- adding up to the card above them.
+                  SELECT inv.user_id AS user_id,
+                         SUM(COALESCE(inv.total_amount, 0)) AS billed,
+                         0 AS plan_count,
+                         MIN('Invoice') AS course_name,
+                         MIN('PENDING_PAYMENT') AS plan_status,
+                         MIN('User Invoice') AS payment_type,
+                         MAX(UPPER(NULLIF(TRIM(inv.currency), ''))) AS currency
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(billed) AS billed, SUM(plan_count) AS plan_count,
+                         MIN(course_name) AS course_name, MIN(plan_status) AS plan_status,
+                         MIN(payment_type) AS payment_type, MAX(currency) AS currency
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
                 ), paid AS (
                   SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
                     FROM payment_log pl
@@ -488,7 +548,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                  WHERE GREATEST(b.billed - COALESCE(p.paid, 0), 0) > 0
                  ORDER BY due DESC
                 """, countQuery = """
-                WITH billed AS (
+                WITH billed_plans AS (
                   SELECT up.user_id AS user_id, SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
@@ -514,6 +574,24 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                               AND psli.status = 'ACTIVE'
                               AND psli.package_session_id IN (:packageSessionIds)))
                    GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Mirrors the main query so the page count matches the rows it pages over.
+                  SELECT inv.user_id AS user_id, SUM(COALESCE(inv.total_amount, 0)) AS billed
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(billed) AS billed
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
                 ), paid AS (
                   SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
                     FROM payment_log pl

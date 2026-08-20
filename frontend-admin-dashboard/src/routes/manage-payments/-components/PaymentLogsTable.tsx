@@ -15,8 +15,11 @@ import {
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { formatDistanceToNow } from 'date-fns';
-import { PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
+import { PencilSimple, FloppyDisk, X, Eye } from '@phosphor-icons/react';
 import { updatePaymentLogTracking } from '@/services/payment-logs';
+import type { PaymentLogInvoiceDTO } from '@/services/invoice-service';
+import { Skeleton } from '@/components/ui/skeleton';
+import { orderColumnIds } from '@/components/shared/leads/use-lead-column-prefs';
 import { useToast } from '@/hooks/use-toast';
 import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 import { cn } from '@/lib/utils';
@@ -71,6 +74,12 @@ const PAYMENT_STATUS_PILL: Record<string, { label: string; cls: string; dot: str
         label: 'Not initiated',
         cls: 'bg-neutral-100 text-neutral-600',
         dot: 'bg-neutral-400',
+    },
+    // A voided invoice. Visible for audit, excluded from every total.
+    CANCELLED: {
+        label: 'Cancelled',
+        cls: 'bg-neutral-100 text-neutral-500',
+        dot: 'bg-neutral-300',
     },
 };
 
@@ -129,6 +138,16 @@ interface PaymentLogsTableProps {
     hideUserColumn?: boolean;
     /** Column ids the user has switched off (see PAYMENT_COLUMN_TOGGLES). */
     hiddenColumns?: Set<string>;
+    /** The user's saved left-to-right column order; empty/absent means the natural order. */
+    columnOrder?: string[];
+    /** Fired when a header is dragged to a new position, with the full new id order. */
+    onColumnOrderChange?: (orderedIds: string[]) => void;
+    /** Invoice issued for each payment log, keyed by payment log id. */
+    invoicesByPaymentLog?: Record<string, PaymentLogInvoiceDTO>;
+    /** True while the invoice lookup for the current page is in flight. */
+    isLoadingInvoices?: boolean;
+    /** Open the invoice PDF preview for a row's invoice. */
+    onPreviewInvoice?: (invoice: PaymentLogInvoiceDTO) => void;
     onRefresh?: () => void;
     /** Open the read-only detail slide-over for a row (fires on any non-editable cell). */
     onViewDetails?: (entry: PaymentLogEntry) => void;
@@ -143,7 +162,15 @@ const NON_DETAIL_COLUMN_IDS = new Set([
     'tracking_source',
     'order_status',
     'tracking_actions',
+    // The invoice cell owns its own click (preview the PDF).
+    'invoice',
 ]);
+
+/**
+ * Columns that carry the row's identity and are never hidden — a payment row without a date
+ * or an amount isn't a payment row. They can still be dragged to a different position.
+ */
+const LOCKED_COLUMN_IDS = new Set(['payment_date', 'amount']);
 
 interface EditingState {
     rowId: string;
@@ -315,6 +342,80 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
     );
 }
 
+// ─── Invoice Cell ─────────────────────────────────────────────────────────────
+// Same context trick as the editing cells above: the invoice lookup resolves after the
+// rows render, and routing it through context keeps the column definitions stable.
+
+interface InvoiceContextType {
+    /** Invoice per payment log id. A payment log with no invoice is simply absent. */
+    invoices: Record<string, PaymentLogInvoiceDTO>;
+    isLoading: boolean;
+    onPreview?: (invoice: PaymentLogInvoiceDTO) => void;
+}
+
+const InvoiceContext = createContext<InvoiceContextType>({
+    invoices: {},
+    isLoading: false,
+});
+
+/** Invoice date in the same short form the rest of the table uses. */
+const formatInvoiceDate = (value?: string | null) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+function InvoiceCell({ entry }: { entry: PaymentLogEntry }) {
+    const { invoices, isLoading, onPreview } = useContext(InvoiceContext);
+    const paymentLogId = entry?.payment_log?.id;
+    // Rows that ARE an invoice carry it inline — no lookup needed, and none was made.
+    const invoice = entry?.invoice ?? (paymentLogId ? invoices[paymentLogId] : undefined);
+
+    if (!invoice) {
+        // Still resolving: a placeholder rather than a dash, so a row that DOES have an
+        // invoice doesn't flash "no invoice" before the lookup lands.
+        if (isLoading) return <Skeleton className="h-4 w-24 bg-neutral-100" />;
+        return <span className="text-xs text-neutral-400">—</span>;
+    }
+
+    const isVoided = invoice.status?.toUpperCase() === 'REJECTED';
+    const subLabel = [formatInvoiceDate(invoice.invoice_date), isVoided ? 'Voided' : null]
+        .filter(Boolean)
+        .join(' · ');
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+                <div
+                    className={cn(
+                        'truncate font-mono text-xs font-medium text-neutral-700',
+                        isVoided && 'text-neutral-400 line-through'
+                    )}
+                    title={invoice.invoice_number}
+                >
+                    {invoice.invoice_number}
+                </div>
+                {subLabel && <div className="truncate text-2xs text-neutral-500">{subLabel}</div>}
+            </div>
+            {onPreview && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="size-7 shrink-0 p-0 text-neutral-500 hover:bg-primary-50 hover:text-primary-600"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPreview(invoice);
+                    }}
+                    title={`Preview invoice ${invoice.invoice_number}`}
+                >
+                    <Eye size={16} />
+                </Button>
+            )}
+        </div>
+    );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatCurrency = (amount: number, currency: string) =>
@@ -377,6 +478,16 @@ const orderStatusColumn: ColumnDef<PaymentLogEntry> = {
     size: 160,
 };
 
+const invoiceColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'invoice',
+    header: 'Invoice',
+    // The invoice number isn't on the row — it arrives from a separate lookup the cell reads
+    // out of context — so the accessor keys on the payment log the invoice belongs to.
+    accessorFn: (row) => row?.payment_log?.id || '',
+    cell: ({ row }) => <InvoiceCell entry={row.original} />,
+    size: 190,
+};
+
 const actionsColumn: ColumnDef<PaymentLogEntry> = {
     id: 'tracking_actions',
     header: 'Actions',
@@ -395,6 +506,11 @@ export function PaymentLogsTable({
     hasOrgAssociatedBatches,
     hideUserColumn = false,
     hiddenColumns,
+    columnOrder,
+    onColumnOrderChange,
+    invoicesByPaymentLog,
+    isLoadingInvoices = false,
+    onPreviewInvoice,
     onRefresh,
     onViewDetails,
 }: PaymentLogsTableProps) {
@@ -486,6 +602,15 @@ export function PaymentLogsTable({
     const editingContextValue = useMemo<EditingContextType>(
         () => ({ editing, setEditing, onSave, onStartEdit, onCancel }),
         [editing, onSave, onStartEdit, onCancel]
+    );
+
+    const invoiceContextValue = useMemo<InvoiceContextType>(
+        () => ({
+            invoices: invoicesByPaymentLog ?? {},
+            isLoading: isLoadingInvoices,
+            onPreview: onPreviewInvoice,
+        }),
+        [invoicesByPaymentLog, isLoadingInvoices, onPreviewInvoice]
     );
 
     // Transform API response to TableData format
@@ -659,6 +784,7 @@ export function PaymentLogsTable({
                 },
                 size: 200,
             },
+            invoiceColumn,
             {
                 id: 'transaction_id',
                 header: 'Transaction ID',
@@ -705,15 +831,24 @@ export function PaymentLogsTable({
         [hasOrgAssociatedBatches, hideUserColumn]
     );
 
-    // The user's layout choice. Date & Time and Amount are never hidden — a payment row without
-    // them isn't a payment row.
-    const visibleColumns = useMemo(
-        () =>
+    // The user's layout choice: which columns are on, and in what order. Date & Time and
+    // Amount are never hidden — a payment row without them isn't a payment row — but they can
+    // still be dragged, so the order is applied to every column.
+    const visibleColumns = useMemo(() => {
+        const shown =
             hiddenColumns && hiddenColumns.size > 0
-                ? columns.filter((c) => !(c.id && hiddenColumns.has(c.id)))
-                : columns,
-        [columns, hiddenColumns]
-    );
+                ? columns.filter(
+                      (c) => !c.id || LOCKED_COLUMN_IDS.has(c.id) || !hiddenColumns.has(c.id)
+                  )
+                : columns;
+
+        if (!columnOrder || columnOrder.length === 0) return shown;
+
+        const byId = new Map(shown.map((c) => [c.id as string, c]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((c): c is ColumnDef<PaymentLogEntry> => !!c);
+    }, [columns, hiddenColumns, columnOrder]);
 
     if (error) {
         return (
@@ -730,45 +865,50 @@ export function PaymentLogsTable({
 
     return (
         <EditingContext.Provider value={editingContextValue}>
-            <div className="space-y-4">
-                {isEmpty ? (
-                    <div className="rounded-lg border border-border bg-card p-12 text-center">
-                        <p className="text-title font-medium text-neutral-700">
-                            No payment records found
-                        </p>
-                        <p className="mt-2 text-body text-neutral-500">
-                            Try adjusting your filters to see more results
-                        </p>
-                    </div>
-                ) : (
-                    <MyTable
-                        data={tableData}
-                        columns={visibleColumns}
-                        isLoading={isLoading}
-                        error={null}
-                        currentPage={currentPage}
-                        scrollable={true}
-                        enableColumnResizing={true}
-                        enableColumnPinning={false}
-                        onCellClick={
-                            onViewDetails
-                                ? (row, column) => {
-                                      if (column.id && NON_DETAIL_COLUMN_IDS.has(column.id)) return;
-                                      onViewDetails(row);
-                                  }
-                                : undefined
-                        }
-                    />
-                )}
+            <InvoiceContext.Provider value={invoiceContextValue}>
+                <div className="space-y-4">
+                    {isEmpty ? (
+                        <div className="rounded-lg border border-border bg-card p-12 text-center">
+                            <p className="text-title font-medium text-neutral-700">
+                                No payment records found
+                            </p>
+                            <p className="mt-2 text-body text-neutral-500">
+                                Try adjusting your filters to see more results
+                            </p>
+                        </div>
+                    ) : (
+                        <MyTable
+                            data={tableData}
+                            columns={visibleColumns}
+                            isLoading={isLoading}
+                            error={null}
+                            currentPage={currentPage}
+                            scrollable={true}
+                            enableColumnResizing={true}
+                            enableColumnPinning={false}
+                            enableColumnReorder={!!onColumnOrderChange}
+                            onColumnOrderChange={onColumnOrderChange}
+                            onCellClick={
+                                onViewDetails
+                                    ? (row, column) => {
+                                          if (column.id && NON_DETAIL_COLUMN_IDS.has(column.id))
+                                              return;
+                                          onViewDetails(row);
+                                      }
+                                    : undefined
+                            }
+                        />
+                    )}
 
-                {tableData && tableData.total_pages > 1 && (
-                    <MyPagination
-                        currentPage={currentPage}
-                        totalPages={tableData.total_pages}
-                        onPageChange={onPageChange}
-                    />
-                )}
-            </div>
+                    {tableData && tableData.total_pages > 1 && (
+                        <MyPagination
+                            currentPage={currentPage}
+                            totalPages={tableData.total_pages}
+                            onPageChange={onPageChange}
+                        />
+                    )}
+                </div>
+            </InvoiceContext.Provider>
         </EditingContext.Provider>
     );
 }

@@ -53,7 +53,7 @@ export function PaymentControlBar({
                     inputType="text"
                     input={searchValue}
                     onChangeFunction={(e) => onSearchChange(e.target.value)}
-                    inputPlaceholder="Search name, email, phone, amount or txn ID"
+                    inputPlaceholder="Search name, email, phone, amount, invoice no., plan or txn ID"
                     className="pl-9 sm:w-full"
                 />
             </div>

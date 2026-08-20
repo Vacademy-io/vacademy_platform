@@ -35,6 +35,13 @@ const addToBucket = (bucket: StatBucket, amount: number, currency: string) => {
 export type PaymentBucketKey = 'paid' | 'pending' | 'failed';
 
 /**
+ * A voided (REJECTED) invoice. It stays visible in the table for audit, but is deliberately
+ * absent from every total: cancelled money was never collected and is no longer owed.
+ */
+export const isCancelledEntry = (entry: PaymentLogEntry): boolean =>
+    (entry.current_payment_status || '').toUpperCase() === 'CANCELLED';
+
+/**
  * Classify one payment. "pending" (the money still due) absorbs PAYMENT_PENDING, NOT_INITIATED,
  * null and any other non-paid/non-failed status — which is why selecting the Due tile filters the
  * table here rather than through the API: `payment_status IN (...)` can never match a NULL row.
@@ -55,6 +62,8 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
     const summary = emptyPaymentSummary();
 
     for (const entry of entries) {
+        if (isCancelledEntry(entry)) continue;
+
         const amount = entry.payment_log?.payment_amount || 0;
         const currency = resolveEntryCurrency(entry);
 

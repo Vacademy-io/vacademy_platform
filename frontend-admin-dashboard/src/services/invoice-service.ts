@@ -11,6 +11,7 @@ import {
     GET_USER_ACCOUNT_LEDGER,
     POST_MARK_INVOICE_PAID_MANUAL,
     PUT_UPDATE_INVOICE,
+    POST_INVOICES_BY_PAYMENT_LOGS,
 } from '@/constants/urls';
 
 // Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
@@ -28,6 +29,10 @@ export interface InvoiceDTO {
     id: string;
     invoice_number: string;
     user_id: string;
+    /** Primary payment log this invoice covers, if any. Absent on unpaid/synthetic rows. */
+    payment_log_id?: string | null;
+    /** Every payment log this invoice covers — an installment invoice has several. */
+    payment_log_ids?: string[] | null;
     institute_id: string;
     invoice_date: string;
     due_date: string;
@@ -101,9 +106,17 @@ export interface InvoicePaginatedResponse {
     last: boolean;
 }
 
-export async function fetchUserInvoices(userId: string): Promise<InvoiceDTO[]> {
+export async function fetchUserInvoices(
+    userId: string,
+    /**
+     * Scope to one institute. Worth passing wherever the caller knows it: the same payment
+     * can legitimately be invoiced by two institutes, and unscoped this returns both.
+     */
+    instituteId?: string
+): Promise<InvoiceDTO[]> {
     const response = await authenticatedAxiosInstance.get<InvoiceDTO[]>(
-        GET_INVOICES_BY_USER(userId)
+        GET_INVOICES_BY_USER(userId),
+        instituteId ? { params: { instituteId } } : undefined
     );
     return response.data;
 }
@@ -168,6 +181,44 @@ export async function fetchInstituteInvoices(
         { params }
     );
     return response.data;
+}
+
+/**
+ * The invoice issued for a single payment log, as returned by the bulk lookup below.
+ * Compact on purpose — no line items, and no `pdf_url` (the server would have to presign
+ * one file per row). Fetch the invoice by id when the PDF is actually needed.
+ */
+export interface PaymentLogInvoiceDTO {
+    /** The payment log this invoice covers — the key to join back on. */
+    payment_log_id: string;
+    invoice_id: string;
+    invoice_number: string;
+    invoice_date: string | null;
+    status: string;
+    total_amount: number | null;
+    currency: string | null;
+    /** Whether a PDF is already stored. False just means the first preview regenerates it. */
+    has_pdf: boolean;
+}
+
+/**
+ * Which invoice covers each of the given payment logs.
+ *
+ * Resolved server-side from the invoice ↔ payment-log mapping the invoice itself was built
+ * from, so the number is the one actually issued — not one guessed from amounts or dates.
+ * Payment logs with no invoice are omitted from the response rather than returned as nulls.
+ */
+export async function fetchInvoicesForPaymentLogs(
+    instituteId: string,
+    paymentLogIds: string[]
+): Promise<PaymentLogInvoiceDTO[]> {
+    if (!instituteId || paymentLogIds.length === 0) return [];
+    const response = await authenticatedAxiosInstance.post<PaymentLogInvoiceDTO[]>(
+        POST_INVOICES_BY_PAYMENT_LOGS,
+        { payment_log_ids: paymentLogIds },
+        { params: { instituteId } }
+    );
+    return response.data ?? [];
 }
 
 export function getInvoiceDownloadUrl(invoiceId: string): string {

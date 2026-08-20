@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DownloadSimple, EnvelopeSimple, Plus, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -16,7 +16,15 @@ import type {
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { fetchBillingSummary, fetchOutstandingLearners } from '@/services/payment-logs';
 import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
-import { useLeadColumnPrefs } from '@/components/shared/leads/use-lead-column-prefs';
+import {
+    useLeadColumnPrefs,
+    useColumnOrderPrefs,
+    orderColumnIds,
+    type LeadColumnToggle,
+} from '@/components/shared/leads/use-lead-column-prefs';
+import { InvoicePreviewByIdDialog } from '@/components/common/invoice/invoice-preview-by-id-dialog';
+import type { PaymentLogInvoiceDTO } from '@/services/invoice-service';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { PaymentFilters } from './PaymentFilters';
@@ -36,11 +44,15 @@ import {
     summarizeBucketAmount,
 } from '../-utils/paymentSummary';
 import { ALL_TIME_RANGE, type DateRangeValue } from '../-utils/dateRange';
+import { resolvePaymentLogInvoices } from '../-utils/resolvePaymentLogInvoices';
 
 const PAGE_SIZE = 20;
 
 /** Where this table's column layout is remembered, per browser. */
 const COLUMN_PREFS_KEY = 'manage-payments:hidden-columns';
+
+/** Where the left-to-right column order is remembered, per browser. */
+const COLUMN_ORDER_KEY = 'manage-payments:column-order';
 
 /** Columns hidden until someone asks for them — the tracking trio is a niche reconciliation aid. */
 const DEFAULT_HIDDEN_COLUMNS = ['tracking_id', 'tracking_source', 'order_status'];
@@ -248,30 +260,111 @@ export function TransactionsView() {
         return map;
     }, [batchesForSessions]);
 
-    // Column layout, remembered per browser. Date & Time and Amount stay pinned: they are the row.
+    // Column layout, remembered per browser: which columns are on, and their order.
     const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
         COLUMN_PREFS_KEY,
         DEFAULT_HIDDEN_COLUMNS
     );
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
 
-    const columnToggles = useMemo(() => {
+    /**
+     * Every column the table can render, in the order PaymentLogsTable defines them. Date &
+     * Time and Amount are `locked` — they can be dragged but not switched off, because a
+     * payment row without them isn't a payment row.
+     */
+    const naturalColumnToggles = useMemo<LeadColumnToggle[]>(() => {
         const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-        const toggles = [{ id: 'user_info', label: 'User' }];
+        const toggles: LeadColumnToggle[] = [
+            { id: 'payment_date', label: 'Date & Time', locked: true },
+            { id: 'user_info', label: 'User' },
+        ];
         if (hasOrgAssociatedBatches) toggles.push({ id: 'org_name', label: 'Organization Name' });
         toggles.push(
+            { id: 'amount', label: 'Amount', locked: true },
             { id: 'current_payment_status', label: 'Payment' },
             { id: 'vendor', label: 'Payment Method' },
             { id: 'user_plan_status', label: 'Plan Status' },
             { id: 'enroll_invite', label: `${courseTerm}/Membership` },
+            { id: 'invoice', label: 'Invoice' },
             { id: 'transaction_id', label: 'Transaction ID' },
-            { id: 'payment_plan', label: 'Payment Plan' },
             { id: 'tracking_id', label: 'Tracking ID' },
             { id: 'tracking_source', label: 'Tracking Source' },
             { id: 'order_status', label: 'Order Status' },
-            { id: 'tracking_actions', label: 'Actions' }
+            { id: 'tracking_actions', label: 'Actions' },
+            { id: 'payment_plan', label: 'Payment Plan' }
         );
         return toggles;
     }, [hasOrgAssociatedBatches]);
+
+    // The popover lists columns in the order they appear on screen, so dragging a row there
+    // and dragging a header are the same gesture on the same list.
+    const columnToggles = useMemo(() => {
+        const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((t): t is LeadColumnToggle => !!t);
+    }, [naturalColumnToggles, columnOrder]);
+
+    /** "Reset" restores both halves of the layout — hidden columns and order. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
+    };
+
+    /**
+     * Dragging a header reports the order of the columns the table actually renders — hidden
+     * ones aren't there to be dragged. Splice that back into the full saved order so a hidden
+     * column keeps its slot and reappears where the admin left it, instead of being dropped
+     * from the layout the moment someone reorders while it's off.
+     */
+    const handleColumnOrderChange = useCallback(
+        (visibleOrder: string[]) => {
+            const full = orderColumnIds(
+                naturalColumnToggles.map((t) => t.id),
+                columnOrder
+            );
+            const reported = new Set(visibleOrder);
+            let next = 0;
+            setColumnOrder(full.map((id) => (reported.has(id) ? visibleOrder[next++]! : id)));
+        },
+        [naturalColumnToggles, columnOrder, setColumnOrder]
+    );
+
+    // ─── Invoice column ───────────────────────────────────────────────────────
+    // Resolved for the rows actually on screen (20 at a time), not for the whole result set:
+    // the lookup is per payment log and the column is optional, so paying for it up front
+    // would tax every admin including the ones who hide it.
+    const instituteId = getCurrentInstituteId();
+    const invoiceColumnVisible = !hiddenColumns.has('invoice');
+
+    // Small enough to double as the cache key — see PaymentLogInvoiceLookupInput.
+    const invoiceLookupInputs = useMemo(
+        () =>
+            (pagedData?.content ?? [])
+                // Rows that ARE an invoice already carry it inline — asking the server for it
+                // again would be a wasted round trip.
+                .filter((entry) => entry?.payment_log?.id && !entry.invoice)
+                .map((entry) => ({
+                    paymentLogId: entry.payment_log.id,
+                    // Admin-invoice payments carry no user_plan, and the listing doesn't always
+                    // hydrate `user` for them — payment_log.user_id is always there.
+                    userId: entry?.user?.id ?? entry.payment_log.user_id ?? null,
+                })),
+        [pagedData]
+    );
+
+    const { data: invoicesByPaymentLog, isLoading: isLoadingInvoices } = useQuery({
+        queryKey: ['payment-log-invoices', instituteId, invoiceLookupInputs],
+        queryFn: () => resolvePaymentLogInvoices(instituteId as string, invoiceLookupInputs),
+        enabled: invoiceColumnVisible && !!instituteId && invoiceLookupInputs.length > 0,
+        staleTime: 60_000,
+        // A missing/failed lookup must not take the payments table down with it — the column
+        // just renders dashes.
+        retry: false,
+    });
+
+    // Which invoice the PDF preview is showing, if any.
+    const [previewInvoice, setPreviewInvoice] = useState<PaymentLogInvoiceDTO | null>(null);
 
     // Paging only applies while the balances list is on screen; leaving it at 0 otherwise keeps
     // the count in the segmented switch from refetching every time the records table is paged.
@@ -515,7 +608,8 @@ export function TransactionsView() {
                             columns={columnToggles}
                             hiddenColumns={hiddenColumns}
                             onToggle={toggleColumn}
-                            onReset={resetColumns}
+                            onReset={handleResetColumns}
+                            onReorder={setColumnOrder}
                         />
                     }
                 />
@@ -571,6 +665,11 @@ export function TransactionsView() {
                         packageSessions={packageSessionsMap}
                         hasOrgAssociatedBatches={hasOrgAssociatedBatches}
                         hiddenColumns={hiddenColumns}
+                        columnOrder={columnOrder}
+                        onColumnOrderChange={handleColumnOrderChange}
+                        invoicesByPaymentLog={invoicesByPaymentLog}
+                        isLoadingInvoices={isLoadingInvoices}
+                        onPreviewInvoice={setPreviewInvoice}
                         onRefresh={() => refetchPaymentLogs()}
                         onViewDetails={openDetail}
                     />
@@ -640,6 +739,13 @@ export function TransactionsView() {
                     entry={detailEntry}
                     open={detailOpen}
                     onOpenChange={setDetailOpen}
+                />
+
+                {/* Invoice PDF preview, opened from the Invoice column */}
+                <InvoicePreviewByIdDialog
+                    invoiceId={previewInvoice?.invoice_id ?? null}
+                    invoiceNumber={previewInvoice?.invoice_number}
+                    onClose={() => setPreviewInvoice(null)}
                 />
 
                 {/* Header action modals */}

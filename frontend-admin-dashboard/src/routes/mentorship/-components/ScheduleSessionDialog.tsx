@@ -3,7 +3,7 @@ import { CalendarCheck } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
-import { MyDropdown } from '@/components/design-system/dropdown';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { reportApiError } from '@/lib/report-api-error';
 import { useMentorDashboard, useScheduleSession } from '../-hooks/use-mentorship';
 import { MentorSlotPicker } from './MentorSlotPicker';
@@ -63,16 +63,13 @@ export function ScheduleSessionDialog({
         student?.name ?? picked[0]?.full_name ?? picked[0]?.username ?? 'the learner';
 
     const mentorOptions = useMemo(
-        () => [
-            { label: 'Choose a mentor', value: '' },
-            ...mentors.map((m) => ({
+        () =>
+            mentors.map((m) => ({
                 label: m.display_name || m.name || 'Mentor',
                 value: m.id,
             })),
-        ],
         [mentors]
     );
-    const mentorLabel = mentorOptions.find((o) => o.value === mentorId)?.label ?? 'Choose a mentor';
 
     const submit = async () => {
         if (!instituteId || !studentUserId || !slot) return;
@@ -143,16 +140,20 @@ export function ScheduleSessionDialog({
                 {!asMentor && !mentor && (
                     <div className="flex flex-col gap-1">
                         <span className="text-caption font-medium text-neutral-600">Mentor</span>
-                        <MyDropdown
-                            currentValue={mentorLabel}
-                            dropdownList={mentorOptions}
-                            handleChange={(v: string) => {
+                        <SearchableSelect
+                            options={mentorOptions}
+                            value={mentorId}
+                            onChange={(v) => {
                                 setMentorId(v);
                                 // Availability belongs to a mentor; keep no stale slot across a switch.
                                 setSlot(null);
                             }}
                             placeholder="Choose a mentor"
-                            contentClassName="max-h-72 overflow-y-auto"
+                            searchPlaceholder="Search mentors…"
+                            emptyText="No mentors match"
+                            // Inside a dialog: a portalled list can't be scrolled, because
+                            // react-remove-scroll blocks wheel/touch on portalled nodes.
+                            portal={false}
                         />
                     </div>
                 )}

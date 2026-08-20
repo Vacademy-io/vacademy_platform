@@ -37,9 +37,9 @@ describe('mentor list filters', () => {
         });
 
         it.each([
-            ['status', filters({ status: 'inactive' })],
-            ['discoverable', filters({ discoverable: 'listed' })],
-            ['capacity', filters({ capacity: 'full' })],
+            ['status', filters({ status: ['inactive'] })],
+            ['discoverable', filters({ discoverable: ['listed'] })],
+            ['capacity', filters({ capacity: ['full'] })],
             ['search', filters({ search: 'asha' })],
         ])('is false once %s is set', (_label, f) => {
             expect(isDefaultMentorFilters(f)).toBe(false);
@@ -60,37 +60,56 @@ describe('mentor list filters', () => {
 
         it('treats a missing status as ACTIVE rather than dropping the row', () => {
             const noStatus = [mentor({ id: 'x', status: '' })];
-            expect(applyMentorFilters(noStatus, filters({ status: 'active' }))).toHaveLength(1);
-            expect(applyMentorFilters(noStatus, filters({ status: 'inactive' }))).toHaveLength(0);
+            expect(applyMentorFilters(noStatus, filters({ status: ['active'] }))).toHaveLength(1);
+            expect(applyMentorFilters(noStatus, filters({ status: ['inactive'] }))).toHaveLength(0);
         });
 
         it('narrows by status', () => {
-            const out = applyMentorFilters(rows, filters({ status: 'inactive' }));
+            const out = applyMentorFilters(rows, filters({ status: ['inactive'] }));
             expect(out.map((m) => m.id)).toEqual(['inactive']);
         });
 
+        it('ORs the values within one facet', () => {
+            // Ticking both is the same as ticking neither — that equivalence is what
+            // makes "empty means all" safe.
+            const both = applyMentorFilters(rows, filters({ status: ['active', 'inactive'] }));
+            expect(both).toHaveLength(rows.length);
+        });
+
         it('narrows by learner visibility', () => {
-            const out = applyMentorFilters(rows, filters({ discoverable: 'listed' }));
+            const out = applyMentorFilters(rows, filters({ discoverable: ['listed'] }));
             expect(out.map((m) => m.id)).toEqual(['active-listed']);
         });
 
         it('treats a missing is_discoverable as hidden, not as listed', () => {
-            const out = applyMentorFilters(rows, filters({ discoverable: 'hidden' }));
+            const out = applyMentorFilters(rows, filters({ discoverable: ['hidden'] }));
             expect(out.map((m) => m.id)).toEqual(['inactive', 'full', 'no-booking']);
         });
 
         it('separates mentors at their limit from mentors with room', () => {
-            expect(applyMentorFilters(rows, filters({ capacity: 'full' })).map((m) => m.id)).toEqual([
-                'full',
-            ]);
             expect(
-                applyMentorFilters(rows, filters({ capacity: 'available' })).map((m) => m.id)
+                applyMentorFilters(rows, filters({ capacity: ['full'] })).map((m) => m.id)
+            ).toEqual(['full']);
+            expect(
+                applyMentorFilters(rows, filters({ capacity: ['available'] })).map((m) => m.id)
             ).toEqual(['active-listed', 'inactive', 'no-booking']);
         });
 
         it('finds mentors nobody can book because they have no booking page', () => {
-            const out = applyMentorFilters(rows, filters({ capacity: 'no-booking' }));
+            const out = applyMentorFilters(rows, filters({ capacity: ['no-booking'] }));
             expect(out.map((m) => m.id)).toEqual(['no-booking']);
+        });
+
+        it('a mentor with room AND no booking page matches either capacity bucket', () => {
+            // The buckets overlap on purpose: "no booking page" is a separate fact from
+            // whether they have capacity, so the row must appear under both.
+            const both = applyMentorFilters(rows, filters({ capacity: ['available', 'no-booking'] }));
+            expect(both.map((m) => m.id)).toEqual(['active-listed', 'inactive', 'no-booking']);
+        });
+
+        it('ANDs across facets', () => {
+            const out = applyMentorFilters(rows, filters({ status: ['active'], capacity: ['full'] }));
+            expect(out.map((m) => m.id)).toEqual(['full']);
         });
 
         it('combines search with the other filters rather than replacing them', () => {
@@ -100,7 +119,7 @@ describe('mentor list filters', () => {
                     mentor({ id: 'wrong-status', display_name: 'Asha Verma', status: 'INACTIVE' }),
                     mentor({ id: 'wrong-name', display_name: 'Ravi Kumar', status: 'ACTIVE' }),
                 ],
-                filters({ search: 'asha', status: 'active' })
+                filters({ search: 'asha', status: ['active'] })
             );
             expect(out.map((m) => m.id)).toEqual(['keep']);
         });

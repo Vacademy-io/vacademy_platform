@@ -113,6 +113,9 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setQrVerificationUrlTemplate(incoming.getQrVerificationUrlTemplate() != null ? incoming.getQrVerificationUrlTemplate() : existing.getQrVerificationUrlTemplate());
                     dto.setBadgeCodeType(incoming.getBadgeCodeType() != null ? incoming.getBadgeCodeType() : existing.getBadgeCodeType());
                     dto.setBarcodeContent(incoming.getBarcodeContent() != null ? incoming.getBarcodeContent() : existing.getBarcodeContent());
+                    dto.setAutoStampCode(incoming.getAutoStampCode() != null ? incoming.getAutoStampCode() : existing.getAutoStampCode());
+                    dto.setAutoStampNumber(incoming.getAutoStampNumber() != null ? incoming.getAutoStampNumber() : existing.getAutoStampNumber());
+                    dto.setVerificationNote(incoming.getVerificationNote() != null ? incoming.getVerificationNote() : existing.getVerificationNote());
                     // Preserve-on-null like the rest, so a save from an older
                     // client can't wipe the institute's field definitions.
                     // Clearing every field is still possible — that sends an

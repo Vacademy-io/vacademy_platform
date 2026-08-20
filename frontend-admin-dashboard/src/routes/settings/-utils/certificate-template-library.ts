@@ -39,6 +39,20 @@ export interface SavedCertificateTemplate {
     templateCustomizations: TemplateCustomizations | null;
     /** Epoch millis, for a stable "newest last" order in the gallery. */
     updatedAt: number;
+    /**
+     * The design serialized to the HTML the renderer consumes, refreshed on
+     * every save.
+     *
+     * <p>Stored per entry rather than only for the default because a course can
+     * follow any saved design. The server resolves a course's chosen template by
+     * id and renders this — it has no way to serialize the editor's state
+     * itself, and re-deriving it there would be a second implementation of the
+     * layout that could disagree with the one admins previewed.
+     *
+     * <p>Absent on entries written before this existed; such a course falls back
+     * to the institute default until the institute saves its settings once.
+     */
+    renderedHtml?: string;
 }
 
 /** The field name the serializer turns into {{INSTITUTE_LOGO}}. */

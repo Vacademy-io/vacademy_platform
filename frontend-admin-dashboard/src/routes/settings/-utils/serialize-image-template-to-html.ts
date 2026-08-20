@@ -88,12 +88,11 @@ const escapeHtml = (s: string): string =>
  * "Bhuvaneshwari Ramachandran" printed as "uvaneshwari Ramachand". Long course
  * names did the same.
  *
- * <p>Values now wrap and can never exceed the box the admin drew — in either
- * direction. The line budget is the box's own height ({@link fieldContentHeightPx}),
- * not a fixed number: a box drawn tall enough for three lines gets three, and a
- * box only one line tall shrinks the font rather than spilling a second line
- * over the artwork underneath. {@link MAX_TEXT_LINES} remains the budget for
- * templates saved before the height was recorded.
+ * <p>Values now wrap, and wrapping comes before shrinking. Two lines are always
+ * allowed — a long name set small enough to fit one line looks like a fault,
+ * while the same name over two lines at the intended size looks deliberate — and
+ * a taller box raises the budget further ({@link fieldContentHeightPx}). The
+ * font only shrinks when even that budget cannot hold the value.
  */
 export const MAX_TEXT_LINES = 2;
 
@@ -131,9 +130,13 @@ export const fieldContentHeightPx = (f: FieldMapping): number => {
  */
 export const linesThatFit = (contentHeightPx: number, fontSizePx: number): number => {
     if (!(contentHeightPx > 0) || !(fontSizePx > 0)) return MAX_TEXT_LINES;
-    // The epsilon absorbs sub-pixel rounding: a box drawn at exactly two lines
-    // must not be judged to hold 1.99.
-    return Math.max(1, Math.floor(contentHeightPx / (fontSizePx * TEXT_LINE_HEIGHT) + 0.02));
+    // Never fewer than MAX_TEXT_LINES: wrapping at the intended size beats
+    // shrinking to one small line. The epsilon absorbs sub-pixel rounding, so a
+    // box drawn at exactly two lines is not judged to hold 1.99 of them.
+    return Math.max(
+        MAX_TEXT_LINES,
+        Math.floor(contentHeightPx / (fontSizePx * TEXT_LINE_HEIGHT) + 0.02)
+    );
 };
 
 /**
@@ -148,16 +151,16 @@ export const linesThatFit = (contentHeightPx: number, fontSizePx: number): numbe
  * is not recoverable at all by the learner holding it.
  */
 export const fieldTextMaxHeightPx = (f: FieldMapping): number => {
-    const floorFontSize = Math.max(MIN_FIT_FONT_PX, f.style.fontSize * MIN_FIT_FONT_SCALE);
+    const contentHeight = fieldContentHeightPx(f);
+    // Room for the lines the value is allowed to take at the size the admin
+    // chose. Without this the clamp would hide the very second line that
+    // wrapping exists to produce, and the text would look cut rather than set.
+    const budget = linesThatFit(contentHeight, f.style.fontSize);
     return Math.max(
-        fieldContentHeightPx(f),
-        Math.round(MAX_TEXT_LINES * TEXT_LINE_HEIGHT * floorFontSize)
+        contentHeight,
+        Math.round(budget * TEXT_LINE_HEIGHT * f.style.fontSize)
     );
 };
-
-/** Mirrors MIN_SCALE / MIN_FONT_PX in CertificateTextFitService. */
-const MIN_FIT_FONT_SCALE = 0.5;
-const MIN_FIT_FONT_PX = 6;
 
 /** The positioned box. Vertical centring and clipping live here. */
 const buildFieldStyle = (f: FieldMapping): string => {

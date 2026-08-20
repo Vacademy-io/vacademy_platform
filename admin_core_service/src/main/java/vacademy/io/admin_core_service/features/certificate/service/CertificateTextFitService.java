@@ -195,11 +195,11 @@ public class CertificateTextFitService {
      * The height-aware fit.
      *
      * <p>Width alone was not enough. The clamp used to be a flat two lines, so a
-     * long course title in a box one line tall printed its first line and had
-     * the second sliced off — the admin had drawn a box, and the certificate
-     * quietly ignored its height. Now the box's own height sets the line budget:
-     * a tall box may take three or four lines at full size, and a short one
-     * shrinks the font until what it has to say fits inside it.
+     * long course title printed its first two lines and had the rest sliced off.
+     * Now the box's height raises the line budget — a tall box may take three or
+     * four lines at full size — while two lines stay available whatever the box,
+     * so wrapping is what absorbs a long value and the font only shrinks when
+     * even that is not enough.
      *
      * @param heightPx content height of the box, or 0 when it is not known
      */
@@ -227,7 +227,11 @@ public class CertificateTextFitService {
         if (heightPx <= 0 || fontSizePx <= 0) {
             return MAX_LINES;
         }
-        return Math.max(1, (int) Math.floor(heightPx / (fontSizePx * LINE_HEIGHT) + 0.02));
+        // Never fewer than MAX_LINES. Shrinking is the last resort: a long name
+        // set small enough to fit one line reads as a fault on a certificate,
+        // where the same name across two lines at the size the design chose
+        // reads as the design. A taller box raises the budget further.
+        return Math.max(MAX_LINES, (int) Math.floor(heightPx / (fontSizePx * LINE_HEIGHT) + 0.02));
     }
 
     /**

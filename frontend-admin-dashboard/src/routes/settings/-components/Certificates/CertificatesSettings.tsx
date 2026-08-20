@@ -34,6 +34,8 @@ import {
 import { CertificateVisualEditor, type CustomImage } from './CertificateVisualEditor';
 import { CertificateTemplateGallery } from './CertificateTemplateGallery';
 import { CertificateTemplateLibrary } from './CertificateTemplateLibrary';
+import { CertificateNumberingBuilder } from './CertificateNumberingBuilder';
+import { VerificationPageSection } from './VerificationPageSection';
 import {
     newTemplateId,
     readTemplateLibrary,
@@ -403,6 +405,9 @@ type CertificateConfig = {
     qrVerificationUrlTemplate?: string;
     badgeCodeType?: 'QR' | 'BARCODE';
     barcodeContent?: BarcodeContent;
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    verificationNote?: string;
     customFields?: CertificateCustomField[];
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
@@ -540,6 +545,15 @@ const CertificatesSettings = () => {
     // scannable-to-verify but noticeably wider, so it is opt-in.
     const [barcodeContent, setBarcodeContent] = useState<BarcodeContent>('NUMBER');
     const [customFields, setCustomFields] = useState<CertificateCustomField[]>([]);
+
+    // Whether the platform may stamp the code and the number bottom-right on a
+    // design that does not place them itself. Both start on, which is what the
+    // badge always did — until these existed, deleting the QR or the number
+    // from a design just brought the stamped one back on the issued PDF.
+    // A line of the institute's own on the public verification page.
+    const [verificationNote, setVerificationNote] = useState<string>('');
+    const [autoStampCode, setAutoStampCode] = useState<boolean>(true);
+    const [autoStampNumber, setAutoStampNumber] = useState<boolean>(true);
 
     // What actually gets saved: keys normalised to the token shape the renderer
     // looks for, keyless rows dropped, duplicates collapsed. Two fields sharing
@@ -717,6 +731,11 @@ const CertificatesSettings = () => {
             ex.barcodeContent === 'VERIFICATION_CODE' ? 'VERIFICATION_CODE' : 'NUMBER'
         );
         setCustomFields(Array.isArray(ex.customFields) ? ex.customFields : []);
+        // Absent means on, matching the backend: every institute that saved
+        // before these existed had the stamp, unconditionally.
+        setVerificationNote(ex.verificationNote ?? '');
+        setAutoStampCode(ex.autoStampCode !== false);
+        setAutoStampNumber(ex.autoStampNumber !== false);
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
         // The library, and the design the editor should open onto: the default
         // one, because that is the certificate this institute actually issues.
@@ -920,7 +939,8 @@ const CertificatesSettings = () => {
         // Every upload is a template in its own right. Before this, a second
         // upload overwrote the first and there was no way back to it — which is
         // also why "make one of them the default" had nothing to choose from.
-        const entry: SavedCertificateTemplate = {
+        const becomesDefault = !defaultTemplateId;
+        const uploaded: SavedCertificateTemplate = {
             id: newTemplateId(),
             name: uniqueTemplateName(
                 templateLibrary,
@@ -935,6 +955,11 @@ const CertificatesSettings = () => {
             templateCustomizations: null,
             updatedAt: Date.now(),
         };
+        // An upload arrives with no fields at all, so the one that becomes the
+        // institute's default starts with its logo on it. Only at this point:
+        // once the design exists, what is on it is the admin's to decide.
+        const entry = becomesDefault ? withInstituteLogo(uploaded) : uploaded;
+        if (becomesDefault) setFieldMappings(entry.fieldMappings);
         setTemplateLibrary((prev) => upsertTemplate(prev, entry));
         setActiveLibraryId(entry.id);
         // The first design an institute saves has to be the default, or it
@@ -1222,6 +1247,58 @@ const CertificatesSettings = () => {
         setFieldMappings((prev) => [...prev, newMapping]);
     };
 
+    /**
+     * Give a saved design a stable, S3-hosted background.
+     *
+     * <p>The editor keeps a built-in's artwork as an SVG data URL so colour and
+     * text changes feel instant. That is fine while editing and wrong once
+     * stored: the data URL lands inside the design's rendered HTML, and every
+     * certificate issued from it carries the whole image inline.
+     *
+     * <p>Runs per entry rather than only for the default, because a course can
+     * now follow any saved design — so any of them can be the one being
+     * rendered. Entries whose artwork is already a URL (every upload, and every
+     * built-in that has been through here once) are returned untouched, so a
+     * save costs an upload only for designs that have just been added.
+     */
+    const materializeTemplate = async (
+        entry: SavedCertificateTemplate
+    ): Promise<SavedCertificateTemplate> => {
+        const source = entry.imageTemplate.imageDataUrl || '';
+        if (!source.startsWith('data:')) return entry;
+
+        try {
+            let pngDataUrl = source;
+            if (isBuiltinTemplateId(entry.imageTemplate.id) && entry.templateCustomizations) {
+                const tpl = getBuiltinTemplateById(entry.imageTemplate.id);
+                if (tpl) {
+                    pngDataUrl = await rasterizeBuiltinTemplate(tpl, entry.templateCustomizations);
+                }
+            }
+            const token = getTokenFromCookie(TokenKey.accessToken);
+            const userId = (token ? getTokenDecodedData(token) : null)?.user || '';
+            const fileName = `${entry.imageTemplate.id.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.png`;
+            const file = await dataUrlToFile(pngDataUrl, fileName);
+            const fileId = await UploadFileInS3(
+                file,
+                () => {},
+                userId,
+                'CERTIFICATE_TEMPLATE',
+                'INSTITUTE',
+                true
+            );
+            if (!fileId) return entry;
+            const url = await getPublicUrl(fileId);
+            if (typeof url !== 'string' || !url) return entry;
+            return { ...entry, imageTemplate: { ...entry.imageTemplate, imageDataUrl: url } };
+        } catch (e) {
+            // Fall through with the data URL: a slower certificate beats a save
+            // that fails because an upload did.
+            console.error('Failed to hoist certificate template artwork to S3', e);
+            return entry;
+        }
+    };
+
     const handleSaveSettings = async () => {
         setLoading(true);
         setError(null);
@@ -1249,65 +1326,46 @@ const CertificatesSettings = () => {
                 editorMode === 'visual' ? commitActiveToLibrary() : templateLibrary;
             const effectiveDefaultId =
                 defaultTemplateId ?? activeLibraryId ?? libraryForSave[0]?.id ?? null;
-            // Belt and braces alongside "Make default": an institute whose
-            // default predates the library never passed through that button, so
-            // this is where their certificate gains its logo.
+            // Deliberately NOT re-adding the institute logo here. Placing it is
+            // a one-time decision, made when a design becomes the default (see
+            // handleMakeDefaultTemplate) or when the first one is uploaded.
+            // Enforcing it on every save meant deleting the logo from a design
+            // did nothing: it came back on the next save, with no way to keep it
+            // off. An admin who removes it meant to remove it.
             let defaultEntry = resolveDefaultTemplate(libraryForSave, effectiveDefaultId);
-            if (defaultEntry) defaultEntry = withInstituteLogo(defaultEntry);
 
-            let templateForSave = defaultEntry?.imageTemplate ?? imageTemplate;
-            if (
-                editorMode === 'visual' &&
-                defaultEntry &&
-                isBuiltinTemplateId(defaultEntry.imageTemplate.id) &&
-                defaultEntry.templateCustomizations
-            ) {
-                const tpl = getBuiltinTemplateById(defaultEntry.imageTemplate.id);
-                if (tpl) {
-                    try {
-                        const pngDataUrl = await rasterizeBuiltinTemplate(
-                            tpl,
-                            defaultEntry.templateCustomizations
-                        );
-                        const token = getTokenFromCookie(TokenKey.accessToken);
-                        const userId = (token ? getTokenDecodedData(token) : null)?.user || '';
-                        const fileName = `${tpl.id.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.png`;
-                        const file = await dataUrlToFile(pngDataUrl, fileName);
-                        const fileId = await UploadFileInS3(
-                            file,
-                            () => {},
-                            userId,
-                            'CERTIFICATE_TEMPLATE',
-                            'INSTITUTE',
-                            true
-                        );
-                        if (fileId) {
-                            const url = await getPublicUrl(fileId);
-                            if (typeof url === 'string' && url) {
-                                templateForSave = {
-                                    ...defaultEntry.imageTemplate,
-                                    imageDataUrl: url,
-                                };
-                                defaultEntry = {
-                                    ...defaultEntry,
-                                    imageTemplate: templateForSave,
-                                };
-                            }
-                        }
-                    } catch (e) {
-                        console.error(
-                            'Failed to rasterize/upload built-in template at save time',
-                            e
-                        );
-                        // Fall through with the SVG data URL — backend has the
-                        // post-size headroom, just slower than a clean S3 URL.
-                    }
-                }
+            // Every entry has to stand on its own now: a course can point at
+            // any of them, and the server renders whichever one it is told to.
+            // A built-in still carrying its editing-time SVG data URL would
+            // otherwise be inlined into that course's certificate.
+            const materialized = await Promise.all(
+                (editorMode === 'visual' ? libraryForSave : []).map((entry) =>
+                    materializeTemplate(entry)
+                )
+            );
+            const libraryMaterialized = editorMode === 'visual' ? materialized : libraryForSave;
+            if (defaultEntry) {
+                defaultEntry =
+                    libraryMaterialized.find((t) => t.id === defaultEntry!.id) ?? defaultEntry;
             }
 
-            const librarySaved = defaultEntry
-                ? upsertTemplate(libraryForSave, defaultEntry)
-                : libraryForSave;
+            const librarySaved = (
+                defaultEntry
+                    ? upsertTemplate(libraryMaterialized, defaultEntry)
+                    : libraryMaterialized
+            ).map((entry) => ({
+                // The rendered certificate for each saved design, so a course
+                // can be pointed at one by id and the server has something to
+                // render without knowing how the editor serializes. Refreshed
+                // on every save, which is what keeps a course's certificate in
+                // step with edits to the template it follows.
+                ...entry,
+                renderedHtml: serializeImageTemplateToHtml(
+                    entry.imageTemplate,
+                    entry.fieldMappings,
+                    entry.customImages
+                ),
+            }));
 
             // The editor is showing the design that was just rasterized, or
             // that just gained a logo. Push both back so the canvas matches
@@ -1382,9 +1440,15 @@ const CertificatesSettings = () => {
                     suffix: numberingSuffix.trim() || undefined,
                     sequencePadding,
                 },
-                qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
+                // Empty string, not undefined: undefined hits the backend's
+                // preserve-on-null merge, so "Use my portal instead" could
+                // never actually clear a link somebody had set.
+                qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim(),
                 badgeCodeType,
                 barcodeContent,
+                autoStampCode,
+                autoStampNumber,
+                verificationNote: verificationNote.trim(),
                 // Always sent, including as `[]`, so deleting the last custom
                 // field actually clears it. `undefined` would hit the backend's
                 // preserve-on-null merge and silently keep the old list.
@@ -1435,9 +1499,12 @@ const CertificatesSettings = () => {
                         suffix: numberingSuffix.trim() || undefined,
                         sequencePadding,
                     },
-                    qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim() || undefined,
+                    qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim(),
                     badgeCodeType,
                     barcodeContent,
+                    autoStampCode,
+                    autoStampNumber,
+                    verificationNote: verificationNote.trim(),
                     customFields: sanitizedCustomFields,
                 };
                 const nextSettings = {
@@ -1658,103 +1725,35 @@ const CertificatesSettings = () => {
             </div>
 
             <div className="space-y-6 rounded-lg border bg-card p-6">
-                <div>
-                    <h3 className="text-base font-semibold">Certificate numbering</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Numbers are allocated from a per-year counter for this institute, so they
-                        are sequential and never repeat.
-                    </p>
-                </div>
-
-                <div className="rounded-md bg-muted/40 p-3">
-                    <p className="text-xs text-muted-foreground">
-                        Next certificate will be numbered
-                    </p>
-                    <p className="font-mono text-lg font-semibold">{numberingPreview}</p>
-                </div>
-
-                <div className="grid gap-6 md:grid-cols-2">
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="numbering-pattern">
-                            Format
-                        </label>
-                        <input
-                            id="numbering-pattern"
-                            type="text"
-                            value={numberingPattern}
-                            placeholder={DEFAULT_NUMBERING_PATTERN}
-                            onChange={(e) => setNumberingPattern(e.target.value)}
-                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Leave blank for the default{' '}
-                            <span className="font-mono">{DEFAULT_NUMBERING_PATTERN}</span>. Tokens:{' '}
-                            <span className="font-mono">{'{PREFIX}'}</span>,{' '}
-                            <span className="font-mono">{'{YYYY}'}</span>,{' '}
-                            <span className="font-mono">{'{YY}'}</span>,{' '}
-                            <span className="font-mono">{'{SEQ}'}</span> or{' '}
-                            <span className="font-mono">{'{SEQ:4}'}</span> to set the digit count,{' '}
-                            <span className="font-mono">{'{SUFFIX}'}</span>.
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="numbering-prefix">
-                            Prefix
-                        </label>
-                        <input
-                            id="numbering-prefix"
-                            type="text"
-                            value={numberingPrefix}
-                            placeholder={derivedPrefix}
-                            onChange={(e) => setNumberingPrefix(e.target.value)}
-                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Blank uses the first three letters of your institute name (
-                            <span className="font-mono">{derivedPrefix}</span>).
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="numbering-padding">
-                            Sequence digits
-                        </label>
-                        <input
-                            id="numbering-padding"
-                            type="number"
-                            min={1}
-                            max={10}
-                            value={sequencePadding}
-                            onChange={(e) =>
-                                setSequencePadding(
-                                    Math.min(10, Math.max(1, Number(e.target.value) || 1))
-                                )
-                            }
-                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Applies to a bare {'{SEQ}'}. Numbers past this width get longer rather
-                            than wrapping.
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="numbering-suffix">
-                            Suffix (optional)
-                        </label>
-                        <input
-                            id="numbering-suffix"
-                            type="text"
-                            value={numberingSuffix}
-                            onChange={(e) => setNumberingSuffix(e.target.value)}
-                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Only used if your format contains {'{SUFFIX}'}.
-                        </p>
-                    </div>
-                </div>
+                <CertificateNumberingBuilder
+                    value={{
+                        pattern: numberingPattern,
+                        prefix: numberingPrefix,
+                        suffix: numberingSuffix,
+                        sequencePadding,
+                    }}
+                    onChange={(patch) => {
+                        if (patch.pattern !== undefined) setNumberingPattern(patch.pattern);
+                        if (patch.prefix !== undefined) setNumberingPrefix(patch.prefix);
+                        if (patch.suffix !== undefined) setNumberingSuffix(patch.suffix);
+                        if (patch.sequencePadding !== undefined)
+                            setSequencePadding(patch.sequencePadding);
+                    }}
+                    derivedPrefix={derivedPrefix}
+                    disabled={loading}
+                    // The builder previews through the page's own formatter, so
+                    // the samples cannot drift from the number that is issued.
+                    formatSample={(value, sequence) =>
+                        formatCertificateNumberPreview({
+                            pattern: value.pattern,
+                            prefix: value.prefix.trim() || derivedPrefix,
+                            suffix: value.suffix,
+                            padding: value.sequencePadding,
+                            sequence,
+                            year: new Date().getFullYear(),
+                        })
+                    }
+                />
 
                 <div>
                     <label className="text-sm font-medium" htmlFor="badge-code-type">
@@ -1825,61 +1824,59 @@ const CertificatesSettings = () => {
                     </div>
                 )}
 
-                <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
-
-                <div className="space-y-2">
-                    <div className="text-sm font-medium">Where a scan lands</div>
-                    {/* Admins kept asking what URL to paste here. Nothing, in
-                        almost every case: the verification page is a page the
-                        platform hosts on the institute's own portal, so a scan
-                        already lands on their domain. Showing the real address
-                        is the shortest way to say that. */}
-                    <div className="rounded border bg-muted/30 p-3 text-xs text-muted-foreground">
-                        {verificationPageUrl ? (
-                            <>
-                                Scanning the QR opens your own branded verification page:{' '}
-                                <span className="font-mono text-foreground">
-                                    {verificationPageUrl}
-                                </span>
-                                . It shows &ldquo;Verified by{' '}
-                                {effectiveInstituteName || 'your institute'}&rdquo; with your logo,
-                                and needs no login. Scanning the barcode gives a code that verifies
-                                on the same page.
-                            </>
-                        ) : (
-                            <>
-                                Scans will verify on the platform verification page. Set your
-                                learner portal address in Dashboard → Edit institute profile and the
-                                page moves to your own domain, branded as yours.
-                            </>
-                        )}
-                    </div>
-
-                    <details className="rounded border px-3 py-2">
-                        <summary className="cursor-pointer text-xs font-medium text-neutral-600">
-                            Send scans somewhere else instead
-                        </summary>
-                        <label className="mt-2 block text-xs font-medium" htmlFor="qr-verify-url">
-                            Custom QR link
-                        </label>
-                        <input
-                            id="qr-verify-url"
-                            type="text"
-                            value={qrVerificationUrlTemplate}
-                            placeholder="https://your-site.com/verify?c={{CERTIFICATE_ID}}"
-                            onChange={(e) => setQrVerificationUrlTemplate(e.target.value)}
-                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Include {'{{CERTIFICATE_ID}}'} and the QR will open your page instead of
-                            the one above. Note that your page receives only the certificate number,
-                            which is not a credential — so it cannot actually prove the certificate
-                            is genuine. Leave this blank unless you have your own verification
-                            system.
+                {/* The answer to "I removed the QR and it came back". The stamp
+                    is a safety net for designs that place neither, and it was
+                    unconditional — so removing the field from the design was
+                    not enough to remove it from the certificate. */}
+                <div className="flex flex-col gap-3 rounded-md border p-4">
+                    <div>
+                        <div className="text-sm font-medium">Automatic stamp</div>
+                        <p className="text-xs text-muted-foreground">
+                            Printed bottom-right on certificates whose design does not place these
+                            itself. A field you place on the design always wins over the stamp.
                         </p>
-                    </details>
+                    </div>
+                    <label className="flex items-start gap-3">
+                        <Switch checked={autoStampCode} onCheckedChange={setAutoStampCode} />
+                        <span className="text-sm">
+                            Stamp the {badgeCodeType === 'BARCODE' ? 'barcode' : 'QR code'}
+                            <span className="block text-xs text-muted-foreground">
+                                {autoStampCode
+                                    ? 'Every certificate carries a scannable code.'
+                                    : 'Turned off — certificates with no code of their own cannot be verified by scanning.'}
+                            </span>
+                        </span>
+                    </label>
+                    <label className="flex items-start gap-3">
+                        <Switch checked={autoStampNumber} onCheckedChange={setAutoStampNumber} />
+                        <span className="text-sm">
+                            Stamp the certificate number
+                            <span className="block text-xs text-muted-foreground">
+                                {autoStampNumber
+                                    ? 'Every certificate shows its number somewhere.'
+                                    : 'Turned off — the number is still allocated and still verifies, it is just not printed unless your design places it.'}
+                            </span>
+                        </span>
+                    </label>
                 </div>
+
+                <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
             </div>
+
+            <VerificationPageSection
+                verificationPageUrl={verificationPageUrl}
+                instituteName={effectiveInstituteName}
+                logoUrl={logoUrl}
+                themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
+                note={verificationNote}
+                onNoteChange={setVerificationNote}
+                customUrl={qrVerificationUrlTemplate}
+                onClearCustomUrl={() => setQrVerificationUrlTemplate('')}
+                sampleCertificateId={sampleCertificateNumber}
+                disabled={loading}
+            />
+
+            <div className="contents"></div>
 
             {/* Wizard-style header card with Upload | Design | Preview tabs.
                 Mirrors pdf-annotation-step.tsx so the settings page matches the
@@ -2138,6 +2135,17 @@ const CertificatesSettings = () => {
                                         onCustomImagesChange={setCustomImages}
                                         badgeCodeType={badgeCodeType}
                                         barcodeContent={barcodeContent}
+                                        autoStampCode={autoStampCode}
+                                        autoStampNumber={autoStampNumber}
+                                        // Deleting a code or the number from the
+                                        // design is the gesture an admin already
+                                        // tried; make it mean what they meant,
+                                        // instead of the platform stamping it
+                                        // straight back on the issued PDF.
+                                        onAutoStampChange={(part, enabled) => {
+                                            if (part === 'code') setAutoStampCode(enabled);
+                                            else setAutoStampNumber(enabled);
+                                        }}
                                         // The editor works in canvas pixels, but
                                         // whether a code scans is a printed-millimetre
                                         // question — which depends on the page size.
@@ -2155,6 +2163,8 @@ const CertificatesSettings = () => {
                                 {activeView === 'preview' && imageTemplate && (
                                     <CertificateSettingsPreview
                                         imageTemplate={imageTemplate}
+                                        autoStampCode={autoStampCode}
+                                        autoStampNumber={autoStampNumber}
                                         fieldMappings={fieldMappings}
                                         customImages={customImages}
                                         logoUrl={logoUrl}
@@ -2471,6 +2481,8 @@ const CertificateSettingsPreview = ({
     barcodeContent,
     customFields,
     sampleCertificateId,
+    autoStampCode,
+    autoStampNumber,
 }: {
     imageTemplate: ImageTemplate;
     fieldMappings: FieldMapping[];
@@ -2481,6 +2493,8 @@ const CertificateSettingsPreview = ({
     barcodeContent: BarcodeContent;
     sampleCertificateId: string;
     customFields: CertificateCustomField[];
+    autoStampCode: boolean;
+    autoStampNumber: boolean;
 }) => {
     // Off by default: the everyday certificate carries short values, and an
     // admin should see that first. The switch is what makes the awkward case
@@ -2492,7 +2506,10 @@ const CertificateSettingsPreview = ({
         // Read the plan off the un-substituted template, exactly as the backend
         // does — after substitution the tokens are gone and every design would
         // look like it places nothing.
-        const badgePlan = planFromHtml(html);
+        const badgePlan = planFromHtml(html, {
+            code: autoStampCode,
+            number: autoStampNumber,
+        });
         const out = applyCertificateSamples(
             html,
             buildCertificateSampleTokens({
@@ -2530,6 +2547,8 @@ const CertificateSettingsPreview = ({
         customFields,
         sampleCertificateId,
         longValues,
+        autoStampCode,
+        autoStampNumber,
     ]);
 
     const containerRef = useRef<HTMLDivElement | null>(null);

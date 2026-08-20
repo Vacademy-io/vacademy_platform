@@ -64,8 +64,10 @@ describe('serialized field markup', () => {
      * The clamp is the box the admin drew, not a fixed number of lines. An `em`
      * clamp shrank with the font, so shrinking never bought the text any room.
      */
-    it('clamps text to the height of the box and hides the rest', () => {
-        expect(html).toContain('max-height:60px');
+    it('clamps text to the lines the box allows, not to the box alone', () => {
+        // 400x60 at 32px: the box holds one line, but two are always allowed,
+        // so the clamp has to leave room for both or wrapping would be hidden.
+        expect(html).toContain(`max-height:${Math.round(2 * 1.2 * 32)}px`);
         expect(html).toContain('overflow:hidden');
     });
 
@@ -149,43 +151,47 @@ describe('fitting long values', () => {
     });
 });
 
-describe('fitting to the box height', () => {
+describe('fitting to the box', () => {
     /**
-     * The reported bug: a long course name in a box one line tall printed its
-     * first line and had the second sliced off, so the value was unreadable.
+     * Wrapping before shrinking. A long name set small enough to fit one line
+     * looks like a fault on a certificate; the same name over two lines at the
+     * intended size looks like the design.
      */
-    it('shrinks a long value to one line when the box only holds one', () => {
-        const name = 'Advanced Certificate in Data Science and Machine Learning';
+    it('wraps a long value at full size rather than shrinking it to one line', () => {
+        const name = 'Bhuvaneshwari Ramachandran';
         const oneLineTall = 32 * TEXT_LINE_HEIGHT;
-        const fitted = fitFontSize(name, 400, 32, false, oneLineTall);
-        expect(fitted).toBeLessThan(32);
-        expect(linesNeeded(name, 400, fitted)).toBeLessThanOrEqual(
-            linesAllowed(oneLineTall, fitted)
-        );
+        expect(linesNeeded(name, 400, 32)).toBe(2);
+        expect(fitFontSize(name, 400, 32, false, oneLineTall)).toBe(32);
     });
 
-    /** A box drawn tall enough for three lines gets three, rather than clipping at two. */
+    /** Past the budget it does shrink — that is what the budget is for. */
+    it('shrinks only when wrapping is not enough', () => {
+        const name = 'Advanced Certificate in Data Science and Machine Learning';
+        const oneLineTall = 32 * TEXT_LINE_HEIGHT;
+        expect(linesNeeded(name, 400, 32)).toBe(3);
+        const fitted = fitFontSize(name, 400, 32, false, oneLineTall);
+        expect(fitted).toBeLessThan(32);
+        expect(linesNeeded(name, 400, fitted)).toBeLessThanOrEqual(MAX_FIT_LINES);
+    });
+
+    /** A box drawn tall enough for three lines gets three, rather than shrinking. */
     it('lets a tall box use the lines it has room for', () => {
         const name = 'Advanced Certificate in Data Science and Machine Learning';
         const threeLinesTall = 3 * 32 * TEXT_LINE_HEIGHT;
-        expect(linesNeeded(name, 400, 32)).toBe(3);
         expect(fitFontSize(name, 400, 32, false, threeLinesTall)).toBe(32);
-        // The same value in the same width, with no height recorded, still has
-        // to shrink — that is the pre-existing two-line budget.
-        expect(fitFontSize(name, 400, 32)).toBeLessThan(32);
     });
 
-    it('never reports a budget below one line', () => {
-        expect(linesAllowed(4, 32)).toBe(1);
+    it('always offers two lines, however small the box', () => {
+        expect(linesAllowed(4, 32)).toBe(MAX_FIT_LINES);
     });
 
-    /** Templates saved before the height existed keep the old flat budget. */
+    it('raises the budget for a taller box', () => {
+        expect(linesAllowed(4 * 32 * TEXT_LINE_HEIGHT, 32)).toBe(4);
+    });
+
+    /** Templates saved before the height existed keep the flat two-line budget. */
     it('falls back to two lines when the box height is unknown', () => {
         expect(linesAllowed(0, 32)).toBe(MAX_FIT_LINES);
-    });
-
-    it('counts a box drawn at exactly two lines as holding two', () => {
-        expect(linesAllowed(2 * 32 * TEXT_LINE_HEIGHT, 32)).toBe(2);
     });
 });
 
@@ -206,6 +212,7 @@ describe('preview fitting', () => {
         // preview and the server have to land on the same number.
         expect(out).not.toContain('font-size:32px');
         const expected = fitFontSize('Bhuvaneshwari Ramachandran', 200, 32, false, 40);
+        expect(expected).toBeLessThan(32);
         expect(out).toContain(`font-size:${expected.toFixed(2)}px`);
     });
 

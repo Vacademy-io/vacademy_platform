@@ -74,7 +74,35 @@ class CertificateNumberServiceTest {
 
     @Test
     void trimsDanglingSeparatorFromEmptySuffix() {
-        assertEquals("SN-2026", service.format(numbering("{PREFIX}-{YYYY}-{SUFFIX}"), "SN", null, 1L, 2026));
+        // Carries {SEQ} because every real pattern must: one without it formats
+        // to the same string for every learner. See the guard below.
+        assertEquals("SN-2026-001",
+                service.format(numbering("{PREFIX}-{YYYY}-{SEQ:3}-{SUFFIX}"), "SN", null, 1L, 2026));
+    }
+
+    /**
+     * A pattern with no sequence token would mint the same number for every
+     * certificate — and the number is the certificate's primary key, so the
+     * second one issued collides. It is easy to write by accident: typing the
+     * digits of a number you like ("{PREFIX}000111") reads as a starting point
+     * and is really a constant.
+     *
+     * <p>The sequence is appended rather than the pattern rejected, so issuance
+     * keeps working for institutes that already saved one. The settings page
+     * warns before it gets this far.
+     */
+    @Test
+    void appendsTheSequenceToAPatternThatHasNone() {
+        assertEquals("EDU000111001",
+                service.format(numbering("{PREFIX}000111"), "EDU", null, 1L, 2026));
+        assertEquals("EDU000111002",
+                service.format(numbering("{PREFIX}000111"), "EDU", null, 2L, 2026));
+    }
+
+    @Test
+    void neverAppendsWhenThePatternAlreadyHasASequence() {
+        assertEquals("EDU2026001",
+                service.format(numbering("{PREFIX}{YYYY}{SEQ:3}"), "EDU", null, 1L, 2026));
     }
 
     /** A sequence wider than its padding must widen, never truncate. */

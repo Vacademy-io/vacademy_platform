@@ -557,6 +557,37 @@ public class InstituteSettingService {
     }
 
     /**
+     * Whether the platform may stamp this part of the badge. Absent, malformed
+     * or unreadable all mean {@code true}: the historical behaviour, and the
+     * safe direction — a certificate that carries its number and a scannable
+     * code when it did not have to is a cosmetic surprise, while one silently
+     * missing them cannot be verified at all.
+     */
+    static boolean isAutoStampEnabled(String settingJson, String fieldName) {
+        try {
+            if (!StringUtils.hasText(settingJson)) return true;
+            // Its own mapper rather than the injected one: this is a read-only
+            // parse of a settings blob, and being static is what lets the
+            // decision be tested on its own — the switch it implements is the
+            // difference between a code an admin removed staying removed and
+            // reappearing on every certificate.
+            JsonNode entries = new ObjectMapper().readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (JsonNode config : entries) {
+                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
+                        JsonNode flag = config.path(fieldName);
+                        return !flag.isBoolean() || flag.asBoolean();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read certificate setting '{}'; stamping as before", fieldName, e);
+        }
+        return true;
+    }
+
+    /**
      * One string field off the COURSE_COMPLETION certificate config. Every read
      * of this blob has the same three-deep path and the same "a malformed blob
      * must not break issuance" requirement, so it lives in one place.
@@ -1200,14 +1231,22 @@ public class InstituteSettingService {
         // Detection is token-tolerant for the same reason the substitution pass
         // is: templates pasted from Word arrive as `{{ certificate_id }}`, and a
         // strict contains() would miss those and duplicate anyway.
+        //
+        // The stamp is also switchable. It used to be unconditional, so an admin
+        // who deleted the QR or the number from their design got it back
+        // bottom-right on every issued certificate, with nothing anywhere to
+        // turn it off. autoStampCode / autoStampNumber are that switch; both
+        // default to on, which is exactly what every institute had before.
         boolean templatePlacesOwnCode = templateContainsToken(template, "{{CERTIFICATE_QR}}")
                 || templateContainsToken(template, "{{CERTIFICATE_BARCODE}}");
         boolean templatePlacesOwnId = templateContainsToken(template, "{{CERTIFICATE_ID}}");
         boolean useBarcode = "BARCODE".equalsIgnoreCase(resolveBadgeCodeType(settingJson));
-        String badgeCode = templatePlacesOwnCode
+        String badgeCode = templatePlacesOwnCode || !isAutoStampEnabled(settingJson, "autoStampCode")
                 ? null
                 : namedPlaceholders.get(useBarcode ? "{{CERTIFICATE_BARCODE}}" : "{{CERTIFICATE_QR}}");
-        String badgeId = templatePlacesOwnId ? null : certificateId;
+        String badgeId = templatePlacesOwnId || !isAutoStampEnabled(settingJson, "autoStampNumber")
+                ? null
+                : certificateId;
         boolean barcodeVerifies = "VERIFICATION_CODE"
                 .equalsIgnoreCase(readCertificateSettingText(settingJson, "barcodeContent"));
         filledTemplate = appendCertificateIdBadge(filledTemplate, badgeId, badgeCode, useBarcode,

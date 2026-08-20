@@ -10,6 +10,7 @@ import {
 import { CertificateStatsCards } from './CertificateStatsCards';
 import { CertificateStudentTable } from './CertificateStudentTable';
 import { CourseCertificateSettingsDialog } from './CourseCertificateSettingsDialog';
+import { useInstituteTemplates } from './CourseCertificatePicker';
 
 interface CertificatesTabProps {
     /** The course. Certificate settings are per-course and apply to every batch. */
@@ -32,6 +33,15 @@ export const CertificatesTab = ({
         queryFn: () => getCourseCertificateSettings(instituteId, packageId),
         enabled: !!instituteId && !!packageId,
     });
+
+    // Which design this course actually prints, named. The tab could say whether
+    // certificates were on but not which certificate — so an admin who had
+    // pointed the course at a template had no way to confirm it from here.
+    const { templates, defaultTemplateId } = useInstituteTemplates();
+    const templateInForce = settings?.course_template_id
+        ? templates.find((t) => t.id === settings.course_template_id)?.name
+        : undefined;
+    const instituteDefaultName = templates.find((t) => t.id === defaultTemplateId)?.name;
 
     const { data: dashboard, isLoading: dashboardLoading } = useQuery({
         queryKey: ['course-certificate-dashboard', packageSessionId],
@@ -81,6 +91,21 @@ export const CertificatesTab = ({
                         </p>
                     </div>
                 </div>
+            )}
+
+            {settings?.effective_enabled && (
+                <p className="text-caption text-neutral-500">
+                    Design:{' '}
+                    <span className="font-medium text-neutral-700">
+                        {templateInForce ??
+                            (settings.has_course_template
+                                ? 'uploaded for this course'
+                                : instituteDefaultName ?? 'institute default')}
+                    </span>
+                    {settings.has_course_template
+                        ? ' — chosen for this course.'
+                        : ' — inherited from the institute.'}
+                </p>
             )}
 
             <CertificateStatsCards data={dashboard} isLoading={dashboardLoading} />

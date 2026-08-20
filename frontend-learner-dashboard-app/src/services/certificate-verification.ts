@@ -27,6 +27,8 @@ export interface CertificateVerification {
   institute_logo_file_id?: string | null;
   institute_theme_code?: string | null;
   institute_website?: string | null;
+  /** A line the institute chose to show here, or nothing. */
+  institute_note?: string | null;
 }
 
 export type VerificationResult =

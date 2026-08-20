@@ -35,4 +35,14 @@ public class CourseCertificateSettingsResponse {
 
     /** True when the course has its own template rather than the institute's. */
     private boolean hasCourseTemplate;
+
+    /**
+     * The saved institute design this course follows, once resolved. Null when
+     * the course inherits, or when it uploaded HTML of its own.
+     *
+     * <p>Resolved rather than echoed back from the override: an id pointing at a
+     * design that has since been deleted must not show in the dialog as the
+     * template in force, because it is not the one being issued.
+     */
+    private String courseTemplateId;
 }

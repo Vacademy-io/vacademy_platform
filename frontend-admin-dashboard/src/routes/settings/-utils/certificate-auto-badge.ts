@@ -10,6 +10,10 @@
  * does not position itself. Placing a QR/barcode field replaces the automatic
  * code; placing a Certificate ID field replaces the automatic number. Place
  * both and no badge is stamped at all.
+ *
+ * It is also switchable per institute (autoStampCode / autoStampNumber). Until
+ * it was, removing the QR or the number from a design just brought the stamped
+ * one back bottom-right, which made a certificate without them impossible.
  */
 import {
     CERTIFICATE_BARCODE_PLACEHOLDER,
@@ -189,11 +193,30 @@ export interface AutoBadgePlan {
 
 const plan = (code: boolean, id: boolean): AutoBadgePlan => ({ code, id, any: code || id });
 
+/**
+ * Whether the institute lets the platform stamp each part at all.
+ *
+ * <p>Both default to true, which is what the badge always did. They exist
+ * because it used to be unconditional: deleting the QR or the certificate
+ * number from a design simply brought the stamped one back, so a certificate
+ * without a code or without a visible number could not be produced.
+ */
+export interface AutoStampSettings {
+    code?: boolean;
+    number?: boolean;
+}
+
 /** Plan from what the visual editor has placed on the canvas. */
-export const planFromFieldNames = (fieldNames: Iterable<string>): AutoBadgePlan => {
+export const planFromFieldNames = (
+    fieldNames: Iterable<string>,
+    stamp: AutoStampSettings = {}
+): AutoBadgePlan => {
     const placed = new Set(fieldNames);
     const placesCode = placed.has('certificate_qr') || placed.has('certificate_barcode');
-    return plan(!placesCode, !placed.has('certificate_id'));
+    return plan(
+        !placesCode && stamp.code !== false,
+        !placed.has('certificate_id') && stamp.number !== false
+    );
 };
 
 /**
@@ -204,9 +227,12 @@ export const planFromFieldNames = (fieldNames: Iterable<string>): AutoBadgePlan 
 const hasToken = (html: string, token: string): boolean =>
     new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'i').test(html || '');
 
-export const planFromHtml = (html: string): AutoBadgePlan => {
+export const planFromHtml = (html: string, stamp: AutoStampSettings = {}): AutoBadgePlan => {
     const placesCode = hasToken(html, 'CERTIFICATE_QR') || hasToken(html, 'CERTIFICATE_BARCODE');
-    return plan(!placesCode, !hasToken(html, 'CERTIFICATE_ID'));
+    return plan(
+        !placesCode && stamp.code !== false,
+        !hasToken(html, 'CERTIFICATE_ID') && stamp.number !== false
+    );
 };
 
 const escapeAttr = (s: string): string =>

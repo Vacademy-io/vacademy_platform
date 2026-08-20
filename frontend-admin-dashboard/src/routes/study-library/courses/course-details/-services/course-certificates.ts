@@ -15,6 +15,13 @@ import {
 export interface CourseCertificateOverride {
     enabled?: boolean | null;
     thresholdPercent?: number | null;
+    /**
+     * One of the institute's saved designs, by id. Stored as a reference rather
+     * than a copy so the course follows edits to that template instead of
+     * freezing whatever it looked like the day it was picked.
+     */
+    templateId?: string | null;
+    /** HTML uploaded for this course alone. Mutually exclusive with templateId. */
     templateHtml?: string | null;
 }
 
@@ -23,14 +30,15 @@ export interface CourseCertificateSettings {
     effective_threshold_percent: number;
     institute_enabled: boolean;
     institute_threshold_percent: number;
-    course_override: {
-        enabled?: boolean | null;
-        thresholdPercent?: number | null;
-        templateHtml?: string | null;
-    } | null;
+    course_override: CourseCertificateOverride | null;
     enabled_overridden_by_course: boolean;
     threshold_overridden_by_course: boolean;
     has_course_template: boolean;
+    /**
+     * The saved design in force after resolution — null when the course
+     * inherits, or when the id it held no longer exists.
+     */
+    course_template_id: string | null;
 }
 
 export interface CourseCertificateDashboard {

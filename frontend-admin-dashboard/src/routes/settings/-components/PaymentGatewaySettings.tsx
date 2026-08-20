@@ -44,6 +44,7 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { getInstituteId } from '@/constants/helper';
 import { BACKEND_BASE_URL } from '@/config/baseUrl';
+import { noAutofillProps } from '@/lib/no-autofill';
 import {
     PaymentGatewayMapping,
     PaymentVendor,
@@ -565,8 +566,10 @@ const GatewayDialog = ({
                                         onChange={(e) => updateField(f.key, e.target.value)}
                                         placeholder={f.placeholder}
                                         className={isSecret ? 'pr-10' : undefined}
-                                        autoComplete="off"
-                                        spellCheck={false}
+                                        // Gateway keys and the webhook username/password
+                                        // are the PROVIDER's credentials — `off` alone
+                                        // does not stop Chrome offering the admin's own.
+                                        {...noAutofillProps(isSecret ? 'password' : 'text')}
                                     />
                                     {isSecret && (
                                         <button

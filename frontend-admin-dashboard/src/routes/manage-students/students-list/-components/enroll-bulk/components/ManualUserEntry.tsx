@@ -15,6 +15,8 @@ import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
 import { getPreferredPhoneCountries } from '@/services/domain-routing';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { noAutofillProps } from '@/lib/no-autofill';
+import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 
 interface Props {
     onAdd: (rows: NewUserRow[]) => void;
@@ -317,6 +319,10 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
 
     return (
         <div className="flex flex-col gap-4">
+            {/* These username/password fields set the LEARNER's credentials, not the
+                admin's — the decoy pair soaks up any autofill Chrome insists on
+                doing so the real rows stay blank (auto-generated server side). */}
+            <AutofillDecoy />
             <div className="flex flex-col gap-3">
                 {rows.map((row, idx) => (
                     <div
@@ -419,12 +425,14 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
                                     Username (optional)
                                 </Label>
                                 <Input
+                                    name={`learner_username_${idx}`}
                                     placeholder="auto-generated if blank"
                                     value={row.username}
                                     // Usernames cannot contain spaces — strip whitespace as it's typed/pasted
                                     onChange={(e) =>
                                         update(idx, 'username', e.target.value.replace(/\s/g, ''))
                                     }
+                                    {...noAutofillProps('text')}
                                 />
                             </div>
                             <div>
@@ -433,9 +441,11 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
                                 </Label>
                                 <Input
                                     type="password"
+                                    name={`learner_password_${idx}`}
                                     placeholder="auto-generated if blank"
                                     value={row.password}
                                     onChange={(e) => update(idx, 'password', e.target.value)}
+                                    {...noAutofillProps('password')}
                                 />
                             </div>
                         </div>

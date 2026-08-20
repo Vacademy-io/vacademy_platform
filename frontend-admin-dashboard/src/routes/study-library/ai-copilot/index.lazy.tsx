@@ -77,6 +77,7 @@ import { Loader2 } from 'lucide-react';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getAiProductName } from '@/config/branding';
+import { noAutofillProps } from '@/lib/no-autofill';
 
 export const Route = createLazyFileRoute('/study-library/ai-copilot/')({
     component: RouteComponent,
@@ -1937,7 +1938,7 @@ function RouteComponent() {
                                     placeholder="sk-..."
                                     className="flex-1"
                                     disabled={userKeysStatus.hasOpenAI}
-                                    autoComplete="new-password"
+                                    {...noAutofillProps('password')}
                                 />
                                 {!userKeysStatus.hasOpenAI ? (
                                     <Button
@@ -1980,7 +1981,7 @@ function RouteComponent() {
                                     placeholder="AIza..."
                                     className="flex-1"
                                     disabled={userKeysStatus.hasGemini}
-                                    autoComplete="new-password"
+                                    {...noAutofillProps('password')}
                                 />
                                 {!userKeysStatus.hasGemini ? (
                                     <Button

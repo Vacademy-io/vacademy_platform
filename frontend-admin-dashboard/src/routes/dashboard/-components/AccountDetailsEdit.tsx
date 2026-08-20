@@ -13,6 +13,8 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getUserId, getUserName } from '@/utils/userDetails';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { noAutofillProps } from '@/lib/no-autofill';
+import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 
 // Validation schemas
 const accountDetailsSchema = z
@@ -153,6 +155,9 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                 {/* Form Content */}
                 <div className="space-y-6 p-4">
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                        {/* Change-credentials form, not a login: without this Chrome
+                            drops the saved password straight into "New Password". */}
+                        <AutofillDecoy />
                         {/* Username Section */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -166,6 +171,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                 </Label>
                                 <Input
                                     id="username"
+                                    {...noAutofillProps('text')}
                                     {...register('username')}
                                     placeholder="Enter your username"
                                     className="h-11 text-sm"
@@ -200,6 +206,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                     <Input
                                         id="newPassword"
                                         type={showNewPassword ? 'text' : 'password'}
+                                        {...noAutofillProps('password')}
                                         {...register('newPassword')}
                                         placeholder="Enter your new password"
                                         className="h-11 pr-10 text-sm"
@@ -252,6 +259,7 @@ export default function AccountDetailsEdit({ open, setOpen, onClose }: AccountDe
                                     <Input
                                         id="confirmPassword"
                                         type={showConfirmPassword ? 'text' : 'password'}
+                                        {...noAutofillProps('password')}
                                         {...register('confirmPassword')}
                                         placeholder="Confirm your new password"
                                         className="h-11 pr-10 text-sm"

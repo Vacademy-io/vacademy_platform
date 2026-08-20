@@ -268,6 +268,42 @@ function MyMentorshipPage() {
         [messagingId, chat.enabled]
     );
 
+    // The backend refuses every /my-* mentorship endpoint for someone who isn't a mentor
+    // here, so an error means "wrong screen for you" far more often than "something
+    // broke". Rendering the rest of the page anyway left a trail of empty cards and a red
+    // alert; this says the one useful thing and points at the admin views instead.
+    if (!profileQuery.isLoading && profileQuery.isError) {
+        return (
+            <div className="flex flex-col gap-6 p-6">
+                <MentorshipPageHeader
+                    title="My Mentorship"
+                    subtitle="Your mentees, availability and booking link"
+                />
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                    <UsersThree size={40} className="text-neutral-300" />
+                    <div className="flex flex-col gap-1">
+                        <p className="text-body font-medium text-neutral-700">
+                            You&apos;re not set up as a mentor here
+                        </p>
+                        <p className="max-w-md text-caption text-neutral-500">
+                            This page is a mentor&apos;s own workspace — their mentees,
+                            availability and booking link. To manage everyone&apos;s
+                            mentorship, use Overview, Mentors, Sessions or Requests.
+                        </p>
+                    </div>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => profileQuery.refetch()}
+                    >
+                        Retry
+                    </MyButton>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6 p-6">
             <MentorshipPageHeader
@@ -282,24 +318,6 @@ function MyMentorshipPage() {
                 </div>
             )}
 
-            {!profileQuery.isLoading && profileQuery.isError && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
-                    <div className="flex items-center gap-2">
-                        <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">
-                            Couldn&apos;t load your mentor profile.
-                        </p>
-                    </div>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => profileQuery.refetch()}
-                    >
-                        Retry
-                    </MyButton>
-                </div>
-            )}
 
             {profile && (
                 <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">

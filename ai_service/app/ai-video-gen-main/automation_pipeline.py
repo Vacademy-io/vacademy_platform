@@ -23771,7 +23771,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                top of every generated HTML. */
 
             {svg_canvas_css}
-            </style>{_CONTRAST_AUTOFIX_JS}"""
+            </style>"""
 
         # Global SVG defs — hidden 0×0 SVG holding filters that any other
         # SVG in the document can reference. Used for the hand-drawn wobble

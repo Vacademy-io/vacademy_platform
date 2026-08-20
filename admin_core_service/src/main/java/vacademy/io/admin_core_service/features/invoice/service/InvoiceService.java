@@ -2870,6 +2870,82 @@ public class InvoiceService {
      * <p>MUST be invoked through {@code self} (the injected proxy), not directly: a private/
      * internal call bypasses the Spring proxy and the propagation would silently not apply.
      */
+    /**
+     * Generate an invoice for a payment once the caller's transaction has COMMITTED.
+     *
+     * <p>Callers that create the PaymentLog themselves — the CPO side-view offline payment, the
+     * bulk-assign enrolment payment — must use this rather than calling
+     * {@link #generateInvoice} inline, for two reasons:
+     *
+     * <ol>
+     *   <li>{@link #saveInvoiceWithMultiplePaymentLogs} runs REQUIRES_NEW on the assumption its
+     *       payment log is "already committed by the webhook". For an inline caller that is false:
+     *       the log is still pending in the caller's uncommitted transaction, so the new
+     *       transaction cannot see it and the insert dies on
+     *       {@code invoice_payment_log_mapping_payment_log_id_fkey}.</li>
+     *   <li>That failure then destroys the payment. Catching the exception does NOT clear the
+     *       transaction's rollbackOnly flag, so the caller returns normally and the commit fails
+     *       with "Transaction silently rolled back because it has been marked as rollback-only" —
+     *       taking the PaymentLog, the ledger credit and the FIFO allocation with it.</li>
+     * </ol>
+     *
+     * <p>Running after commit makes the REQUIRES_NEW assumption true and puts invoice failures
+     * strictly downstream of the money: the worst case becomes a recorded payment with no invoice,
+     * which can be regenerated, instead of a lost payment.
+     *
+     * <p>Falls through to running inline when no transaction is active, so a non-transactional
+     * caller still gets its invoice.
+     */
+    public void generateInvoiceAfterCommit(String paymentLogId, String instituteId) {
+        if (!StringUtils.hasText(paymentLogId)) {
+            return;
+        }
+        Runnable task = () -> {
+            try {
+                self.generateInvoiceForCommittedPayment(paymentLogId, instituteId);
+            } catch (Exception e) {
+                // Deliberately swallowed: the payment is already committed and must stand even if
+                // the invoice cannot be produced.
+                log.error("Invoice generation failed for paymentLog {} — the payment itself is "
+                        + "committed and unaffected: {}", paymentLogId, e.getMessage(), e);
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            task.run();
+                        }
+                    });
+        } else {
+            task.run();
+        }
+    }
+
+    /**
+     * Reloads the committed payment log and its plan in one fresh transaction, so nothing is
+     * touched while detached, then generates the invoice.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void generateInvoiceForCommittedPayment(String paymentLogId, String instituteId) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+        if (paymentLog == null) {
+            log.warn("Skipping post-commit invoice: payment log {} not found", paymentLogId);
+            return;
+        }
+        UserPlan userPlan = paymentLog.getUserPlan();
+        if (userPlan == null) {
+            log.warn("Skipping post-commit invoice: payment log {} has no user plan", paymentLogId);
+            return;
+        }
+        if (!StringUtils.hasText(instituteId)) {
+            log.warn("Skipping post-commit invoice for payment log {}: institute id not resolvable", paymentLogId);
+            return;
+        }
+        generateInvoice(userPlan, paymentLog, instituteId);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Invoice saveInvoiceWithMultiplePaymentLogs(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
             List<PaymentLog> paymentLogs, String instituteId) {

@@ -3539,6 +3539,16 @@ class VideoGenerationService:
                 _NO_AUDIO_CONTENT_TYPES = {"SLIDES"}
                 if stage_pipeline_name == "tts" and content_type in _NO_AUDIO_CONTENT_TYPES:
                     _expected = [k for k in _expected if k != "audio_path"]
+                # Same shape for the avatar stage. The pipeline only produces
+                # avatar_video_path when an avatar was actually requested; with
+                # no avatar host it returns
+                # {"skipped": True, "reason": "host not avatar-enabled"} and
+                # leaves the key None. That documented skip was then read as a
+                # silent failure, so a till-render run WITHOUT an avatar — the
+                # common case — died here after HTML had already succeeded and
+                # the whole video was lost. A skip is not a missing output.
+                if stage_pipeline_name == "avatar" and not generate_avatar:
+                    _expected = [k for k in _expected if k != "avatar_video_path"]
                 _missing = [k for k in _expected if not outputs or not outputs.get(k)]
                 if _missing and not pipeline_error:
                     pipeline_error = (

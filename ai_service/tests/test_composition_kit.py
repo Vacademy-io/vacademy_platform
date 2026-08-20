@@ -347,3 +347,27 @@ def test_exemplars_do_not_leak_backticks_into_the_prompt():
     for name, ex in ck.EXEMPLARS.items():
         assert "`" not in ex["html"], name
         assert "`" not in ex["script"], name
+
+
+def test_composition_classes_work_without_the_comp_wrapper():
+    """A real run authored <div class="comp-spine"> with no .comp wrapper.
+
+    The placement rules still matched, but there was no grid to place into, so
+    the flex children collapsed to min-content and the step labels rendered one
+    letter per line down the left edge of an otherwise empty frame. Requiring
+    two cooperating class names is a contract the model will drop sooner or
+    later, so each composition class must establish the container itself.
+    """
+    css = ck.COMPOSITION_CSS
+    container_rule = css[css.index(".comp,") : css.index("box-sizing: border-box;")]
+    for name, spec in ck.COMPOSITIONS.items():
+        assert f".{spec['css_class']},\n" in container_rule or \
+               f".{spec['css_class']} {{" in container_rule, (
+            f"{name}: .{spec['css_class']} does not establish the grid on its own"
+        )
+
+
+def test_text_rows_cannot_collapse_below_min_content():
+    """min-width:0 is what lets a grid item shrink so long labels wrap; applied
+    to a text-bearing flex row it is what produces the one-letter column."""
+    assert "min-width: min-content" in ck.COMPOSITION_CSS

@@ -98,3 +98,20 @@ def test_br_and_wbr_break_the_run():
     run = run[: run.index("var __isTextBlock")]
     assert "'BR'" in run and "'WBR'" in run
     assert "flush(); return;" in run
+
+
+def test_avatar_stage_skip_is_not_a_missing_output():
+    """A run with no avatar must not fail after HTML succeeded.
+
+    The pipeline returns {"skipped": True, "reason": "host not avatar-enabled"}
+    and leaves avatar_video_path None whenever no avatar was requested. The
+    required-output validator read that as a silent stage failure, so a
+    till-render run without an avatar lost the entire video at 58% — observed
+    on a real run whose HTML and timeline had completed successfully.
+    """
+    src = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "services" / "video_generation_service.py"
+    ).read_text()
+    assert 'if stage_pipeline_name == "avatar" and not generate_avatar:' in src
+    assert 'A skip is not a missing output' in src

@@ -454,7 +454,24 @@ COMPOSITION_CSS = """
    Named frames. Every composition is a 12x8 grid so type and subjects
    land on the same lines from shot to shot. Placement is the design;
    .comp-center is ONE option, not the default. */
-.comp {
+/* The container rule is repeated on every composition class, not just on
+   .comp. A real run authored <div class="comp-spine"> without the .comp
+   wrapper: the placement rules still matched, but there was no grid to place
+   into, so the flex children collapsed to min-content and the labels rendered
+   one letter per line down the left edge. Requiring two cooperating class
+   names is a contract the model will drop sooner or later, so either form has
+   to stand on its own. */
+.comp,
+.comp-center,
+.comp-left-column,
+.comp-right-column,
+.comp-bottom-anchor,
+.comp-corner-type,
+.comp-margin-notes,
+.comp-stacked-offset,
+.comp-full-bleed,
+.comp-spine,
+.comp-artifact-study {
   position: absolute;
   inset: 0;
   display: grid;
@@ -463,7 +480,12 @@ COMPOSITION_CSS = """
   padding: var(--spacing-safe-area, 5%);
   box-sizing: border-box;
 }
+/* min-width:0 lets a grid item shrink below min-content, which is what allows
+   long labels to wrap. Keep it off text-bearing flex rows: those must overflow
+   or shrink their type, never collapse to a one-character column. */
 .comp > * { min-width: 0; min-height: 0; }
+.comp .spine > *,
+.comp-spine .spine > * { min-width: min-content; }
 
 /* centred — calm and declarative; rationed by assign_compositions() */
 .comp-center .comp-main {

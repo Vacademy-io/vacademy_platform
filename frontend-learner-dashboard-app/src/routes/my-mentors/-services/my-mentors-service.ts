@@ -7,6 +7,9 @@ import {
     MENTORSHIP_MY_FEEDBACK,
     MENTORSHIP_MY_PENDING_FEEDBACK,
     MENTORSHIP_MY_REQUEST_BY_ID,
+    MENTORSHIP_MY_MENTOR_SESSIONS,
+    MENTORSHIP_MY_MENTOR_SESSION_CANCEL,
+    MENTORSHIP_MY_MENTOR_SESSION_RESCHEDULE,
 } from "@/constants/urls";
 
 // snake_case — mirrors admin-core-service MentorDTO.
@@ -267,4 +270,93 @@ export const submitSessionFeedback = async ({
         data: { booking_instance_id: bookingInstanceId, rating, comment },
     });
     return response.data as SessionFeedback;
+};
+
+// ---------------------------------------------------------------- My 1:1 sessions
+
+/**
+ * One of the learner's own mentor sessions. Mirrors the admin MentorSessionDTO minus
+ * the mentor's private notes, which the API strips before a learner ever sees it.
+ */
+export interface MyMentorSession {
+    booking_instance_id: string;
+    title?: string | null;
+    scheduled_start_utc?: number | null;
+    scheduled_end_utc?: number | null;
+    duration_minutes?: number | null;
+    booking_status?: string | null;
+    meet_link?: string | null;
+    mentor_id?: string | null;
+    mentor_name?: string | null;
+    topic?: string | null;
+    rating?: number | null;
+    feedback_comment?: string | null;
+    /** UPCOMING | AWAITING_REVIEW | COMPLETED | NO_SHOW | CANCELLED | RESCHEDULED */
+    lifecycle: string;
+}
+
+export const getMyMentorSessions = async ({
+    instituteId,
+}: {
+    instituteId: string;
+}): Promise<MyMentorSession[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: MENTORSHIP_MY_MENTOR_SESSIONS,
+        params: { instituteId },
+    });
+    return (response.data ?? []) as MyMentorSession[];
+};
+
+/**
+ * Kept short-lived: this list is what the learner acts on, and a stale row offering
+ * "Reschedule" on a session the mentor just cancelled is the worst kind of wrong.
+ */
+export const handleGetMyMentorSessions = (instituteId: string | undefined) => ({
+    queryKey: ["GET_MY_MENTOR_SESSIONS", instituteId],
+    queryFn: () => getMyMentorSessions({ instituteId: instituteId ?? "" }),
+    staleTime: 15 * 1000,
+    enabled: !!instituteId,
+});
+
+export const cancelMyMentorSession = async ({
+    instituteId,
+    bookingInstanceId,
+    reason,
+}: {
+    instituteId: string;
+    bookingInstanceId: string;
+    reason?: string;
+}): Promise<MyMentorSession> => {
+    const response = await authenticatedAxiosInstance({
+        method: "POST",
+        url: MENTORSHIP_MY_MENTOR_SESSION_CANCEL,
+        params: { instituteId },
+        data: { booking_instance_id: bookingInstanceId, reason },
+    });
+    return response.data as MyMentorSession;
+};
+
+export const rescheduleMyMentorSession = async ({
+    instituteId,
+    bookingInstanceId,
+    startTime,
+    inviteeTimezone,
+}: {
+    instituteId: string;
+    bookingInstanceId: string;
+    startTime: string;
+    inviteeTimezone?: string;
+}): Promise<MyMentorSession> => {
+    const response = await authenticatedAxiosInstance({
+        method: "POST",
+        url: MENTORSHIP_MY_MENTOR_SESSION_RESCHEDULE,
+        params: { instituteId },
+        data: {
+            booking_instance_id: bookingInstanceId,
+            start_time: startTime,
+            ...(inviteeTimezone ? { invitee_timezone: inviteeTimezone } : {}),
+        },
+    });
+    return response.data as MyMentorSession;
 };

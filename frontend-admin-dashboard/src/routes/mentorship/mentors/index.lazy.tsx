@@ -53,6 +53,27 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { reportApiError } from '@/lib/report-api-error';
 
 const MENTORS_PAGE_SIZE = 20;
+
+const STATUS_OPTIONS = [
+    { label: 'Any status', value: 'all' },
+    { label: 'Active', value: 'active' },
+    { label: 'Inactive', value: 'inactive' },
+];
+const DISCOVERABLE_OPTIONS = [
+    { label: 'Any visibility', value: 'all' },
+    { label: 'Listed to learners', value: 'listed' },
+    { label: 'Hidden from learners', value: 'hidden' },
+];
+const CAPACITY_OPTIONS = [
+    { label: 'Any capacity', value: 'all' },
+    { label: 'Has room', value: 'available' },
+    { label: 'At their limit', value: 'full' },
+    { label: 'No booking page', value: 'no-booking' },
+];
+
+/** The visible label for a stored filter value; falls back to the "any" option. */
+const labelOf = (options: { label: string; value: string }[], value: string): string =>
+    options.find((o) => o.value === value)?.label ?? options[0]?.label ?? '';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
@@ -63,7 +84,14 @@ import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
 import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
 import { CapacityChip, CapacityMeter, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
-import { filterMentors } from '../-utils/filter-mentors';
+import { MyDropdown } from '@/components/design-system/dropdown';
+import {
+    applyMentorFilters,
+    DEFAULT_MENTOR_FILTERS,
+    isDefaultMentorFilters,
+    type MentorFilters,
+} from '../-utils/filter-mentors';
+import { ScheduleSessionDialog } from '../-components/ScheduleSessionDialog';
 
 export const Route = createLazyFileRoute('/mentorship/mentors/')({
     component: MentorsRoute,
@@ -98,7 +126,14 @@ function MentorsPage() {
         navigate({ to: '/mentorship/mentors/$mentorId', params: { mentorId: m.id } });
 
     const [addOpen, setAddOpen] = useState(false);
-    const [search, setSearch] = useState('');
+    const [filters, setFilters] = useState<MentorFilters>(DEFAULT_MENTOR_FILTERS);
+    const [scheduleMentor, setScheduleMentor] = useState<MentorDTO | null>(null);
+    const [scheduleOpen, setScheduleOpen] = useState(false);
+    const search = filters.search;
+    const setFilter = <K extends keyof MentorFilters>(key: K, value: MentorFilters[K]) =>
+        // Any filter change starts the list over: staying on page 4 of an unfiltered
+        // list after narrowing to two mentors shows an empty table.
+        setFilters((f) => ({ ...f, [key]: value }));
     const [editMentor, setEditMentor] = useState<MentorDTO | null>(null);
     const [feedbackMentor, setFeedbackMentor] = useState<MentorDTO | null>(null);
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -108,11 +143,11 @@ function MentorsPage() {
 
     const mentors = data?.mentors ?? [];
 
-    // Searching switches from the server-paginated page to a filter over the full
-    // mentor list the dashboard already loaded — a page-local filter would silently
-    // hide matches sitting on other pages.
-    const searching = search.trim().length > 0;
-    const visibleMentors = searching ? filterMentors(mentors, search) : pagedMentors;
+    // Any active filter switches from the server-paginated page to a filter over the
+    // full mentor list the dashboard already loaded — a page-local filter would
+    // silently hide matches sitting on other pages.
+    const searching = !isDefaultMentorFilters(filters);
+    const visibleMentors = searching ? applyMentorFilters(mentors, filters) : pagedMentors;
 
     // Upcoming load per mentor, from the sessions endpoint the dashboard already
     // uses. The mentor row is where an admin decides who to assign next, so "how
@@ -302,6 +337,20 @@ function MentorsPage() {
                                 aria-label={`Assign students to ${label}`}
                                 title="Assign students to this mentor"
                             >
+                                <UsersThree size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => {
+                                    setScheduleMentor(m);
+                                    setScheduleOpen(true);
+                                }}
+                                aria-label={`Schedule a 1:1 with ${label}`}
+                                title="Book a 1:1 between this mentor and a student"
+                            >
                                 <CalendarPlus size={18} />
                             </MyButton>
                             <DropdownMenu>
@@ -402,6 +451,23 @@ function MentorsPage() {
                 </MyButton>
                 <MyButton
                     type="button"
+                    buttonType="secondary"
+                    scale="medium"
+                    onClick={() => {
+                        setScheduleMentor(null);
+                        setScheduleOpen(true);
+                    }}
+                    disable={mentors.length === 0}
+                    title={
+                        mentors.length === 0
+                            ? 'Add a mentor first to schedule a 1:1'
+                            : 'Book a 1:1 between a mentor and a student'
+                    }
+                >
+                    <CalendarPlus size={18} /> Schedule 1:1
+                </MyButton>
+                <MyButton
+                    type="button"
                     buttonType="primary"
                     scale="medium"
                     onClick={() => setAddOpen(true)}
@@ -410,20 +476,50 @@ function MentorsPage() {
                 </MyButton>
             </MentorshipPageHeader>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                    <MagnifyingGlass
-                        size={16}
-                        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                        />
+                        <MyInput
+                            input={search}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                setFilter('search', e.target.value);
+                                setPage(0);
+                            }}
+                            inputType="text"
+                            inputPlaceholder="Search mentors by name, title or expertise"
+                            className="pl-9 sm:w-full"
+                        />
+                    </div>
+                    <MyDropdown
+                        currentValue={labelOf(STATUS_OPTIONS, filters.status)}
+                        dropdownList={STATUS_OPTIONS}
+                        handleChange={(v: string) => {
+                            setFilter('status', v as MentorFilters['status']);
+                            setPage(0);
+                        }}
+                        placeholder="Any status"
                     />
-                    <MyInput
-                        input={search}
-                        onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setSearch(e.target.value)
-                        }
-                        inputType="text"
-                        inputPlaceholder="Search mentors by name, title or expertise"
-                        className="pl-9 sm:w-full"
+                    <MyDropdown
+                        currentValue={labelOf(DISCOVERABLE_OPTIONS, filters.discoverable)}
+                        dropdownList={DISCOVERABLE_OPTIONS}
+                        handleChange={(v: string) => {
+                            setFilter('discoverable', v as MentorFilters['discoverable']);
+                            setPage(0);
+                        }}
+                        placeholder="Any visibility"
+                    />
+                    <MyDropdown
+                        currentValue={labelOf(CAPACITY_OPTIONS, filters.capacity)}
+                        dropdownList={CAPACITY_OPTIONS}
+                        handleChange={(v: string) => {
+                            setFilter('capacity', v as MentorFilters['capacity']);
+                            setPage(0);
+                        }}
+                        placeholder="Any capacity"
                     />
                 </div>
                 {searching && (
@@ -433,9 +529,9 @@ function MentorsPage() {
                         <button
                             type="button"
                             className="font-medium text-primary-500 hover:text-primary-600"
-                            onClick={() => setSearch('')}
+                            onClick={() => setFilters(DEFAULT_MENTOR_FILTERS)}
                         >
-                            Clear
+                            Clear filters
                         </button>
                     </span>
                 )}
@@ -567,6 +663,16 @@ function MentorsPage() {
                     }}
                 />
             )}
+
+            <ScheduleSessionDialog
+                instituteId={instituteId}
+                open={scheduleOpen}
+                onOpenChange={(o) => {
+                    setScheduleOpen(o);
+                    if (!o) setScheduleMentor(null);
+                }}
+                mentor={scheduleMentor}
+            />
 
             <AlertDialog
                 open={!!confirmRemove}

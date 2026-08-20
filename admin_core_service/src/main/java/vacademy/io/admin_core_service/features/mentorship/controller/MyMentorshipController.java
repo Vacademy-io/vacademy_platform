@@ -185,6 +185,57 @@ public class MyMentorshipController {
                 request.getInviteeTimezone(), false));
     }
 
+    /** The mentor schedules a 1:1 with one of their OWN mentees, on their own booking page. */
+    @PostMapping("/my-sessions/schedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> scheduleMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.ScheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.scheduleSession(instituteId, user, request,
+                MentorSessionService.SessionActor.MENTOR));
+    }
+
+    // ==================== LEARNER: MY 1:1 SESSIONS ====================
+
+    /**
+     * The caller's own mentor sessions as a learner — upcoming and past, newest first.
+     * Separate from {@code /my-sessions/*} (which is the mentor's side of the same
+     * feature) because the two audiences see different rows and different fields.
+     */
+    @GetMapping("/my-mentor-sessions")
+    public ResponseEntity<List<MentorSessionDTOs.MentorSessionDTO>> myMentorSessions(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "lifecycle", required = false) String lifecycle,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.sessionsForStudent(instituteId, user.getUserId(), lifecycle));
+    }
+
+    /** The learner cancels a session booked for them. */
+    @PostMapping("/my-mentor-sessions/cancel")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> cancelMyMentorSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.CancelSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.cancelSession(instituteId, user,
+                request.getBookingInstanceId(), request.getReason(),
+                MentorSessionService.SessionActor.STUDENT));
+    }
+
+    /** The learner moves a session booked for them to another free slot. */
+    @PostMapping("/my-mentor-sessions/reschedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> rescheduleMyMentorSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RescheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.rescheduleSession(instituteId, user,
+                request.getBookingInstanceId(), request.getStartTime(),
+                request.getInviteeTimezone(), MentorSessionService.SessionActor.STUDENT));
+    }
+
     /** The caller's own mentor profile (incl. Google-connected status) — for the Connect Google card. */
     @GetMapping("/my-mentor-profile")
     public ResponseEntity<MentorDTO> myMentorProfile(

@@ -301,6 +301,23 @@ public class MentorController {
                 request.getInviteeTimezone(), true));
     }
 
+    /**
+     * Schedule a 1:1 between one of this institute's mentors and a learner, without
+     * making the learner open a booking link. Slots come from the mentor's own booking
+     * page, so an admin can only place a session where the mentor is genuinely free.
+     */
+    @PostMapping("/sessions/schedule")
+    @Auditable(entityType = "MENTOR_SESSION", action = "CREATE",
+            descriptionExpr = "'scheduled a mentorship session'")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> scheduleSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.ScheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.scheduleSession(instituteId, user, request,
+                MentorSessionService.SessionActor.ADMIN));
+    }
+
     // ==================== DASHBOARD ====================
 
     @GetMapping("/dashboard")

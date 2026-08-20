@@ -13,6 +13,7 @@ import {
     cancelMentorRequest,
     handleGetMentorDirectory,
     handleGetMyMentorRequests,
+    handleGetMyMentorSessions,
     handleGetMyMentors,
     handleGetPendingFeedback,
     type DirectoryMentor,
@@ -27,6 +28,7 @@ import { MentorCard } from "./-components/MentorCard";
 import { DirectoryMentorCard } from "./-components/DirectoryMentorCard";
 import { RequestMentorDialog } from "./-components/RequestMentorDialog";
 import { MentorAvatar } from "./-components/MentorAvatar";
+import { MySessionsTab } from "./-components/MySessionsTab";
 
 export const Route = createFileRoute("/my-mentors/")({
     component: MyMentorsRoute,
@@ -40,7 +42,7 @@ function MyMentorsRoute() {
     );
 }
 
-type TabKey = "mine" | "find" | "requests";
+type TabKey = "mine" | "sessions" | "find" | "requests";
 
 function MyMentorsPage() {
     const [instituteId, setInstituteId] = useState<string | undefined>();
@@ -58,10 +60,13 @@ function MyMentorsPage() {
     const directoryQuery = useQuery(handleGetMentorDirectory(instituteId));
     const requestsQuery = useQuery(handleGetMyMentorRequests(instituteId));
     const feedbackQuery = useQuery(handleGetPendingFeedback(instituteId));
+    const sessionsQuery = useQuery(handleGetMyMentorSessions(instituteId));
 
     const mentors = useMemo(() => mentorsQuery.data ?? [], [mentorsQuery.data]);
     const directory = useMemo(() => directoryQuery.data ?? [], [directoryQuery.data]);
     const requests = useMemo(() => requestsQuery.data ?? [], [requestsQuery.data]);
+    const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
+    const upcomingCount = sessions.filter((s) => s.lifecycle === "UPCOMING").length;
     const pendingCount = requests.filter((r) => r.status === "PENDING").length;
     // The directory only exists once an admin lists at least one mentor, so the
     // whole Find-a-mentor surface stays hidden for institutes that don't use it.
@@ -86,6 +91,10 @@ function MyMentorsPage() {
 
     const tabs: { key: TabKey; label: string; badge?: number }[] = [
         { key: "mine", label: "My mentors", badge: mentors.length || undefined },
+        // Always offered, even at zero: "where are my sessions?" is the question this
+        // tab answers, and hiding it when empty is what sent learners hunting through
+        // their inbox for the booking confirmation.
+        { key: "sessions", label: "My sessions", badge: upcomingCount || undefined },
         ...(directoryAvailable ? [{ key: "find" as const, label: "Find a mentor" }] : []),
         ...(directoryAvailable || requests.length
             ? [{ key: "requests" as const, label: "My requests", badge: pendingCount || undefined }]
@@ -173,6 +182,18 @@ function MyMentorsPage() {
                     onRetry={() => mentorsQuery.refetch()}
                     canFind={directoryAvailable}
                     onFind={() => setTab("find")}
+                />
+            )}
+
+            {tab === "sessions" && (
+                <MySessionsTab
+                    instituteId={instituteId}
+                    sessions={sessions}
+                    mentors={mentors}
+                    isLoading={sessionsQuery.isLoading}
+                    isError={sessionsQuery.isError}
+                    onRetry={() => sessionsQuery.refetch()}
+                    onFindMentor={() => setTab(directoryAvailable ? "find" : "mine")}
                 />
             )}
 

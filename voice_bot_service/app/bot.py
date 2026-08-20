@@ -2851,16 +2851,34 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # the source exactly. Only correct on a REAL shortfall.
                 if _played and len(_played) < len(opening) * 0.8:
                     diag.bump("opening_truncated")
+                    # A caller who TALKED OVER the opening is a barge-in, not a
+                    # playback failure: they are already speaking and the normal
+                    # turn will answer them. Correcting here made the model
+                    # re-say the clause it was cut inside — call ddc67ffc opened
+                    # "मैं श्रेया बात कर रही हूँ शिक्षा नेशन" twice, which the
+                    # caller hears as a repeated introduction. "Finish the point
+                    # you were making" cannot be delivered mid-sentence, so the
+                    # model restarts the sentence to finish it.
+                    #
+                    # Only correct when the caller was SILENT — i.e. the audio
+                    # genuinely never reached them (network, TTS, carrier cut),
+                    # which is the case this was written for. Strictly narrower
+                    # than before: every path that fired previously either still
+                    # fires or reverts to pre-fix behaviour. It cannot do more.
+                    _caller_spoke = any(_e.get("role") == "user"
+                                        for _e in outcome.transcript)
                     logger.info("greet: opening cut short — caller heard %d of %d chars "
-                                "corr=%s", len(_played), len(opening), corr)
-                    # No run_llm: the caller is mid-sentence. Forcing a generation
-                    # here would talk straight over them.
-                    await task.queue_frames([LLMMessagesAppendFrame(messages=[{
-                        "role": "user", "content":
-                        f"[You were cut off after saying only: \"{_played}\" — the caller "
-                        "did NOT hear the rest of your opening. Do not start over and do "
-                        "not re-introduce yourself, but do finish the point you were "
-                        "making before you move on.]"}])])
+                                "caller_spoke=%s corr=%s",
+                                len(_played), len(opening), _caller_spoke, corr)
+                    if not _caller_spoke:
+                        # No run_llm: the caller is mid-sentence. Forcing a generation
+                        # here would talk straight over them.
+                        await task.queue_frames([LLMMessagesAppendFrame(messages=[{
+                            "role": "user", "content":
+                            f"[You were cut off after saying only: \"{_played}\" — the caller "
+                            "did NOT hear the rest of your opening. Do not start over and do "
+                            "not re-introduce yourself, but do finish the point you were "
+                            "making before you move on.]"}])])
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

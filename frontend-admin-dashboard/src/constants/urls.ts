@@ -701,6 +701,8 @@ export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/l
 
 export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
 export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
+export const CHANGE_LEARNER_ACCESS = `${BASE_URL}/admin-core-service/v1/learner-access/change`;
+export const GET_LEARNER_ACCESS_HISTORY = `${BASE_URL}/admin-core-service/v1/learner-access/history`;
 export const PARENT_LINK = `${BASE_URL}/admin-core-service/parent-link/v1/link`;
 export const PARENT_LINK_NEW_GUARDIAN = `${BASE_URL}/admin-core-service/parent-link/v1/link-new-guardian`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>

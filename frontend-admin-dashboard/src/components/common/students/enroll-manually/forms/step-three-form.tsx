@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { CalendarIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -361,26 +362,31 @@ export const StepThreeForm = ({
                                 }}
                             />
 
-                            {/* Access Days - commenting for temporary removal */}
-                            {/* <FormField
+                            <FormField
                                 control={form.control}
                                 name="access_days"
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-subtitle font-semibold">
-                                            Access Days-
+                                            Access Days
                                         </FormLabel>
                                         <FormControl>
-                                            <input
+                                            <Input
                                                 type="number"
-                                                placeholder="Enter number of access days"
-                                                {...field}
-                                                className="w-full rounded border px-3 py-2"
+                                                min={1}
+                                                placeholder="Leave blank to use the plan's duration"
+                                                value={field.value ?? ''}
+                                                onChange={(e) => field.onChange(e.target.value)}
                                             />
                                         </FormControl>
+                                        <p className="text-xs text-muted-foreground">
+                                            Overrides the plan and invite. Enter 2 and access ends 2
+                                            days after the enrollment start date. Blank falls back to
+                                            the plan&apos;s duration, then the invite&apos;s.
+                                        </p>
                                     </FormItem>
                                 )}
-                            /> */}
+                            />
                         </div>
                     </form>
                 </Form>

@@ -8,7 +8,14 @@
  * plus the rules for combining an engine with a voice.
  */
 
-export type TtsModelId = 'google' | 'edge' | 'smallest' | 'rumik' | 'sarvam';
+export type TtsModelId =
+    | 'google'
+    | 'edge'
+    | 'smallest'
+    | 'smallest_pro'
+    | 'deepgram'
+    | 'rumik'
+    | 'sarvam';
 
 export interface VoiceOption {
     id: string;
@@ -59,6 +66,27 @@ export const TTS_MODELS: TtsModelMeta[] = [
         label: 'Smallest.ai Lightning v3.1',
         note: 'Indian-language specialist. Included in the standard per-minute rate.',
         defaultVoice: 'devansh',
+    },
+    {
+        id: 'smallest_pro',
+        label: 'Smallest.ai Lightning v3.1 Pro',
+        // A SEPARATE engine, not a variant: the v3.1 and v3.1_pro voice lists are
+        // disjoint and the API hard-rejects a cross-model name ("Voice 'devansh' is
+        // not available on the lightning_v3.1_pro model") — a silent call. Costs
+        // $0.195/10K chars (~Rs 1.34/call-min) vs standard's $0.175 (~Rs 1.20);
+        // both are under Google's Rs 2.06, so neither carries a surcharge.
+        note: 'Higher-quality Indian voices. Different voice list from v3.1.',
+        defaultVoice: 'mandar',
+    },
+    {
+        id: 'deepgram',
+        label: 'Deepgram Aura-2 (English only)',
+        // Verified against Deepgram's live /v1/models catalog: 102 TTS models across
+        // en/es/de/fr/nl/it/ja and NO Hindi at any tier. It does NOT refuse other
+        // scripts — Devanagari returns HTTP 200 and fluent nonsense — so the backend
+        // refuses the pairing at save time. $30/1M chars, same as Chirp3-HD.
+        note: 'English only — no Hindi voice exists. Not for a Hinglish agent.',
+        defaultVoice: 'aura-2-asteria-en',
     },
     {
         id: 'rumik',
@@ -144,6 +172,12 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
     if (m === 'sarvam' || m.startsWith('sarvam') || m.startsWith('bulbul')) return 'sarvam';
     if (m === 'google' || m.startsWith('google') || m.startsWith('chirp')) return 'google';
     if (m === 'edge' || m.startsWith('edge') || m.startsWith('microsoft')) return 'edge';
+    if (m === 'deepgram' || m.startsWith('deepgram') || m.startsWith('aura')) return 'deepgram';
+    // Pro FIRST — 'smallest_pro' also startsWith('smallest'), so the generic test
+    // below would swallow it and offer standard voices for the pro model, which the
+    // vendor rejects outright. Mirrors TtsVoiceCatalog.normalizeModel on the server.
+    if ((m.startsWith('smallest') || m.startsWith('lightning')) && m.includes('pro'))
+        return 'smallest_pro';
     if (m === 'smallest' || m.startsWith('smallest') || m.startsWith('lightning'))
         return 'smallest';
     return null;

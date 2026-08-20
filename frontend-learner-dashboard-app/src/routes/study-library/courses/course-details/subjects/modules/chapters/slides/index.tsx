@@ -78,6 +78,24 @@ import { playIllustrations } from "@/assets/play-illustrations";
 // sessionStorage key for the viewer's focus mode (per-tab persistence).
 const SLIDES_FOCUS_MODE_KEY = "slides-viewer-focus-mode";
 
+/**
+ * QA override, mirroring DEBUG_UI_TYPE. Student Display Settings are cached in
+ * localStorage for 24h per institute, so a change in the admin does not reach a
+ * warm cache — and previewing a navigation mode should not require editing a
+ * live institute's settings. Set `DEBUG_SLIDES_SIDEBAR_NAV` to "hidden",
+ * "breadcrumb" or "ancestors" and reload; remove the key to go back to the
+ * institute's own configuration.
+ */
+type SidebarNavMode = "ancestors" | "breadcrumb" | "hidden";
+function readDebugSidebarNav(): SidebarNavMode | null {
+  try {
+    const v = localStorage.getItem("DEBUG_SLIDES_SIDEBAR_NAV");
+    return v === "hidden" || v === "breadcrumb" || v === "ancestors" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Play celebration guards ──────────────────────────────────────────────────
 // Once-per-chapter guard mirroring shouldCelebrateSlide, so the chapter volley
 // fires only the first time a chapter completes in this tab (query refetches
@@ -984,9 +1002,12 @@ function Slides() {
   // happens via the popovers in the breadcrumb. This is the default to keep
   // existing learners on familiar terrain — admins can opt into the richer
   // "ancestors" tree from Student Display Settings.
-  const [sidebarNavigation, setSidebarNavigation] = useState<
-    "ancestors" | "breadcrumb"
-  >("breadcrumb");
+  const [sidebarNavigation, setSidebarNavigation] = useState<SidebarNavMode>(
+    () => readDebugSidebarNav() ?? "breadcrumb"
+  );
+  // "hidden": no viewer sidebar at all — the learner moves through the course
+  // with the Prev/Next controls in the slide header alone.
+  const hideSlidesSidebar = sidebarNavigation === "hidden";
 
   // Load Student Display Settings for slides view
   useEffect(() => {
@@ -996,7 +1017,9 @@ function Slides() {
       );
       setFeedbackVisible(s?.courseDetails?.slidesView?.feedbackVisible ?? true);
       setSidebarNavigation(
-        s?.courseDetails?.slidesView?.sidebarNavigation ?? "breadcrumb"
+        readDebugSidebarNav() ??
+          s?.courseDetails?.slidesView?.sidebarNavigation ??
+          "breadcrumb"
       );
     });
   }, []);
@@ -1029,19 +1052,25 @@ function Slides() {
   // the sidebar's open state (shadcn useCallback dep), so route it through a
   // ref and key the effect on focusMode only — otherwise manual sidebar
   // toggles from the navbar would re-trigger this effect and fight the user.
+  //
+  // Focus mode's only entry point is a button in the viewer sidebar. With the
+  // sidebar off there is nothing to collapse and no way back out, so a value
+  // left over in sessionStorage must not keep driving the layout.
+  const effectiveFocusMode = focusMode && !hideSlidesSidebar;
+
   const setAppSidebarOpenRef = useRef(setAppSidebarOpen);
   useEffect(() => {
     setAppSidebarOpenRef.current = setAppSidebarOpen;
   }, [setAppSidebarOpen]);
   useEffect(() => {
-    setAppSidebarOpenRef.current(!focusMode);
-  }, [focusMode]);
+    setAppSidebarOpenRef.current(!effectiveFocusMode);
+  }, [effectiveFocusMode]);
   // Restore the sidebar when leaving the route while focus mode is on, so
   // the rest of the app doesn't inherit a collapsed sidebar.
-  const focusModeRef = useRef(focusMode);
+  const focusModeRef = useRef(effectiveFocusMode);
   useEffect(() => {
-    focusModeRef.current = focusMode;
-  }, [focusMode]);
+    focusModeRef.current = effectiveFocusMode;
+  }, [effectiveFocusMode]);
   useEffect(
     () => () => {
       if (focusModeRef.current) setAppSidebarOpenRef.current(true);
@@ -1623,8 +1652,15 @@ function Slides() {
   return (
     <LayoutContainer
       fullWidth
-      sidebarComponent={SidebarComponent}
-      className={focusMode ? "m-0 md:m-1" : "md:my-0 md:mx-2 lg:mx-3"}
+      // No sidebar prop at all in "hidden" mode — passing an empty node would
+      // still reserve the rail. LayoutContainer then falls back to the app's
+      // own sidebar, so the learner keeps a way out of the viewer.
+      {...(hideSlidesSidebar ? {} : { sidebarComponent: SidebarComponent })}
+      className={
+        effectiveFocusMode || hideSlidesSidebar
+          ? "m-0 md:m-1"
+          : "md:my-0 md:mx-2 lg:mx-3"
+      }
     >
       <InitStudyLibraryProvider>
         <ModulesWithChaptersProvider
@@ -1635,7 +1671,23 @@ function Slides() {
             {activeItem?.id === "feedback-slide" ? (
               <FeedbackPage />
             ) : (
-              <SlideMaterial onNavigateToSlide={handleNavigateToSlide} />
+              <SlideMaterial
+                onNavigateToSlide={handleNavigateToSlide}
+                standaloneNav={hideSlidesSidebar}
+                // Only in "hidden" mode: with a sidebar on screen the learner
+                // already has a way across chapters, and making Next jump
+                // chapters there would change long-standing behaviour.
+                onPastLastSlide={
+                  hideSlidesSidebar && nextChapter
+                    ? handleNextChapter
+                    : undefined
+                }
+                onBeforeFirstSlide={
+                  hideSlidesSidebar && previousChapter
+                    ? handlePreviousChapter
+                    : undefined
+                }
+              />
             )}
           </SidebarProvider>
         </ModulesWithChaptersProvider>
@@ -1644,7 +1696,7 @@ function Slides() {
           replaced lived on the left; bottom-right belongs to the chatbot
           button and the doubt sidebar). Rendered only while focused, so it
           never overlaps the open sidebar's footer. */}
-      {focusMode && (
+      {effectiveFocusMode && (
         <button
           onClick={toggleFocusMode}
           aria-label="Exit focus mode"

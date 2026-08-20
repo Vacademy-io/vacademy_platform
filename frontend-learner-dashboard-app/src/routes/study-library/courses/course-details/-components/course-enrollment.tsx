@@ -69,6 +69,12 @@ interface EnrolledSession {
 
 interface CourseEnrollmentProps {
   showCourseConfiguration: boolean;
+  /** "contentOnly" course-details layout: keep the Class/Section picker (a
+   *  learner enrolled in several batches still has to switch between them) and
+   *  drop everything else in this card — session/level labels, the preview
+   *  notice and the enroll CTA are all shopper-facing. The card hides itself
+   *  entirely when there is no batch choice to make. */
+  batchPickerOnly?: boolean;
   selectedTab: string;
   sessionOptions: SessionOption[];
   levelOptions: LevelOption[];
@@ -89,6 +95,7 @@ interface CourseEnrollmentProps {
 
 export const CourseEnrollment = ({
   showCourseConfiguration,
+  batchPickerOnly = false,
   selectedTab,
   sessionOptions,
   levelOptions,
@@ -127,18 +134,22 @@ export const CourseEnrollment = ({
   )?.label;
   const isDefault = (n: string | null | undefined) =>
     !n || n.trim().toLowerCase() === "default";
-  const showSessionField = !!sessionLabel && !isDefault(sessionLabel);
-  const showLevelField = !!levelLabel && !isDefault(levelLabel);
+  const showSessionField =
+    !batchPickerOnly && !!sessionLabel && !isDefault(sessionLabel);
+  const showLevelField =
+    !batchPickerOnly && !!levelLabel && !isDefault(levelLabel);
   const showBatchPicker =
     shouldShowBatchDropdown &&
     (batchOptions || []).length > 0 &&
     !!selectedSession &&
     !!selectedLevel;
   const showPreviewNotice =
+    !batchPickerOnly &&
     safeSessionOptions.length > 0 &&
     selectedTab === "ALL" &&
     !isEnrolledInCourse;
-  const showNoSessionsWarning = safeSessionOptions.length === 0;
+  const showNoSessionsWarning =
+    !batchPickerOnly && safeSessionOptions.length === 0;
   const currentPackageSessionId =
     selectedBatchId || packageSessionIdForCurrentLevel || "";
   const isAlreadyEnrolledInCurrent = safeEnrolledSessions.some(
@@ -161,6 +172,7 @@ export const CourseEnrollment = ({
     },
   );
   const showInlineEnroll =
+    !batchPickerOnly &&
     !hasRightSidebar &&
     selectedTab === "ALL" &&
     !!selectedSession &&
@@ -208,7 +220,7 @@ export const CourseEnrollment = ({
         {sessionOptions && sessionOptions.length > 0 ? (
           <div className="space-y-2.5">
             {/* Preview notice for ALL tab - only show if user is not enrolled */}
-            {selectedTab === "ALL" && !isEnrolledInCourse && (
+            {showPreviewNotice && (
               <div className="p-2 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm">
                 <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
@@ -230,38 +242,40 @@ export const CourseEnrollment = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Session — static label, no dropdown */}
-              {(() => {
-                const sessionLabel = sessionOptions.find(
-                  (o) => o.value === selectedSession,
-                )?.label;
-                return sessionLabel &&
-                  sessionLabel.toLowerCase() !== "default" ? (
-                  <StaticField
-                    label={getTerminology(
-                      ContentTerms.Session,
-                      SystemTerms.Session,
-                    )}
-                    value={sessionLabel}
-                  />
-                ) : null;
-              })()}
+              {!batchPickerOnly &&
+                (() => {
+                  const sessionLabel = sessionOptions.find(
+                    (o) => o.value === selectedSession,
+                  )?.label;
+                  return sessionLabel &&
+                    sessionLabel.toLowerCase() !== "default" ? (
+                    <StaticField
+                      label={getTerminology(
+                        ContentTerms.Session,
+                        SystemTerms.Session,
+                      )}
+                      value={sessionLabel}
+                    />
+                  ) : null;
+                })()}
 
               {/* Level — static label, no dropdown */}
-              {(() => {
-                const levelLabel = levelOptions.find(
-                  (o) => o.value === selectedLevel,
-                )?.label;
-                return levelLabel &&
-                  levelLabel.toLowerCase() !== "default" ? (
-                  <StaticField
-                    label={getTerminology(
-                      ContentTerms.Level,
-                      SystemTerms.Level,
-                    )}
-                    value={levelLabel}
-                  />
-                ) : null;
-              })()}
+              {!batchPickerOnly &&
+                (() => {
+                  const levelLabel = levelOptions.find(
+                    (o) => o.value === selectedLevel,
+                  )?.label;
+                  return levelLabel &&
+                    levelLabel.toLowerCase() !== "default" ? (
+                    <StaticField
+                      label={getTerminology(
+                        ContentTerms.Level,
+                        SystemTerms.Level,
+                      )}
+                      value={levelLabel}
+                    />
+                  ) : null;
+                })()}
 
               {/* Batch / Subgroup Selector - only when child subgroups exist */}
               {shouldShowBatchDropdown &&
@@ -319,7 +333,8 @@ export const CourseEnrollment = ({
         )}
 
         {/* Inline Enroll card when sidebar is hidden */}
-        {!hasRightSidebar &&
+        {!batchPickerOnly &&
+          !hasRightSidebar &&
           selectedTab === "ALL" &&
           !shouldHidePaidPurchaseUI() &&
           (() => {

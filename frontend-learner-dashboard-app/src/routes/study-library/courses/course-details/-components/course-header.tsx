@@ -13,22 +13,31 @@ interface CourseHeaderProps {
     courseMediaId: string;
   };
   showConfetti?: boolean;
+  /** "contentOnly" course-details layout: the header keeps the title so the
+   *  learner still knows where they are, and drops everything that only
+   *  matters to a shopper — tags, description and the banner/preview media. */
+  minimal?: boolean;
 }
 
 export const CourseHeader = ({
   courseData,
   showConfetti = false,
+  minimal = false,
 }: CourseHeaderProps) => {
   const isImageUrl = (url: string) =>
     /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?.*)?$/i.test(url);
   const hasVideo =
-    !!courseData.courseMediaId && !isImageUrl(courseData.courseMediaId);
+    !minimal &&
+    !!courseData.courseMediaId &&
+    !isImageUrl(courseData.courseMediaId);
   const hasMediaImage =
-    !!courseData.courseMediaId && isImageUrl(courseData.courseMediaId);
+    !minimal &&
+    !!courseData.courseMediaId &&
+    isImageUrl(courseData.courseMediaId);
   // Banner image renders in the right column when no separate course media exists.
   // Mirrors the admin's clean 2-col layout (text-left, image-right) — no backdrop blur.
   const hasBannerImage =
-    !!courseData.courseBannerMediaId && !hasVideo && !hasMediaImage;
+    !minimal && !!courseData.courseBannerMediaId && !hasVideo && !hasMediaImage;
   const hasRightMedia = hasVideo || hasMediaImage || hasBannerImage;
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
@@ -51,17 +60,26 @@ export const CourseHeader = ({
 
       <div className="px-2 py-3 sm:px-0 lg:py-4">
         {!courseData.title ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
-            <div className="space-y-3 animate-fade-in-up">
-              <div className="h-5 w-24 animate-pulse rounded bg-muted" />
-              <div className="h-10 w-4/5 animate-pulse rounded bg-muted" />
-              <div className="space-y-2">
-                <div className="h-4 w-full animate-pulse rounded bg-muted" />
-                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-              </div>
+          minimal ? (
+            // Minimal mode renders the title alone, so its skeleton is one bar.
+            // The two-column placeholder below would promise a tag, a
+            // description and a banner that never arrive.
+            <div className="animate-fade-in-up">
+              <div className="h-10 w-3/4 max-w-lg animate-pulse rounded bg-muted" />
             </div>
-            <div className="hidden lg:block h-48 w-full rounded-xl bg-muted animate-pulse" />
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
+              <div className="space-y-3 animate-fade-in-up">
+                <div className="h-5 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-10 w-4/5 animate-pulse rounded bg-muted" />
+                <div className="space-y-2">
+                  <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+              <div className="hidden lg:block h-48 w-full rounded-xl bg-muted animate-pulse" />
+            </div>
+          )
         ) : (
           <div
             className={cn(
@@ -72,7 +90,7 @@ export const CourseHeader = ({
             {/* Text Content */}
             <div className="animate-fade-in-up space-y-3 sm:space-y-4">
               {/* Tags */}
-              {courseData.tags.length > 0 && (
+              {!minimal && courseData.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {courseData.tags.map((tag, index) => (
                     <Badge
@@ -99,7 +117,7 @@ export const CourseHeader = ({
               </h1>
 
               {/* Description */}
-              {courseData.description && (
+              {!minimal && courseData.description && (
                 <div>
                   <div
                     ref={descRef}

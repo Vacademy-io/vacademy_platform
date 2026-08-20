@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { usePresenceHeartbeat } from "@/hooks/study-library/usePresenceHeartbeat";
@@ -46,11 +47,24 @@ import { getUserId } from "@/constants/getUserId";
 
 export const SlideMaterial = ({
   onNavigateToSlide,
+  standaloneNav = false,
+  onPastLastSlide,
+  onBeforeFirstSlide,
 }: {
   // Optional: lets the host route mirror the active slide into the URL so the
   // course-tree sidebar (which highlights by URL slideId) and a browser
   // refresh stay in sync with Prev/Next. Falls back to store-only when absent.
   onNavigateToSlide?: (slideId: string) => void;
+  // Prev/Next is the ONLY way through the course (the viewer's sidebar is
+  // turned off in Student Display Settings). The header nav then has to show
+  // at every breakpoint — on mobile there is no offcanvas slide list to fall
+  // back on, so hiding it below `sm` would strand the learner on one slide.
+  standaloneNav?: boolean;
+  // Chapter-boundary escapes for standalone nav. `items` only ever holds the
+  // current chapter's slides, so without these the learner hits the last slide
+  // of a chapter and stops. Only wired when there is a chapter to move to.
+  onPastLastSlide?: (() => void) | undefined;
+  onBeforeFirstSlide?: (() => void) | undefined;
 }) => {
   const { t, i18n } = useTranslation("studyContent");
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -158,22 +172,39 @@ export const SlideMaterial = ({
     isItemLocked(slideEvaluations[nextSlide.id])
     : false;
 
-  const canGoPrev = currentIndex > 0 && !isPrevLocked;
-  const canGoNext =
+  const canStepPrev = currentIndex > 0 && !isPrevLocked;
+  const canStepNext =
     currentIndex > -1 && currentIndex < slidesList.length - 1 && !isNextLocked;
 
+  // At a chapter edge the buttons stay live only if the host handed us a
+  // neighbouring chapter to jump to. A locked next slide is a drip lock, not
+  // an edge — it must stay disabled rather than skipping the chapter.
+  const atLastSlide =
+    currentIndex > -1 && currentIndex === slidesList.length - 1;
+  const canOverflowNext = atLastSlide && !!onPastLastSlide;
+  const canOverflowPrev = currentIndex === 0 && !!onBeforeFirstSlide;
+
+  const canGoPrev = canStepPrev || canOverflowPrev;
+  const canGoNext = canStepNext || canOverflowNext;
+
   const goToPrev = () => {
-    if (!canGoPrev) return;
-    const target = slidesList[currentIndex - 1];
-    setActiveItem(target); // instant content update
-    onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
+    if (canStepPrev) {
+      const target = slidesList[currentIndex - 1];
+      setActiveItem(target); // instant content update
+      onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
+      return;
+    }
+    if (canOverflowPrev) onBeforeFirstSlide?.();
   };
 
   const goToNext = () => {
-    if (!canGoNext) return;
-    const target = slidesList[currentIndex + 1];
-    setActiveItem(target); // instant content update
-    onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
+    if (canStepNext) {
+      const target = slidesList[currentIndex + 1];
+      setActiveItem(target); // instant content update
+      onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
+      return;
+    }
+    if (canOverflowNext) onPastLastSlide?.();
   };
 
   // Video time update handler - simplified since questions are now handled internally by YouTube player
@@ -1195,7 +1226,12 @@ export const SlideMaterial = ({
           {heading || "No content"}
         </h3>
 
-        <div className="hidden sm:flex items-center gap-2 shrink-0">
+        <div
+          className={cn(
+            "items-center gap-2 shrink-0",
+            standaloneNav ? "flex" : "hidden sm:flex",
+          )}
+        >
           <button
             onClick={goToPrev}
             disabled={!canGoPrev}
@@ -1203,7 +1239,9 @@ export const SlideMaterial = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
             <CaretLeft size={14} />
-            <span>{t("slideNav.previous")}</span>
+            <span className={cn(standaloneNav && "hidden sm:inline")}>
+              {t("slideNav.previous")}
+            </span>
           </button>
           {realSlides.length > 0 && realIndex > -1 && (
             <span className="text-xs font-medium text-neutral-500 tabular-nums">
@@ -1216,7 +1254,9 @@ export const SlideMaterial = ({
             aria-label={t("slideNav.nextSlide")}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
-            <span>{t("slideNav.next")}</span>
+            <span className={cn(standaloneNav && "hidden sm:inline")}>
+              {t("slideNav.next")}
+            </span>
             <CaretRight size={14} />
           </button>
           <div className="h-4 w-px bg-neutral-200"></div>
@@ -1225,8 +1265,15 @@ export const SlideMaterial = ({
       </div>
 
       {/* Play-theme mobile: inline slide nav right below the compact header.
-          Sits in flex flow so it pushes the content down (no fixed-overlap). */}
-      <div className="hidden sm:hidden [.ui-play_&]:flex flex-shrink-0 items-center gap-2 border-b border-neutral-100 bg-white px-3 py-2">
+          Sits in flex flow so it pushes the content down (no fixed-overlap).
+          Standalone nav already renders its row at every breakpoint, so this
+          one stands down there rather than stacking a second set of arrows. */}
+      <div
+        className={cn(
+          "flex-shrink-0 items-center gap-2 border-b border-neutral-100 bg-white px-3 py-2",
+          standaloneNav ? "hidden" : "hidden sm:hidden [.ui-play_&]:flex",
+        )}
+      >
         <MyButton
           scale="large"
           layoutVariant="icon"

@@ -238,6 +238,11 @@ public class MentorAssignmentService {
                     .title(m.getTitle())
                     .profileImageFileId(m.getProfileImageFileId())
                     .bio(m.getBio())
+                    // Expertise is what tells a learner WHY this mentor was matched to them.
+                    // The Find-a-mentor directory has always sent it; the assigned-mentor list
+                    // did not, so the tags an admin entered were invisible to the very learners
+                    // they were paired with.
+                    .expertiseTags(MentorService.splitTags(m.getExpertiseTags()))
                     .bookingPageId(m.getBookingPageId())
                     .bookingPageSlug(mentorService.slugFor(m.getBookingPageId()))
                     .status(m.getStatus())

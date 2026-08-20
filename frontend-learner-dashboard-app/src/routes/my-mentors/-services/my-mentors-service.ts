@@ -20,6 +20,8 @@ export interface MyMentor {
     title?: string | null;
     profile_image_file_id?: string | null;
     bio?: string | null;
+    /** Topics this mentor covers — the same tags the Find-a-mentor directory shows. */
+    expertise_tags?: string[] | null;
     booking_page_id?: string | null;
     booking_page_slug?: string | null;
     status: string;

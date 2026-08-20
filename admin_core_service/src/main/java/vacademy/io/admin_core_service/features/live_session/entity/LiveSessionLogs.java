@@ -78,6 +78,15 @@ public class LiveSessionLogs {
     @Column(name = "provider_total_duration_minutes")
     private Integer providerTotalDurationMinutes;
 
+    /**
+     * Audit of the attendance-criteria evaluation for this row: verdict, reason,
+     * attendedMinutes, scheduledMinutes, requiredMinutes, thresholdPercent,
+     * previousStatus, evaluatedAt. Attendance is disputed data, so an absence
+     * must stay explainable after the fact.
+     */
+    @Column(name = "attendance_evaluation_json", columnDefinition = "TEXT")
+    private String attendanceEvaluationJson;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

@@ -138,6 +138,14 @@ export type CourseInitSubject = {
   subject_order?: number;
 };
 
+/**
+ * Column counts for the content-only drill-down grid. Exported so the page's
+ * loading skeleton lays out identically — a skeleton that promises two columns
+ * and resolves into one is worse than no skeleton.
+ */
+export const CONTENT_ONLY_CARD_GRID =
+  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+
 export const CourseStructureDetails = ({
   selectedSession,
   selectedLevel,
@@ -147,6 +155,7 @@ export const CourseStructureDetails = ({
   selectedTab,
   isEnrolledInCourse,
   contentOnly,
+  chapterOpensFirstSlide,
   onLoadingChange,
   updateModuleStats,
   paymentType,
@@ -164,6 +173,10 @@ export const CourseStructureDetails = ({
    *  tab strip collapses to Content Structure regardless of what the tab
    *  settings say. See EnrolledCourseLayout in student-display-settings. */
   contentOnly?: boolean;
+  /** Tapping a chapter card opens its first available slide in the viewer
+   *  instead of listing the chapter's slides. Resolved by the page from
+   *  courseDetails.chapterOpensFirstSlide. */
+  chapterOpensFirstSlide?: boolean;
   onLoadingChange?: (loading: boolean) => void;
   updateModuleStats?: (
     modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
@@ -494,7 +507,7 @@ export const CourseStructureDetails = ({
   const contentGridClass = cn(
     "grid gap-4",
     contentOnly
-      ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+      ? CONTENT_ONLY_CARD_GRID
       : "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
   );
 
@@ -3011,12 +3024,13 @@ export const CourseStructureDetails = ({
                 .map((ch, idx) => {
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
-                  // Content-only sends the learner straight into the viewer;
-                  // the slide list only appears as a fallback when no slide
-                  // can be opened (empty chapter, or every slide drip-locked),
-                  // because that screen is what explains the reason.
+                  // When the institute has opted in, a chapter card sends the
+                  // learner straight into the viewer; the slide list only
+                  // appears as a fallback when no slide can be opened (empty
+                  // chapter, or every slide drip-locked), because that screen
+                  // is what explains the reason.
                   const openChapter = async (chapterId: string) => {
-                    if (contentOnly && isSlideClickable()) {
+                    if (chapterOpensFirstSlide && isSlideClickable()) {
                       const opened = await openFirstSlideInChapter(
                         selectedSubjectId || "",
                         selectedModuleId || "",

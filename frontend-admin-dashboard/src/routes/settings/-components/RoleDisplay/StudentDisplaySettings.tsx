@@ -48,6 +48,7 @@ import {
     type StudentUiType,
     type SlidesSidebarNavigation,
     type EnrolledCourseLayout,
+    type FeedbackTrigger,
     type StudentDashboardWidgetConfig,
     RETIRED_WIDGET_IDS,
     WIDGET_LABELS,
@@ -825,6 +826,28 @@ export default function StudentDisplaySettings(): JSX.Element {
                         }
                     />
 
+                    {/* Tri-state in storage (unset = follow the page layout).
+                        The switch shows the value in effect, so saving pins
+                        whatever the admin can see. */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={
+                                settings.courseDetails.chapterOpensFirstSlide ??
+                                (settings.courseDetails.enrolledLayout ?? 'full') ===
+                                    'contentOnly'
+                            }
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    chapterOpensFirstSlide: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">
+                            Chapter Card Opens the First Slide Directly
+                        </Label>
+                    </div>
+
                     {/* Tabs visibility */}
                     <div className="space-y-2">
                         {(() => {
@@ -1027,6 +1050,48 @@ export default function StudentDisplaySettings(): JSX.Element {
                             />
                             <Label className="text-xs">Feedback Visible</Label>
                         </div>
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.chapterCompleteCta ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            chapterCompleteCta: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                &quot;Chapter Complete — Next Up&quot; Bar
+                            </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.feedbackInSlideNav ??
+                                    settings.courseDetails.slidesView.sidebarNavigation !==
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            feedbackInSlideNav: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                Include Feedback in Previous/Next
+                            </Label>
+                        </div>
                         {/* Tri-state in storage (unset = follow the sidebar mode,
                             i.e. shown only in the sidebar-less viewer). The
                             switch renders the value actually in effect, so
@@ -1092,6 +1157,36 @@ export default function StudentDisplaySettings(): JSX.Element {
                             />
                             <Label className="text-xs">Can Ask Doubt</Label>
                         </div>
+                    </div>
+
+                    {/* When the feedback slide is offered. Asking after every
+                        chapter suits a short course and fatigues a long one, so
+                        the cadence is the institute's call. */}
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs">Ask for Feedback After</Label>
+                        <Select
+                            value={settings.courseDetails.slidesView.feedbackTrigger ?? 'CHAPTER'}
+                            onValueChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    slidesView: {
+                                        ...settings.courseDetails.slidesView,
+                                        feedbackTrigger: v as FeedbackTrigger,
+                                    },
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-56 text-xs">
+                                <SelectValue placeholder="Select when" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="CHAPTER">Every chapter</SelectItem>
+                                <SelectItem value="MODULE">Every module</SelectItem>
+                                <SelectItem value="SUBJECT">Every subject</SelectItem>
+                                <SelectItem value="COURSE">Course completion only</SelectItem>
+                                <SelectItem value="NEVER">Never (button only)</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* ── Sidebar content navigation picker ─────────────────

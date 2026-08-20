@@ -88,10 +88,12 @@ const escapeHtml = (s: string): string =>
  * "Bhuvaneshwari Ramachandran" printed as "uvaneshwari Ramachand". Long course
  * names did the same.
  *
- * <p>Values now wrap to at most {@link MAX_TEXT_LINES} lines and can never
- * exceed the box width. Two lines is the cap because a certificate is a fixed
- * layout: a name that grows to four lines collides with whatever the design has
- * underneath it, which is a worse failure than a slightly smaller font.
+ * <p>Values now wrap and can never exceed the box the admin drew — in either
+ * direction. The line budget is the box's own height ({@link fieldContentHeightPx}),
+ * not a fixed number: a box drawn tall enough for three lines gets three, and a
+ * box only one line tall shrinks the font rather than spilling a second line
+ * over the artwork underneath. {@link MAX_TEXT_LINES} remains the budget for
+ * templates saved before the height was recorded.
  */
 export const MAX_TEXT_LINES = 2;
 
@@ -108,6 +110,54 @@ export const fieldContentWidthPx = (f: FieldMapping): number => {
     const border = f.style.borderColor ? 1 : 0;
     return Math.max(1, Math.round(f.position.width - 2 * padding - 2 * border));
 };
+
+/**
+ * Height available to the text, the vertical twin of {@link fieldContentWidthPx}.
+ *
+ * <p>Emitted as `data-fit-height` so the server-side fitter can shrink a long
+ * value until it fits the box's *height* too. Width alone was not enough: a
+ * two-line clamp in a box one line tall clipped the second line, which is
+ * exactly the "the long course name is not visible" report this closes.
+ */
+export const fieldContentHeightPx = (f: FieldMapping): number => {
+    const padding = typeof f.style.padding === 'number' ? f.style.padding : 0;
+    const border = f.style.borderColor ? 1 : 0;
+    return Math.max(1, Math.round(f.position.height - 2 * padding - 2 * border));
+};
+
+/**
+ * How many lines this box can show at a given font size — at least one, because
+ * a box smaller than a single line still has to print something.
+ */
+export const linesThatFit = (contentHeightPx: number, fontSizePx: number): number => {
+    if (!(contentHeightPx > 0) || !(fontSizePx > 0)) return MAX_TEXT_LINES;
+    // The epsilon absorbs sub-pixel rounding: a box drawn at exactly two lines
+    // must not be judged to hold 1.99.
+    return Math.max(1, Math.floor(contentHeightPx / (fontSizePx * TEXT_LINE_HEIGHT) + 0.02));
+};
+
+/**
+ * How much of the text is actually allowed to show.
+ *
+ * <p>Normally the box the admin drew — text stays inside its own field instead
+ * of spilling over the artwork. But the fitter will only shrink so far (half the
+ * chosen size; below that a name reads as a mistake rather than a design), so a
+ * long value in a box one line tall bottoms out still needing two lines. Letting
+ * *those* two lines show past the box is the lesser evil: overlapping is
+ * recoverable by moving the box, whereas a certificate that prints half a name
+ * is not recoverable at all by the learner holding it.
+ */
+export const fieldTextMaxHeightPx = (f: FieldMapping): number => {
+    const floorFontSize = Math.max(MIN_FIT_FONT_PX, f.style.fontSize * MIN_FIT_FONT_SCALE);
+    return Math.max(
+        fieldContentHeightPx(f),
+        Math.round(MAX_TEXT_LINES * TEXT_LINE_HEIGHT * floorFontSize)
+    );
+};
+
+/** Mirrors MIN_SCALE / MIN_FONT_PX in CertificateTextFitService. */
+const MIN_FIT_FONT_SCALE = 0.5;
+const MIN_FIT_FONT_PX = 6;
 
 /** The positioned box. Vertical centring and clipping live here. */
 const buildFieldStyle = (f: FieldMapping): string => {
@@ -154,9 +204,12 @@ const buildFieldTextStyle = (f: FieldMapping): string =>
         `color:${f.style.fontColor}`,
         `text-align:${f.style.alignment}`,
         `line-height:${TEXT_LINE_HEIGHT}`,
-        // `em` here is this element's own font-size, so the clamp stays exactly
-        // two lines whatever size the server-side fitter settles on.
-        `max-height:${(MAX_TEXT_LINES * TEXT_LINE_HEIGHT).toFixed(2)}em`,
+        // The box the admin drew is the clamp — see fieldTextMaxHeightPx for
+        // the one case that is allowed past it. In px rather than `em` because
+        // the fitter changes the font size and the *box* must not change with
+        // it; an `em` clamp shrank the visible area in lockstep with the font,
+        // so shrinking never bought the text any more room.
+        `max-height:${fieldTextMaxHeightPx(f)}px`,
         'overflow:hidden',
         // A single unbroken token — a long email, a hyphen-free course code —
         // has no space to wrap at, and would otherwise run past the box edge.
@@ -228,6 +281,7 @@ export function serializeImageTemplateToHtml(
                 `<div style="${escapeHtml(buildFieldStyle(f))}">` +
                 `<div style="${escapeHtml(buildFieldTextStyle(f))}"` +
                 ` data-fit-width="${fieldContentWidthPx(f)}"` +
+                ` data-fit-height="${fieldContentHeightPx(f)}"` +
                 ` data-fit-size="${f.style.fontSize}"` +
                 `>${escapeHtml(token)}</div>` +
                 `</div>`

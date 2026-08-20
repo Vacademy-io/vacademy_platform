@@ -1,14 +1,22 @@
+import { useMemo, useState } from 'react';
 import {
     CalendarCheck,
+    CalendarPlus,
     CaretRight,
+    ChatCircle,
     Clock,
     EnvelopeSimple,
+    Eye,
+    MagnifyingGlass,
     Star,
     UsersThree,
     WarningCircle,
 } from '@phosphor-icons/react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
+import type { ColumnDef } from '@tanstack/react-table';
 import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
+import { MyTable } from '@/components/design-system/table';
 import { StatusChips } from '@/components/design-system/chips';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,7 +28,12 @@ import {
 } from '../-hooks/use-mentorship';
 import { MentorAvatar } from './MentorAvatar';
 import { MentorSessionsPanel } from './MentorSessionsPanel';
+import { MenteeDetailSheet } from './MenteeDetailSheet';
+import { ScheduleSessionDialog } from './ScheduleSessionDialog';
 import { AvailabilitySummary, DAY_ORDER } from './MentorAvailabilitySummary';
+import { createDirectConversation } from '@/services/chat/chatApi';
+import { reportApiError } from '@/lib/report-api-error';
+import type { MenteeDTO, MentorDTO } from '../-types/mentorship-types';
 
 export type MentorDetailTab = 'overview' | 'students' | 'availability' | 'sessions' | 'feedback';
 
@@ -268,38 +281,12 @@ export function MentorDetailView({
             )}
 
             {tab === 'students' && (
-                <div className="flex flex-col gap-2">
-                    {mentees.isLoading ? (
-                        <Skeleton className="h-24 w-full rounded-md" />
-                    ) : (mentees.data?.length ?? 0) === 0 ? (
-                        <p className="flex items-center gap-1.5 text-caption text-neutral-400">
-                            <UsersThree size={14} /> No students assigned to this mentor yet.
-                        </p>
-                    ) : (
-                        (mentees.data ?? []).map((m) => (
-                            <div
-                                key={m.assignment_id}
-                                className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white p-3"
-                            >
-                                <div className="flex min-w-0 flex-col">
-                                    <span className="truncate text-body text-neutral-700">
-                                        {m.name || m.student_user_id}
-                                    </span>
-                                    {m.email && (
-                                        <span className="truncate text-caption text-neutral-400">
-                                            {m.email}
-                                        </span>
-                                    )}
-                                </div>
-                                <span className="shrink-0 text-caption text-neutral-400">
-                                    {m.assignment_method === 'ROUND_ROBIN'
-                                        ? 'Auto-assigned'
-                                        : 'Assigned'}
-                                </span>
-                            </div>
-                        ))
-                    )}
-                </div>
+                <MentorStudentsTab
+                    instituteId={instituteId}
+                    mentor={mentor}
+                    mentees={mentees.data ?? []}
+                    isLoading={mentees.isLoading}
+                />
             )}
 
             {tab === 'availability' && (
@@ -360,6 +347,275 @@ export function MentorDetailView({
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+/**
+ * A mentor's assigned students, as a table.
+ *
+ * Its own component so the search box and the open-student state can use hooks: the
+ * parent returns early while the mentor is still loading, and hooks declared after
+ * those returns would run in a different order on the next render.
+ *
+ * Clicking a student opens the side sheet rather than navigating away — an admin
+ * reviewing a mentor's roster is comparing students, and losing the table each time
+ * turned that into a back-button loop.
+ */
+function MentorStudentsTab({
+    instituteId,
+    mentor,
+    mentees,
+    isLoading,
+}: {
+    instituteId: string | undefined;
+    mentor: MentorDTO;
+    mentees: MenteeDTO[];
+    isLoading: boolean;
+}) {
+    const [search, setSearch] = useState('');
+    const [openMentee, setOpenMentee] = useState<MenteeDTO | null>(null);
+    const [scheduleFor, setScheduleFor] = useState<MenteeDTO | null>(null);
+    const [messagingId, setMessagingId] = useState<string | null>(null);
+    const navigate = useNavigate();
+
+    const query = search.trim().toLowerCase();
+    const visible = useMemo(
+        () =>
+            query
+                ? mentees.filter((m) =>
+                      [m.name, m.email, m.mobile_number].some((f) =>
+                          (f ?? '').toLowerCase().includes(query)
+                      )
+                  )
+                : mentees,
+        [mentees, query]
+    );
+
+    const message = async (mentee: MenteeDTO) => {
+        setMessagingId(mentee.student_user_id);
+        try {
+            const conv = await createDirectConversation({
+                targetUserId: mentee.student_user_id,
+                targetUserName: mentee.name ?? undefined,
+                targetUserRole: 'STUDENT',
+            });
+            navigate({ to: '/chat', search: { conversationId: conv.id } });
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'open-mentee-chat' },
+                extra: { studentUserId: mentee.student_user_id },
+                fallbackMessage: "Couldn't open the chat. Please try again.",
+            });
+        } finally {
+            setMessagingId(null);
+        }
+    };
+
+    const columns = useMemo<ColumnDef<MenteeDTO>[]>(
+        () => [
+            {
+                id: 'student',
+                header: 'Student',
+                size: 250,
+                cell: ({ row }) => {
+                    const m = row.original;
+                    return (
+                        <div className="flex min-w-0 items-center gap-3">
+                            <MentorAvatar
+                                fileId={m.profile_pic_file_id}
+                                name={m.name}
+                                className="size-9 shrink-0 text-caption"
+                            />
+                            <div className="flex min-w-0 flex-col">
+                                <button
+                                    type="button"
+                                    onClick={() => setOpenMentee(m)}
+                                    className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
+                                    title="Open this student's profile"
+                                >
+                                    {m.name || m.student_user_id}
+                                </button>
+                                {m.email && (
+                                    <span className="truncate text-caption text-neutral-400">
+                                        {m.email}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'phone',
+                header: 'Phone',
+                size: 140,
+                cell: ({ row }) => (
+                    <span className="text-body tabular-nums text-neutral-600">
+                        {row.original.mobile_number || '—'}
+                    </span>
+                ),
+            },
+            {
+                id: 'method',
+                header: 'Assigned',
+                size: 130,
+                cell: ({ row }) => (
+                    <span className="text-caption text-neutral-500">
+                        {row.original.assignment_method === 'ROUND_ROBIN'
+                            ? 'Auto-assigned'
+                            : 'Assigned'}
+                    </span>
+                ),
+            },
+            {
+                id: 'actions',
+                header: 'Actions',
+                size: 150,
+                cell: ({ row }) => {
+                    const m = row.original;
+                    const label = m.name || 'this student';
+                    return (
+                        <div className="flex items-center gap-1">
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setOpenMentee(m)}
+                                aria-label={`View ${label}`}
+                                title="Learning progress, notes and scheduled calls"
+                            >
+                                <Eye size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setScheduleFor(m)}
+                                aria-label={`Schedule a 1:1 with ${label}`}
+                                title="Book a 1:1 with this mentor — the student does nothing"
+                            >
+                                <CalendarPlus size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => message(m)}
+                                disable={messagingId === m.student_user_id}
+                                aria-label={`Message ${label}`}
+                                title="Send this student a direct message"
+                            >
+                                <ChatCircle size={18} />
+                            </MyButton>
+                        </div>
+                    );
+                },
+            },
+        ],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [messagingId]
+    );
+
+    if (isLoading) return <Skeleton className="h-24 w-full rounded-md" />;
+
+    if (mentees.length === 0) {
+        return (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                <UsersThree size={32} className="text-neutral-300" />
+                <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
+                <p className="text-caption text-neutral-500">
+                    Assign students to this mentor from the mentor list.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-72">
+                    <MagnifyingGlass
+                        size={16}
+                        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                    />
+                    <MyInput
+                        input={search}
+                        onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setSearch(e.target.value)
+                        }
+                        inputType="text"
+                        inputPlaceholder="Search by name, email or phone"
+                        className="pl-9 sm:w-full"
+                    />
+                </div>
+                <span className="text-caption text-neutral-500">
+                    {query ? `${visible.length} of ${mentees.length} match` : `${mentees.length} students`}
+                </span>
+            </div>
+
+            {visible.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                    <MagnifyingGlass size={32} className="text-neutral-300" />
+                    <p className="text-body font-medium text-neutral-700">
+                        No students match &ldquo;{search.trim()}&rdquo;
+                    </p>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setSearch('')}
+                    >
+                        Clear search
+                    </MyButton>
+                </div>
+            ) : (
+                <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                    <MyTable<MenteeDTO>
+                        data={{
+                            content: visible,
+                            total_pages: 1,
+                            page_no: 0,
+                            page_size: visible.length,
+                            total_elements: visible.length,
+                            last: true,
+                        }}
+                        columns={columns}
+                        isLoading={false}
+                        error={null}
+                        currentPage={0}
+                        scrollable
+                    />
+                </div>
+            )}
+
+            <MenteeDetailSheet
+                mentee={openMentee}
+                instituteId={instituteId}
+                open={!!openMentee}
+                onOpenChange={(o) => {
+                    if (!o) setOpenMentee(null);
+                }}
+                mentor={mentor}
+            />
+
+            <ScheduleSessionDialog
+                instituteId={instituteId}
+                open={!!scheduleFor}
+                onOpenChange={(o) => {
+                    if (!o) setScheduleFor(null);
+                }}
+                mentor={mentor}
+                student={
+                    scheduleFor
+                        ? { user_id: scheduleFor.student_user_id, name: scheduleFor.name }
+                        : null
+                }
+            />
         </div>
     );
 }

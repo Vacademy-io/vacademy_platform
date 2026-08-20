@@ -19,8 +19,9 @@ import type {
 // text boxes and the serializer emits a raw data URI as visible text.
 import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
 import {
+    fieldContentHeightPx,
     fieldContentWidthPx,
-    MAX_TEXT_LINES,
+    fieldTextMaxHeightPx,
     TEXT_LINE_HEIGHT,
 } from '../../-utils/serialize-image-template-to-html';
 import { textFitWarning } from '../../-utils/certificate-text-fit';
@@ -455,6 +456,7 @@ export const CertificateVisualEditor = ({
                                 : textFitWarning({
                                       fieldName: selectedField.fieldName,
                                       widthPx: fieldContentWidthPx(selectedField),
+                                      heightPx: fieldContentHeightPx(selectedField),
                                       fontSizePx: selectedField.style.fontSize,
                                       bold: selectedField.style.fontWeight === 'bold',
                                   })
@@ -561,7 +563,12 @@ export const CertificateVisualEditor = ({
                                                     fontWeight: f.style.fontWeight,
                                                     textAlign: f.style.alignment,
                                                     lineHeight: TEXT_LINE_HEIGHT,
-                                                    maxHeight: `${MAX_TEXT_LINES * TEXT_LINE_HEIGHT}em`,
+                                                    // The drawn box is the clamp,
+                                                    // exactly as the serializer
+                                                    // emits it — so a field that
+                                                    // will be cut on the PDF is
+                                                    // cut here too.
+                                                    maxHeight: fieldTextMaxHeightPx(f),
                                                     overflow: 'hidden',
                                                     overflowWrap: 'break-word',
                                                 }}
@@ -731,13 +738,20 @@ const FloatingPropertiesPanel = ({
 
     return (
         <div
-            className="fixed z-50 w-80 rounded-lg border border-neutral-200 bg-white shadow-lg"
-            style={{ left: pos.x, top: pos.y }}
+            className="fixed z-50 flex w-80 flex-col rounded-lg border border-neutral-200 bg-white shadow-lg"
+            // Capped to what is left of the viewport below the panel's own top
+            // edge. Without this the panel is as tall as its content, so on a
+            // laptop screen the Position and Field Size groups — the X/Y boxes
+            // an admin actually came here to type into — sat below the fold
+            // with nothing to scroll: the page itself does not scroll a
+            // position:fixed element.
+            style={{ left: pos.x, top: pos.y, maxHeight: `calc(100vh - ${pos.y}px - 16px)` }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Draggable Header */}
+            {/* Draggable Header — shrink-0 so it stays put while the body
+                scrolls under it. */}
             <div
-                className="flex cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
+                className="flex shrink-0 cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
                 onMouseDown={onHeaderDown}
             >
                 <div className="flex items-center gap-2">
@@ -769,8 +783,8 @@ const FloatingPropertiesPanel = ({
                 </div>
             </div>
 
-            {/* Panel Content */}
-            <div className="p-4">
+            {/* Panel Content — the scrolling half. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
                 <div className="space-y-4">
                     {scanWarning && (
                         <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">

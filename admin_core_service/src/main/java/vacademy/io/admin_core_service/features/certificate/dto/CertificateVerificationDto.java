@@ -45,4 +45,22 @@ public class CertificateVerificationDto {
 
     /** Masked, e.g. "A··· S·····". Never the full name. */
     private String learnerName;
+
+    /**
+     * Institute branding, so the verification page can present itself as the
+     * institute's own rather than as a platform page with a name typed on it.
+     *
+     * <p>Sent on the response rather than looked up by the page, because a
+     * verification link is opened by strangers on whatever domain the QR
+     * happens to carry — an employer scanning a certificate is not logged in
+     * and has no institute context to resolve branding from. Without these the
+     * page could only render generically, which reads as "some third party
+     * says this is fine" rather than "the institute that awarded it says so".
+     *
+     * <p>All three are public-by-nature: a logo and a brand colour are on the
+     * certificate itself, and the website is printed in its footer.
+     */
+    private String instituteLogoFileId;
+    private String instituteThemeCode;
+    private String instituteWebsite;
 }

@@ -30,6 +30,9 @@ import {
     rescheduleMentorSession,
     fetchMentorMentees,
     fetchMentorAvailability,
+    fetchMentorSlots,
+    scheduleSession,
+    scheduleMySession,
 } from '../-services/mentorship-service';
 import type {
     AssignMentorRequest,
@@ -39,6 +42,7 @@ import type {
     MentorAvailabilityRequest,
     MentorRequestDecision,
     RecordSessionRequest,
+    ScheduleSessionRequest,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -356,6 +360,70 @@ export const useSessionAction = () => {
                   ),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.sessions] });
+            // The mentor's own schedule card and the mentee call lists read from the
+            // booking module, not the session view, so they need invalidating too —
+            // otherwise a cancelled session sits on screen looking fine.
+            queryClient.invalidateQueries({ queryKey: ['mentorship-my-schedule'] });
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.calls] });
+            queryClient.invalidateQueries({ queryKey: ['mentorship-slots'] });
+            invalidate();
+        },
+    });
+};
+
+/**
+ * Free slots on one mentor's booking page for a date window.
+ *
+ * Disabled until a slug is known: a mentor without a booking page has no availability
+ * to show, and the scheduling dialog says so rather than firing a doomed request.
+ */
+export const useMentorSlots = (params: {
+    instituteId: string | undefined;
+    slug: string | undefined | null;
+    from: string;
+    to: string;
+    tz: string;
+    duration?: number;
+}) =>
+    useQuery({
+        queryKey: [
+            'mentorship-slots',
+            params.instituteId,
+            params.slug,
+            params.from,
+            params.to,
+            params.tz,
+            params.duration ?? null,
+        ],
+        queryFn: () =>
+            fetchMentorSlots({
+                instituteId: params.instituteId ?? '',
+                slug: params.slug ?? '',
+                from: params.from,
+                to: params.to,
+                tz: params.tz,
+                duration: params.duration,
+            }),
+        enabled: !!params.instituteId && !!params.slug,
+        // Slots go stale the moment anyone else books one, so this is kept short.
+        staleTime: 15 * 1000,
+    });
+
+/**
+ * Book a 1:1 for a learner. `asMentor` switches to the mentor's own endpoint, which
+ * refuses any learner who isn't one of their mentees.
+ */
+export const useScheduleSession = () => {
+    const queryClient = useQueryClient();
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: { instituteId: string; asMentor?: boolean; data: ScheduleSessionRequest }) =>
+            v.asMentor ? scheduleMySession(v.instituteId, v.data) : scheduleSession(v.instituteId, v.data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.sessions] });
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.calls] });
+            queryClient.invalidateQueries({ queryKey: ['mentorship-slots'] });
+            queryClient.invalidateQueries({ queryKey: ['mentorship-my-schedule'] });
             invalidate();
         },
     });

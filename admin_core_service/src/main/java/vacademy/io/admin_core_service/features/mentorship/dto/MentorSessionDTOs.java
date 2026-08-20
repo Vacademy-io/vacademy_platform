@@ -95,6 +95,29 @@ public final class MentorSessionDTOs {
         private String inviteeTimezone;
     }
 
+    /**
+     * Schedule a 1:1 on a learner's behalf, without making the learner fill in a
+     * booking form. The mentor's own booking page supplies the availability rules,
+     * so a scheduled session is indistinguishable from one the learner booked.
+     *
+     * <p>{@code mentorId} is required when an admin schedules and ignored when a
+     * mentor schedules for themselves — a mentor may only book their own calendar.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ScheduleSessionRequest {
+        private String mentorId;
+        private String studentUserId;
+        /** ISO-8601 offset datetime of the chosen slot start. */
+        private String startTime;
+        private String inviteeTimezone;
+        /** Session length; null = the mentor's default booking-page duration. */
+        private Integer durationMinutes;
+    }
+
     /** Session counts for the admin dashboard. */
     @Data
     @NoArgsConstructor

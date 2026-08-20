@@ -1,5 +1,6 @@
 export const BulkActionDropdownList = [
     'Change Batch',
+    'Extend Course Access',
     'Re-register for Next Session',
     'Terminate Registration',
     'Share Credentials',

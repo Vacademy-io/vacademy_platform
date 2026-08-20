@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { AxiosError, AxiosHeaders } from 'axios';
 import type { MentorDTO, MentorRequestDTO } from '@/routes/mentorship/-types/mentorship-types';
 
@@ -22,6 +24,26 @@ vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+// MyTable mounts the shared student-menu dialogs, which reach for a router and a
+// QueryClient; neither is part of what this panel is being tested for.
+vi.mock('@tanstack/react-router', () => ({
+    useRouter: () => ({ navigate: vi.fn(), invalidate: vi.fn() }),
+    useNavigate: () => vi.fn(),
+    Link: ({ children, ...rest }: { children?: React.ReactNode; to?: string }) => (
+        <a {...rest}>{children}</a>
+    ),
+}));
+
+/** Every render needs a QueryClient for the dialogs MyTable brings with it. */
+const render = (ui: ReactElement) =>
+    rtlRender(
+        <QueryClientProvider
+            client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+            {ui}
+        </QueryClientProvider>
+    );
 
 import { MentorRequestsPanel } from '@/routes/mentorship/-components/MentorRequestsPanel';
 

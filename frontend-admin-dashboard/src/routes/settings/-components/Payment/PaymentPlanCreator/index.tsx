@@ -26,6 +26,7 @@ import { ApprovalToggle } from './ApprovalToggle';
 import { DonationPlanConfiguration } from './DonationPlanConfiguration';
 import { SubscriptionPlanConfiguration } from './SubscriptionPlanConfiguration';
 import { UpfrontPlanConfiguration } from './UpfrontPlanConfiguration';
+import { FreePlanConfiguration } from './FreePlanConfiguration';
 import { PlanDiscountsConfiguration } from './PlanDiscountsConfiguration';
 import { PlanNavigation } from './PlanNavigation';
 import { CPOPlanConfiguration } from './CPOPlanConfiguration';
@@ -105,7 +106,9 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         newAmount: '',
                     },
                     free: {
-                        validityDays: DAYS_IN_MONTH,
+                        // Free plans behave as unlimited today; this used to seed 30 days
+                        // that no admin ever chose, because the config UI was never rendered.
+                        accessType: 'unlimited',
                     },
                     planDiscounts: {},
                     cpoForm: {
@@ -160,10 +163,22 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
             return;
         }
 
+        if (
+            planData.type === PaymentPlans.FREE &&
+            planData.config?.free?.accessType === 'limited' &&
+            !(planData.config?.free?.validityDays > 0)
+        ) {
+            return;
+        }
+
         // CPO plans carry raw form data — no API transformation needed here
         if (planData.type === PaymentPlans.CPO) {
             const cpoForm = planData.config?.cpoForm as CPOForm | undefined;
-            if (!cpoForm || cpoForm.packageSessionIds.length === 0 || cpoForm.feeTypes.length === 0) {
+            if (
+                !cpoForm ||
+                cpoForm.packageSessionIds.length === 0 ||
+                cpoForm.feeTypes.length === 0
+            ) {
                 return;
             }
             const cpoPlan: PaymentPlan = {
@@ -175,7 +190,9 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                 isDefault: false,
                 requireApproval: planData.requireApproval || false,
                 // Carry the approval flag inside cpoForm so buildCreateCPOPayload emits require_approval.
-                config: { cpoForm: { ...cpoForm, requireApproval: planData.requireApproval || false } },
+                config: {
+                    cpoForm: { ...cpoForm, requireApproval: planData.requireApproval || false },
+                },
             };
             onSave(cpoPlan);
             onClose();
@@ -208,7 +225,11 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                 };
             }
         } else if (planData.type === PaymentPlans.FREE) {
-            validityDays = planData.config?.free?.validityDays;
+            // Left undefined for unlimited, which the API stores as a null validity_in_days.
+            validityDays =
+                planData.config?.free?.accessType === 'limited'
+                    ? planData.config?.free?.validityDays
+                    : undefined;
         } else if (planData.type === PaymentPlans.UPFRONT) {
             // Left undefined for lifetime access, which the API stores as a null
             // validity_in_days and the backend reads as "never expires".
@@ -478,37 +499,41 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                 />
                             )}
 
-                            {planData.type !== PaymentPlans.FREE && planData.type !== PaymentPlans.CPO && (
-                                <div className="mb-4">
-                                    <Label htmlFor="planCurrency" className="text-sm font-medium">
-                                        Plan Currency
-                                    </Label>
-                                    <Select
-                                        value={planData.currency}
-                                        onValueChange={(value) =>
-                                            setPlanData({ ...planData, currency: value })
-                                        }
-                                    >
-                                        <SelectTrigger className="mt-1">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {currencyOptions.map((currency) => (
-                                                <SelectItem
-                                                    key={currency.code}
-                                                    value={currency.code}
-                                                >
-                                                    {currency.symbol} {currency.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Default: {defaultCurrency} (
-                                        {getCurrencySymbol(defaultCurrency)})
-                                    </p>
-                                </div>
-                            )}
+                            {planData.type !== PaymentPlans.FREE &&
+                                planData.type !== PaymentPlans.CPO && (
+                                    <div className="mb-4">
+                                        <Label
+                                            htmlFor="planCurrency"
+                                            className="text-sm font-medium"
+                                        >
+                                            Plan Currency
+                                        </Label>
+                                        <Select
+                                            value={planData.currency}
+                                            onValueChange={(value) =>
+                                                setPlanData({ ...planData, currency: value })
+                                            }
+                                        >
+                                            <SelectTrigger className="mt-1">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {currencyOptions.map((currency) => (
+                                                    <SelectItem
+                                                        key={currency.code}
+                                                        value={currency.code}
+                                                    >
+                                                        {currency.symbol} {currency.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Default: {defaultCurrency} (
+                                            {getCurrencySymbol(defaultCurrency)})
+                                        </p>
+                                    </div>
+                                )}
 
                             {planData.type === PaymentPlans.DONATION && (
                                 <DonationPlanConfiguration
@@ -646,10 +671,35 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                 />
                             )}
 
+                            {planData.type === PaymentPlans.FREE && (
+                                <FreePlanConfiguration
+                                    accessType={planData.config?.free?.accessType || 'unlimited'}
+                                    onAccessTypeChange={(accessType) =>
+                                        updateConfig({
+                                            free: { ...planData.config?.free, accessType },
+                                        })
+                                    }
+                                    validityDays={planData.config?.free?.validityDays}
+                                    onValidityDaysChange={(days) =>
+                                        updateConfig({
+                                            free: { ...planData.config?.free, validityDays: days },
+                                        })
+                                    }
+                                />
+                            )}
+
                             {planData.type === PaymentPlans.CPO && (
                                 <CPOPlanConfiguration
                                     planName={planData.name || ''}
-                                    cpoForm={planData.config?.cpoForm || { name: '', status: 'ACTIVE', packageSessionId: '', packageSessionIds: [], feeTypes: [] }}
+                                    cpoForm={
+                                        planData.config?.cpoForm || {
+                                            name: '',
+                                            status: 'ACTIVE',
+                                            packageSessionId: '',
+                                            packageSessionIds: [],
+                                            feeTypes: [],
+                                        }
+                                    }
                                     onChange={(cpoForm) => updateConfig({ cpoForm })}
                                 />
                             )}

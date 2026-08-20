@@ -22,6 +22,7 @@ import {
 } from '@tanstack/react-table';
 import { ChangeBatchDialog } from './table-components/student-menu-options/change-batch-dialog';
 import { ExtendSessionDialog } from './table-components/student-menu-options/extend-session-dialog';
+import { BulkExtendAccessDialog } from '@/routes/manage-students/students-list/-components/students-list/bulk-extend-access-dialog';
 import { ReRegisterDialog } from './table-components/student-menu-options/re-register-dialog';
 import { TerminateRegistrationDialog } from './table-components/student-menu-options/terminate-registration-dialog';
 import { useDialogStore } from '../../routes/manage-students/students-list/-hooks/useDialogStore';
@@ -419,6 +420,7 @@ export function MyTable<T>({
     const {
         isChangeBatchOpen,
         isExtendSessionOpen,
+        isBulkExtendAccessOpen,
         isReRegisterOpen,
         isTerminateRegistrationOpen,
         isDeleteOpen,
@@ -751,6 +753,13 @@ export function MyTable<T>({
             <ExtendSessionDialog
                 trigger={null}
                 open={isExtendSessionOpen}
+                onOpenChange={(open) => {
+                    if (!open) closeAllDialogs();
+                }}
+            />
+
+            <BulkExtendAccessDialog
+                open={isBulkExtendAccessOpen}
                 onOpenChange={(open) => {
                     if (!open) closeAllDialogs();
                 }}

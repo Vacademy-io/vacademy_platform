@@ -238,14 +238,22 @@ public class CertificateVerificationService {
     }
 
     private CertificateVerificationDto toDto(IssuedCertificate certificate) {
-        String instituteName = instituteRepository.findById(certificate.getInstituteId())
-                .map(Institute::getInstituteName)
-                .orElse("");
+        // One lookup for the whole institute rather than one per field: the
+        // page needs its branding as well as its name, and two round trips to
+        // the same row on a public endpoint is a free way to make a scan slower.
+        Institute institute = instituteRepository.findById(certificate.getInstituteId())
+                .orElse(null);
 
         return CertificateVerificationDto.builder()
                 .valid(true)
                 .certificateId(certificate.getCertificateId())
-                .instituteName(instituteName)
+                .instituteName(institute != null ? institute.getInstituteName() : "")
+                // Branding travels with the response so the page renders as the
+                // institute's own on whatever domain the scan landed on. See
+                // the field docs on CertificateVerificationDto.
+                .instituteLogoFileId(institute != null ? institute.getLogoFileId() : null)
+                .instituteThemeCode(institute != null ? institute.getInstituteThemeCode() : null)
+                .instituteWebsite(institute != null ? institute.getWebsiteUrl() : null)
                 .courseName(certificate.getCourseName())
                 .issuedAt(certificate.getIssuedAt())
                 .completionPercentage(certificate.getCompletionPercentage())

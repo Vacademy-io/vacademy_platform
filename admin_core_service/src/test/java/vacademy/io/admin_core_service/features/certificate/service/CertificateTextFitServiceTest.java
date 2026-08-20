@@ -115,6 +115,86 @@ class CertificateTextFitServiceTest {
                 + text + "</div></div></body></html>";
     }
 
+    /** The same field, with the box height the newer serializer stamps on it. */
+    private String field(String text, int width, int height, int fontSize) {
+        return "<html><body><div style=\"position:absolute\">"
+                + "<div style=\"width:100%;font-size:" + fontSize + "px\""
+                + " data-fit-width=\"" + width + "\" data-fit-height=\"" + height + "\""
+                + " data-fit-size=\"" + fontSize + "\">"
+                + text + "</div></div></body></html>";
+    }
+
+    // ------------------------------------------------------ fitting to the box
+
+    /**
+     * The reported bug: a long course name in a box only one line tall printed
+     * its first line and had the second sliced off, so the admin's certificate
+     * showed a value nobody could read.
+     */
+    @Test
+    void shrinksToOneLineWhenTheBoxOnlyHoldsOne() {
+        String name = "Advanced Certificate in Data Science and Machine Learning";
+        int oneLineTall = (int) Math.round(32 * 1.2);
+
+        double flat = CertificateTextFitService.fitFontSize(name, 400, 32);
+        double heightAware = CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall);
+
+        assertTrue(heightAware < flat,
+                "a one-line-tall box must shrink further than the flat two-line budget");
+        // It bottoms out at the floor rather than reaching one line: half the
+        // chosen size is as small as a name is allowed to get. The serializer's
+        // clamp (fieldTextMaxHeightPx) then still shows those two lines, so the
+        // value is readable — it just overflows the box the admin drew, which
+        // the editor warns about at design time.
+        assertEquals(16.0, heightAware, 0.001, "expected the shrink floor, not clipping");
+        assertEquals(2, CertificateTextFitService.linesNeeded(name, 400, heightAware));
+    }
+
+    /** A box drawn tall enough for three lines gets three, rather than clipping at two. */
+    @Test
+    void aTallBoxKeepsTheAdminsChosenSize() {
+        String name = "Advanced Certificate in Data Science and Machine Learning";
+        int threeLinesTall = (int) Math.round(3 * 32 * 1.2);
+
+        assertEquals(3, CertificateTextFitService.linesNeeded(name, 400, 32));
+        assertEquals(32.0,
+                CertificateTextFitService.fitFontSize(name, 400, 32, threeLinesTall),
+                0.001);
+        assertTrue(CertificateTextFitService.fitFontSize(name, 400, 32) < 32,
+                "with no height recorded the flat two-line budget still applies");
+    }
+
+    @Test
+    void theLineBudgetIsNeverBelowOne() {
+        assertEquals(1, CertificateTextFitService.linesAllowed(4, 32));
+    }
+
+    /** Templates saved before the height was stamped keep the old flat budget. */
+    @Test
+    void anUnknownHeightFallsBackToTwoLines() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(0, 32));
+        assertEquals(2, CertificateTextFitService.linesAllowed(-5, 32));
+    }
+
+    @Test
+    void aBoxDrawnAtExactlyTwoLinesHoldsTwo() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(2 * 32 * 1.2, 32));
+    }
+
+    @Test
+    void fitsALongCourseNameToTheHeightStampedOnTheField() {
+        String out = service.fitTemplate(
+                field("Advanced Certificate in Data Science and Machine Learning", 400, 40, 32));
+        assertFalse(out.contains("font-size:32px"),
+                "a value needing more lines than the box holds must shrink: " + out);
+    }
+
+    /** A field whose value fits its box must not be resized just because it now has a height. */
+    @Test
+    void leavesAValueThatFitsItsBoxAlone() {
+        assertTrue(service.fitTemplate(field("Alex Sample", 400, 60, 32)).contains("font-size:32px"));
+    }
+
     @Test
     void fitsALongNameInAFieldSizedForAShortOne() {
         String out = service.fitTemplate(field("Bhuvaneshwari Ramachandran", 200, 32));

@@ -18,6 +18,15 @@ export interface CertificateVerification {
   completion_percentage: number | null;
   /** Masked, e.g. "A··· S·····" — never the learner's full name. */
   learner_name: string;
+  /**
+   * Institute branding, so the verification page can present itself as the
+   * institute's own. It travels on the response because whoever scans a
+   * certificate is not logged in and may be on any domain — there is no
+   * institute context on the page to resolve branding from.
+   */
+  institute_logo_file_id?: string | null;
+  institute_theme_code?: string | null;
+  institute_website?: string | null;
 }
 
 export type VerificationResult =

@@ -1,3 +1,4 @@
+import axios from 'axios';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     CREATE_TIMELINE_EVENT,
@@ -29,6 +30,9 @@ import {
     MENTORSHIP_MY_SESSION_RESCHEDULE,
     MENTORSHIP_MENTOR_MENTEES,
     MENTORSHIP_MENTOR_AVAILABILITY,
+    MENTORSHIP_SESSION_SCHEDULE,
+    MENTORSHIP_MY_SESSION_SCHEDULE,
+    OPEN_BOOKING_SLOTS,
 } from '@/constants/urls';
 import type {
     AssignMentorRequest,
@@ -45,6 +49,8 @@ import type {
     MentorFeedbackDTO,
     MentorRequestDTO,
     MentorSessionDTO,
+    BookingSlots,
+    ScheduleSessionRequest,
     RecordSessionRequest,
     MentorRequestDecision,
     PageResponse,
@@ -466,4 +472,57 @@ export const searchStudents = async (params: {
         { name, statuses: ['ACTIVE'], institute_ids: [instituteId] }
     );
     return res.data as { content: StudentRow[]; total_pages: number; total_elements: number };
+};
+
+/**
+ * Free slots on a mentor's booking page.
+ *
+ * Read through the PUBLIC booking endpoint on purpose: it is the same availability the
+ * learner's own booking page shows, so an admin can never place a session somewhere a
+ * learner couldn't have booked it themselves. It takes no auth, so plain axios is used —
+ * the authenticated instance would attach a token the endpoint has no use for.
+ */
+export const fetchMentorSlots = async (params: {
+    instituteId: string;
+    slug: string;
+    from: string;
+    to: string;
+    tz: string;
+    duration?: number;
+}): Promise<BookingSlots> => {
+    const { instituteId, slug, from, to, tz, duration } = params;
+    const res = await axios({
+        method: 'GET',
+        url: OPEN_BOOKING_SLOTS(instituteId, slug),
+        params: { from, to, tz, ...(duration ? { duration } : {}) },
+    });
+    return (res.data ?? { slots: [] }) as BookingSlots;
+};
+
+/** Admin books a 1:1 between a mentor and a learner. */
+export const scheduleSession = async (
+    instituteId: string,
+    data: ScheduleSessionRequest
+): Promise<MentorSessionDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_SESSION_SCHEDULE,
+        params: { instituteId },
+        data,
+    });
+    return res.data as MentorSessionDTO;
+};
+
+/** A mentor books a 1:1 with one of their own mentees. */
+export const scheduleMySession = async (
+    instituteId: string,
+    data: ScheduleSessionRequest
+): Promise<MentorSessionDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_MY_SESSION_SCHEDULE,
+        params: { instituteId },
+        data,
+    });
+    return res.data as MentorSessionDTO;
 };

@@ -166,6 +166,28 @@ export interface RecordSessionRequest {
     notes?: string;
 }
 
+/**
+ * Book a 1:1 for a learner without asking the learner to fill anything in. The
+ * slot must be one the mentor's own booking page offers — the backend re-checks.
+ */
+export interface ScheduleSessionRequest {
+    /** Required when an admin schedules; ignored when a mentor schedules for themselves. */
+    mentor_id?: string;
+    student_user_id: string;
+    /** ISO-8601 offset datetime of the chosen slot start. */
+    start_time: string;
+    invitee_timezone?: string;
+    /** Null = the mentor's default booking-page duration. */
+    duration_minutes?: number;
+}
+
+/** Free slots on a mentor's booking page, as the public booking API returns them. */
+export interface BookingSlots {
+    slots: string[];
+    duration_minutes?: number | null;
+    timezone?: string | null;
+}
+
 /** An admin's decision. `mentor_id` picks/overrides the mentor when approving. */
 export interface MentorRequestDecision {
     mentor_id?: string;

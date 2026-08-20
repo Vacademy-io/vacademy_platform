@@ -186,6 +186,25 @@ public class PublicBookingService {
     public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
                                                        PublicBookingDTOs.PublicBookRequestDTO request,
                                                        String inviteeUserId) {
+        return book(instituteId, slug, request, inviteeUserId, false);
+    }
+
+    /**
+     * Same booking flow again, with the public-endpoint abuse caps optionally lifted.
+     *
+     * <p>Those caps exist to bound what an anonymous stranger can do with a public link.
+     * A staff-initiated booking — an admin or the mentor themselves scheduling a 1:1 for
+     * a named learner — has already passed institute-membership and role checks, so the
+     * per-email cap would only ever stop legitimate work (five sessions with the same
+     * learner in one day is unusual, but it is not abuse).
+     *
+     * @param trusted true only for callers the request has already authenticated and
+     *                authorized; never set from an unauthenticated entry point.
+     */
+    public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
+                                                       PublicBookingDTOs.PublicBookRequestDTO request,
+                                                       String inviteeUserId,
+                                                       boolean trusted) {
         BookingPage page = activePage(instituteId, slug);
         if (request.getName() == null || request.getName().isBlank()) {
             throw new VacademyException("name is required");
@@ -199,7 +218,7 @@ public class PublicBookingService {
         if (!bookingSlotService.isSlotAvailable(page, slotStart, request.getDurationMinutes())) {
             throw new VacademyException("This slot is no longer available. Please pick another time.");
         }
-        enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
+        if (!trusted) enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
 
         // CRM linkage: a public booking on a list-attached page is a lead.
         // Best effort — a broken audience config must not block the meeting.

@@ -1,5 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { CONTENT_ONLY_CARD_GRID } from "./course-structure-details";
 
 /**
  * Loading state for the "contentOnly" course-details layout.
@@ -8,8 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
  * page — under this layout it resolves into a title plus one card, so the
  * spinner made the page visibly jump and told the learner nothing about what
  * was coming. This mirrors the real thing: title, the Content Structure card
- * header, and the same card grid the drill-down uses (one per row on phones,
- * matching contentGridClass in course-structure-details).
+ * header, and the same card grid the drill-down uses — literally the same
+ * constant, so the two cannot drift.
  */
 export const ContentOnlyCourseDetailsSkeleton = () => (
   <div
@@ -32,7 +34,7 @@ export const ContentOnlyCourseDetailsSkeleton = () => (
             <Skeleton className="h-5 w-40" />
           </div>
 
-          <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className={cn("mt-6 grid gap-4", CONTENT_ONLY_CARD_GRID)}>
             {Array.from({ length: 6 }).map((_, i) => (
               <Card
                 key={i}

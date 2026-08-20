@@ -131,6 +131,14 @@ export const handleConfigureCertificateSettings = async (
                           certificateNumbering: payload.certificateNumbering,
                           qrVerificationUrlTemplate: payload.qrVerificationUrlTemplate,
                           badgeCodeType: payload.badgeCodeType,
+                          // These two were declared on the payload type but
+                          // never put in the request body, so the backend's
+                          // preserve-on-null merge kept the old values while
+                          // the settings page patched its local store with the
+                          // new ones. The admin saw the change stick until the
+                          // next hard reload, then watched it revert.
+                          barcodeContent: payload.barcodeContent,
+                          customFields: payload.customFields,
                       },
                   },
               },

@@ -111,6 +111,7 @@ export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/lear
 // (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists
 // all blocks for the current learner; POST upserts one block.
 export const SLIDE_INTERACTION = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction`;
+export const MARK_SLIDE_COMPLETION = `${BASE_URL}/admin-core-service/learner-tracking/v1/mark-slide-completion`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const GET_ASSIGNMENT_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;

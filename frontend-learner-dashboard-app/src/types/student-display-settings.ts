@@ -169,6 +169,38 @@ export interface StudentCourseDetailsSettings {
      *  should fall back to "breadcrumb" (the legacy default) when missing
      *  so existing learners aren't dropped into a different layout. */
     sidebarNavigation?: SlidesSidebarNavigation;
+    /**
+     * Collapse the app's own left nav rail while the slide viewer is open,
+     * the way focus mode does — so the slide gets the full width without the
+     * learner reaching for the navbar toggle every time.
+     *
+     * Tri-state on purpose. Unset means "follow the sidebar mode": the
+     * sidebar-less viewer collapses the rail (a viewer with its own sidebar
+     * switched off did not ask for the nav rail to sit open beside the slide
+     * instead), every other mode leaves it alone. An explicit true/false
+     * always wins, so an institute can force either behaviour.
+     */
+    collapseSidebarOnOpen?: boolean;
+    /**
+     * Show an explicit "Mark as complete" control in the slide viewer — the
+     * checkbox Udemy, Coursera and LinkedIn Learning put beside a lesson.
+     *
+     * Automatic tracking is unchanged and still the primary signal; this is the
+     * manual override for what dwell-time and watch-percentage cannot see (a
+     * one-page PDF read at a glance, a reading done on paper, a video already
+     * watched before enrolling). It writes the same progress record as the
+     * automatic path, so chapter/course progress, drip unlocks and certificates
+     * all move with it, and it is reversible.
+     *
+     * Tri-state, like collapseSidebarOnOpen. Unset means "follow the sidebar
+     * mode": the sidebar-less viewer shows it, every other mode does not. That
+     * default is where it actually earns its place — with no sidebar there is
+     * no tick list and no progress readout, so without this control the learner
+     * has no completion feedback at all, while the breadcrumb and tree modes
+     * already show both. An explicit true/false always wins, so an institute
+     * can put it in every viewer or take it out of all of them.
+     */
+    manualCompletion?: boolean;
   };
   /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
    *  means "full" so saved settings keep rendering today's page. */

@@ -53,7 +53,11 @@
         "next": "अगला",
         "previousSlide": "पिछली स्लाइड",
         "nextSlide": "अगली स्लाइड",
-        "doubts": "शंकाएँ"
+        "doubts": "शंकाएँ",
+        "markComplete": "पूर्ण के रूप में चिह्नित करें",
+        "markCompleteAria": "इस स्लाइड को पूर्ण के रूप में चिह्नित करें",
+        "completed": "पूर्ण",
+        "completedAria": "पूर्ण — अपूर्ण के रूप में चिह्नित करने के लिए चुनें"
     },
     "videoState": {
         "generating": "वीडियो बनाया जा रहा है...",

@@ -21,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
-import { createDirectConversation } from '@/services/chat/chatApi';
+import { createDirectConversation, describeDirectChatError } from '@/services/chat/chatApi';
 import { useMyMenteesPaged, useMyMentorProfile } from '../-hooks/use-mentorship';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyTable } from '@/components/design-system/table';
@@ -41,6 +41,8 @@ import { RecordSessionDialog } from '../-components/RecordSessionDialog';
 import { useMyAwaitingReview } from '../-hooks/use-mentorship';
 import type { MentorSessionDTO } from '../-types/mentorship-types';
 import { reportApiError } from '@/lib/report-api-error';
+import { useChatEnabled } from '@/hooks/use-chat-enabled';
+import { messageActionTitle } from '../-utils/chat-availability';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -77,6 +79,9 @@ function MyMentorshipPage() {
     const [menteeSearch, setMenteeSearch] = useState('');
     const [scheduleFor, setScheduleFor] = useState<MenteeDTO | null>(null);
     const awaitingReview = useMyAwaitingReview(instituteId);
+    // In-App Messages is off until an institute switches it on. A mentor sees the
+    // action disabled-and-explained rather than hidden, so they can ask for it.
+    const chat = useChatEnabled();
 
     const profile = profileQuery.data;
 
@@ -141,7 +146,12 @@ function MyMentorshipPage() {
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'open-mentee-chat' },
                 extra: { studentUserId: mentee.student_user_id },
-                fallbackMessage: "Couldn't open the chat. Please try again.",
+                // A 403 here is permanent (chat off, or a role pair the institute
+                // forbids) — "try again" would be a lie.
+                fallbackMessage: describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again."
+                ),
             });
         } finally {
             setMessagingId(null);
@@ -230,9 +240,9 @@ function MyMentorshipPage() {
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => message(m)}
-                                disable={messagingId === m.student_user_id}
+                                disable={!chat.enabled || messagingId === m.student_user_id}
                                 aria-label={`Message ${label}`}
-                                title="Send this student a direct message"
+                                title={messageActionTitle(chat.enabled)}
                             >
                                 <ChatCircle size={18} />
                             </MyButton>
@@ -255,7 +265,7 @@ function MyMentorshipPage() {
         // `message` and the setters are stable for the row's purposes; only the
         // in-flight message id changes what a cell renders.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [messagingId]
+        [messagingId, chat.enabled]
     );
 
     return (

@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MyButton } from "@/components/design-system/button";
 import { getInstituteId } from "@/constants/helper";
 import { getCurrentUserId } from "@/lib/auth/sessionUtility";
-import { openDirectConversation } from "@/services/chat/chatApi";
+import { describeDirectChatError, openDirectConversation } from "@/services/chat/chatApi";
+import { useChatEnabled } from "@/hooks/use-chat-enabled";
 import {
     handleGetMentorDirectory,
     handleGetMyBookings,
@@ -42,6 +43,9 @@ export function MyMentorsWidget() {
     const [instituteId, setInstituteId] = useState<string | undefined>();
     const [userId, setUserId] = useState<string | undefined>();
     const [messagingId, setMessagingId] = useState<string | null>(null);
+    // Chat is off by default institute-wide; without this the learner gets a
+    // Message button whose only outcome is "Couldn't open the chat".
+    const chat = useChatEnabled();
 
     useEffect(() => {
         getInstituteId().then((id) => setInstituteId(id ?? undefined));
@@ -139,8 +143,15 @@ export function MyMentorsWidget() {
                 targetUserRole: "TEACHER",
             });
             navigate({ to: "/chat", search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            // A 403 here is permanent (chat off, or a role pair the institute
+            // forbids) — "try again" would be a lie.
+            toast.error(
+                describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again.",
+                ),
+            );
         } finally {
             setMessagingId(null);
         }
@@ -226,16 +237,18 @@ export function MyMentorsWidget() {
                             >
                                 <CalendarPlus size={16} />
                             </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="medium"
-                                layoutVariant="icon"
-                                onClick={() => message(m)}
-                                disable={messagingId === m.user_id}
-                            >
-                                <ChatCircle size={16} />
-                            </MyButton>
+                            {chat.enabled && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    layoutVariant="icon"
+                                    onClick={() => message(m)}
+                                    disable={messagingId === m.user_id}
+                                >
+                                    <ChatCircle size={16} />
+                                </MyButton>
+                            )}
                         </div>
                     </div>
                 ))}

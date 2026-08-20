@@ -281,7 +281,11 @@ public class MentorSessionService {
      * session view without a special case. The only thing this method adds is deciding who
      * may schedule for whom, and filling the learner's contact details in on their behalf.
      */
-    @Transactional
+    // Deliberately NOT @Transactional. PublicBookingService.book is not transactional either:
+    // it creates the live session, allocates a Meet link and dispatches notifications, all of
+    // which are external HTTP calls. Holding a pool connection open across those is the
+    // pattern MentorAssignmentService.afterCommit exists to avoid. Nothing here needs
+    // atomicity of its own — it reads, delegates, then re-reads.
     public MentorSessionDTO scheduleSession(String instituteId, CustomUserDetails user,
                                             ScheduleSessionRequest req, SessionActor actor) {
         if (req == null || req.getStudentUserId() == null || req.getStudentUserId().isBlank()) {
@@ -353,7 +357,7 @@ public class MentorSessionService {
         // scheduling an intro session is exactly how a pairing often starts.
         assignmentRepository
                 .findByInstituteIdAndMentorIdAndStudentUserIdAndStatus(
-                        instituteId, mentor.getId(), req.getStudentUserId(), "ACTIVE")
+                        instituteId, mentor.getId(), req.getStudentUserId(), MentorStatus.ACTIVE.name())
                 .orElseThrow(() -> new VacademyException("That learner is not one of your mentees"));
         return mentor;
     }

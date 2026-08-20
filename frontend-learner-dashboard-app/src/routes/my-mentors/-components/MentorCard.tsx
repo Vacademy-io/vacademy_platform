@@ -4,7 +4,8 @@ import { CalendarPlus, ChatCircle } from "@phosphor-icons/react";
 import { reportApiError } from "@/lib/report-api-error";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard, ModernCardContent } from "@/components/design-system/modern-card";
-import { openDirectConversation } from "@/services/chat/chatApi";
+import { describeDirectChatError, openDirectConversation } from "@/services/chat/chatApi";
+import { useChatEnabled } from "@/hooks/use-chat-enabled";
 import type { MyMentor } from "../-services/my-mentors-service";
 import { MentorAvatar } from "./MentorAvatar";
 
@@ -18,6 +19,9 @@ export function MentorCard({
     const navigate = useNavigate();
     const [messaging, setMessaging] = useState(false);
     const canBook = !!mentor.booking_page_slug && !!instituteId;
+    // Chat is off by default institute-wide; without this the learner gets a
+    // Message button whose only outcome is "Couldn't open the chat".
+    const chat = useChatEnabled();
 
     const book = () => {
         if (!mentor.booking_page_slug || !instituteId) return;
@@ -43,7 +47,12 @@ export function MentorCard({
                 feature: "mentorship",
                 tags: { "mentorship.action": "open-mentor-chat" },
                 extra: { mentorUserId: mentor.user_id },
-                fallbackMessage: "Couldn't open the chat. Please try again.",
+                // A 403 here is permanent (chat off, or a role pair the institute
+                // forbids) — "try again" would be a lie.
+                fallbackMessage: describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again.",
+                ),
             });
         } finally {
             setMessaging(false);
@@ -88,16 +97,18 @@ export function MentorCard({
                             >
                                 <CalendarPlus size={16} /> Book session
                             </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="medium"
-                                onClick={message}
-                                disable={messaging}
-                                className="flex-1"
-                            >
-                                <ChatCircle size={16} /> Message
-                            </MyButton>
+                            {chat.enabled && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={message}
+                                    disable={messaging}
+                                    className="flex-1"
+                                >
+                                    <ChatCircle size={16} /> Message
+                                </MyButton>
+                            )}
                         </div>
                         {!canBook && (
                             <span className="text-caption text-neutral-400">

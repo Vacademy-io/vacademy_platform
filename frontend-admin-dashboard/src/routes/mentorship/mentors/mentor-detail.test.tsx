@@ -41,6 +41,11 @@ vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
     MentorAvatar: () => <span data-testid="avatar" />,
 }));
 
+const chatEnabledMock = vi.fn();
+vi.mock('@/hooks/use-chat-enabled', () => ({
+    useChatEnabled: () => chatEnabledMock(),
+}));
+
 import { useState } from 'react';
 import {
     MentorDetailView,
@@ -86,6 +91,8 @@ describe('MentorDetailView', () => {
         useMentorAvailabilityMock.mockReturnValue({ ...idle, data: null });
         useMentorFeedbackMock.mockReturnValue({ ...idle, data: [] });
         useMentorDashboardMock.mockReturnValue({ ...idle, data: { mentors: [mentor()] } });
+        // Chat is off by default institute-wide; individual tests opt in.
+        chatEnabledMock.mockReturnValue({ enabled: false, isLoading: false });
     });
 
     const open = (m: MentorDTO = mentor()) => {
@@ -224,6 +231,27 @@ describe('MentorDetailView', () => {
         // detail view — so neither picker appears.
         expect(screen.getByText('Learner')).toBeInTheDocument();
         expect(screen.queryByText('Choose a mentor')).not.toBeInTheDocument();
+    });
+
+    it('disables Message and names the blocker when In-App Messages is off', () => {
+        withOneMentee();
+        // In-App Messages is off until an institute switches it on, and the backend
+        // refuses every conversation call with 403 CHAT_DISABLED until then. The action
+        // stays VISIBLE for staff — an admin is who can turn it on, so hiding it would
+        // read as "mentorship messaging doesn't exist".
+        const button = screen.getByRole('button', { name: /Message Riya Sharma/ });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', expect.stringContaining('In-App Messages'));
+        // The actions that DO work are untouched.
+        expect(screen.getByRole('button', { name: /View Riya Sharma/ })).toBeEnabled();
+    });
+
+    it('enables Message once the institute has In-App Messages on', () => {
+        chatEnabledMock.mockReturnValue({ enabled: true, isLoading: false });
+        withOneMentee();
+        const button = screen.getByRole('button', { name: /Message Riya Sharma/ });
+        expect(button).toBeEnabled();
+        expect(button).toHaveAttribute('title', 'Send this student a direct message');
     });
 
     it('search narrows the student table', () => {

@@ -125,6 +125,23 @@ const GOOGLE_FEMALE = [
 const SMALLEST_MALE = ['devansh', 'kaustubh', 'virat', 'karan', 'yash', 'debashis'];
 const SMALLEST_FEMALE = ['imogen', 'nirupma', 'niharika'];
 
+// Smallest.ai Lightning v3.1 PRO. A disjoint palette from standard v3.1 above —
+// the API rejects a cross-model name outright, so these must never be merged.
+const SMALLEST_PRO_MALE = ['mandar', 'mathan', 'barath'];
+const SMALLEST_PRO_FEMALE = ['manasi', 'mrunal', 'ketaki', 'meher'];
+
+// Deepgram Aura-2, American English ONLY — Deepgram publishes no Hindi voice at
+// any tier. Genders are Deepgram's own metadata tags, not inferred from the
+// mythological names: Janus and Juno are both FEMALE there.
+const DEEPGRAM_MALE = [
+    'aura-2-apollo-en', 'aura-2-arcas-en', 'aura-2-atlas-en',
+    'aura-2-hermes-en', 'aura-2-mars-en', 'aura-2-odysseus-en',
+];
+const DEEPGRAM_FEMALE = [
+    'aura-2-asteria-en', 'aura-2-athena-en', 'aura-2-helena-en', 'aura-2-hera-en',
+    'aura-2-luna-en', 'aura-2-cordelia-en', 'aura-2-harmonia-en', 'aura-2-electra-en',
+];
+
 const RUMIK_FEMALE = ['ira', 'emma', 'mia', 'sophia', 'ava', 'siya', 'aisha', 'zoya'];
 const RUMIK_MALE = ['adam', 'lucas', 'noah', 'theo'];
 
@@ -155,6 +172,10 @@ export const FALLBACK_VOICES: VoiceOption[] = [
     ...tag(EDGE_MALE, 'male', 'edge'),
     ...tag(SMALLEST_MALE, 'male', 'smallest'),
     ...tag(SMALLEST_FEMALE, 'female', 'smallest'),
+    ...tag(SMALLEST_PRO_MALE, 'male', 'smallest_pro'),
+    ...tag(SMALLEST_PRO_FEMALE, 'female', 'smallest_pro'),
+    ...tag(DEEPGRAM_MALE, 'male', 'deepgram'),
+    ...tag(DEEPGRAM_FEMALE, 'female', 'deepgram'),
     ...tag(RUMIK_FEMALE, 'female', 'rumik'),
     ...tag(RUMIK_MALE, 'male', 'rumik'),
     ...tag(SARVAM_FEMALE, 'female', 'sarvam'),

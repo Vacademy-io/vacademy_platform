@@ -1184,16 +1184,34 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // widest word directly and shrink the type until it
                             // fits, which is what a designer would do.
                             var __wordCtx = null;
-                            var __widestWord = function (text, font) {
+                            // Measure what the browser will actually LAY OUT, not the
+                            // source text. A headline written 'Standardized Environment'
+                            // renders as 'STANDARDIZED ENVIRONMENT' under
+                            // text-transform:uppercase — capitals are wider — and
+                            // letter-spacing adds a gap per character that measureText
+                            // knows nothing about. Measuring the raw string said the word
+                            // fit in 735px while the browser broke it across lines.
+                            var __applyTransform = function (word, transform) {
+                                if (transform === 'uppercase') return word.toUpperCase();
+                                if (transform === 'lowercase') return word.toLowerCase();
+                                if (transform === 'capitalize') {
+                                    return word.charAt(0).toUpperCase() + word.slice(1);
+                                }
+                                return word;
+                            };
+                            var __widestWord = function (text, font, transform, spacing) {
                                 if (!__wordCtx) {
                                     __wordCtx = document.createElement('canvas').getContext('2d');
                                 }
                                 __wordCtx.font = font;
+                                var extra = parseFloat(spacing);
+                                if (!isFinite(extra)) extra = 0;
                                 var words = String(text || '').split(/\s+/);
                                 var max = 0;
                                 for (var i = 0; i < words.length; i++) {
                                     if (!words[i]) continue;
-                                    var w = __wordCtx.measureText(words[i]).width;
+                                    var shown = __applyTransform(words[i], transform);
+                                    var w = __wordCtx.measureText(shown).width + extra * shown.length;
                                     if (w > max) max = w;
                                 }
                                 return max;
@@ -1223,9 +1241,13 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                         if (avail <= 20) continue;
                                         var font = cs.fontStyle + ' ' + cs.fontWeight + ' ' +
                                                    cs.fontSize + ' ' + cs.fontFamily;
-                                        var longest = __widestWord(text, font);
-                                        if (longest <= avail - 1) continue;
-                                        var scale = Math.max(0.55, (avail - 1) / longest);
+                                        var longest = __widestWord(
+                                            text, font, cs.textTransform, cs.letterSpacing);
+                                        // Leave real headroom: matching the width exactly
+                                        // still wrapped, because layout rounding and the
+                                        // trailing letter-space push it over.
+                                        if (longest <= avail - 4) continue;
+                                        var scale = Math.max(0.55, (avail - 4) / longest);
                                         el.style.fontSize = (fsPx * scale) + 'px';
                                         try {
                                             console.log('[FIT-WORD shot=${e.id}] "' +

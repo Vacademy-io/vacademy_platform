@@ -643,3 +643,88 @@ def repair_inline_flex_direction(html: str) -> Tuple[str, List[str]]:
         return tag[:sm.start(2)] + new_style + tag[sm.end(2):]
 
     return _TAG_RE.sub(_fix_tag, html), fixes
+
+
+# ---------------------------------------------------------------------------
+# Callback-driven state changes
+# ---------------------------------------------------------------------------
+# Multi-act shots swap acts inside a tween callback:
+#
+#   gsap.to('#flash', {opacity:.8, duration:.1, delay:9.32, onComplete: () => {
+#       gsap.set('#act1', {opacity:0}); gsap.set('#act2', {opacity:1}); }});
+#
+# That is correct for playback and wrong for rendering. The renderer frame-steps
+# by seeking gsap.globalTimeline in parallel chunks, and a worker whose chunk
+# starts at 48s never passes 9.32s, so the callback never runs. With no initial
+# opacity on the acts they all default to visible, and every act stacks on screen
+# at once — three headlines and four cards in one frame.
+#
+# Hoist the state change out of the callback and into the timeline at the moment
+# the callback would have fired (delay + duration). A tween is seek-safe; a
+# callback is not.
+
+_ONCOMPLETE_RE = re.compile(
+    r"gsap\.(?:to|fromTo)\(\s*(['\"])(?P<sel>[^'\"]+)\1\s*,(?P<args>[\s\S]{0,600}?)"
+    r"onComplete\s*:\s*\(\s*\)\s*=>\s*\{(?P<body>[\s\S]{0,600}?)\}\s*\}\s*\)\s*;",
+    re.I,
+)
+_INNER_SET_RE = re.compile(
+    r"gsap\.set\(\s*(['\"])(?P<sel>[^'\"]+)\1\s*,\s*\{(?P<props>[^{}]{0,200})\}\s*\)\s*;",
+    re.I,
+)
+_HOIST_MARKER = "vx: state changes hoisted"
+_DELAY_RE = re.compile(r"\bdelay\s*:\s*([0-9.]+)")
+_DURATION_RE = re.compile(r"\bduration\s*:\s*([0-9.]+)")
+
+
+def repair_callback_state_changes(html: str) -> Tuple[str, List[str]]:
+    """Promote `gsap.set` calls inside tween callbacks to timeline tweens.
+
+    Returns `(html, applied_fixes)`. Only touches `gsap.set` inside an
+    `onComplete` arrow body — nested tweens, conditionals and every other
+    callback statement are left exactly where the author put them, and the
+    callback itself is preserved so playback behaviour is unchanged.
+    """
+    if not html or "onComplete" not in html:
+        return html, []
+    fixes: List[str] = []
+    additions: List[str] = []
+
+    if _HOIST_MARKER in html:
+        return html, []                      # already repaired
+
+    for m in _ONCOMPLETE_RE.finditer(html):
+        args, body = m.group("args"), m.group("body")
+        # The non-greedy span can reach back across a neighbouring tween, so
+        # take the delay/duration CLOSEST to onComplete — they belong to the
+        # tween that actually owns this callback. Using the first match put an
+        # act swap at 1.06s that really fires at 9.42s.
+        _d = _DELAY_RE.findall(args)
+        _u = _DURATION_RE.findall(args)
+        delay = float(_d[-1]) if _d else 0.0
+        dur = float(_u[-1]) if _u else 0.0
+        fire_at = round(delay + dur, 3)
+        for sm in _INNER_SET_RE.finditer(body):
+            props = " ".join(sm.group("props").split())
+            if "opacity" not in props.lower():
+                continue
+            target = sm.group("sel")
+            additions.append(
+                f"gsap.to('{target}', {{{props}, duration: 0.001, delay: {fire_at}}});"
+            )
+            fixes.append(f"hoisted {target} state change to t={fire_at}s")
+
+    if not additions:
+        return html, []
+
+    block = (
+        "\n<script>/* vx: state changes hoisted out of tween callbacks — a "
+        "frame-stepped render seeks the timeline and never fires them */\n"
+        + "\n".join(additions)
+        + "\n</script>"
+    )
+    idx = html.rfind("</script>")
+    if idx == -1:
+        return html + block, fixes
+    idx += len("</script>")
+    return html[:idx] + block + html[idx:], fixes

@@ -17,6 +17,7 @@ import { currencyOptions } from '../../-constants/payments';
 import { PaymentPlan, PaymentPlans } from '@/types/payment';
 import { getCurrencySymbol } from './utils/utils';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
+import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfiguration';
 
 interface CustomInterval {
     value: number | string;
@@ -89,6 +90,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 },
                 upfront: {
                     fullPrice: editingPlan.config?.upfront?.fullPrice || '',
+                    // transformApiPlanToLocalFormat derives these from validity_in_days,
+                    // so an existing plan re-opens on the option it was saved with.
+                    accessType: editingPlan.config?.upfront?.accessType || 'lifetime',
+                    validityDays: editingPlan.config?.upfront?.validityDays,
                 },
                 donation: {
                     suggestedAmounts: editingPlan.config?.donation?.suggestedAmounts || '',
@@ -226,6 +231,16 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     config: updatedConfig,
                 };
             }
+        } else if (planData.type === PaymentPlans.UPFRONT) {
+            // undefined for lifetime access — stored as a null validity_in_days, which
+            // the backend reads as "never expires".
+            updatedPlanData = {
+                ...updatedPlanData,
+                validityDays:
+                    planData.config?.upfront?.accessType === 'limited'
+                        ? planData.config?.upfront?.validityDays
+                        : undefined,
+            };
         }
 
         onSave(updatedPlanData);
@@ -604,31 +619,27 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     )}
 
                     {planData.type === PaymentPlans.UPFRONT && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>One-Time Payment Configuration</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div>
-                                    <Label>
-                                        Full Price ({getCurrencySymbol(planData.currency)}) *
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={planData.config?.upfront?.fullPrice || ''}
-                                        onChange={(e) =>
-                                            updateConfig({
-                                                upfront: {
-                                                    ...planData.config?.upfront,
-                                                    fullPrice: e.target.value,
-                                                },
-                                            })
-                                        }
-                                        className="mt-1"
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <UpfrontPlanConfiguration
+                            currency={planData.currency || 'INR'}
+                            fullPrice={planData.config?.upfront?.fullPrice || ''}
+                            onFullPriceChange={(price) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, fullPrice: price },
+                                })
+                            }
+                            accessType={planData.config?.upfront?.accessType || 'lifetime'}
+                            onAccessTypeChange={(accessType) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, accessType },
+                                })
+                            }
+                            validityDays={planData.config?.upfront?.validityDays}
+                            onValidityDaysChange={(days) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, validityDays: days },
+                                })
+                            }
+                        />
                     )}
 
                     {planData.type === PaymentPlans.DONATION && (

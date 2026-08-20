@@ -184,15 +184,32 @@ export const transformApiPlanToLocalFormat = (apiPlan: PaymentPlanApi): PaymentP
             console.warn('Failed to parse payment_option_metadata_json:', e);
         }
     }
+    const type = apiPlan.type.toUpperCase() as PaymentPlanType;
+
+    // One-time plans keep their access window in config.upfront so the editor can
+    // re-open on the right radio option; validity_in_days alone cannot distinguish
+    // "lifetime" from "not configured yet".
+    if (type === 'ONE_TIME') {
+        const upfront = (config as { upfront?: Record<string, unknown> }).upfront || {};
+        config = {
+            ...config,
+            upfront: {
+                ...upfront,
+                accessType: apiPlan.validity_in_days == null ? 'lifetime' : 'limited',
+                validityDays: apiPlan.validity_in_days ?? undefined,
+            },
+        };
+    }
+
     return {
         id: apiPlan.id || '',
         name: apiPlan.name,
-        type: apiPlan.type.toUpperCase() as PaymentPlanType,
+        type,
         tag: apiPlan.tag as PaymentPlanTag,
         currency: apiPlan.currency,
         isDefault: false,
         features: features,
-        validityDays: apiPlan.validity_in_days,
+        validityDays: apiPlan.validity_in_days ?? undefined,
         config,
     };
 };
@@ -263,7 +280,10 @@ export const transformLocalPlanToApiFormatArray = (localPlan: PaymentPlan): Paym
             {
                 name: localPlan.name,
                 status: 'ACTIVE',
-                validity_in_days: 365,
+                // null = lifetime access. This used to be hardcoded to 365, so every
+                // one-time plan silently expired after a year while the UI promised
+                // lifetime access and offered no way to change it.
+                validity_in_days: localPlan.validityDays ?? null,
                 actual_price: discountedPrice,
                 elevated_price: originalPrice,
                 currency: localPlan.currency || 'GBP',

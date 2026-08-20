@@ -97,6 +97,45 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
   List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserId(String instituteId, String userId);
 
+
+  /**
+   * Read-only snapshot of the access window on every mapping that
+   * {@link #updateExpiryDate} is about to overwrite, in any status.
+   *
+   * <p>Deliberately a projection, not the entity. Loading entities here would put them in
+   * the persistence context, where the following native UPDATE cannot reach them — they
+   * would sit there holding a stale expiry_date for the rest of the transaction, and a
+   * second ADD_EXPIRY on the same mapping would then read that stale value back out of
+   * the first-level cache instead of the value just written.
+   */
+  @Query("""
+          SELECT m.id AS id,
+                 m.userId AS userId,
+                 m.packageSession.id AS packageSessionId,
+                 m.expiryDate AS expiryDate,
+                 m.userPlanId AS userPlanId
+          FROM StudentSessionInstituteGroupMapping m
+          WHERE m.userId = :userId
+            AND m.packageSession.id = :packageSessionId
+            AND m.institute.id = :instituteId
+          """)
+  List<AccessWindowSnapshot> findAccessWindowSnapshots(@Param("userId") String userId,
+                                                       @Param("packageSessionId") String packageSessionId,
+                                                       @Param("instituteId") String instituteId);
+
+  /** Projection for {@link #findAccessWindowSnapshots}. */
+  interface AccessWindowSnapshot {
+    String getId();
+
+    String getUserId();
+
+    String getPackageSessionId();
+
+    java.util.Date getExpiryDate();
+
+    String getUserPlanId();
+  }
+
   List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserIdAndStatusIn(String instituteId,
                                                                                      String userId, List<String> status);
 
@@ -116,6 +155,34 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           @Param("userId") String userId, @Param("statuses") List<String> statuses);
 
   List<StudentSessionInstituteGroupMapping> findAllBySubOrgIdAndStatusIn(String subOrgId, List<String> status);
+
+  /**
+   * Bulk lookup for learner-access changes: every mapping for the given users in one
+   * institute, optionally narrowed to specific package sessions.
+   *
+   * <p>The packageSessionIds guard is written as an emptiness check rather than a plain
+   * {@code IN} so a single query serves both "these batches" and "every batch this learner
+   * is in" — the admin screens issue both.
+   *
+   * <p>packageSession + institute are fetched eagerly because the caller builds a response
+   * row per mapping (batch label, learner name) after the transaction's read phase.
+   */
+  @Query("""
+          SELECT m FROM StudentSessionInstituteGroupMapping m
+          LEFT JOIN FETCH m.packageSession ps
+          LEFT JOIN FETCH ps.packageEntity
+          LEFT JOIN FETCH m.institute
+          WHERE m.institute.id = :instituteId
+            AND m.userId IN :userIds
+            AND m.status IN :statuses
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true
+                 OR ps.id IN (:packageSessionIds))
+          """)
+  List<StudentSessionInstituteGroupMapping> findForAccessChange(
+          @Param("instituteId") String instituteId,
+          @Param("userIds") List<String> userIds,
+          @Param("packageSessionIds") List<String> packageSessionIds,
+          @Param("statuses") List<String> statuses);
 
   /**
    * Dashboard learner tile. Deliberately mirrors the learner list's header badges
@@ -225,6 +292,28 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           String instituteId,
           String userId,
           String status);
+
+  /**
+   * The row that would collide with uq_dest_pkg_inst_user_status, keyed on exactly the
+   * five columns that constraint covers. Callers about to insert a mapping must check
+   * this and re-use the hit instead — a narrower lookup (one that also pins source or
+   * type) misses a colliding row written by a different flow, and the insert then dies
+   * on the constraint. Ordered so the newest wins if legacy duplicates predate the
+   * constraint.
+   */
+  @Query(value = "SELECT * FROM student_session_institute_group_mapping " +
+          "WHERE destination_package_session_id = :destinationPackageSessionId " +
+          "AND package_session_id = :packageSessionId " +
+          "AND institute_id = :instituteId " +
+          "AND user_id = :userId " +
+          "AND status = :status " +
+          "ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+  Optional<StudentSessionInstituteGroupMapping> findCollidingMapping(
+          @Param("destinationPackageSessionId") String destinationPackageSessionId,
+          @Param("packageSessionId") String packageSessionId,
+          @Param("instituteId") String instituteId,
+          @Param("userId") String userId,
+          @Param("status") String status);
 
   @Modifying
   @Transactional

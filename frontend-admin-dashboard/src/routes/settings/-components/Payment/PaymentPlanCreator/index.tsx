@@ -94,6 +94,9 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                     },
                     upfront: {
                         fullPrice: '',
+                        // Matches the pre-existing behaviour for one-time plans, which
+                        // always advertised lifetime access.
+                        accessType: 'lifetime',
                     },
                     donation: {
                         suggestedAmounts: '',
@@ -146,6 +149,17 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
             return;
         }
 
+        // "Limited" with no number would serialize to a null validity_in_days, i.e.
+        // lifetime access — the opposite of what was picked. Refuse rather than save
+        // something that contradicts the selection.
+        if (
+            planData.type === PaymentPlans.UPFRONT &&
+            planData.config?.upfront?.accessType === 'limited' &&
+            !(planData.config?.upfront?.validityDays > 0)
+        ) {
+            return;
+        }
+
         // CPO plans carry raw form data — no API transformation needed here
         if (planData.type === PaymentPlans.CPO) {
             const cpoForm = planData.config?.cpoForm as CPOForm | undefined;
@@ -195,6 +209,13 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
             }
         } else if (planData.type === PaymentPlans.FREE) {
             validityDays = planData.config?.free?.validityDays;
+        } else if (planData.type === PaymentPlans.UPFRONT) {
+            // Left undefined for lifetime access, which the API stores as a null
+            // validity_in_days and the backend reads as "never expires".
+            validityDays =
+                planData.config?.upfront?.accessType === 'limited'
+                    ? planData.config?.upfront?.validityDays
+                    : undefined;
         }
 
         const newPlan: PaymentPlan = {
@@ -601,6 +622,24 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                             upfront: {
                                                 ...planData.config?.upfront,
                                                 fullPrice: price,
+                                            },
+                                        })
+                                    }
+                                    accessType={planData.config?.upfront?.accessType || 'lifetime'}
+                                    onAccessTypeChange={(accessType) =>
+                                        updateConfig({
+                                            upfront: {
+                                                ...planData.config?.upfront,
+                                                accessType,
+                                            },
+                                        })
+                                    }
+                                    validityDays={planData.config?.upfront?.validityDays}
+                                    onValidityDaysChange={(days) =>
+                                        updateConfig({
+                                            upfront: {
+                                                ...planData.config?.upfront,
+                                                validityDays: days,
                                             },
                                         })
                                     }

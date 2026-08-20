@@ -19900,7 +19900,19 @@ class VideoGenerationPipeline:
                     )
                 if _brand_images and _shot_uses_image:
                     _brand_parts.append(
-                        "\nUploaded brand/product images — when this shot includes an `<img>` "
+                        "\nThese uploaded images are PRIMARY SOURCES — the chapter's own "
+                        "plates, figures or documents. They are the subject matter, not "
+                        "decoration. A generated illustration must NOT stand in for one: "
+                        "inventing anatomy or a diagram when the real plate was supplied is "
+                        "the single most damaging thing this shot can do.\n"
+                        "STAGE them rather than pasting them flat — wrap in "
+                        "`<div class='artifact artifact-laid'>` for a real shadow and "
+                        "perspective, `.aged-edge` for a document, `.print-frame` for a "
+                        "photograph — and ANNOTATE ON TOP: `marker-hl` over the exact detail "
+                        "the narration cites, `annotate(...)` for a circle or arrow, a label "
+                        "with `.swash-underline`. Holding one plate and pushing in on the "
+                        "part being described is stronger than any panel of text.\n"
+                        "When this shot includes an `<img>` "
                         "element, prefer embedding via "
                         "`<img data-img-source=\"reference\" data-reference-url=\"<url>\" "
                         "data-img-prompt=\"<short alt>\" src='placeholder.png'>`. The "
@@ -23345,8 +23357,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 VX_FINISHING_CSS as _VX_CSS,
             )
             _vx_css = _VX_CSS
-            if finish and self._resolve_visual_style_mode() in ("marketing", "bold"):
-                _finish_overlay = _di_overlay(_di.get("finishing"))
+            if finish:
+                _mode = self._resolve_visual_style_mode()
+                _fin = _di.get("finishing")
+                if _mode in ("marketing", "bold"):
+                    _finish_overlay = _di_overlay(_fin)
+                else:
+                    # Educational runs had NO finishing layer at all — every
+                    # frame was raw flat CSS, which is a large part of why they
+                    # read as slides rather than film. Reference documentaries
+                    # carry a constant grain + edge vignette on every frame.
+                    # Restrained defaults (soft/soft, no glow) so lecture
+                    # legibility is untouched; an identity that specifies its
+                    # own finishing still wins.
+                    if not isinstance(_fin, dict) or not any(
+                        str(_fin.get(k) or "none") != "none"
+                        for k in ("grain", "vignette", "light")
+                    ):
+                        _fin = {"grain": "soft", "vignette": "soft", "light": "none"}
+                    _finish_overlay = _di_overlay(_fin)
         except Exception:
             _finish_overlay = ""
 
@@ -23915,6 +23944,105 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                stroke-dashoffset animation. Strength tuned so small drawings
                stay readable. See the inline <svg> defs block prepended at the
                top of every generated HTML. */
+
+            /* --- DOCUMENTARY STAGING KIT -------------------------------
+               Reference documentaries do not put text on a background; they
+               STAGE artifacts on a surface and let the camera and annotations
+               explain. These primitives give a shot that vocabulary: a ground
+               to place things on, a card that sits in perspective with a real
+               shadow, frames that read as physical objects, and marker
+               annotation. Compose them the way `.flat-badge` is composed.  */
+
+            /* Grounds — never a flat fill. Pick ONE per shot. */
+            .stage-paper {{
+              position: absolute; inset: 0;
+              background-color: #ece7da;
+              background-image:
+                linear-gradient(rgba(140,130,110,0.13) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(140,130,110,0.13) 1px, transparent 1px);
+              background-size: 48px 48px;
+            }}
+            .stage-slate {{
+              position: absolute; inset: 0;
+              background-color: #1b1e22;
+              background-image:
+                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+              background-size: 56px 56px;
+            }}
+            .stage-desk {{
+              position: absolute; inset: 0;
+              background-color: #4a3527;
+              background-image:
+                repeating-linear-gradient(96deg,
+                  rgba(0,0,0,0.16) 0 3px, rgba(255,255,255,0.03) 3px 9px);
+            }}
+            /* A graph-paper patch used as a compositional accent, not a fill. */
+            .stage-grid-patch {{
+              position: absolute; width: 260px; height: 260px; opacity: 0.5;
+              background-image:
+                linear-gradient(rgba(60,80,60,0.35) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(60,80,60,0.35) 1px, transparent 1px);
+              background-size: 22px 22px; pointer-events: none;
+            }}
+
+            /* An artifact placed on the ground: real shadow, slight tilt. */
+            .artifact {{
+              position: relative; display: inline-block;
+              box-shadow: 0 26px 50px rgba(0,0,0,0.42), 0 3px 8px rgba(0,0,0,0.28);
+              transform: rotate(-1.2deg);
+              background: #fff;
+            }}
+            .artifact img {{ display: block; width: 100%; height: auto; }}
+            .artifact-tilt-r {{ transform: rotate(1.6deg); }}
+            /* Perspective placement — the artifact lies ON the surface. */
+            .artifact-laid {{
+              transform: perspective(1400px) rotateX(7deg) rotateZ(-1.2deg);
+              transform-origin: 50% 80%;
+            }}
+            /* A photo print: white border + weight. */
+            .print-frame {{ padding: 16px 16px 52px; background: #fbf9f4; }}
+            /* A torn/aged edge on a document. */
+            .aged-edge {{
+              filter: sepia(0.18) contrast(1.04);
+              mask-image: linear-gradient(to right, transparent 0, #000 6px,
+                          #000 calc(100% - 6px), transparent 100%);
+            }}
+            /* 35mm film strip around footage or a still. */
+            .film-strip {{
+              position: relative; padding: 26px 0; background: #0d0d0d;
+              box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+            }}
+            .film-strip::before, .film-strip::after {{
+              content: ""; position: absolute; left: 0; right: 0; height: 26px;
+              background-image: radial-gradient(#0d0d0d 38%, transparent 39%),
+                linear-gradient(#e9e9e9, #e9e9e9);
+              background-size: 34px 26px; background-repeat: repeat-x;
+            }}
+            .film-strip::before {{ top: 0; }}
+            .film-strip::after {{ bottom: 0; }}
+
+            /* Annotation as a character — marker over the evidence. */
+            .marker-hl {{
+              position: relative; display: inline-block;
+              background: linear-gradient(transparent 8%, rgba(214,40,40,0.82) 8%,
+                          rgba(214,40,40,0.82) 92%, transparent 92%);
+              color: #fff; padding: 0 6px; transform: rotate(-0.6deg);
+            }}
+            .swash-underline {{
+              display: block; height: 10px; border: 0; border-bottom: 4px solid
+                var(--brand-accent, #2f7d52);
+              border-radius: 0 0 60% 40%; opacity: 0.9;
+            }}
+            /* Timeline spine + node, as in a documentary chronology. */
+            .spine {{
+              position: absolute; top: 6%; bottom: 6%; width: 0;
+              border-left: 4px dashed rgba(0,0,0,0.55);
+            }}
+            .spine-node {{
+              width: 22px; height: 22px; border-radius: 50%;
+              border: 5px solid var(--brand-accent, #2f7d52); background: transparent;
+            }}
 
             {svg_canvas_css}
             </style>"""

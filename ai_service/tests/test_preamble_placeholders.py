@@ -34,3 +34,22 @@ def test_every_preamble_placeholder_is_defined():
         f"preamble interpolates undefined name(s) {undefined} — this raises "
         "NameError for every shot at generation time"
     )
+
+
+def test_css_braces_in_the_preamble_are_doubled():
+    """The preamble is an f-string, so every CSS brace must be doubled.
+
+    A single `{` becomes a format placeholder: adding a CSS block with normal
+    braces raised `NameError: name 'position' is not defined` at generation
+    time — the same failure mode as an undefined placeholder, and equally
+    invisible until a shot is actually generated.
+    """
+    block = _preamble_block()
+    # Strip doubled braces and known placeholders, then nothing should remain.
+    stripped = block.replace("{{", "").replace("}}", "")
+    stripped = re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*\}", "", stripped)
+    leftovers = [m.start() for m in re.finditer(r"[{}]", stripped)]
+    assert not leftovers, (
+        f"{len(leftovers)} un-doubled brace(s) in the preamble f-string — CSS "
+        "braces must be written {{ }} or they are parsed as format fields"
+    )

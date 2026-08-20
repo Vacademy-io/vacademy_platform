@@ -354,6 +354,30 @@ DO_NOT_RULES = (
 # default suggestion instead of a hard requirement.
 # ---------------------------------------------------------------------------
 
+STAGING_KIT = (
+    "\n**DOCUMENTARY STAGING KIT (preferred over flat panels)**:\n"
+    "Reference documentaries do not put text on a background — they STAGE artifacts on a "
+    "surface and let camera movement and annotation do the explaining. These classes are "
+    "pre-injected; compose them:\n"
+    "- GROUND (pick one, never a flat fill): `.stage-paper` (cream + faint grid), "
+    "`.stage-slate` (dark + grid), `.stage-desk` (wood). Add `.stage-grid-patch` in a corner "
+    "as a compositional accent.\n"
+    "- ARTIFACT: wrap an image in `<div class='artifact'>` for a real shadow + slight tilt; "
+    "add `.artifact-laid` so it lies ON the surface in perspective, `.artifact-tilt-r` to "
+    "tilt the other way, `.print-frame` for a photo print, `.aged-edge` for an old document, "
+    "`.film-strip` to frame footage or a still as 35mm.\n"
+    "- ANNOTATION IS A CHARACTER: `<span class='marker-hl'>` draws a marker stroke over the "
+    "exact words the narration is citing; `<hr class='swash-underline'>` is a hand-drawn "
+    "underline. Use `annotate(...)` for circles/arrows. Point AT the evidence.\n"
+    "- CHRONOLOGY: `.spine` (dashed axis) + `.spine-node` (ringed dot) for dated sequences, "
+    "with items alternating sides.\n"
+    "- CAMERA: prefer HOLDING one artifact and pushing in on the detail being narrated "
+    "(`gsap.to(el,{scale:1.18, x:-90, duration:8, ease:'none'})`) over cutting to a new "
+    "invented layout every beat. One artifact studied for 15s beats three panels of text.\n"
+    "- Two or three staged objects with depth and shadow read as film. A centered headline "
+    "over a flat rectangle reads as a slide deck. Choose the former.\n\n"
+)
+
 CORE_PREAMBLE_ASPIRATIONAL = (
     "You are an expert Educational Video Designer creating premium, distinctive visuals for LEARNING VIDEOS.\n"
     "Think: 3Blue1Brown, Vox Explained, Apple keynote inserts, top brand reels — visually rich, memorable, never templated.\n"
@@ -2398,7 +2422,7 @@ def build_per_shot_system_prompt(
         do_not = DO_NOT_RULES_TECHNICAL
         principles = MARKETING_PRINCIPLES
     else:
-        preamble = CORE_PREAMBLE_ASPIRATIONAL if aspirational else CORE_PREAMBLE
+        preamble = (CORE_PREAMBLE_ASPIRATIONAL + STAGING_KIT) if aspirational else CORE_PREAMBLE
         do_not = DO_NOT_RULES_TECHNICAL if aspirational else DO_NOT_RULES
         principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
 

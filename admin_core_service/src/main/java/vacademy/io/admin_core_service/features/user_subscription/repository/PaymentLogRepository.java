@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 
@@ -130,10 +131,19 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * package-session) is active — those cannot apply to invoice-path logs. A `sources` filter is
    * honored inside the invoice arm against invoice.source (LIVE_SESSION, ADMIN_INVOICE, ...), so
    * live-session payments stay visible/filterable.
+   *
+   * <p>Free-text search matches a payment when ANY of these hit: the payer (name/email/phone,
+   * pre-resolved to :searchUserIds by the caller), the amount, the number of an invoice covering
+   * the payment, or the name of the plan being paid for. Each of the two subquery predicates is
+   * guarded by {@code :noSearchFilter = false}, so they are constant-folded away entirely when
+   * nobody is searching — an unsearched listing costs exactly what it did before. When searching,
+   * both are index-driven lookups (idx_invoice_payment_log_mapping_payment_log_id and the
+   * payment_plan primary key) evaluated only over rows that already passed the institute, date and
+   * status filters.
    */
   @Query(value = """
-      SELECT combined.id FROM (
-        SELECT pl.id, pl.created_at
+      SELECT combined.id AS rowId, combined.row_type AS rowType FROM (
+        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type
         FROM payment_log pl
         JOIN user_plan up ON pl.user_plan_id = up.id
         JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
@@ -152,7 +162,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:userId IS NULL OR up.user_id = :userId)
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM invoice_payment_log_mapping sm
+                      JOIN invoice si ON si.id = sm.invoice_id
+                      WHERE sm.payment_log_id = pl.id
+                        AND si.institute_id = :instituteId
+                        AND si.invoice_number ILIKE CONCAT('%', :searchString, '%')))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM payment_plan spp
+                      WHERE spp.id = up.plan_id
+                        AND spp.name ILIKE CONCAT('%', :searchString, '%'))))
           AND (:noPaymentTypeFilter = true OR (
                 (:typeSubOrgAdmin = true AND ei.tag = 'SUB_ORG')
                 OR (:typeSubOrgLearner = true AND ei.tag = 'SUBORG_LEARNER')
@@ -169,7 +189,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                     JOIN package pe ON ps.package_id = pe.id
                     WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
         UNION
-        SELECT pl.id, pl.created_at
+        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type
         FROM payment_log pl
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
@@ -183,13 +203,32 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
+        UNION
+        -- Invoices that have been raised but never paid against. These have NO payment_log at all
+        -- (one is only created when the learner initiates payment), so without this arm an invoice
+        -- an admin raised is invisible on this screen until someone tries to pay it.
+        SELECT i.id, i.created_at, 'INVOICE' AS row_type
+        FROM invoice i
+        WHERE :includeUnpaidInvoices = true
+          AND i.institute_id = :instituteId
+          AND i.created_at >= :startDate
+          AND i.created_at <= :endDate
+          AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um WHERE um.invoice_id = i.id)
+          AND (:noSourceFilter = true OR i.source IN (:sources))
+          AND (:userId IS NULL OR i.user_id = :userId)
+          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(i.total_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
       ) combined
       ORDER BY combined.created_at DESC
       """,
       countQuery = """
       SELECT COUNT(*) FROM (
-        SELECT pl.id
+        SELECT pl.id, 'PAYMENT_LOG' AS row_type
         FROM payment_log pl
         JOIN user_plan up ON pl.user_plan_id = up.id
         JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
@@ -208,7 +247,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:userId IS NULL OR up.user_id = :userId)
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM invoice_payment_log_mapping sm
+                      JOIN invoice si ON si.id = sm.invoice_id
+                      WHERE sm.payment_log_id = pl.id
+                        AND si.institute_id = :instituteId
+                        AND si.invoice_number ILIKE CONCAT('%', :searchString, '%')))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM payment_plan spp
+                      WHERE spp.id = up.plan_id
+                        AND spp.name ILIKE CONCAT('%', :searchString, '%'))))
           AND (:noPaymentTypeFilter = true OR (
                 (:typeSubOrgAdmin = true AND ei.tag = 'SUB_ORG')
                 OR (:typeSubOrgLearner = true AND ei.tag = 'SUBORG_LEARNER')
@@ -225,7 +274,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                     JOIN package pe ON ps.package_id = pe.id
                     WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
         UNION
-        SELECT pl.id
+        SELECT pl.id, 'PAYMENT_LOG' AS row_type
         FROM payment_log pl
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
@@ -239,11 +288,28 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
+        UNION
+        -- Raised-but-never-paid invoices; see the note on the same arm in the main query.
+        SELECT i.id, 'INVOICE' AS row_type
+        FROM invoice i
+        WHERE :includeUnpaidInvoices = true
+          AND i.institute_id = :instituteId
+          AND i.created_at >= :startDate
+          AND i.created_at <= :endDate
+          AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um WHERE um.invoice_id = i.id)
+          AND (:noSourceFilter = true OR i.source IN (:sources))
+          AND (:userId IS NULL OR i.user_id = :userId)
+          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(i.total_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
+                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
       ) count_q
       """,
       nativeQuery = true)
-  Page<String> findCombinedPaymentLogIdsPaginated(
+  Page<CombinedPaymentRowProjection> findCombinedPaymentLogIdsPaginated(
       @Param("instituteId") String instituteId,
       @Param("startDate") LocalDateTime startDate,
       @Param("endDate") LocalDateTime endDate,
@@ -259,6 +325,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("noPackageSessionFilter") boolean noPackageSessionFilter,
       @Param("userId") String userId,
       @Param("includeInvoiceLogs") boolean includeInvoiceLogs,
+      @Param("includeUnpaidInvoices") boolean includeUnpaidInvoices,
       @Param("noPaymentTypeFilter") boolean noPaymentTypeFilter,
       @Param("typeSubOrgAdmin") boolean typeSubOrgAdmin,
       @Param("typeSubOrgLearner") boolean typeSubOrgLearner,

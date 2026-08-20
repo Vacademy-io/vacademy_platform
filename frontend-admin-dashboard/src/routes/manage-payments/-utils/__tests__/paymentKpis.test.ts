@@ -7,6 +7,7 @@ import {
     resolvePreset,
 } from '../dateRange';
 import { classifyEntry, computeBillingFromEntries, computePaymentSummary } from '../paymentSummary';
+import { computePaymentAnalytics } from '../paymentAnalytics';
 import type { PaymentLogEntry } from '@/types/payment-logs';
 
 /**
@@ -220,5 +221,61 @@ describe('invoice payments credited to the learner', () => {
         expect(billing.collected).toBe(10000);
         expect(billing.due).toBe(0);
         expect(billing.planCount).toBe(0);
+    });
+});
+
+describe('cancelled (voided invoice) entries', () => {
+    const entry = (status: string, amount: number): PaymentLogEntry =>
+        ({
+            payment_log: { payment_amount: amount, currency: 'INR' },
+            user_plan: null,
+            current_payment_status: status,
+            user: {},
+        }) as unknown as PaymentLogEntry;
+
+    it('keeps a voided invoice out of every bucket', () => {
+        // It stays in the table for audit, but cancelled money is neither collected nor owed.
+        const summary = computePaymentSummary([
+            entry('PAID', 1000),
+            entry('CANCELLED', 5000),
+            entry('NOT_INITIATED', 2000),
+        ]);
+        expect(summary.total.count).toBe(2);
+        expect(summary.total.amountByCurrency['INR']).toBe(3000);
+        expect(summary.paid.amountByCurrency['INR']).toBe(1000);
+        expect(summary.pending.amountByCurrency['INR']).toBe(2000);
+    });
+
+    it('counts an unpaid invoice as pending, not paid', () => {
+        const summary = computePaymentSummary([entry('NOT_INITIATED', 8500)]);
+        expect(summary.pending.count).toBe(1);
+        expect(summary.paid.count).toBe(0);
+    });
+});
+
+describe('dashboard analytics vs KPI cards', () => {
+    const entry = (status: string, amount: number): PaymentLogEntry =>
+        ({
+            payment_log: {
+                payment_amount: amount,
+                currency: 'INR',
+                created_at: '2026-08-18T10:00:00Z',
+            },
+            user_plan: null,
+            current_payment_status: status,
+            user: {},
+        }) as unknown as PaymentLogEntry;
+
+    it('drops voided invoices from analytics, matching the cards', () => {
+        // The two share classifyEntry deliberately; if analytics kept a cancelled row it would
+        // report it as still-due while the cards ignored it.
+        const rows = [entry('PAID', 1000), entry('CANCELLED', 5000)];
+        const analytics = computePaymentAnalytics(rows);
+        const summary = computePaymentSummary(rows);
+
+        expect(analytics.totalEntries).toBe(summary.total.count);
+        expect(analytics.outstanding.count).toBe(summary.pending.count);
+        expect(analytics.outstanding.amount).toBe(0);
+        expect(analytics.collected.amount).toBe(1000);
     });
 });

@@ -1152,6 +1152,9 @@ export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+// Bulk "which invoice covers each of these payments?" lookup — drives the Invoice
+// column on Manage Payments. Institute-scoped via the instituteId query param.
+export const POST_INVOICES_BY_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/invoices/by-payment-logs`;
 // Invoice number strategy (Settings > Invoice Settings > Numbering). Preview never
 // consumes a sequence number; the token catalogue is served by the backend so the
 // palette can't drift from what the renderer understands.

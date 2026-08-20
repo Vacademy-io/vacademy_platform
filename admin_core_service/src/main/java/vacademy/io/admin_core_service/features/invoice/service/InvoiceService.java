@@ -3441,6 +3441,85 @@ public class InvoiceService {
     }
 
     /**
+     * Largest number of payment log ids one lookup will resolve. The Manage Payments table
+     * asks for a page at a time (20-ish), so this is a guard against a pathological caller
+     * rather than a limit anyone should hit.
+     */
+    private static final int MAX_PAYMENT_LOG_INVOICE_LOOKUP = 500;
+
+    /** Chunk size for the IN clause, so a big request can't blow the driver's parameter limit. */
+    private static final int PAYMENT_LOG_INVOICE_LOOKUP_CHUNK = 200;
+
+    /**
+     * Resolve which invoice covers each of the given payment logs, for the Invoice column on
+     * the Manage Payments table.
+     *
+     * <p>Answered from {@code invoice_payment_log_mapping} — the same link the invoice itself
+     * is built from — so the number shown against a payment is the number the learner was
+     * actually issued, not one inferred from amounts or timestamps.
+     *
+     * <p>A payment log with no invoice is simply absent from the result (the caller renders a
+     * dash). A payment log covered by several invoices resolves to the one worth showing: a
+     * live invoice beats a voided (REJECTED) one, and the most recently issued wins after that
+     * — a correction supersedes what it replaced.
+     */
+    public List<PaymentLogInvoiceDTO> getInvoicesForPaymentLogs(String instituteId, List<String> paymentLogIds) {
+        if (!StringUtils.hasText(instituteId) || paymentLogIds == null || paymentLogIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> ids = paymentLogIds.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .limit(MAX_PAYMENT_LOG_INVOICE_LOOKUP)
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, PaymentLogInvoiceProjection> best = new LinkedHashMap<>();
+        for (int from = 0; from < ids.size(); from += PAYMENT_LOG_INVOICE_LOOKUP_CHUNK) {
+            List<String> chunk = ids.subList(from, Math.min(from + PAYMENT_LOG_INVOICE_LOOKUP_CHUNK, ids.size()));
+            for (PaymentLogInvoiceProjection row : invoicePaymentLogMappingRepository
+                    .findInvoiceSummariesByPaymentLogIds(instituteId, chunk)) {
+                best.merge(row.getPaymentLogId(), row,
+                        (existing, candidate) -> preferredInvoiceRow(existing, candidate));
+            }
+        }
+
+        return best.values().stream()
+                .map(row -> PaymentLogInvoiceDTO.builder()
+                        .paymentLogId(row.getPaymentLogId())
+                        .invoiceId(row.getInvoiceId())
+                        .invoiceNumber(row.getInvoiceNumber())
+                        .invoiceDate(row.getInvoiceDate())
+                        .status(row.getStatus())
+                        .totalAmount(row.getTotalAmount())
+                        .currency(row.getCurrency())
+                        .hasPdf(StringUtils.hasText(row.getPdfFileId()))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /** Which of two invoices on the same payment log the table should show. See the caller. */
+    private PaymentLogInvoiceProjection preferredInvoiceRow(PaymentLogInvoiceProjection existing,
+                                                            PaymentLogInvoiceProjection candidate) {
+        boolean existingVoided = "REJECTED".equalsIgnoreCase(existing.getStatus());
+        boolean candidateVoided = "REJECTED".equalsIgnoreCase(candidate.getStatus());
+        if (existingVoided != candidateVoided) {
+            return existingVoided ? candidate : existing;
+        }
+        return invoiceRecency(candidate).isAfter(invoiceRecency(existing)) ? candidate : existing;
+    }
+
+    /** Issue time to rank by; falls back to creation time, then to the epoch for legacy rows. */
+    private LocalDateTime invoiceRecency(PaymentLogInvoiceProjection row) {
+        if (row.getInvoiceDate() != null) return row.getInvoiceDate();
+        if (row.getCreatedAt() != null) return row.getCreatedAt();
+        return LocalDateTime.MIN;
+    }
+
+    /**
      * Test method: Manually trigger invoice generation for testing purposes
      * This method will group related payment logs (same vendor_id or time window)
      * into one invoice

@@ -53,7 +53,20 @@ public enum NotificationEventType {
      * institute AND per channel, so an institute can run a branded EMAIL
      * template and a WATI-approved WHATSAPP template off the same event.
      */
-    LEARNER_CREDENTIALS_SHARED("LEARNER_CREDENTIALS_SHARED");
+    LEARNER_CREDENTIALS_SHARED("LEARNER_CREDENTIALS_SHARED"),
+
+    /**
+     * A learner is being sent a link to set a new password themselves, instead of
+     * being mailed the password they already have. The template's
+     * {@code {{reset_password_link}}} carries the learner's username, so the page it
+     * opens knows who is resetting without the learner having to remember it.
+     *
+     * <p>Separate from {@link #LEARNER_CREDENTIALS_SHARED}: that event hands over a
+     * username AND password, this one deliberately hands over neither. An institute
+     * that is not allowed to mail plaintext passwords binds this event and leaves the
+     * other one unbound.
+     */
+    LEARNER_PASSWORD_RESET("LEARNER_PASSWORD_RESET");
 
     private final String value;
 

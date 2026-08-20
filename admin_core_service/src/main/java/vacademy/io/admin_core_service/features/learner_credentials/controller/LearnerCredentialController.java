@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_credentials.dto.LearnerCredentialSendResult;
+import vacademy.io.admin_core_service.features.learner_credentials.enums.CredentialDeliveryMode;
 import vacademy.io.admin_core_service.features.learner_credentials.service.LearnerCredentialShareService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 import vacademy.io.admin_core_service.features.parent_link.dto.CredentialTemplateConfigDTO;
@@ -30,15 +31,23 @@ public class LearnerCredentialController {
     /**
      * Sends the learner's current credentials on each requested channel.
      *
-     * @param channels EMAIL and/or WHATSAPP
+     * @param channels   EMAIL and/or WHATSAPP
+     * @param mode       DEFAULT sends the platform's built-in credentials mail (email only);
+     *                   TEMPLATE renders the institute's own. Omitted means TEMPLATE, which is
+     *                   what every existing caller of this endpoint already got.
+     * @param templateId optional one-off template for this send; TEMPLATE mode otherwise uses the
+     *                   institute's standing binding
      */
     @PostMapping("/send")
     public ResponseEntity<LearnerCredentialSendResult> send(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam String instituteId,
             @RequestParam String userId,
-            @RequestParam List<NotificationTemplateType> channels) {
-        return ResponseEntity.ok(learnerCredentialShareService.share(instituteId, userId, channels));
+            @RequestParam(required = false) List<NotificationTemplateType> channels,
+            @RequestParam(required = false) CredentialDeliveryMode mode,
+            @RequestParam(required = false) String templateId) {
+        return ResponseEntity.ok(
+                learnerCredentialShareService.share(instituteId, userId, channels, mode, templateId));
     }
 
     @GetMapping("/template-config")

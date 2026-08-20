@@ -27,10 +27,11 @@ import {
     type LearnerManagementSettings,
 } from '@/types/display-settings';
 import { isUserAdmin } from '@/utils/userDetails';
-import { getLearnerPortalAccess, sendResetPasswordEmail } from '@/services/learner-portal-access';
+import { getLearnerPortalAccess } from '@/services/learner-portal-access';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { BatchPicker } from '../BatchPicker';
 import { EditCredentialsDialog } from './edit-credentials-dialog';
+import { SendResetPasswordDialog } from './send-reset-password-dialog';
 import { OfflineDevicesCard } from './offline-devices-card';
 import { useOfflineAccessEnabled } from '@/routes/settings/-hooks/use-offline-access-enabled';
 
@@ -49,6 +50,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
     const password =
         credentials?.password || (isCredentialsLoading ? 'Loading...' : 'password not found');
     const [isEditCredentialsOpen, setIsEditCredentialsOpen] = useState(false);
+    const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
     // Set on a successful rename so the card reflects it straight away —
     // `selectedStudent` comes from the list row and keeps the old value until
     // that query refetches. Stored WITH the user it belongs to and matched
@@ -161,37 +163,21 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         }
     };
 
-    const handleSendResetPassword = async () => {
+    // The package only matters to the system-default path, where an institute may have a
+    // workflow bound to the send. The template path addresses the learner, not an enrollment,
+    // so a learner with no resolvable package can still be sent a reset link.
+    const resolvedPackageId = (() => {
+        if (selectedStudent?.package_id) return selectedStudent.package_id;
+        if (!selectedPsId) return undefined;
+        return getDetailsFromPackageSessionId({ packageSessionId: selectedPsId })?.package_dto?.id;
+    })();
+
+    const handleOpenResetPassword = () => {
         if (!selectedStudent?.user_id) {
             toast.error('Student user ID not found');
             return;
         }
-
-        // Get packageId from selectedStudent.package_id or derive it from package_session_id
-        let packageId = selectedStudent.package_id;
-
-        if (!packageId && selectedPsId) {
-            const batchDetails = getDetailsFromPackageSessionId({
-                packageSessionId: selectedPsId,
-            });
-            packageId = batchDetails?.package_dto?.id;
-        }
-
-        if (!packageId) {
-            toast.error('Student package ID not found');
-            return;
-        }
-
-        try {
-            toast.loading('Sending reset password email...');
-            await sendResetPasswordEmail(selectedStudent.user_id, packageId);
-            toast.success('Reset password email sent successfully');
-        } catch (error) {
-            console.error('Error sending reset password email:', error);
-            toast.error('Failed to send reset password email. Please try again.');
-        } finally {
-            toast.dismiss();
-        }
+        setIsResetPasswordOpen(true);
     };
 
     return (
@@ -372,7 +358,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             buttonType="secondary"
                             scale="small"
                             disable={false}
-                            onClick={handleSendResetPassword}
+                            onClick={handleOpenResetPassword}
                             className="w-full cursor-pointer border-green-200 text-xs text-green-700 hover:border-green-300 hover:bg-green-50"
                             style={{ pointerEvents: 'auto', zIndex: 10 }}
                         >
@@ -382,6 +368,16 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                     </div>
                 )}
             </div>
+
+            {selectedStudent?.user_id && (
+                <SendResetPasswordDialog
+                    open={isResetPasswordOpen}
+                    onOpenChange={setIsResetPasswordOpen}
+                    userId={selectedStudent.user_id}
+                    packageId={resolvedPackageId}
+                    learnerName={selectedStudent.full_name}
+                />
+            )}
 
             {canEditCredentials && userId && (
                 <EditCredentialsDialog

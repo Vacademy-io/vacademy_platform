@@ -796,6 +796,13 @@ export const UPDATE_USER_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operati
 // bound to the LEARNER_CREDENTIALS_SHARED event, per channel.
 export const SEND_LEARNER_CREDENTIALS = `${BASE_URL}/admin-core-service/learner-credentials/v1/send`;
 export const LEARNER_CREDENTIALS_TEMPLATE_CONFIG = `${BASE_URL}/admin-core-service/learner-credentials/v1/template-config`;
+// Password reset: mails the learner a link to CHOOSE a new password rather than
+// mailing the one they already have. `/link` returns that link both filled in for
+// one learner and with a {username} placeholder for third-party integrators.
+const LEARNER_PASSWORD_RESET_BASE = `${BASE_URL}/admin-core-service/learner-password-reset/v1`;
+export const SEND_LEARNER_PASSWORD_RESET = `${LEARNER_PASSWORD_RESET_BASE}/send`;
+export const LEARNER_PASSWORD_RESET_LINK = `${LEARNER_PASSWORD_RESET_BASE}/link`;
+export const LEARNER_PASSWORD_RESET_TEMPLATE_CONFIG = `${LEARNER_PASSWORD_RESET_BASE}/template-config`;
 // Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
 // processing returns 425 so the FE retry loop (onError) re-polls.
 export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;
@@ -1092,7 +1099,6 @@ export const GET_MY_SYSTEM_FILES = `${BASE_URL}/admin-core-service/system-files/
 
 // Learner Portal Access
 export const GET_LEARNER_PORTAL_ACCESS = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/access`;
-export const SEND_LEARNER_RESET_PASSWORD = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/send-cred`;
 
 export const ENROLL_LEARNER_V2 = `${BASE_URL}/admin-core-service/v2/learner/enroll`;
 export const CANCEL_USER_PLAN = (user_plan_id: string) =>

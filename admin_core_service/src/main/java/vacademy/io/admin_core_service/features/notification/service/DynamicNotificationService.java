@@ -872,11 +872,25 @@ public class DynamicNotificationService {
             UserDTO learner,
             String username,
             String password) {
+        return sendLearnerCredentialsNotification(instituteId, channel, learner, username, password, null);
+    }
+
+    /**
+     * As above, but lets the caller nominate the template for this one send instead of using the
+     * institute's standing binding — the admin picking a template in the share dialog, or an API
+     * caller that knows exactly which template it wants. The standing binding is left untouched.
+     */
+    public boolean sendLearnerCredentialsNotification(
+            String instituteId,
+            NotificationTemplateType channel,
+            UserDTO learner,
+            String username,
+            String password,
+            String templateIdOverride) {
 
         try {
-            NotificationEventConfig config = findEventConfig(
-                    NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel)
-                    .orElse(null);
+            NotificationEventConfig config = resolveConfigForSend(
+                    NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel, templateIdOverride);
 
             if (config == null) {
                 log.info("No LEARNER_CREDENTIALS_SHARED {} template bound for institute {}; nothing sent",
@@ -919,6 +933,103 @@ public class DynamicNotificationService {
             return true;
         } catch (Exception e) {
             log.error("Error sending learner credentials ({}) for institute {}: {}",
+                    channel, instituteId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * The config a single send should use: an explicitly-chosen template when the caller passes
+     * one, otherwise the institute's standing binding for the event/channel.
+     *
+     * <p>The override is returned as an unsaved {@link NotificationEventConfig} rather than being
+     * written to the table. Picking a template for one message must not silently repoint every
+     * future send of that event — changing the standing binding is its own deliberate action in
+     * the settings UI, and an API caller passing a one-off template is not making it.
+     */
+    private NotificationEventConfig resolveConfigForSend(
+            NotificationEventType eventType,
+            String instituteId,
+            NotificationTemplateType channel,
+            String templateIdOverride) {
+
+        if (org.springframework.util.StringUtils.hasText(templateIdOverride)) {
+            NotificationEventConfig transientConfig = new NotificationEventConfig(
+                    eventType, NotificationSourceType.INSTITUTE, instituteId, channel, templateIdOverride);
+            // WhatsApp dispatches by provider-approved template NAME; email resolves subject and
+            // body off the Template row and needs no name here.
+            if (channel == NotificationTemplateType.WHATSAPP) {
+                templateRepository.findById(templateIdOverride)
+                        .ifPresent(t -> transientConfig.setTemplateName(t.getName()));
+            }
+            return transientConfig;
+        }
+        return findEventConfig(eventType, instituteId, channel).orElse(null);
+    }
+
+    /**
+     * Sends a learner a link to set a new password, rendered from whichever template the
+     * institute has bound to {@link NotificationEventType#LEARNER_PASSWORD_RESET} (or from the
+     * template the caller nominated for this one send).
+     *
+     * <p>No password is included, by design — the point of this event is to give an institute a
+     * way to get a learner back into their account without mailing plaintext credentials. The
+     * template gets {@code {{reset_password_link}}} and the username; everything else is the
+     * usual institute branding set.
+     *
+     * @return true when a message was dispatched
+     */
+    public boolean sendLearnerPasswordResetNotification(
+            String instituteId,
+            NotificationTemplateType channel,
+            UserDTO learner,
+            String username,
+            String resetLink,
+            String resetLinkTemplate,
+            String templateIdOverride) {
+
+        try {
+            NotificationEventConfig config = resolveConfigForSend(
+                    NotificationEventType.LEARNER_PASSWORD_RESET, instituteId, channel, templateIdOverride);
+
+            if (config == null) {
+                log.info("No LEARNER_PASSWORD_RESET {} template bound for institute {}; nothing sent",
+                        channel, instituteId);
+                return false;
+            }
+
+            if (channel == NotificationTemplateType.EMAIL
+                    && !org.springframework.util.StringUtils.hasText(learner.getEmail())) {
+                log.info("Learner password-reset email skipped: userId={} has no email", learner.getId());
+                return false;
+            }
+            if (channel == NotificationTemplateType.WHATSAPP
+                    && !org.springframework.util.StringUtils.hasText(learner.getMobileNumber())) {
+                log.info("Learner password-reset WhatsApp skipped: userId={} has no mobile number", learner.getId());
+                return false;
+            }
+
+            Institute institute = getInstituteFromId(instituteId);
+
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    .userId(learner.getId())
+                    .userName(username)
+                    .userEmail(learner.getEmail())
+                    .userMobile(learner.getMobileNumber())
+                    .userFullName(learner.getFullName())
+                    .name(learner.getFullName())
+                    .resetPasswordLink(resetLink)
+                    .resetPasswordLinkTemplate(resetLinkTemplate)
+                    .portalUrl(resolveLearnerPortalUrl(institute))
+                    .instituteName(institute != null ? institute.getInstituteName() : null)
+                    .instituteId(instituteId)
+                    .themeColor(getThemeColorFromInstitute(institute))
+                    .build();
+
+            sendNotificationViaUnifiedApi(config, instituteId, learner, templateVars);
+            return true;
+        } catch (Exception e) {
+            log.error("Error sending learner password reset ({}) for institute {}: {}",
                     channel, instituteId, e.getMessage(), e);
             return false;
         }

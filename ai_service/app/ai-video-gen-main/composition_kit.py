@@ -475,24 +475,24 @@ COMPOSITION_CSS = """
 
 /* type in a column on one side, subject bleeding off the other */
 .comp-left-column .comp-col {
-  grid-column: 1 / 5; grid-row: 2 / 8;
+  grid-column: 1 / 6; grid-row: 2 / 8;
   display: flex; flex-direction: column;
   justify-content: center; align-items: stretch; text-align: left;
   gap: 0.5em; z-index: 2;
 }
 .comp-left-column .comp-subject {
-  grid-column: 6 / 14; grid-row: 1 / 9;
+  grid-column: 7 / 14; grid-row: 1 / 9;
   display: flex; align-items: center; justify-content: flex-start;
   overflow: visible;
 }
 .comp-right-column .comp-col {
-  grid-column: 9 / 13; grid-row: 2 / 8;
+  grid-column: 8 / 13; grid-row: 2 / 8;
   display: flex; flex-direction: column;
   justify-content: center; align-items: stretch; text-align: left;
   gap: 0.5em; z-index: 2;
 }
 .comp-right-column .comp-subject {
-  grid-column: 1 / 8; grid-row: 1 / 9;
+  grid-column: 1 / 7; grid-row: 1 / 9;
   display: flex; align-items: center; justify-content: flex-end;
   overflow: visible;
 }
@@ -597,3 +597,388 @@ __all__ = [
     "planner_menu_block",
     "contract_block",
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exemplars — the part of the prompt the model actually imitates
+# ─────────────────────────────────────────────────────────────────────────────
+# Every shot card ships a centre-stacked example, and marketing mode already
+# proved the fix: MARKETING_EXAMPLES swaps the exemplar per card because "the
+# example code is the strongest signal in the prompt". Educational/aspirational
+# runs never got that treatment — they got prose telling them to avoid the
+# frame the example demonstrates.
+#
+# One exemplar is injected per shot (the assigned composition's), REPLACING the
+# card's, so the prompt does not grow. Each one is written to be worth copying:
+# real type hierarchy with explicit leading and weight, motion with named eases
+# on narration beats, a back-half beat, and staging where the frame invites it.
+# Deliberately NOT centred, and deliberately not decorative — the reveals are
+# tied to what is being said.
+
+EXEMPLARS: Dict[str, Dict[str, str]] = {
+    "left_column": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-left-column'>\n"
+            "    <div class='comp-col'>\n"
+            "      <span class='tracking-label' id='eyebrow' style='color:var(--brand-accent);'>MECHANISM</span>\n"
+            "      <!-- a COLUMN is not a frame: the display tier is sized for full width,\n"
+            "           so a column headline sits one tier down. Two lines, never three. -->\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-h2);line-height:1.0;font-weight:900;margin:0.12em 0 0;\">\n"
+            "        Pressure&nbsp;<span id='key' style='color:var(--brand-accent);'>falls</span><br>as speed rises\n"
+            "      </h1>\n"
+            "      <p id='sub' class='text-body' style='font-size:var(--font-scale-body);line-height:1.4;\n"
+            "          font-weight:400;max-width:26ch;margin:0.5em 0 0;opacity:0;'>\n"
+            "        The same air, moving faster over the curve.\n"
+            "      </p>\n"
+            "    </div>\n"
+            "    <div class='comp-subject'>\n"
+            "      <svg id='wing' viewBox='0 0 620 420' style='width:112%;overflow:visible;'>\n"
+            "        <path id='foil' d='M60,250 C180,150 380,140 560,196 C400,250 200,286 60,250 Z'\n"
+            "              fill='none' stroke='var(--brand-text)' stroke-width='3'/>\n"
+            "        <path id='flow-1' d='M20,180 C200,120 400,116 600,168' fill='none'\n"
+            "              stroke='var(--brand-accent)' stroke-width='2.4' stroke-dasharray='620' stroke-dashoffset='620'/>\n"
+            "        <path id='flow-2' d='M20,300 C200,300 400,292 600,262' fill='none'\n"
+            "              stroke='var(--brand-text)' stroke-width='2' opacity='0.45'\n"
+            "              stroke-dasharray='620' stroke-dashoffset='620'/>\n"
+            "      </svg>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 9.0s   composition: left_column\n"
+            "   0.30s eyebrow + headline           (\"pressure\")\n"
+            "   1.65s fast streamline draws        (\"as speed rises\")\n"
+            "   3.40s slow streamline draws        (\"the same air\")\n"
+            "   5.60s BACK HALF — key word lifts, sub-line arrives, foil eases up */\n"
+            "gsap.from('#eyebrow', {opacity:0, y:-12, duration:0.5, delay:0.30, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, y:26, duration:0.7, delay:0.42, ease:'expo.out'});\n"
+            "gsap.to('#flow-1', {strokeDashoffset:0, duration:1.1, delay:1.65, ease:'power2.inOut'});\n"
+            "gsap.to('#flow-2', {strokeDashoffset:0, duration:1.4, delay:3.40, ease:'power2.inOut'});\n"
+            "/* back half: the accent word is the subject of the phrase, so IT moves */\n"
+            "gsap.to('#key', {scale:1.12, transformOrigin:'left center', duration:0.5, delay:5.60, ease:'back.out(1.8)'});\n"
+            "gsap.to('#sub', {opacity:1, y:0, duration:0.6, delay:5.75, ease:'power3.out'});\n"
+            "gsap.from('#sub', {y:16, duration:0.6, delay:5.75, ease:'power3.out'});\n"
+            "gsap.to('#wing', {y:-14, duration:2.6, delay:5.60, ease:'sine.inOut'});\n"
+            "/* ambient, never still */\n"
+            "gsap.to('#foil', {y:'+=5', duration:4.5, repeat:-1, yoyo:true, ease:'sine.inOut'});"
+        ),
+    },
+    "margin_notes": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='stage-paper'></div>\n"
+            "  <div class='comp comp-margin-notes'>\n"
+            "    <div class='comp-body'>\n"
+            "      <div id='plate' class='artifact artifact-laid aged-edge' style='width:88%;padding:24px 28px 30px;'>\n"
+            "        <span class='tracking-label' style='opacity:0.55;'>SOURCE &nbsp;·&nbsp; 1854 MAP</span>\n"
+            "        <img src='UPLOADED_OR_STOCK' alt='' style='width:100%;display:block;margin-top:10px;'/>\n"
+            "      </div>\n"
+            "    </div>\n"
+            "    <aside class='comp-gutter'>\n"
+            "      <div class='comp-note' id='n1' style='opacity:0;'>\n"
+            "        <span class='tracking-label' style='color:var(--brand-accent);'>01&nbsp;&nbsp;THE PUMP</span>\n"
+            "        <span>Every death clusters within one street.</span>\n"
+            "      </div>\n"
+            "      <div class='comp-note' id='n2' style='opacity:0;'>\n"
+            "        <span class='tracking-label' style='color:var(--brand-accent);'>02&nbsp;&nbsp;THE OUTLIER</span>\n"
+            "        <span>The brewery, untouched. Its workers drank beer.</span>\n"
+            "      </div>\n"
+            "    </aside>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 12.0s   composition: margin_notes\n"
+            "   0.30s plate settles onto the ground\n"
+            "   2.10s note 01 enters the gutter        (\"one street\")\n"
+            "   5.40s note 02 enters                    (\"the brewery\")\n"
+            "   8.20s BACK HALF — push in on the outlier, dim note 01 */\n"
+            "gsap.from('#plate', {opacity:0, y:30, rotate:-1.2, duration:0.9, delay:0.30, ease:'expo.out'});\n"
+            "gsap.to('#n1', {opacity:1, duration:0.5, delay:2.10, ease:'power3.out'});\n"
+            "gsap.from('#n1', {x:18, duration:0.5, delay:2.10, ease:'power3.out'});\n"
+            "gsap.to('#n2', {opacity:1, duration:0.5, delay:5.40, ease:'power3.out'});\n"
+            "gsap.from('#n2', {x:18, duration:0.5, delay:5.40, ease:'power3.out'});\n"
+            "/* focus by suppression — the note being spoken is the only bright one */\n"
+            "gsap.to('#n1', {opacity:0.34, duration:0.5, delay:8.20, ease:'power2.out'});\n"
+            "gsap.to('#plate', {scale:1.09, duration:2.2, delay:8.20, ease:'power2.inOut'});\n"
+            "gsap.to('#plate', {y:'+=6', duration:5.0, repeat:-1, yoyo:true, ease:'sine.inOut'});"
+        ),
+    },
+    "bottom_anchor": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-bottom-anchor'>\n"
+            "    <div class='comp-subject'>\n"
+            "      <img id='hero' src='STOCK_OR_AI' alt='' style='width:100%;height:118%;object-fit:cover;'/>\n"
+            "    </div>\n"
+            "    <div class='comp-scrim' style='position:absolute;inset:0;\n"
+            "         background:linear-gradient(to top, var(--brand-bg) 22%, rgba(0,0,0,0) 62%);'></div>\n"
+            "    <div class='comp-anchor'>\n"
+            "      <span class='tracking-label' id='kicker' style='color:var(--brand-accent);'>1962 &nbsp;·&nbsp; ALASKA</span>\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-h1);line-height:0.92;font-weight:900;margin:0.1em 0 0;\">\n"
+            "        The wave arrived<br>eight hours later\n"
+            "      </h1>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 8.0s   composition: bottom_anchor\n"
+            "   0.00s slow push-in on the bleeding subject (runs the whole shot)\n"
+            "   0.55s kicker\n"
+            "   1.20s headline rises out of the anchor\n"
+            "   4.90s BACK HALF — scrim deepens, headline settles up */\n"
+            "gsap.fromTo('#hero', {scale:1.0}, {scale:1.10, duration:8.0, ease:'none'});\n"
+            "gsap.from('#kicker', {opacity:0, y:14, duration:0.5, delay:0.55, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, y:38, duration:0.8, delay:1.20, ease:'expo.out'});\n"
+            "gsap.to('.comp-scrim', {opacity:1.15, duration:2.4, delay:4.90, ease:'power2.inOut'});\n"
+            "gsap.to('#head', {y:-10, duration:2.4, delay:4.90, ease:'sine.inOut'});"
+        ),
+    },
+    "stacked_offset": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='halftone' style='position:absolute;inset:0;opacity:0.5;'></div>\n"
+            "  <div class='comp comp-stacked-offset'>\n"
+            "    <div class='comp-stack'>\n"
+            "      <span class='tracking-label' id='k' style='color:var(--brand-accent);'>WHAT CHANGED</span>\n"
+            "      <h1 class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-display);line-height:0.88;font-weight:900;margin:0.1em 0 0;\">\n"
+            "        <span class='slam-wrapper'><span class='slam-text' id='w1'>TWELVE</span></span><br>\n"
+            "        <span class='slam-wrapper'><span class='slam-text' id='w2'>SECONDS</span></span>\n"
+            "      </h1>\n"
+            "      <div id='rule' style='height:4px;width:0;background:var(--brand-accent);margin-top:0.4em;'></div>\n"
+            "      <p id='sub' class='text-body' style='font-size:var(--font-scale-body);line-height:1.4;\n"
+            "          max-width:30ch;margin:0.6em 0 0;opacity:0;'>The entire first flight.</p>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 7.0s   composition: stacked_offset\n"
+            "   0.25s kicker | 0.70s / 1.05s word slams on the two stressed words\n"
+            "   2.30s rule draws | 4.30s BACK HALF — sub-line, then the stack drifts up */\n"
+            "gsap.from('#k', {opacity:0, x:-14, duration:0.45, delay:0.25, ease:'power3.out'});\n"
+            "gsap.from('#w1', {yPercent:110, duration:0.55, delay:0.70, ease:'expo.out'});\n"
+            "gsap.from('#w2', {yPercent:110, duration:0.55, delay:1.05, ease:'expo.out'});\n"
+            "gsap.to('#rule', {width:'42%', duration:0.7, delay:2.30, ease:'power3.inOut'});\n"
+            "gsap.to('#sub', {opacity:1, duration:0.55, delay:4.30, ease:'power3.out'});\n"
+            "gsap.from('#sub', {y:14, duration:0.55, delay:4.30, ease:'power3.out'});\n"
+            "gsap.to('.comp-stack', {y:-12, duration:2.4, delay:4.60, ease:'sine.inOut'});\n"
+            "gsap.to('.halftone', {opacity:0.32, duration:5.0, repeat:-1, yoyo:true, ease:'sine.inOut'});"
+        ),
+    },
+    "spine": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-spine'>\n"
+            "    <div class='spine'>\n"
+            "      <div class='spine-node' id='s1'>\n"
+            "        <span class='tracking-label' style='color:var(--brand-accent);'>01</span>\n"
+            "        <div class='text-body' style='font-size:var(--font-scale-body);line-height:1.35;max-width:14ch;'>Antigen enters</div>\n"
+            "      </div>\n"
+            "      <div class='spine-node' id='s2' style='opacity:0;'>\n"
+            "        <span class='tracking-label' style='color:var(--brand-accent);'>02</span>\n"
+            "        <div class='text-body' style='font-size:var(--font-scale-body);line-height:1.35;max-width:14ch;'>Cell presents it</div>\n"
+            "      </div>\n"
+            "      <div class='spine-node' id='s3' style='opacity:0;'>\n"
+            "        <span class='tracking-label' style='color:var(--brand-accent);'>03</span>\n"
+            "        <div class='text-body' style='font-size:var(--font-scale-body);line-height:1.35;max-width:14ch;'>Antibody is made</div>\n"
+            "      </div>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 11.0s   composition: spine\n"
+            "   nodes land on the narrated step, never on round numbers\n"
+            "   1.40s step 1 | 4.20s step 2 | 6.90s step 3\n"
+            "   8.80s BACK HALF — step 3 lifts, earlier steps recede (focus by suppression) */\n"
+            "gsap.from('#s1', {opacity:0, y:18, duration:0.55, delay:1.40, ease:'power3.out'});\n"
+            "gsap.to('#s2', {opacity:1, y:0, duration:0.55, delay:4.20, ease:'power3.out'});\n"
+            "gsap.from('#s2', {y:18, duration:0.55, delay:4.20, ease:'power3.out'});\n"
+            "gsap.to('#s3', {opacity:1, y:0, duration:0.55, delay:6.90, ease:'power3.out'});\n"
+            "gsap.from('#s3', {y:18, duration:0.55, delay:6.90, ease:'power3.out'});\n"
+            "gsap.to(['#s1','#s2'], {opacity:0.36, scale:0.97, duration:0.5, delay:8.80, ease:'power2.out'});\n"
+            "gsap.to('#s3', {scale:1.06, duration:0.5, delay:8.80, ease:'expo.out'});"
+        ),
+    },
+    "corner_type": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-corner-type'>\n"
+            "    <div class='comp-anchor-tl'>\n"
+            "      <span class='tracking-label' id='k' style='color:var(--brand-accent);'>THE COST</span>\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-display);line-height:0.86;font-weight:900;margin:0.12em 0 0;\">\n"
+            "        NOTHING<br>WAS<br>SAVED\n"
+            "      </h1>\n"
+            "    </div>\n"
+            "    <div class='comp-anchor-br'>\n"
+            "      <svg id='mark' viewBox='0 0 200 200' style='width:100%;max-width:22vw;'>\n"
+            "        <circle cx='100' cy='100' r='72' fill='none' stroke='var(--brand-accent)'\n"
+            "                stroke-width='6' stroke-dasharray='452' stroke-dashoffset='452'/>\n"
+            "        <path d='M62,100 L138,100' stroke='var(--brand-accent)' stroke-width='6'\n"
+            "              stroke-dasharray='76' stroke-dashoffset='76'/>\n"
+            "      </svg>\n"
+            "    </div>\n"
+            "    <!-- the diagonal between the anchors stays EMPTY. That emptiness is the design. -->\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 6.5s   composition: corner_type\n"
+            "   0.30s kicker | 0.75s/1.05s/1.40s the three words land separately\n"
+            "   3.60s BACK HALF — the mark draws and closes the frame */\n"
+            "gsap.from('#k', {opacity:0, y:-10, duration:0.4, delay:0.30, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, x:-24, duration:0.7, delay:0.75, ease:'expo.out'});\n"
+            "gsap.to('#mark circle', {strokeDashoffset:0, duration:0.9, delay:3.60, ease:'power2.inOut'});\n"
+            "gsap.to('#mark path', {strokeDashoffset:0, duration:0.4, delay:4.40, ease:'expo.out'});\n"
+            "gsap.to('#mark', {rotate:8, transformOrigin:'center', duration:2.4, delay:3.60, ease:'sine.inOut'});"
+        ),
+    },
+    "artifact_study": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='stage-paper'></div>\n"
+            "  <div class='stage-grid-patch' style='top:0;left:0;'></div>\n"
+            "  <div class='comp comp-artifact-study'>\n"
+            "    <div id='art' class='comp-artifact artifact artifact-laid aged-edge' style='padding:22px 26px 28px;'>\n"
+            "      <span class='tracking-label' style='opacity:0.55;'>PLATE XI &nbsp;·&nbsp; 1543</span>\n"
+            "      <img src='UPLOADED_PLATE' alt='' style='width:100%;display:block;margin-top:10px;'/>\n"
+            "      <!-- annotate ON TOP of the artifact as each part is named -->\n"
+            "      <span class='marker-hl' id='m1' style='position:absolute;left:34%;top:41%;opacity:0;'>scapula</span>\n"
+            "      <span class='marker-hl' id='m2' style='position:absolute;left:52%;top:63%;opacity:0;'>humerus</span>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 13.0s   composition: artifact_study\n"
+            "   0.30s the plate is laid down\n"
+            "   2.60s marker over the first named part\n"
+            "   6.10s marker over the second\n"
+            "   8.40s BACK HALF — slow push-in; the camera does the explaining */\n"
+            "gsap.from('#art', {opacity:0, y:34, rotate:-1.5, duration:1.0, delay:0.30, ease:'expo.out'});\n"
+            "gsap.to('#m1', {opacity:1, duration:0.4, delay:2.60, ease:'power2.out'});\n"
+            "gsap.from('#m1', {scaleX:0.2, transformOrigin:'left center', duration:0.45, delay:2.60, ease:'power3.out'});\n"
+            "gsap.to('#m2', {opacity:1, duration:0.4, delay:6.10, ease:'power2.out'});\n"
+            "gsap.from('#m2', {scaleX:0.2, transformOrigin:'left center', duration:0.45, delay:6.10, ease:'power3.out'});\n"
+            "gsap.to('#art', {scale:1.12, duration:3.6, delay:8.40, ease:'power2.inOut'});\n"
+            "gsap.to('#art', {y:'+=6', duration:5.2, repeat:-1, yoyo:true, ease:'sine.inOut'});"
+        ),
+    },
+    "full_bleed_overlay": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;overflow:hidden;'>\n"
+            "  <div class='comp comp-full-bleed'>\n"
+            "    <div class='comp-media'>\n"
+            "      <video id='bed' src='STOCK_VIDEO' autoplay muted playsinline></video>\n"
+            "    </div>\n"
+            "    <div class='comp-scrim'></div>\n"
+            "    <div class='comp-overlay'>\n"
+            "      <span class='tracking-label' id='k' style='color:#fff;opacity:0.8;'>THE NORTH SEA</span>\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);color:#fff;\n"
+            "          font-size:var(--font-scale-h1);line-height:0.94;font-weight:900;margin:0.1em 0 0;\n"
+            "          text-shadow:0 2px 18px rgba(0,0,0,0.55);\">\n"
+            "        Nine metres,<br>every winter\n"
+            "      </h1>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 7.5s   composition: full_bleed_overlay\n"
+            "   0.45s kicker | 0.95s headline over the scrim\n"
+            "   4.60s BACK HALF — scrim deepens as the line lands, type eases up */\n"
+            "gsap.from('#k', {opacity:0, y:12, duration:0.45, delay:0.45, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, y:30, duration:0.75, delay:0.95, ease:'expo.out'});\n"
+            "gsap.fromTo('.comp-scrim', {opacity:0.85}, {opacity:1.15, duration:2.6, delay:4.60, ease:'power2.inOut'});\n"
+            "gsap.to('.comp-overlay', {y:-12, duration:2.6, delay:4.60, ease:'sine.inOut'});"
+        ),
+    },
+    "right_column": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-right-column'>\n"
+            "    <div class='comp-subject'>\n"
+            "      <svg id='chart' viewBox='0 0 560 400' style='width:108%;overflow:visible;'>\n"
+            "        <line x1='60' y1='350' x2='530' y2='350' stroke='var(--brand-text)' stroke-width='2' opacity='0.35'/>\n"
+            "        <rect class='bar' x='90'  y='350' width='58' height='0' fill='var(--brand-text)' opacity='0.35'/>\n"
+            "        <rect class='bar' x='200' y='350' width='58' height='0' fill='var(--brand-text)' opacity='0.35'/>\n"
+            "        <rect id='bar-hi' x='310' y='350' width='58' height='0' fill='var(--brand-accent)'/>\n"
+            "        <rect class='bar' x='420' y='350' width='58' height='0' fill='var(--brand-text)' opacity='0.35'/>\n"
+            "      </svg>\n"
+            "    </div>\n"
+            "    <div class='comp-col'>\n"
+            "      <span class='tracking-label' id='k' style='color:var(--brand-accent);'>1987</span>\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-h2);line-height:1.0;font-weight:900;margin:0.12em 0 0;\">\n"
+            "        One year<br>broke the trend\n"
+            "      </h1>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 9.5s   composition: right_column\n"
+            "   0.40s kicker + headline\n"
+            "   1.50s bars grow left to right (stagger, not one tween)\n"
+            "   5.80s BACK HALF — the outlier bar is the subject of the phrase, so it lifts */\n"
+            "gsap.from('#k', {opacity:0, y:-10, duration:0.4, delay:0.40, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, y:22, duration:0.7, delay:0.52, ease:'expo.out'});\n"
+            "gsap.to('.bar', {attr:{y:170, height:180}, duration:0.7, delay:1.50, stagger:0.14, ease:'power3.out'});\n"
+            "gsap.to('#bar-hi', {attr:{y:96, height:254}, duration:0.8, delay:1.92, ease:'expo.out'});\n"
+            "gsap.to('.bar', {opacity:0.18, duration:0.5, delay:5.80, ease:'power2.out'});\n"
+            "gsap.to('#bar-hi', {scaleY:1.06, transformOrigin:'bottom center', duration:0.6, delay:5.80, ease:'back.out(1.6)'});"
+        ),
+    },
+    "center_hero": {
+        "html": (
+            "<div id='shot-root' style='position:absolute;inset:0;background:var(--brand-bg);overflow:hidden;'>\n"
+            "  <div class='comp comp-center'>\n"
+            "    <div class='comp-main'>\n"
+            "      <span class='tracking-label' id='k' style='color:var(--brand-accent);'>CHAPTER TWO</span>\n"
+            "      <h1 id='head' class='text-display' style=\"font-family:var(--font-heading);\n"
+            "          font-size:var(--font-scale-display);line-height:0.88;font-weight:900;margin:0.14em 0 0;\">\n"
+            "        THE&nbsp;<span id='key' style='color:var(--brand-accent);'>BLIND</span><br>SPOT\n"
+            "      </h1>\n"
+            "      <div id='rule' style='height:3px;width:0;background:var(--brand-accent);margin-top:0.5em;'></div>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>"
+        ),
+        "script": (
+            "/* TIMELINE MAP — 5.0s   composition: center_hero (title beat only)\n"
+            "   0.25s kicker | 0.60s headline | 1.40s rule\n"
+            "   3.10s BACK HALF — accent word pulses as it is spoken */\n"
+            "gsap.from('#k', {opacity:0, y:-12, duration:0.45, delay:0.25, ease:'power3.out'});\n"
+            "gsap.from('#head', {opacity:0, scale:0.94, duration:0.7, delay:0.60, ease:'expo.out'});\n"
+            "gsap.to('#rule', {width:'34%', duration:0.6, delay:1.40, ease:'power3.inOut'});\n"
+            "gsap.to('#key', {scale:1.1, transformOrigin:'center', duration:0.5, delay:3.10, ease:'back.out(1.8)'});"
+        ),
+    },
+}
+
+# Guideline lines that hard-prescribe the centred frame. Dropped when a
+# composition is assigned, the same way _MARKETING_GUIDELINE_BANS drops the
+# whiteboard prescriptions in marketing mode — otherwise the card's bullet
+# list contradicts the contract that was just injected.
+COMPOSITION_GUIDELINE_BANS: Sequence[str] = (
+    "full-screen-center",
+    "layout-hero",
+    "single big concept in center",
+    "centered",
+)
+
+
+def exemplar_for(composition: str, shot_type: str = "") -> Dict[str, str] | None:
+    """Composition-specific exemplar, or None to keep the card's own."""
+    return EXEMPLARS.get(normalize(composition, shot_type))
+
+
+__all__ += ["EXEMPLARS", "COMPOSITION_GUIDELINE_BANS", "exemplar_for"]

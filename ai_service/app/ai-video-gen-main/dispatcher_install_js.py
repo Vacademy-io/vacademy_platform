@@ -1261,6 +1261,14 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                         return;
                                     }
                                     if (node.nodeType !== 1) return;
+                                    // BR is a FORCED break and WBR is an explicit
+                                    // break opportunity. Walking through them joined
+                                    // the text either side into one phantom run
+                                    // ("Pressure falls" + "as speed rises" measured as
+                                    // one 1000px token) and over-shrank the headline
+                                    // to 60% for an overflow that did not exist.
+                                    var tag = node.nodeName;
+                                    if (tag === 'BR' || tag === 'WBR') { flush(); return; }
                                     var d = getComputedStyle(node).display;
                                     var inline = d.indexOf('inline') === 0;
                                     if (!inline) flush();

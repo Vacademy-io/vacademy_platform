@@ -11,7 +11,11 @@ contract actually reaches the prompt.
 
 import os
 import re
+import shutil
+import subprocess
 import sys
+
+import pytest
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main")
@@ -179,8 +183,10 @@ def test_composition_reaches_the_per_shot_prompt():
     )
     assert "COMPOSITION CONTRACT" in with_comp
     assert "comp-margin-notes" in with_comp
-    # Recency matters: the contract must be read AFTER the centred exemplar.
-    assert with_comp.index("COMPOSITION CONTRACT") > with_comp.index("full-screen-center")
+    # Recency matters: the contract must be read AFTER the shot card's exemplar.
+    # (That exemplar is now the composition's own, since _format_card swaps it —
+    # the contract still lands last so it governs.)
+    assert with_comp.index("COMPOSITION CONTRACT") > with_comp.index("SHOT TYPE:")
 
 
 def test_prompt_is_unchanged_when_no_composition_is_assigned():
@@ -213,3 +219,131 @@ def test_planner_system_prompt_advertises_the_field():
 
     assert "FRAME COMPOSITION" in SHOT_PLANNER_SYSTEM_PROMPT
     assert "`\"margin_notes\"`" in SHOT_PLANNER_SYSTEM_PROMPT
+
+
+# ── exemplars: the part of the prompt the model imitates ───────────────────
+
+def test_every_composition_has_an_exemplar():
+    """A composition with no exemplar falls back to the card's centred one,
+    which is the exact failure this system exists to fix."""
+    missing = [n for n in ck.COMPOSITIONS if n not in ck.EXEMPLARS]
+    assert not missing, missing
+
+
+def test_exemplars_build_their_own_composition():
+    for name, ex in ck.EXEMPLARS.items():
+        css_class = ck.COMPOSITIONS[name]["css_class"]
+        assert css_class in ex["html"], f"{name} exemplar does not use {css_class}"
+        assert "id='shot-root'" in ex["html"], f"{name} exemplar lacks a shot root"
+
+
+def test_no_exemplar_reintroduces_the_centred_wrapper():
+    """.full-screen-center / .layout-hero are the centre-stacked frame. An
+    exemplar that used them would teach the very thing being replaced."""
+    for name, ex in ck.EXEMPLARS.items():
+        assert "full-screen-center" not in ex["html"], name
+        assert "layout-hero" not in ex["html"], name
+
+
+def test_exemplars_respect_the_technical_rails():
+    """These are the hard requirements in the preamble. An exemplar that broke
+    one would teach every shot to break it — the example outranks the prose."""
+    for name, ex in ck.EXEMPLARS.items():
+        js = ex["script"]
+        assert "setTimeout" not in js, f"{name}: setTimeout never fires under a seek"
+        # Every tween needs a named ease; count eases against tween calls.
+        tweens = js.count("gsap.to(") + js.count("gsap.from(") + js.count("gsap.fromTo(")
+        assert tweens >= 3, f"{name}: only {tweens} tweens — too static"
+        assert js.count("ease:") >= tweens, (
+            f"{name}: {tweens} tweens but {js.count('ease:')} eases — "
+            "linear/default easing is banned"
+        )
+
+
+def test_exemplars_have_a_timeline_map_and_a_back_half_beat():
+    """Two preamble requirements the old exemplars never demonstrated: plan
+    before you code, and don't fade in then sit."""
+    for name, ex in ck.EXEMPLARS.items():
+        assert "TIMELINE MAP" in ex["script"], name
+        assert "BACK HALF" in ex["script"] or "back half" in ex["script"], name
+
+
+def test_exemplars_avoid_hardcoded_background_hex():
+    """The 'six different backgrounds in one video' bug. Backgrounds come from
+    var(--brand-bg); literal hex on a shot background is banned."""
+    for name, ex in ck.EXEMPLARS.items():
+        html = ex["html"]
+        for marker in ("background:#", "background-color:#", "background: #"):
+            assert marker not in html.replace(" ", "").replace("background:#fff0", ""), name
+
+
+def test_exemplar_swap_replaces_the_card_example():
+    from shot_type_cards import build_per_shot_system_prompt as build
+
+    got = build("TEXT_DIAGRAM", aspirational=True, composition="left_column")
+    assert "comp-left-column" in got
+    assert "full-screen-center" not in got, "centred exemplar must be gone"
+
+
+def test_centring_guidelines_are_dropped_with_the_swap():
+    """Otherwise the card's bullet list ('WRAP content in .full-screen-center')
+    contradicts the contract injected below it."""
+    from shot_type_cards import build_per_shot_system_prompt as build
+
+    got = build("TEXT_DIAGRAM", aspirational=True, composition="left_column")
+    assert "layout-hero" not in got
+
+
+def test_lower_tiers_keep_the_conservative_card_example():
+    """standard/premium are not aspirational; nothing changes for them."""
+    from shot_type_cards import build_per_shot_system_prompt as build
+
+    got = build("TEXT_DIAGRAM", composition="left_column")
+    assert "full-screen-center" in got
+
+
+def test_marketing_keeps_its_compiled_design_language():
+    """marketing/bold is a coherent compiled prompt. Layering a composition
+    contract on top of it is the stacked-override pattern it replaced."""
+    from shot_type_cards import build_per_shot_system_prompt as build
+
+    got = build("TEXT_DIAGRAM", aspirational=True, mode="marketing",
+                composition="left_column")
+    assert "COMPOSITION CONTRACT" not in got
+    assert "comp-left-column" not in got
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_every_exemplar_script_is_valid_javascript():
+    """An exemplar is copied by every shot assigned that composition, so a
+    syntax error in one propagates instead of failing once. The left_column
+    exemplar was rendered end-to-end in the browser; this covers the other
+    nine cheaply."""
+    for name, ex in ck.EXEMPLARS.items():
+        # Wrap in a function: the scripts are statement sequences, and `gsap`
+        # is a runtime global we are not asserting on here.
+        src = "function __exemplar(){\n" + ex["script"] + "\n}"
+        proc = subprocess.run(
+            ["node", "--check", "-"], input=src, capture_output=True, text=True
+        )
+        assert proc.returncode == 0, f"{name} script is invalid JS:\n{proc.stderr}"
+
+
+def test_every_exemplar_html_has_balanced_tags():
+    """A cheap structural check — an unclosed div in an exemplar teaches every
+    copying shot to emit one."""
+    for name, ex in ck.EXEMPLARS.items():
+        html = ex["html"]
+        for tag in ("div", "svg", "h1", "aside"):
+            opens = len(re.findall(rf"<{tag}[\s>]", html))
+            closes = html.count(f"</{tag}>")
+            assert opens == closes, f"{name}: {tag} {opens} open vs {closes} closed"
+
+
+def test_exemplars_do_not_leak_backticks_into_the_prompt():
+    """These strings land in a prompt, not in the dispatcher template, so this
+    is about model confusion rather than a parse error — a stray backtick reads
+    as a markdown fence and can truncate the example the model copies."""
+    for name, ex in ck.EXEMPLARS.items():
+        assert "`" not in ex["html"], name
+        assert "`" not in ex["script"], name

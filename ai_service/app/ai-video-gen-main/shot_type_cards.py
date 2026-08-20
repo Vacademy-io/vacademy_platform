@@ -2246,21 +2246,51 @@ def get_cards_for_domain(subject_domain: str) -> List[str]:
     return types
 
 
-def _format_card(card: Dict[str, Any], *, marketing: bool = False) -> str:
+def _format_card(
+    card: Dict[str, Any],
+    *,
+    marketing: bool = False,
+    composition: str = "",
+) -> str:
     """Format a single shot type card as prompt text.
 
     `marketing=True` swaps in the card's MARKETING_EXAMPLES exemplar (when one
     exists) and drops whiteboard-prescribing guideline lines — the example code
     is the strongest signal in the prompt, so in marketing mode it must SHOW
     the premium look rather than the flat educational look.
+
+    `composition` does the same job for the assigned frame. Every card's own
+    exemplar is centre-stacked (`.full-screen-center` > `.layout-hero` > centred
+    h1 + sub + svg), so educational runs were shown the one frame the preamble
+    prose asks them to avoid — and the example won, every time. Passing a
+    composition swaps in an exemplar that BUILDS that frame, and drops the
+    guideline bullets that hard-prescribe centring so the card stops
+    contradicting the contract.
     """
     html = card["html_template"]
     script = card.get("script_block")
+    composition_bans: tuple = ()
     if marketing:
         ex = MARKETING_EXAMPLES.get(card["id"])
         if ex:
             html = ex["html"]
             script = ex["script"]
+    elif composition:
+        try:
+            from composition_kit import (
+                COMPOSITION_GUIDELINE_BANS,
+                exemplar_for,
+            )
+
+            cex = exemplar_for(composition, card.get("id", ""))
+            if cex:
+                html = cex["html"]
+                script = cex["script"]
+                composition_bans = tuple(COMPOSITION_GUIDELINE_BANS)
+        except Exception:
+            # Never fail prompt assembly over an exemplar swap — the card's
+            # own example is a valid fallback.
+            pass
     lines = [
         f"**SHOT TYPE: {card['id']}** — {card['description']}",
         f"USE FOR: {card['use_for']}",
@@ -2276,6 +2306,7 @@ def _format_card(card: Dict[str, Any], *, marketing: bool = False) -> str:
         kept = [
             g for g in card["guidelines"]
             if not (marketing and any(ban in g for ban in _MARKETING_GUIDELINE_BANS))
+            and not any(ban in g for ban in composition_bans)
         ]
         if kept:
             lines.append("Guidelines:")
@@ -2435,7 +2466,14 @@ def build_per_shot_system_prompt(
         principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
 
     card_text = (
-        _format_card(card, marketing=is_marketing)
+        # The composition exemplar only applies to aspirational (ultra) runs.
+        # Marketing has its own compiled design language and takes precedence;
+        # standard/premium keep the conservative card example.
+        _format_card(
+            card,
+            marketing=is_marketing,
+            composition=composition if (composition and aspirational) else "",
+        )
         .replace("{canvas_width}", str(width))
         .replace("{canvas_height}", str(height))
         .replace("{aspect_label}", aspect_label)
@@ -2478,7 +2516,14 @@ def build_per_shot_system_prompt(
 
     # COMPOSITION CONTRACT — late in the prompt, deliberately: it must be read
     # AFTER the shot card's (centre-stacked) exemplar, and recency matters.
-    if composition:
+    #
+    # Skipped for marketing/bold: that mode is a COMPILED design language whose
+    # whole point is that the prompt makes one coherent argument (see
+    # MARKETING_PREAMBLE). Layering a contract that says "do not reproduce the
+    # card's example layout" on top of exemplars chosen to demonstrate the
+    # premium look is exactly the stacked-override pattern that mode was built
+    # to replace.
+    if composition and not is_marketing:
         from composition_kit import contract_block as _composition_contract
 
         parts.append(_composition_contract(composition, shot_type))

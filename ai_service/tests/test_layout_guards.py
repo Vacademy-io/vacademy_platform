@@ -85,3 +85,16 @@ def test_only_paragraph_level_blocks_are_measured():
     assert "__isTextBlock" in _DISPATCHER
     sweep = _DISPATCHER[_DISPATCHER.index("var __fitWordsSweep"):]
     assert "__isTextBlock(el)" in sweep[:1500]
+
+
+def test_br_and_wbr_break_the_run():
+    """<br> is a FORCED line break; text either side is never one run.
+
+    Walking through it joined "Pressure falls" and "as speed rises" into a
+    single phantom token and shrank the headline to 60% for an overflow that
+    did not exist — caught by rendering an exemplar, not by assertion.
+    """
+    run = _DISPATCHER[_DISPATCHER.index("var __widestRun"):]
+    run = run[: run.index("var __isTextBlock")]
+    assert "'BR'" in run and "'WBR'" in run
+    assert "flush(); return;" in run

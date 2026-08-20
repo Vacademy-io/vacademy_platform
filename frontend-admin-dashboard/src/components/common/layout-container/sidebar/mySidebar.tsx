@@ -69,6 +69,7 @@ import {
     useCallIntelligenceEnabled,
     useHasCallIntelligenceData,
 } from '@/components/shared/leads';
+import { useIsMentor } from '@/hooks/use-is-mentor';
 
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
 // create-assessment wizard. Hidden together with the Create Assessment button.
@@ -137,6 +138,13 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         refetchOnWindowFocus: false,
     });
     const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
+
+    // "My Mentorship" is the mentor's OWN workspace (their mentees, availability,
+    // booking link) — the admin views are the four entries beside it. Every other
+    // Mentorship sub-item is adminOnly; this one has no role gate, so without this
+    // check every non-mentor admin gets an entry that only ever renders
+    // "Couldn't load your mentor profile".
+    const { isMentor } = useIsMentor();
 
     // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
     // entry is available when the feature is ON, or when it's off but the institute
@@ -276,7 +284,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // straight into the create wizard, so leaving them would contradict the
         // hidden Create Assessment button.
         const needsSubItemFilter =
-            !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment;
+            !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment || !isMentor;
         const base = !needsSubItemFilter
             ? rawBase
             : rawBase.map((item) => ({
@@ -285,6 +293,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                       (s) =>
                           (isChatEnabled || s.subItemId !== 'chat') &&
                           (isCrmIntelligenceAvailable || s.subItemId !== 'ai-intelligence') &&
+                          (isMentor || s.subItemId !== 'mentorship-my-mentorship') &&
                           (canCreateAssessment ||
                               !ASSESSMENT_CREATE_SUB_ITEM_IDS.has(s.subItemId || ''))
                   ),

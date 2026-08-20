@@ -92,6 +92,13 @@ export function LoginForm({
   const [isSSOLoading, setIsSSOLoading] = useState(false);
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
+  // Admin-sent "reset your password" links arrive as
+  // /login?username=<their username>&redirect=%2Fchange-password. Pre-filling the username is
+  // the whole point of carrying it: the learner being asked to set a new password is exactly the
+  // learner least likely to remember what they sign in as. It is a convenience only — they still
+  // authenticate normally (password, or the email-OTP tab) before reaching the change-password
+  // screen — which is why the link stays predictable enough for an outside system to generate.
+  const prefilledUsername = urlParams.get("username") || undefined;
   const fromPaymentSuccess = urlParams.get("fromPaymentSuccess") === "1";
   const [postPaymentCreds, setPostPaymentCreds] = useState<{
     username: string;
@@ -1176,7 +1183,11 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              initialUsername={demoCreds?.username ?? postPaymentCreds?.username}
+                              initialUsername={
+                                demoCreds?.username ??
+                                postPaymentCreds?.username ??
+                                prefilledUsername
+                              }
                               initialPassword={demoCreds?.password ?? postPaymentCreds?.password}
                               autoSubmit={!!demoCreds}
                             />

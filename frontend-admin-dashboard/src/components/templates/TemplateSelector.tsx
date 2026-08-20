@@ -20,6 +20,12 @@ interface TemplateSelectorProps {
     placeholder?: string;
     className?: string;
     variant?: 'dialog' | 'dropdown';
+    /**
+     * Pass false when the dropdown variant is rendered inside a Dialog or Sheet — a portalled
+     * list can't be scrolled from inside a modal (react-remove-scroll blocks wheel/touch on
+     * portalled nodes).
+     */
+    portal?: boolean;
 }
 
 export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
@@ -32,6 +38,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
     placeholder = 'Select a template',
     className = '',
     variant = 'dialog',
+    portal = true,
 }) => {
     const [templates, setTemplates] = useState<MessageTemplate[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -164,6 +171,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                         placeholder={placeholder}
                         emptyText={`No ${templateType.toLowerCase()} template matches your search.`}
                         noneOption={{ value: 'none', label: 'No template selected' }}
+                        portal={portal}
                     />
 
                     {selectedTemplate && onTemplatePreview && (

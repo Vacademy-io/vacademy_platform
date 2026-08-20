@@ -25,7 +25,12 @@ def _generated_js() -> str:
 
 def test_template_literal_is_balanced():
     """Backtick parity across the whole script — the cheap check that runs
-    even where node is unavailable (CI images, the sandbox)."""
+    even where node is unavailable (CI images, the sandbox).
+
+    Parity is necessary but NOT sufficient: a code span in a comment adds two
+    backticks, so parity stays even while the scoped-code template is closed
+    early. See test_no_backticks_inside_the_scoped_code_template.
+    """
     js = _generated_js()
     assert js.count("`") % 2 == 0, (
         "odd number of backticks in the generated dispatcher — a template "
@@ -43,3 +48,32 @@ def test_generated_js_parses(tmp_path):
         text=True,
     )
     assert proc.returncode == 0, f"generated dispatcher JS is invalid:\n{proc.stderr}"
+
+
+def test_no_backticks_inside_the_scoped_code_template():
+    """The per-shot wrapper is a `String.raw` template built at RUNTIME.
+
+    A backtick anywhere inside it — including inside a `//` comment — closes
+    the template early, and everything after it is parsed as code. That has
+    now broken renders three times in one session:
+      • "SyntaxError: Unexpected token 'var'"
+      • "ReferenceError: nbsp is not defined"
+    and `test_generated_js_parses` cannot catch it, because the dispatcher JS
+    is perfectly valid on its own — it only breaks once EMBEDDED. This test
+    checks the embedding constraint directly.
+    """
+    js = _generated_js()
+    # Anchor on the delimiter itself: the phrase "String.raw" also appears in
+    # the comment above the template, and starting there swept in 24 legitimate
+    # backticks from prose that sits OUTSIDE the literal.
+    opener = "String.raw`"
+    start = js.index(opener)
+    end = js.index("newScript.textContent = scopedCode")
+    region = js[start + len(opener) : end]
+    # The opener is consumed above, so the only backtick left in the region is
+    # the closing delimiter.
+    assert region.count("`") == 1, (
+        f"{region.count('`') - 1} stray backtick(s) inside the scoped-code "
+        "template — they will terminate it early at runtime. Use plain prose "
+        "in comments there, never `code spans`."
+    )

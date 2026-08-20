@@ -51,8 +51,37 @@ def test_frame_fit_wrapper_reproduces_the_root_layout():
     )
 
 
-def test_mid_word_guard_measures_the_widest_word():
-    assert "__widestWord" in _DISPATCHER
+def test_mid_word_guard_measures_the_widest_unbreakable_run():
+    """Measurement is per-RUN, not per-word.
+
+    A run has no break opportunity in it and may span element boundaries —
+    `V&nbsp;<span>TRIGEMINAL</span>` is one 520px run in a 513px column even
+    though neither part exceeds it alone. The per-element own-text version of
+    this guard passed that case and the browser broke inside the word, which
+    is the "words getting break" defect reported on two client videos.
+    """
+    assert "__widestRun" in _DISPATCHER
     sweep = _DISPATCHER[_DISPATCHER.index("var __fitWordsSweep"):]
+    assert "__widestRun(el)" in sweep[:3000], "sweep must use the run measurement"
     assert "measureText" in _DISPATCHER, "width comes from canvas text metrics"
-    assert "0.55" in sweep[:3000], "shrink floor required"
+    assert "0.55" in sweep[:6000], "shrink floor required"
+
+
+def test_nbsp_is_not_treated_as_a_break_opportunity():
+    """JS \s INCLUDES \u00a0, and the preamble MANDATES `&nbsp;` before every
+    accent span. Splitting on \s therefore treated the one position the browser
+    cannot break at as a break opportunity."""
+    # Scoped to the text measurement code: the CSS inset() parser elsewhere
+    # splits on /\s+/ legitimately and has nothing to do with line breaking.
+    measure = _DISPATCHER[
+        _DISPATCHER.index("var __widestWord") : _DISPATCHER.index("var __fitWordsSweep")
+    ]
+    assert "/\\s+/" not in measure, "nbsp-blind split must not come back"
+    assert measure.count("[^\\S\\u00a0]+") >= 2
+
+
+def test_only_paragraph_level_blocks_are_measured():
+    """A wrapper must not shrink type that already fits inside a narrower child."""
+    assert "__isTextBlock" in _DISPATCHER
+    sweep = _DISPATCHER[_DISPATCHER.index("var __fitWordsSweep"):]
+    assert "__isTextBlock(el)" in sweep[:1500]

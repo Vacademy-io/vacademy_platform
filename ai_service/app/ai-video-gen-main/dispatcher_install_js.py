@@ -1206,7 +1206,13 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 __wordCtx.font = font;
                                 var extra = parseFloat(spacing);
                                 if (!isFinite(extra)) extra = 0;
-                                var words = String(text || '').split(/\s+/);
+                                // JS \s INCLUDES \u00a0. The preamble mandates a
+                                // non-breaking space before every
+                                // accent span, so splitting on \s treated the one
+                                // position the browser CANNOT break at as a break
+                                // opportunity — and every nbsp-joined pair measured
+                                // as fitting when it did not.
+                                var words = String(text || '').split(/[^\S\u00a0]+/);
                                 var max = 0;
                                 for (var i = 0; i < words.length; i++) {
                                     if (!words[i]) continue;
@@ -1216,6 +1222,76 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 }
                                 return max;
                             };
+                            // Widest UNBREAKABLE RUN inside a text block.
+                            //
+                            // A run is text with no break opportunity in it, and it
+                            // can span element boundaries: V + nbsp + <span>TRIGEMINAL
+                            // </span> is ONE run of 520px even though neither part
+                            // exceeds the 513px column. Measuring per-element own-text
+                            // could never see that, so the guard passed and the browser
+                            // did the only thing left to it — broke inside the word.
+                            //
+                            // Each text node is measured in ITS OWN font: the display
+                            // "V" at 115px and the label at 60px contribute different
+                            // widths to the same run.
+                            var __widestRun = function (el) {
+                                if (!__wordCtx) {
+                                    __wordCtx = document.createElement('canvas').getContext('2d');
+                                }
+                                var max = 0, cur = 0;
+                                var flush = function () { if (cur > max) max = cur; cur = 0; };
+                                var walk = function (node) {
+                                    if (node.nodeType === 3) {
+                                        var host = node.parentElement;
+                                        if (!host) return;
+                                        var cs = getComputedStyle(host);
+                                        __wordCtx.font = cs.fontStyle + ' ' + cs.fontWeight +
+                                            ' ' + cs.fontSize + ' ' + cs.fontFamily;
+                                        var extra = parseFloat(cs.letterSpacing);
+                                        if (!isFinite(extra)) extra = 0;
+                                        var parts = String(node.nodeValue || '')
+                                            .split(/[^\S\u00a0]+/);
+                                        for (var i = 0; i < parts.length; i++) {
+                                            if (i > 0) flush();
+                                            if (!parts[i]) continue;
+                                            var shown = __applyTransform(parts[i], cs.textTransform);
+                                            cur += __wordCtx.measureText(shown).width +
+                                                   extra * shown.length;
+                                        }
+                                        return;
+                                    }
+                                    if (node.nodeType !== 1) return;
+                                    var d = getComputedStyle(node).display;
+                                    var inline = d.indexOf('inline') === 0;
+                                    if (!inline) flush();
+                                    for (var c = 0; c < node.childNodes.length; c++) {
+                                        walk(node.childNodes[c]);
+                                    }
+                                    if (!inline) flush();
+                                };
+                                walk(el);
+                                flush();
+                                return max;
+                            };
+
+                            // Is this the paragraph-level unit — a block that holds text
+                            // and has no block descendant that also holds text? Only
+                            // those get measured, so a wrapper never shrinks type that
+                            // already fits inside its own narrower child.
+                            var __isTextBlock = function (el) {
+                                var d = getComputedStyle(el).display;
+                                if (d.indexOf('inline') === 0 || d === 'none') return false;
+                                if (!(el.textContent || '').trim()) return false;
+                                var kids = el.querySelectorAll('*');
+                                for (var i = 0; i < kids.length; i++) {
+                                    var k = kids[i];
+                                    if (!(k.textContent || '').trim()) continue;
+                                    var kd = getComputedStyle(k).display;
+                                    if (kd !== 'none' && kd.indexOf('inline') !== 0) return false;
+                                }
+                                return true;
+                            };
+
                             var __fitWordsSweep = function () {
                                 try {
                                     var root = scope.querySelector('#shot-root');
@@ -1223,14 +1299,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                     var nodes = root.querySelectorAll('*');
                                     for (var i = 0; i < nodes.length; i++) {
                                         var el = nodes[i];
-                                        // Own text only — measuring a container
-                                        // would shrink type that already fits.
-                                        var text = '';
-                                        for (var c = 0; c < el.childNodes.length; c++) {
-                                            var n = el.childNodes[c];
-                                            if (n.nodeType === 3) text += ' ' + n.nodeValue;
-                                        }
-                                        if (!text.trim()) continue;
+                                        if (!__isTextBlock(el)) continue;
                                         var cs = getComputedStyle(el);
                                         var fsPx = parseFloat(cs.fontSize);
                                         if (!fsPx || fsPx < 28) continue;
@@ -1238,11 +1307,29 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                         var avail = el.clientWidth -
                                             (parseFloat(cs.paddingLeft) || 0) -
                                             (parseFloat(cs.paddingRight) || 0);
+                                        // INLINE elements report clientWidth 0 —
+                                        // always, by spec. So every accent word
+                                        // the preamble tells the model to wrap in
+                                        // a span ('STARTS&nbsp;<span>HERE</span>')
+                                        // was skipped here and never measured,
+                                        // which is why mid-word breaks survived
+                                        // this guard. Measure an inline against
+                                        // the nearest ancestor that has a real
+                                        // content box.
+                                        if (avail <= 20 &&
+                                            cs.display.indexOf('inline') === 0) {
+                                            var host = el.parentElement;
+                                            while (host && host !== root) {
+                                                var hcs = getComputedStyle(host);
+                                                var hw = host.clientWidth -
+                                                    (parseFloat(hcs.paddingLeft) || 0) -
+                                                    (parseFloat(hcs.paddingRight) || 0);
+                                                if (hw > 20) { avail = hw; break; }
+                                                host = host.parentElement;
+                                            }
+                                        }
                                         if (avail <= 20) continue;
-                                        var font = cs.fontStyle + ' ' + cs.fontWeight + ' ' +
-                                                   cs.fontSize + ' ' + cs.fontFamily;
-                                        var longest = __widestWord(
-                                            text, font, cs.textTransform, cs.letterSpacing);
+                                        var longest = __widestRun(el);
                                         // Leave real headroom: matching the width exactly
                                         // still wrapped, because layout rounding and the
                                         // trailing letter-space push it over.
@@ -1251,8 +1338,9 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                         el.style.fontSize = (fsPx * scale) + 'px';
                                         try {
                                             console.log('[FIT-WORD shot=${e.id}] "' +
-                                                text.trim().slice(0, 22) + '" ' + Math.round(fsPx) +
-                                                'px -> ' + Math.round(fsPx * scale) + 'px');
+                                                (el.textContent || '').trim().slice(0, 22) + '" ' +
+                                                Math.round(fsPx) + 'px -> ' +
+                                                Math.round(fsPx * scale) + 'px');
                                         } catch (_wl) {}
                                     }
                                 } catch (_werr) { /* never break the shot */ }

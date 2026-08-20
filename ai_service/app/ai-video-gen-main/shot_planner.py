@@ -29,6 +29,12 @@ import json
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from composition_kit import (
+    assign_compositions,
+    normalize as normalize_composition,
+    planner_menu_block,
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums and constants
@@ -380,6 +386,8 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "value is conservative; choose explicitly when a specific treatment serves the shot.\n"
     "NEVER let a per-shot LLM invent its own background hex — every non-media-hero shot honors "
     "`var(--brand-bg)` through this field.\n\n"
+
+    + planner_menu_block() +
 
     "**OPTIONAL — `semantic_accents` (per-shot contrast color)**:\n"
     "When a shot's narration introduces a binary or ternary contrast that color would reinforce "
@@ -959,6 +967,12 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
     if bg not in BACKGROUND_TREATMENTS:
         bg = SHOT_TYPE_BG_TREATMENT_DEFAULT.get(shot_type, "brand_solid")
 
+    # Frame composition — where things sit in the frame. Same contract shape as
+    # background_treatment: planner may declare it, unknown/absent falls back to
+    # a per-shot-type default. Cross-shot variety is enforced later, over the
+    # whole list, by assign_compositions().
+    composition = normalize_composition(raw.get("composition"), shot_type)
+
     audio_policy = str(raw.get("audio_policy") or "").strip().lower()
     if audio_policy not in AUDIO_POLICIES:
         # Defensive: intrinsic-audio-capable types get intrinsic_only IF the
@@ -998,6 +1012,7 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "duration_estimate_s": round(duration, 2),
         # Visual presentation
         "background_treatment": bg,
+        "composition": composition,
         "transition_in": transition_in,
         "overlay": bool(raw.get("overlay", False)),
     }
@@ -1355,6 +1370,12 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(rs, dict):
             continue
         normalized.append(_normalize_shot(rs, i))
+
+    # Structural variety pass. The preamble has asked for "a distinct
+    # composition every shot" in prose for months and still produced
+    # centre-stacked frames throughout, so the no-repeat and centred-quota
+    # rules are applied here over the whole list instead of hoped for.
+    assign_compositions(normalized)
 
     _derive_shot_timings(normalized)
 

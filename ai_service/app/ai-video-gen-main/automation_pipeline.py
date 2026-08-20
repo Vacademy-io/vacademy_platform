@@ -19376,6 +19376,11 @@ class VideoGenerationPipeline:
                 aspirational=_aspirational_prompt,
                 cultural_context=getattr(self, "_cultural_context", None),
                 mode=self._resolve_visual_style_mode(),
+                # Frame composition assigned by the ShotPlanner (and variety-
+                # enforced by composition_kit). Without this the shot inherits
+                # the card exemplar's centre-stacked frame — the root cause of
+                # "every shot looks the same" in the 2026-08-20 craft review.
+                composition=str((shot or {}).get("composition") or ""),
             )
             # Pillar 2.4 — append the "don't re-emit shared preamble" rule
             # when the tier knob is on. Token cost: ~600 chars in the system
@@ -23410,6 +23415,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # produce the designed value.
         _tok_css = self._design_token_css_block()
 
+        # Frame-composition grid, kept in composition_kit.py rather than inline
+        # here. Interpolating it as a value means its braces are inert — CSS
+        # written directly into this f-string needs every brace doubled, and
+        # missing one fails at generation time with a bare NameError (the
+        # staging-kit block cost a debug cycle to that on 2026-08-20).
+        try:
+            from composition_kit import COMPOSITION_CSS as _COMPOSITION_CSS_BLOCK
+        except Exception:
+            _COMPOSITION_CSS_BLOCK = ""
+
         global_css = f"""<!--vx-preamble--><style>
             @import url('{_fonts_url}');
             {_identity_import}
@@ -23944,6 +23959,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                stroke-dashoffset animation. Strength tuned so small drawings
                stay readable. See the inline <svg> defs block prepended at the
                top of every generated HTML. */
+
+{_COMPOSITION_CSS_BLOCK}
 
             /* --- DOCUMENTARY STAGING KIT -------------------------------
                Reference documentaries do not put text on a background; they

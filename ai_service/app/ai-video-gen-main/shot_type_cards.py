@@ -2384,6 +2384,7 @@ def build_per_shot_system_prompt(
     aspirational: bool = False,
     cultural_context: Any = None,
     mode: str = "educational",
+    composition: str = "",
 ) -> str:
     """Build a system prompt with only ONE shot type card.
 
@@ -2402,6 +2403,13 @@ def build_per_shot_system_prompt(
     exemplars swapped into the shot card — instead of the old approach of
     stacking a prose override on top of the whiteboard doctrine (which the
     whiteboard example code always beat). See MARKETING_PREAMBLE above.
+
+    `composition` (optional) — the frame composition assigned to THIS shot by
+    the ShotPlanner / `composition_kit.assign_compositions`. When supplied, a
+    COMPOSITION CONTRACT block is injected carrying the concrete skeleton for
+    that frame. This exists because the card exemplars are all centre-stacked
+    and the model copies the example over the prose: the contract has to speak
+    in code to outrank them. See composition_kit for the full rationale.
 
     `cultural_context` (optional `CulturalContext` instance) — when present
     AND has a region, the prompt gets a `<CULTURAL_CONTEXT>` block teaching
@@ -2467,6 +2475,13 @@ def build_per_shot_system_prompt(
     cultural_block = build_cultural_context_block(cultural_context)
     if cultural_block:
         parts.append(cultural_block)
+
+    # COMPOSITION CONTRACT — late in the prompt, deliberately: it must be read
+    # AFTER the shot card's (centre-stacked) exemplar, and recency matters.
+    if composition:
+        from composition_kit import contract_block as _composition_contract
+
+        parts.append(_composition_contract(composition, shot_type))
 
     # OUTPUT FORMAT — strict JSON envelope. Three JSON parse failures on shots
     # 2/3/4 of the same run were caused by the per-shot prompt never asserting

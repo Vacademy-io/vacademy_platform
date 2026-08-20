@@ -234,6 +234,9 @@ function mergeWithDefaults(
           incoming?.courseDetails?.slidesView?.sidebarNavigation ??
           d.courseDetails.slidesView.sidebarNavigation,
       },
+      enrolledLayout:
+        incoming?.courseDetails?.enrolledLayout ??
+        d.courseDetails.enrolledLayout,
     },
     allCourses: {
       tabs: mergeArrayById(incoming?.allCourses?.tabs, d.allCourses.tabs).map(

@@ -145,6 +145,7 @@ export const CourseStructureDetails = ({
   packageSessionId,
   selectedTab,
   isEnrolledInCourse,
+  contentOnly,
   onLoadingChange,
   updateModuleStats,
   paymentType,
@@ -158,6 +159,10 @@ export const CourseStructureDetails = ({
   packageSessionId: string;
   selectedTab: string;
   isEnrolledInCourse?: boolean;
+  /** "contentOnly" course-details layout: this card is the whole page, so the
+   *  tab strip collapses to Content Structure regardless of what the tab
+   *  settings say. See EnrolledCourseLayout in student-display-settings. */
+  contentOnly?: boolean;
   onLoadingChange?: (loading: boolean) => void;
   updateModuleStats?: (
     modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
@@ -442,6 +447,21 @@ export const CourseStructureDetails = ({
   }, []);
 
   const renderTabs = useMemo(() => {
+    // Content-only layout: one tab, so the strip hides itself (the render
+    // below only draws it for 2+). Keep the settings label if the institute
+    // renamed the tab, since the terminology carries over to the card header.
+    if (contentOnly) {
+      const configured = filteredTabs.find(
+        (t) => t.value === TabType.CONTENT_STRUCTURE,
+      );
+      return [
+        {
+          label: configured?.label || "Content Structure",
+          value: TabType.CONTENT_STRUCTURE as string,
+        },
+      ];
+    }
+
     const priorityOrder = [
       TabType.OUTLINE,
       TabType.CONTENT_STRUCTURE,
@@ -457,7 +477,26 @@ export const CourseStructureDetails = ({
     const finalArr = [...prioritized, ...rest];
 
     return finalArr;
-  }, [filteredTabs]);
+  }, [filteredTabs, contentOnly]);
+
+  // With one tab and no strip to change it from, the settings-driven default
+  // (usually OUTLINE) would leave the card rendering the wrong view forever.
+  const activeStructureTab = contentOnly
+    ? (TabType.CONTENT_STRUCTURE as string)
+    : selectedStructureTab;
+
+  // Card grid for the Content Structure drill-down. The default layout squeezes
+  // this card into two thirds of the page, so it packs two cards per row even on
+  // a phone. In the content-only layout the grid IS the page — full width and
+  // the learner's only way into the course — so the cards get room to breathe:
+  // one per row on phones, and no drop back to two columns at lg.
+  const contentGridClass = cn(
+    "grid gap-4",
+    contentOnly
+      ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+      : "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+  );
+
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>(
     {},
   );
@@ -2703,7 +2742,7 @@ export const CourseStructureDetails = ({
             skeleton; every drill-down grid below is gated on !isModulesLoading,
             so without this the section renders empty during the fetch. */}
         {isModulesLoading && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          <div className={contentGridClass}>
             {Array.from({ length: 6 }).map((_, i) => (
               <Card
                 key={i}
@@ -2727,7 +2766,7 @@ export const CourseStructureDetails = ({
             as a card — not even for the frame before the preselect effect
             runs. */}
         {!isModulesLoading && showsSubjectLevel && !selectedSubjectId && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          <div className={contentGridClass}>
             {studyLibraryData?.map((subject, idx) => (
               <Card
                 key={subject.id}
@@ -2805,7 +2844,7 @@ export const CourseStructureDetails = ({
 
         {/* Modules */}
         {!isModulesLoading && showsModuleLevel && selectedSubjectId && !selectedModuleId && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          <div className={contentGridClass}>
             {(subjectModulesMap[selectedSubjectId] || []).map((m, idx) => (
               <Card
                 key={m.module.id}
@@ -2885,7 +2924,7 @@ export const CourseStructureDetails = ({
           selectedSubjectId &&
           selectedModuleId &&
           !selectedChapterId && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            <div className={contentGridClass}>
               {(subjectModulesMap[selectedSubjectId] || [])
                 .filter((m) => m.module.id === selectedModuleId)
                 .flatMap((m) => m.chapters)
@@ -3642,7 +3681,7 @@ export const CourseStructureDetails = ({
       <PullToRefreshWrapper onRefresh={refreshData}>
         <div className="flex size-full flex-col gap-3 rounded-lg bg-card pt-0 pb-3 text-neutral-700">
           <Tabs
-            value={selectedStructureTab}
+            value={activeStructureTab}
             onValueChange={handleTabChange}
             className="w-full"
           >
@@ -3670,13 +3709,13 @@ export const CourseStructureDetails = ({
               </TabsList>
             )}
             <TabsContent
-              key={selectedStructureTab}
-              value={selectedStructureTab}
+              key={activeStructureTab}
+              value={activeStructureTab}
               className={`${
                 renderTabs.length > 1 ? "mt-3" : ""
               } rounded-lg bg-white border border-neutral-200/60 p-3 md:p-4`}
             >
-              {tabContent[selectedStructureTab as TabType]}
+              {tabContent[activeStructureTab as TabType]}
             </TabsContent>
           </Tabs>
         </div>

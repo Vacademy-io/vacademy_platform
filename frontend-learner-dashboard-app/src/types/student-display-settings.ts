@@ -126,7 +126,26 @@ export type OutlineMode = "expanded" | "collapsed";
  *   tree; the breadcrumb is a passive label (no popovers) since the tree
  *   already exposes every jump.
  */
-export type SlidesSidebarNavigation = "breadcrumb" | "ancestors";
+export type SlidesSidebarNavigation = "breadcrumb" | "ancestors" | "hidden";
+
+/**
+ * Layout of the course-details page once the learner is ENROLLED in the course.
+ *
+ * - "full" (default): today's page — banner, description/tags, course
+ *   highlights, the enrollment/configuration block and the right-hand overview
+ *   card, with every visible tab.
+ * - "contentOnly": a focused page for institutes that treat course-details as
+ *   a table of contents rather than a sales page. Everything marketing-shaped
+ *   is dropped (description, tags, media, highlights, author, right-hand card)
+ *   and the page renders the Content Structure card alone, which drills
+ *   Subject → Module → Chapter → Slides as cards.
+ *
+ * Scope: the learner's own course page under /study-library — the surface they
+ * land on after enrolling. The shopper-facing pages (/courses/course-details
+ * and the public catalogue) are separate components and are never affected, so
+ * a buyer still gets the description, price and author they need to decide.
+ */
+export type EnrolledCourseLayout = "full" | "contentOnly";
 
 export interface StudentCourseDetailsSettings {
   tabs: StudentCourseDetailsTabConfig[];
@@ -151,6 +170,9 @@ export interface StudentCourseDetailsSettings {
      *  so existing learners aren't dropped into a different layout. */
     sidebarNavigation?: SlidesSidebarNavigation;
   };
+  /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
+   *  means "full" so saved settings keep rendering today's page. */
+  enrolledLayout?: EnrolledCourseLayout;
 }
 
 // All Courses page

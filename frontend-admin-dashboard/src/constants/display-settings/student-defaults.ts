@@ -144,6 +144,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
             // Subject → Module → Chapter → Slide tree in the sidebar.
             sidebarNavigation: 'breadcrumb',
         },
+        // "full" = today's course-details page. Institutes that want the
+        // table-of-contents page (Content Structure card only, no right-hand
+        // overview card / description / tags) switch this to "contentOnly".
+        enrolledLayout: 'full',
     },
     courseSettings: {
         quiz: {

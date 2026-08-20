@@ -5,6 +5,7 @@ import { FormInputProps } from './utils/types/input-types';
 import { InputErrorProps } from './utils/types/input-types';
 import { Label } from '../ui/label';
 import { EyeSlash, WarningCircle, Eye } from '@phosphor-icons/react';
+import { isAutofillSuppressed, passwordManagerIgnoreAttrs } from '@/lib/no-autofill';
 
 const inputSizeVariants = {
     large: 'w-full sm:w-60 h-10 py-2 px-3 text-subtitle',
@@ -37,11 +38,21 @@ export const MyInput = React.forwardRef<HTMLInputElement, FormInputProps>(
             disabled,
             label,
             labelStyle,
+            autoComplete,
             ...props
         },
         ref
     ) => {
         const [showPassword, setShowPassword] = useState(false);
+
+        // Default to "never autofill this". Nearly every MyInput in the admin app
+        // is a data-entry field (learner credentials, provider API keys, config)
+        // where the browser dropping the admin's own saved login is wrong — and
+        // for password fields Chrome only honours `new-password`, not `off`.
+        // Screens that genuinely want autofill (the login form) pass an explicit
+        // token, which wins here and also drops the password-manager opt-outs.
+        const resolvedAutoComplete =
+            autoComplete ?? (inputType === 'password' ? 'new-password' : 'off');
 
         const togglePasswordVisibility = () => {
             setShowPassword((prev) => !prev);
@@ -78,6 +89,10 @@ export const MyInput = React.forwardRef<HTMLInputElement, FormInputProps>(
                             value={input}
                             onChange={onChangeFunction}
                             required={required}
+                            autoComplete={resolvedAutoComplete}
+                            {...(isAutofillSuppressed(resolvedAutoComplete)
+                                ? passwordManagerIgnoreAttrs
+                                : {})}
                             {...props}
                         />
                         {inputType === 'password' && (

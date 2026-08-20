@@ -121,6 +121,7 @@ interface ActivityLogResponse {
 import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
 import { StudentAiSettingsSection } from './StudentAiSettingsSection';
+import { noAutofillProps } from '@/lib/no-autofill';
 
 const AI_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
     {
@@ -615,6 +616,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 <Input
                                     id="openaiKey"
                                     type="password"
+                                    {...noAutofillProps('password')}
                                     value={openaiKey}
                                     onChange={(e) => setOpenaiKey(e.target.value)}
                                     placeholder="sk-..."
@@ -662,6 +664,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 <Input
                                     id="geminiKey"
                                     type="password"
+                                    {...noAutofillProps('password')}
                                     value={geminiKey}
                                     onChange={(e) => setGeminiKey(e.target.value)}
                                     placeholder="AIza..."

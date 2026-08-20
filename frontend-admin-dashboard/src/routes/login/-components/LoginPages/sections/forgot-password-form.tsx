@@ -102,6 +102,8 @@ export function ForgotPassword() {
                                                     required={true}
                                                     size="large"
                                                     label="Email"
+                                                    // Account identifier — keep browser fill.
+                                                    autoComplete="email"
                                                     {...field}
                                                 />
                                             </FormControl>

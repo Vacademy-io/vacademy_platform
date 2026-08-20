@@ -17,6 +17,7 @@ import {
     type CredentialField,
 } from '@/services/whatsapp-provider-service';
 import { WebhookSetup } from './WebhookSetup';
+import { noAutofillProps } from '@/lib/no-autofill';
 
 type Props = { isTab?: boolean };
 
@@ -351,6 +352,7 @@ export default function WhatsAppSettings({ isTab = false }: Props) {
                                                     <Input
                                                         id={`${providerName}-${field.key}`}
                                                         type="text"
+                                                        {...noAutofillProps('text')}
                                                         placeholder={field.placeholder}
                                                         value={
                                                             credentials[field.key] || ''

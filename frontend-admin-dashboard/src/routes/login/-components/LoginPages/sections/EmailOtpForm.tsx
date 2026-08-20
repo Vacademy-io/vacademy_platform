@@ -297,6 +297,9 @@ export function EmailLogin({
                                                         required={true}
                                                         size="large"
                                                         label="Email Address"
+                                                        // Real login identifier
+                                                        // — keep browser fill.
+                                                        autoComplete="email"
                                                         {...field}
                                                         className="w-[348px]"
                                                     />

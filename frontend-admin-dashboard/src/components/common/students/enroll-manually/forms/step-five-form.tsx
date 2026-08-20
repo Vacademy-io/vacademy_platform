@@ -17,6 +17,7 @@ import { StudentTable, StudentCredentialsType } from '@/types/student-table-type
 import { useReEnrollStudent } from '@/hooks/student-list-section/enroll-student-manually/useReEnrollStudent';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 export const StepFiveForm = ({
     initialValues,
     handleNextButtonDisable,
@@ -169,6 +170,10 @@ export const StepFiveForm = ({
                         onSubmit={form.handleSubmit(onSubmit)}
                         className="flex flex-col gap-8"
                     >
+                        {/* These are the LEARNER's generated credentials, not a login —
+                            the decoy absorbs any autofill Chrome forces past the
+                            autocomplete hints MyInput sets. */}
+                        <AutofillDecoy />
                         <FormItemWrapper<StepFiveData> control={form.control} name="username">
                             <FormStepHeading stepNumber={5} heading="Generate Login Credentials" />
                         </FormItemWrapper>

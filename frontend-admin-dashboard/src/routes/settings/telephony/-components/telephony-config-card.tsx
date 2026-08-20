@@ -5,6 +5,8 @@ import { Phone, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { noAutofillProps, useAutofillGuard } from '@/lib/no-autofill';
+import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 import {
     Select,
     SelectContent,
@@ -160,15 +162,7 @@ export function TelephonyConfigCard() {
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-5">
             {/* Decoy fields absorb browser autofill so the real credential inputs stay empty. */}
-            <div aria-hidden className="pointer-events-none size-0 overflow-hidden opacity-0">
-                <input type="text" tabIndex={-1} autoComplete="username" name="fake-username" />
-                <input
-                    type="password"
-                    tabIndex={-1}
-                    autoComplete="current-password"
-                    name="fake-password"
-                />
-            </div>
+            <AutofillDecoy />
 
             <div className="mb-4 flex items-start justify-between">
                 <div className="flex items-center gap-2">
@@ -330,7 +324,7 @@ function SecretField({
     helper?: string;
 }) {
     // Block browser autofill: fresh random name per render + readOnly-until-focus.
-    const [readOnly, setReadOnly] = useState(true);
+    const autofillGuard = useAutofillGuard();
     const [fieldName] = useState(() => `tel-${Math.random().toString(36).slice(2)}-tok`);
     return (
         <div className="space-y-1.5">
@@ -352,15 +346,9 @@ function SecretField({
                 id={fieldName}
                 value={value}
                 onChange={(e) => set(e.target.value)}
-                onFocus={() => setReadOnly(false)}
-                onBlur={() => setReadOnly(true)}
-                readOnly={readOnly}
                 placeholder={isSet ? 'Leave blank to keep the saved one' : 'Paste your key here'}
-                autoComplete="new-password"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                data-form-type="other"
-                spellCheck={false}
+                {...noAutofillProps('password')}
+                {...autofillGuard}
             />
             {helper && <p className="text-xs text-neutral-500">{helper}</p>}
         </div>

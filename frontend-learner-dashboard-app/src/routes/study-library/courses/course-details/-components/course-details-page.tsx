@@ -397,6 +397,7 @@ export const CourseDetailsPage = () => {
     hideAuthorName,
     showInstructors,
     enrolledLayout,
+    chapterOpensFirstSlide: chapterOpensFirstSlideSetting,
   } = useCourseDisplaySettings();
 
   const {
@@ -438,6 +439,12 @@ export const CourseDetailsPage = () => {
   // toggle and see no change. Knowing the layout without waiting on that fetch
   // also lets the loading skeleton below match the layout it's loading into.
   const contentOnly = enrolledLayout === "contentOnly";
+
+  // Opening a chapter straight into the viewer is its own preference, not a
+  // fact about the layout — a full-page institute may still want the shortcut,
+  // and a content-only one may still want the slide list. Unset follows the
+  // layout so today's behaviour is unchanged either way.
+  const chapterOpensFirstSlide = chapterOpensFirstSlideSetting ?? contentOnly;
 
   const hasRightSidebar = !contentOnly;
 
@@ -593,6 +600,7 @@ export const CourseDetailsPage = () => {
                       updateModuleStats={updateModuleStats}
                       isEnrolledInCourse={isEnrolledInCourse}
                       contentOnly={contentOnly}
+                      chapterOpensFirstSlide={chapterOpensFirstSlide}
                       onLoadingChange={handleModulesLoadingChange}
                       courseInitSubjects={courseInitSubjectsFromCourseInit}
                       {...(paymentType && { paymentType })}

@@ -303,6 +303,11 @@ export const MENTORSHIP_MY_REQUEST_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/mentorship/v1/my-requests/${id}`;
 export const MENTORSHIP_MY_PENDING_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-pending-feedback`;
 export const MENTORSHIP_MY_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-feedback`;
+// The learner's own 1:1 sessions — list, cancel, reschedule. Distinct from
+// /my-sessions/*, which is the MENTOR's side of the same feature.
+export const MENTORSHIP_MY_MENTOR_SESSIONS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentor-sessions`;
+export const MENTORSHIP_MY_MENTOR_SESSION_CANCEL = `${MENTORSHIP_MY_MENTOR_SESSIONS}/cancel`;
+export const MENTORSHIP_MY_MENTOR_SESSION_RESCHEDULE = `${MENTORSHIP_MY_MENTOR_SESSIONS}/reschedule`;
 // A learner's own bookings (by invitee user id) — membership-scoped, self only.
 export const MEETINGS_BY_LEAD = `${BASE_URL}/admin-core-service/v1/meetings/by-lead`;
 

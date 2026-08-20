@@ -57,6 +57,7 @@ import { toast } from "sonner";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { PencilSimple } from "@phosphor-icons/react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { FeedbackTrigger } from "@/types/student-display-settings";
 import { Preferences } from "@capacitor/preferences";
 import { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import { getPublicUrl } from "@/services/upload_file";
@@ -407,6 +408,16 @@ function Slides() {
   const [manualCompletionSetting, setManualCompletionSetting] = useState<
     boolean | undefined
   >(undefined);
+  // Both tri-state, both resolved against the sidebar mode further down.
+  const [chapterCompleteCtaSetting, setChapterCompleteCtaSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  const [feedbackInSlideNavSetting, setFeedbackInSlideNavSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  // When the feedback slide is offered. "CHAPTER" is today's cadence.
+  const [feedbackTrigger, setFeedbackTrigger] =
+    useState<FeedbackTrigger>("CHAPTER");
   // Loads the studyContent catalog for the chapter hand-off strings and
   // re-renders this route once it arrives.
   const { t } = useTranslation("studyContent");
@@ -420,6 +431,87 @@ function Slides() {
   // "hidden": no viewer sidebar at all — the learner moves through the course
   // with the Prev/Next controls in the slide header alone.
   const hideSlidesSidebar = sidebarNavigation === "hidden";
+
+  // Whether the "Give Feedback" slide sits in the Prev/Next sequence. Unset
+  // follows the sidebar mode: the sidebar-less viewer leaves it out so Next
+  // rolls into the next chapter rather than a form the learner has no context
+  // for, every other mode keeps today's behaviour.
+  const feedbackInSlideNav = feedbackInSlideNavSetting ?? !hideSlidesSidebar;
+
+  /**
+   * Has the learner just crossed the boundary the institute wants feedback at?
+   *
+   * Every scope requires the current chapter to be finished; the wider ones
+   * additionally require everything else in that scope to be done, so the ask
+   * lands once per module / subject / course instead of once per chapter.
+   *
+   * The current chapter is treated as complete rather than read from the store:
+   * modulesWithChaptersData is fetched separately and lags the completion we
+   * have just computed from this chapter's own slides.
+   */
+  const feedbackBoundaryReached = useCallback(
+    (chapterCompletion: number): boolean => {
+      if (!feedbackVisible || feedbackTrigger === "NEVER") return false;
+      // Never auto-open a form the learner cannot leave. With no sidebar AND
+      // the feedback slide kept out of Prev/Next there is no control on screen
+      // that moves off it — the buttons resolve against a list it isn't in.
+      if (hideSlidesSidebar && !feedbackInSlideNav) return false;
+      if (chapterCompletion !== 100) return false;
+      if (feedbackTrigger === "CHAPTER") return true;
+
+      const threshold = getSlideCompletionThreshold();
+      const chapterDone = (c: { id: string; percentage_completed?: number }) =>
+        c.id === chapterId || (c.percentage_completed || 0) >= threshold;
+      const moduleDone = (m: ModulesWithChapters) =>
+        (m.chapters?.length ?? 0) > 0 && (m.chapters ?? []).every(chapterDone);
+
+      const modules = modulesWithChaptersData ?? [];
+      if (feedbackTrigger === "MODULE") {
+        const current = modules.find((m) => m.module.id === moduleId);
+        return !!current && moduleDone(current);
+      }
+
+      // modulesWithChaptersData is scoped to the subject in the URL, so "every
+      // module done" is exactly "this subject done".
+      const subjectDone = modules.length > 0 && modules.every(moduleDone);
+      if (feedbackTrigger === "SUBJECT") return subjectDone;
+
+      // COURSE: this subject finished and every other subject already was.
+      return (
+        subjectDone &&
+        (studyLibraryData ?? []).every(
+          (sub) =>
+            sub.id === subjectId || (sub.percentage_completed || 0) >= threshold
+        )
+      );
+    },
+    [
+      feedbackVisible,
+      feedbackTrigger,
+      hideSlidesSidebar,
+      feedbackInSlideNav,
+      modulesWithChaptersData,
+      studyLibraryData,
+      chapterId,
+      moduleId,
+      subjectId,
+    ]
+  );
+
+  /** One key per scope, so "ask once" means once per module / subject / course
+   *  rather than once per chapter when a wider scope is configured. */
+  const feedbackSeenKey = useCallback((): string => {
+    switch (feedbackTrigger) {
+      case "MODULE":
+        return `feedback_seen_${courseId}_module_${moduleId}`;
+      case "SUBJECT":
+        return `feedback_seen_${courseId}_subject_${subjectId}`;
+      case "COURSE":
+        return `feedback_seen_${courseId}_course`;
+      default:
+        return `feedback_seen_${courseId}_${chapterId}`;
+    }
+  }, [feedbackTrigger, courseId, moduleId, subjectId, chapterId]);
 
   useEffect(() => {
     if (slides?.length) {
@@ -555,7 +647,7 @@ function Slides() {
       // Annotated: as a ternary this no longer infers from the feedbackSlide
       // literal the way the old spread did, and the widened element type left
       // every downstream .some()/.find() callback param implicitly any.
-      const slidesWithFeedback: Slide[] = feedbackVisible
+      const slidesWithFeedback: Slide[] = feedbackVisible && feedbackInSlideNav
         ? [...accessibleSlides, feedbackSlide]
         : accessibleSlides;
       setItems(slidesWithFeedback);
@@ -577,13 +669,13 @@ function Slides() {
       // intentionally fall through to the preserve-current-slide guard below
       // instead of being reset to the first slide on every refetch. The
       // !slideId gate keeps explicit deep links / sidebar navigation in control.
-      if (completion === 100 && !slideId && feedbackVisible) {
-        const feedbackSeenKey = `feedback_seen_${courseId}_${chapterId}`;
-        const hasSeenFeedback = localStorage.getItem(feedbackSeenKey);
+      if (!slideId && feedbackBoundaryReached(completion)) {
+        const seenKey = feedbackSeenKey();
+        const hasSeenFeedback = localStorage.getItem(seenKey);
 
         if (!hasSeenFeedback) {
-          // First time completion - show feedback page
-          localStorage.setItem(feedbackSeenKey, "true");
+          // First time this scope completes — offer feedback once.
+          localStorage.setItem(seenKey, "true");
           setActiveItem(feedbackSlide);
           return;
         }
@@ -601,9 +693,13 @@ function Slides() {
       if (!slideIdChanged) {
         const currentItem = useContentStore.getState().activeItem;
         if (currentItem) {
-          const stillPresent = slidesWithFeedback.some(
-            (s) => s.id === currentItem.id
-          );
+          // The feedback slide is synthetic and may deliberately be absent from
+          // the list (feedbackInSlideNav off) while still being the open item,
+          // so it counts as present or the next refetch would kick the learner
+          // off the form mid-answer.
+          const stillPresent =
+            currentItem.id === "feedback-slide" ||
+            slidesWithFeedback.some((s) => s.id === currentItem.id);
           const currentLocked =
             !!evaluations[currentItem.id] &&
             isItemLocked(evaluations[currentItem.id]);
@@ -648,6 +744,9 @@ function Slides() {
     isDrippingEnable,
     modulesWithChaptersData,
     feedbackVisible,
+    feedbackInSlideNav,
+    feedbackBoundaryReached,
+    feedbackSeenKey,
   ]);
 
   const [moduleName, setModuleName] = useState("");
@@ -1049,6 +1148,15 @@ function Slides() {
       setManualCompletionSetting(
         s?.courseDetails?.slidesView?.manualCompletion
       );
+      setChapterCompleteCtaSetting(
+        s?.courseDetails?.slidesView?.chapterCompleteCta
+      );
+      setFeedbackInSlideNavSetting(
+        s?.courseDetails?.slidesView?.feedbackInSlideNav
+      );
+      setFeedbackTrigger(
+        s?.courseDetails?.slidesView?.feedbackTrigger ?? "CHAPTER"
+      );
       setSidebarNavigation(
         readDebugSidebarNav() ??
           s?.courseDetails?.slidesView?.sidebarNavigation ??
@@ -1106,6 +1214,11 @@ function Slides() {
   // already show both, and adding a button there would change the default
   // viewer for every institute. An explicit setting overrides either way.
   const manualCompletion = manualCompletionSetting ?? hideSlidesSidebar;
+
+  // Chapter hand-off bar. Unset follows the sidebar mode: the sidebar-less
+  // viewer shows it (it is the one that dead-ends at chapter end), the sidebar
+  // modes already list chapters and let the learner choose.
+  const chapterCompleteCta = chapterCompleteCtaSetting ?? hideSlidesSidebar;
 
   const setAppSidebarOpenRef = useRef(setAppSidebarOpen);
   useEffect(() => {
@@ -1216,8 +1329,9 @@ function Slides() {
   // here's what's next" moment rather than a dead stop. That matters most in
   // the sidebar-less viewer: there is no chapter list there to tell the learner
   // they finished, and no way to pick what comes next except guessing at Next.
-  // Scoped to that mode deliberately — the sidebar modes already show chapter
-  // progress and let the learner choose, so a banner there would be noise.
+  // Which modes show it is settings-driven (chapterCompleteCta), defaulting to
+  // the sidebar-less viewer since the sidebar modes already show chapter
+  // progress and let the learner choose.
   const chapterComplete = useMemo(() => {
     const real = (slides || []).filter(
       (sl: Slide) => sl.id !== "feedback-slide"
@@ -1776,10 +1890,10 @@ function Slides() {
           replaced lived on the left; bottom-right belongs to the chatbot
           button and the doubt sidebar). Rendered only while focused, so it
           never overlaps the open sidebar's footer. */}
-      {/* Chapter hand-off. Sits above the content rather than over it, is
-          dismissible, and only appears once every slide in the chapter has
-          crossed the completion threshold AND there is somewhere to go. */}
-      {hideSlidesSidebar &&
+      {/* Chapter hand-off. Dismissible, and only appears once every slide in
+          the chapter has crossed the completion threshold AND there is
+          somewhere to go. Visibility itself is settings-driven. */}
+      {chapterCompleteCta &&
         chapterComplete &&
         nextChapter &&
         !chapterCtaDismissed && (

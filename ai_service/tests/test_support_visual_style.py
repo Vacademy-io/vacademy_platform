@@ -23,7 +23,10 @@ def _suffix_for(prefs, palette=None):
         _visual_preferences = prefs
         _current_style_guide = {"palette": {"primary": palette}} if palette else {}
 
+    colour = _SRC[_SRC.index("def _colour_name_for_hex"):]
+    colour = colour[:colour.index("\ndef ")]
     ns = {"re": re}
+    exec(colour, ns)
     exec("class H:\n    " + body.replace("\n", "\n    "), ns)
     H = ns["H"]
     inst = _Fake()
@@ -45,9 +48,12 @@ def test_rejecting_stock_photography_also_switches():
     assert "line-art" in out and "Photorealistic" not in out
 
 
-def test_brand_primary_is_carried_into_the_line_art_prompt():
+def test_brand_colour_reaches_the_prompt_as_a_WORD_not_a_hex():
+    """A hex in an image prompt gets drawn into the picture — the model
+    rendered "#0071b" into the corner of a finished video. Name the colour."""
     out = _suffix_for({"svg_illustrated": "high"}, palette="#0f766e")
-    assert "#0f766e" in out
+    assert "#0f766e" not in out
+    assert any(w in out for w in ("teal", "emerald", "green"))
 
 
 def test_a_bad_palette_value_cannot_reach_the_prompt():

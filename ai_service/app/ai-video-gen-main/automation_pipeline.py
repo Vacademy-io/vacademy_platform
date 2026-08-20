@@ -2195,6 +2195,37 @@ class GoogleCloudTTSClient:
         raw_json_path.write_text(json.dumps(word_entries, indent=2))
 
 
+def _colour_name_for_hex(value: str) -> str:
+    """Nearest plain-English colour name for a hex string.
+
+    An image prompt must never carry a hex code. Passing "accent colour
+    #0071b8" to the image model made it draw the literal text "#0071b" into
+    the corner of the illustration — visible in the finished video — because a
+    hex is a string to a generator, not a colour. A word is unambiguous.
+    Returns "" when the value is not a usable hex.
+    """
+    v = str(value or "").strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+        return ""
+    r, g, b = int(v[1:3], 16), int(v[3:5], 16), int(v[5:7], 16)
+    names = {
+        "black": (0, 0, 0), "white": (255, 255, 255), "grey": (128, 128, 128),
+        "red": (200, 30, 30), "crimson": (150, 20, 60), "orange": (230, 130, 30),
+        "amber": (240, 190, 60), "yellow": (240, 230, 60), "olive": (128, 128, 40),
+        "green": (40, 160, 70), "emerald": (20, 140, 100), "teal": (20, 140, 150),
+        "cyan": (60, 200, 220), "sky blue": (90, 170, 230), "blue": (30, 100, 190),
+        "navy": (25, 45, 100), "indigo": (70, 60, 160), "violet": (130, 80, 190),
+        "purple": (110, 50, 140), "magenta": (200, 50, 150), "pink": (230, 130, 170),
+        "brown": (120, 80, 50), "tan": (190, 160, 120),
+    }
+    best, best_d = "", None
+    for name, (nr, ng, nb) in names.items():
+        d = (r - nr) ** 2 + (g - ng) ** 2 + (b - nb) ** 2
+        if best_d is None or d < best_d:
+            best, best_d = name, d
+    return best
+
+
 def _repair_undefined_css_vars(html: str) -> str:
     """Module-level wrapper: never let a repair failure break a render."""
     try:
@@ -9449,13 +9480,15 @@ class VideoGenerationPipeline:
             _sg = getattr(self, "_current_style_guide", None) or {}
             _pal = (_sg.get("palette") or {}) if isinstance(_sg, dict) else {}
             _primary = str(_pal.get("primary") or "").strip()
-            if re.fullmatch(r"#[0-9a-fA-F]{6}", _primary):
-                palette = f" Single accent colour {_primary} on white."
+            _name = _colour_name_for_hex(_primary)
+            if _name:
+                palette = f" Single {_name} accent colour on white."
         except Exception:
             pass
         return ("Clean editorial line-art diagram, precise vector linework on a "
                 "plain white background, flat colour, no shading, no photographic "
-                f"texture, no text or captions in frame.{palette}")
+                "texture. No text, captions, labels, numbers or colour codes "
+                f"anywhere in the frame.{palette}")
 
     def _resolve_support_visuals(
         self, shots: List[Dict[str, Any]], run_dir: Path,

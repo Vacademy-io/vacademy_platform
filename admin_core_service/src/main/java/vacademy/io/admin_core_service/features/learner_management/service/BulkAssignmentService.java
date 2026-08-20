@@ -803,15 +803,11 @@ public class BulkAssignmentService {
                 if (generateInvoiceOnManualEnroll
                         && StringUtils.hasText(paymentType)
                         && !PaymentOptionType.FREE.name().equalsIgnoreCase(paymentType)) {
-                    try {
-                        PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
-                                .orElseThrow(() -> new RuntimeException(
-                                        "Payment log not found: " + paymentLogId));
-                        invoiceService.generateInvoice(userPlan, persistedLog, instituteId);
-                    } catch (Exception e) {
-                        log.warn("Failed to generate invoice for userId={}, paymentLogId={}: {}",
-                                userId, paymentLogId, e.getMessage());
-                    }
+                    // After commit — see generateInvoiceAfterCommit. Inline, the invoice's
+                    // REQUIRES_NEW transaction cannot see this method's uncommitted PaymentLog,
+                    // and the resulting FK failure would roll the enrolment back rather than
+                    // merely skipping the invoice.
+                    invoiceService.generateInvoiceAfterCommit(paymentLogId, instituteId);
                 }
             } catch (Exception e) {
                 log.warn("Failed to create payment log for userId={}: {}", userId, e.getMessage());
@@ -1808,15 +1804,11 @@ public class BulkAssignmentService {
                     paymentLogId, amount, userPlan.getId());
 
             if (generateInvoiceOnManualEnroll) {
-                try {
-                    PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
-                            .orElseThrow(() -> new RuntimeException(
-                                    "Payment log not found: " + paymentLogId));
-                    invoiceService.generateInvoice(userPlan, persistedLog, instituteId);
-                } catch (Exception e) {
-                    log.warn("Failed to generate invoice for CPO offline payment userId={}, paymentLogId={}: {}",
-                            userId, paymentLogId, e.getMessage());
-                }
+                // After commit, not inline — see generateInvoiceAfterCommit. Generating here would
+                // hand the invoice's REQUIRES_NEW transaction a PaymentLog this transaction has not
+                // committed yet, failing invoice_payment_log_mapping's FK; and since catching that
+                // does not clear rollbackOnly, it would roll the enrolment payment back with it.
+                invoiceService.generateInvoiceAfterCommit(paymentLogId, instituteId);
             }
         } catch (Exception e) {
             log.error("Failed to record CPO offline payment for userPlan={}, amount={}: {}",

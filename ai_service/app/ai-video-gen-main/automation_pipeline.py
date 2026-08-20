@@ -9344,6 +9344,33 @@ class VideoGenerationPipeline:
             print(f"   ⚠️ clip QC unavailable (shot {shot.get('shot_index')}): {_qc_err}")
             return None
 
+    def _support_visual_style_suffix(self) -> str:
+        """Render-style clause for generated support visuals.
+
+        Defaults to the photoreal look these have always had. When the run's
+        visual direction asks for illustration/diagram work — or rules
+        photography out — the same concept is rendered as line art instead, so
+        support beats match the deck around them rather than fighting it.
+        """
+        prefs = getattr(self, "_visual_preferences", None) or {}
+        wants_diagram = str(prefs.get("svg_illustrated") or "").lower() == "high"
+        rejects_photo = str(prefs.get("stock_video") or "").lower() == "no"
+        if not (wants_diagram or rejects_photo):
+            return ("Photorealistic, clean modern composition, soft natural light, "
+                    "no text or captions in frame.")
+        palette = ""
+        try:
+            _sg = getattr(self, "_current_style_guide", None) or {}
+            _pal = (_sg.get("palette") or {}) if isinstance(_sg, dict) else {}
+            _primary = str(_pal.get("primary") or "").strip()
+            if re.fullmatch(r"#[0-9a-fA-F]{6}", _primary):
+                palette = f" Single accent colour {_primary} on white."
+        except Exception:
+            pass
+        return ("Clean editorial line-art diagram, precise vector linework on a "
+                "plain white background, flat colour, no shading, no photographic "
+                f"texture, no text or captions in frame.{palette}")
+
     def _resolve_support_visuals(
         self, shots: List[Dict[str, Any]], run_dir: Path,
     ) -> int:
@@ -9411,12 +9438,17 @@ class VideoGenerationPipeline:
                     if k and k not in unique and len(unique) < MAX_PHOTOS:
                         unique[k] = it["concept"]
 
+                # Support visuals used to be hardcoded photorealistic. A brief
+                # that asks for anatomical line art and annotated diagrams — and
+                # rejects stock photography outright — still got glossy clinical
+                # photos for every beat, which is both off-brief and, for medical
+                # subjects, invented imagery presented as if observed. Follow the
+                # run's resolved visual direction instead.
+                _style_suffix = self._support_visual_style_suffix()
+
                 def _gen(kv):
                     key, concept = kv
-                    _prompt = (
-                        f"{concept}. Photorealistic, clean modern composition, "
-                        "soft natural light, no text or captions in frame."
-                    )
+                    _prompt = f"{concept}. {_style_suffix}"
                     try:
                         try:
                             img, _ = self._call_image_generation_llm(

@@ -4,10 +4,22 @@ import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
+  extractRespondentIdentity,
   handleGetAudienceCampaign,
   handleSubmitAudienceLead,
   submitAudienceLead,
 } from "@/routes/audience-response/-services/audience-campaign-services";
+import {
+  applyPostSubmitTokens,
+  isDefaultPostSubmitConfiguration,
+  isExternalPostSubmitUrl,
+  parsePostSubmitConfiguration,
+  resolvePostSubmitButtons,
+  sanitizePostSubmitHtml,
+  type PostSubmitTokens,
+} from "@/routes/audience-response/-utils/post-submit-config";
+import { usePostSubmitRedirect } from "@/routes/audience-response/-utils/use-post-submit-redirect";
+import { PostSubmitArtwork } from "@/routes/audience-response/-components/post-submit-artwork";
 import { isSpamSubmission } from "../../-utils/website-lead";
 import { emitLeadCaptured } from "../../-utils/catalogue-tracking";
 
@@ -82,6 +94,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [respondent, setRespondent] = useState<PostSubmitTokens>({});
   const mountedAt = useRef(Date.now());
 
   const fields: FormFieldDef[] = useMemo(() => {
@@ -98,6 +111,25 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         mandatory: !!f.custom_field.isMandatory,
       }));
   }, [campaign]);
+
+  // Post-submit behaviour (thank-you copy, CTA, redirect) is authored once per
+  // campaign in Audience Manager and applies to every placement of its form —
+  // this inline/modal one included. The builder's own `successMessage` prop
+  // still wins when set, since that is a deliberate per-placement override.
+  const postSubmitConfig = useMemo(
+    () => parsePostSubmitConfiguration(campaign?.setting_json),
+    [campaign?.setting_json]
+  );
+  const postSubmitTokens: PostSubmitTokens = useMemo(
+    () => ({ ...respondent, campaignName: campaign?.campaign_name }),
+    [respondent, campaign?.campaign_name]
+  );
+  const { redirectUrl, secondsLeft } = usePostSubmitRedirect(
+    postSubmitConfig,
+    postSubmitTokens,
+    // Never redirect the admin previewing the page in the builder.
+    done && !isPreviewMode
+  );
 
   const isLeft = align === "left";
 
@@ -190,6 +222,9 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       );
       await submitAudienceLead(payload);
       emitLeadCaptured({ audienceId, sourceType: "AUDIENCE_CAMPAIGN", sourceId: audienceId });
+      // Identity feeds the {{name}} / {{email}} tokens on the thank-you screen
+      // and in the redirect query string.
+      setRespondent(extractRespondentIdentity(formValues));
       setDone(true);
     } catch {
       setError("Something went wrong — please try again.");
@@ -199,15 +234,126 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   };
 
   if (done) {
+    // Campaigns that never opened the Post Submit Configuration card keep the
+    // exact block this section rendered before the feature existed — no
+    // heading, catalogue check icon, original fallback copy. Imposing default
+    // copy on live catalogue pages nobody edited would be a silent regression.
+    const untouched = isDefaultPostSubmitConfiguration(postSubmitConfig);
+
+    if (untouched) {
+      return section(
+        <div
+          className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
+          role="status"
+        >
+          <CheckCircle
+            weight="duotone"
+            className="size-10 text-catalogue-brand-ink"
+            aria-hidden="true"
+          />
+          <p className="text-base font-semibold text-catalogue-text-primary">
+            {successMessage || "Thank you! We've received your details."}
+          </p>
+        </div>
+      );
+    }
+
+    // Precedence: the page-builder's per-placement `successMessage` wins, then
+    // the campaign's Post Submit Configuration, then the original fallback copy.
+    const heading = applyPostSubmitTokens(
+      postSubmitConfig.successTitle,
+      postSubmitTokens
+    );
+    const configuredHtml = postSubmitConfig.content.trim()
+      ? sanitizePostSubmitHtml(
+          applyPostSubmitTokens(postSubmitConfig.content, postSubmitTokens)
+        )
+      : "";
+    const configuredMessage = applyPostSubmitTokens(
+      postSubmitConfig.successMessage,
+      postSubmitTokens
+    );
+    const body =
+      successMessage || configuredMessage || "Thank you! We've received your details.";
+    const actionButtons = resolvePostSubmitButtons(postSubmitConfig, postSubmitTokens);
+    const anotherLabel =
+      applyPostSubmitTokens(postSubmitConfig.anotherResponseText, postSubmitTokens) ||
+      "Submit another response";
+
+    const resetForm = () => {
+      setValues({});
+      setHoneypot("");
+      setRespondent({});
+      setError("");
+      setDone(false);
+    };
+
     return section(
       <div
         className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
         role="status"
       >
-        <CheckCircle weight="duotone" className="size-10 text-catalogue-brand-ink" aria-hidden="true" />
-        <p className="text-base font-semibold text-catalogue-text-primary">
-          {successMessage || "Thank you! We've received your details."}
-        </p>
+        {/* Artwork is admin-configurable; the catalogue's own check icon is the
+            fallback for campaigns that turned the icon off but set no image. */}
+        {postSubmitConfig.icon === "none" && !postSubmitConfig.imageUrl.trim() ? (
+          <CheckCircle
+            weight="duotone"
+            className="size-10 text-catalogue-brand-ink"
+            aria-hidden="true"
+          />
+        ) : (
+          <PostSubmitArtwork config={postSubmitConfig} size="sm" />
+        )}
+        {heading && (
+          <p className="catalogue-h3 text-catalogue-text-primary">{heading}</p>
+        )}
+        {!successMessage && configuredHtml ? (
+          <div
+            className="text-base text-catalogue-text-secondary [&_a]:underline [&_h1]:catalogue-h3 [&_h2]:catalogue-h3 [&_img]:mx-auto [&_img]:max-w-full [&_li]:list-inside [&_ol]:list-decimal [&_ul]:list-disc"
+            dangerouslySetInnerHTML={{ __html: configuredHtml }}
+          />
+        ) : (
+          <p className="whitespace-pre-line text-base font-semibold text-catalogue-text-primary">
+            {body}
+          </p>
+        )}
+        {redirectUrl && secondsLeft !== null && (
+          <p className="text-sm text-catalogue-text-muted">
+            Redirecting in {secondsLeft}
+            {secondsLeft === 1 ? " second" : " seconds"}…
+          </p>
+        )}
+        {(actionButtons.length > 0 || postSubmitConfig.allowAnotherResponse) && (
+          <div className="mt-2 flex flex-col flex-wrap justify-center gap-3 sm:flex-row">
+            {actionButtons.map((button) => (
+              <a
+                key={button.id}
+                href={button.href}
+                {...(isExternalPostSubmitUrl(button.href)
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                // Catalogue buttons keep catalogue tokens rather than the
+                // config's accent, so they stay on the page's own theme.
+                className={`catalogue-btn justify-center ${
+                  button.variant === "primary"
+                    ? "catalogue-btn-primary"
+                    : "catalogue-btn-secondary"
+                }`}
+              >
+                {button.text}
+              </a>
+            ))}
+            {postSubmitConfig.allowAnotherResponse && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="catalogue-btn catalogue-btn-secondary justify-center"
+              >
+                {anotherLabel}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }

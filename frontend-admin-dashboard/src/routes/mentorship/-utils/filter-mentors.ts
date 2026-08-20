@@ -18,29 +18,53 @@ export function filterMentors(mentors: MentorDTO[], search: string): MentorDTO[]
     );
 }
 
-/** The non-text filters the mentor list offers. `'all'` means "don't narrow on this". */
+/**
+ * The non-text filters the mentor list offers.
+ *
+ * Each facet is a SET of accepted values. An empty array means "don't narrow on this",
+ * which keeps "no filter" and "every option ticked" the same thing — the alternative
+ * ('all' as a magic member) makes every consumer special-case it.
+ *
+ * Values are OR-ed within a facet and AND-ed across facets, which is what a reader
+ * expects from "Active or Inactive" plus "At their limit".
+ */
 export interface MentorFilters {
     search: string;
-    status: 'all' | 'active' | 'inactive';
-    discoverable: 'all' | 'listed' | 'hidden';
-    capacity: 'all' | 'available' | 'full' | 'no-booking';
+    /** 'active' | 'inactive' */
+    status: string[];
+    /** 'listed' | 'hidden' */
+    discoverable: string[];
+    /** 'available' | 'full' | 'no-booking' */
+    capacity: string[];
 }
 
 export const DEFAULT_MENTOR_FILTERS: MentorFilters = {
     search: '',
-    status: 'all',
-    discoverable: 'all',
-    capacity: 'all',
+    status: [],
+    discoverable: [],
+    capacity: [],
 };
 
 /** True when nothing is narrowed — the caller can then use the server-paginated list. */
 export function isDefaultMentorFilters(f: MentorFilters): boolean {
     return (
         f.search.trim() === '' &&
-        f.status === 'all' &&
-        f.discoverable === 'all' &&
-        f.capacity === 'all'
+        f.status.length === 0 &&
+        f.discoverable.length === 0 &&
+        f.capacity.length === 0
     );
+}
+
+/** Is this mentor active? A missing status means active, as everywhere else. */
+function isActive(m: MentorDTO): boolean {
+    return (m.status || 'ACTIVE').toUpperCase() === 'ACTIVE';
+}
+
+/** Which capacity buckets a mentor belongs to. A mentor can be in more than one. */
+function capacityBuckets(m: MentorDTO): string[] {
+    const buckets: string[] = [m.at_capacity ? 'full' : 'available'];
+    if (!m.booking_page_slug) buckets.push('no-booking');
+    return buckets;
 }
 
 /**
@@ -56,30 +80,20 @@ export function isDefaultMentorFilters(f: MentorFilters): boolean {
 export function applyMentorFilters(mentors: MentorDTO[], filters: MentorFilters): MentorDTO[] {
     let rows = filterMentors(mentors, filters.search);
 
-    if (filters.status !== 'all') {
-        const wantActive = filters.status === 'active';
-        rows = rows.filter(
-            (m) => ((m.status || 'ACTIVE').toUpperCase() === 'ACTIVE') === wantActive
+    if (filters.status.length > 0) {
+        rows = rows.filter((m) => filters.status.includes(isActive(m) ? 'active' : 'inactive'));
+    }
+
+    if (filters.discoverable.length > 0) {
+        rows = rows.filter((m) =>
+            filters.discoverable.includes(m.is_discoverable ? 'listed' : 'hidden')
         );
     }
 
-    if (filters.discoverable !== 'all') {
-        const wantListed = filters.discoverable === 'listed';
-        rows = rows.filter((m) => !!m.is_discoverable === wantListed);
-    }
-
-    switch (filters.capacity) {
-        case 'available':
-            rows = rows.filter((m) => !m.at_capacity);
-            break;
-        case 'full':
-            rows = rows.filter((m) => !!m.at_capacity);
-            break;
-        case 'no-booking':
-            rows = rows.filter((m) => !m.booking_page_slug);
-            break;
-        default:
-            break;
+    if (filters.capacity.length > 0) {
+        rows = rows.filter((m) =>
+            capacityBuckets(m).some((bucket) => filters.capacity.includes(bucket))
+        );
     }
 
     return rows;

@@ -54,26 +54,20 @@ import { reportApiError } from '@/lib/report-api-error';
 
 const MENTORS_PAGE_SIZE = 20;
 
+// Empty selection means "all", so no 'any' member is needed — see MentorFilters.
 const STATUS_OPTIONS = [
-    { label: 'Any status', value: 'all' },
     { label: 'Active', value: 'active' },
     { label: 'Inactive', value: 'inactive' },
 ];
 const DISCOVERABLE_OPTIONS = [
-    { label: 'Any visibility', value: 'all' },
     { label: 'Listed to learners', value: 'listed' },
     { label: 'Hidden from learners', value: 'hidden' },
 ];
 const CAPACITY_OPTIONS = [
-    { label: 'Any capacity', value: 'all' },
     { label: 'Has room', value: 'available' },
     { label: 'At their limit', value: 'full' },
     { label: 'No booking page', value: 'no-booking' },
 ];
-
-/** The visible label for a stored filter value; falls back to the "any" option. */
-const labelOf = (options: { label: string; value: string }[], value: string): string =>
-    options.find((o) => o.value === value)?.label ?? options[0]?.label ?? '';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
@@ -84,7 +78,7 @@ import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
 import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
 import { CapacityChip, CapacityMeter, RatingChip } from '../-components/MentorChips';
 import { MyInput } from '@/components/design-system/input';
-import { MyDropdown } from '@/components/design-system/dropdown';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import {
     applyMentorFilters,
     DEFAULT_MENTOR_FILTERS,
@@ -494,32 +488,32 @@ function MentorsPage() {
                             className="pl-9 sm:w-full"
                         />
                     </div>
-                    <MyDropdown
-                        currentValue={labelOf(STATUS_OPTIONS, filters.status)}
-                        dropdownList={STATUS_OPTIONS}
-                        handleChange={(v: string) => {
-                            setFilter('status', v as MentorFilters['status']);
+                    <MultiSelectFilter
+                        label="Status"
+                        options={STATUS_OPTIONS}
+                        selected={filters.status}
+                        onChange={(v) => {
+                            setFilter('status', v);
                             setPage(0);
                         }}
-                        placeholder="Any status"
                     />
-                    <MyDropdown
-                        currentValue={labelOf(DISCOVERABLE_OPTIONS, filters.discoverable)}
-                        dropdownList={DISCOVERABLE_OPTIONS}
-                        handleChange={(v: string) => {
-                            setFilter('discoverable', v as MentorFilters['discoverable']);
+                    <MultiSelectFilter
+                        label="Visibility"
+                        options={DISCOVERABLE_OPTIONS}
+                        selected={filters.discoverable}
+                        onChange={(v) => {
+                            setFilter('discoverable', v);
                             setPage(0);
                         }}
-                        placeholder="Any visibility"
                     />
-                    <MyDropdown
-                        currentValue={labelOf(CAPACITY_OPTIONS, filters.capacity)}
-                        dropdownList={CAPACITY_OPTIONS}
-                        handleChange={(v: string) => {
-                            setFilter('capacity', v as MentorFilters['capacity']);
+                    <MultiSelectFilter
+                        label="Capacity"
+                        options={CAPACITY_OPTIONS}
+                        selected={filters.capacity}
+                        onChange={(v) => {
+                            setFilter('capacity', v);
                             setPage(0);
                         }}
-                        placeholder="Any capacity"
                     />
                 </div>
                 {searching && (

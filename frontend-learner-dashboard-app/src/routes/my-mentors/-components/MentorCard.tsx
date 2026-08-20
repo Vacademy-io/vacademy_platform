@@ -81,6 +81,27 @@ export function MentorCard({
                         </div>
                     </div>
 
+                    {(mentor.expertise_tags?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {mentor.expertise_tags?.slice(0, 4).map((tag) => (
+                                <span
+                                    key={tag}
+                                    className="rounded-full bg-primary-50 px-2.5 py-1 text-caption text-primary-600"
+                                >
+                                    {tag}
+                                </span>
+                            ))}
+                            {(mentor.expertise_tags?.length ?? 0) > 4 && (
+                                <span
+                                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
+                                    title={mentor.expertise_tags?.slice(4).join(", ")}
+                                >
+                                    +{(mentor.expertise_tags?.length ?? 0) - 4}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
                     {mentor.bio && (
                         <p className="line-clamp-3 text-caption text-neutral-500">{mentor.bio}</p>
                     )}

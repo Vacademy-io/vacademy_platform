@@ -15,7 +15,7 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyTable } from '@/components/design-system/table';
-import { MyDropdown } from '@/components/design-system/dropdown';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useMentorDashboard, useMentorSessions } from '../-hooks/use-mentorship';
 import { dayOfMonth, sessionDateTime, shortMonth, timeOfDay } from '../-utils/format-session-time';
@@ -51,34 +51,40 @@ export function MentorSessionsPanel({
     const [lifecycle, setLifecycle] = useState<string>('');
     // Only offered when the panel isn't already scoped to one mentor — inside a
     // mentor's own detail view the filter would be a no-op.
-    const [mentorFilter, setMentorFilter] = useState<string>('');
+    const [mentorFilter, setMentorFilter] = useState<string[]>([]);
     const [detail, setDetail] = useState<MentorSessionDTO | null>(null);
     const [acting, setActing] = useState<{
         session: MentorSessionDTO;
         action: 'cancel' | 'reschedule';
     } | null>(null);
+    // The mentor narrowing is applied on the CLIENT rather than in the query. The
+    // endpoint takes a single mentorId, so a multi-select can't be expressed there —
+    // and the backend already loads the whole institute window before filtering, so
+    // one unscoped fetch serves every selection instead of a refetch per change.
     const { data, isLoading, isError, refetch } = useMentorSessions(instituteId, {
-        mentorId: mentorId ?? (mentorFilter || undefined),
+        mentorId,
         studentUserId,
         lifecycle: lifecycle || undefined,
     });
-    const sessions = data ?? [];
+    const sessions = useMemo(() => {
+        const all = data ?? [];
+        if (mentorId || mentorFilter.length === 0) return all;
+        return all.filter((s) => s.mentor_id != null && mentorFilter.includes(s.mentor_id));
+    }, [data, mentorId, mentorFilter]);
 
     // The mentor list is already cached by the dashboard query, so the filter costs
     // nothing extra on a screen an admin has usually arrived at from there.
     const mentorsQuery = useMentorDashboard(mentorId ? undefined : instituteId);
+    // No "All mentors" member: an empty selection already means all, and a magic
+    // member would have to be special-cased everywhere it's read.
     const mentorOptions = useMemo(
-        () => [
-            { label: 'All mentors', value: '' },
-            ...(mentorsQuery.data?.mentors ?? []).map((m) => ({
+        () =>
+            (mentorsQuery.data?.mentors ?? []).map((m) => ({
                 label: m.display_name || m.name || 'Mentor',
                 value: m.id,
             })),
-        ],
         [mentorsQuery.data]
     );
-    const mentorFilterLabel =
-        mentorOptions.find((o) => o.value === mentorFilter)?.label ?? 'All mentors';
 
     const columns = useMemo<ColumnDef<MentorSessionDTO>[]>(
         () => [
@@ -290,12 +296,13 @@ export function MentorSessionsPanel({
                 </div>
                 {!mentorId && (
                     <div className="pb-2">
-                        <MyDropdown
-                            currentValue={mentorFilterLabel}
-                            dropdownList={mentorOptions}
-                            handleChange={(v: string) => setMentorFilter(v)}
-                            placeholder="All mentors"
-                            contentClassName="max-h-72 overflow-y-auto"
+                        <MultiSelectFilter
+                            label="Mentors"
+                            options={mentorOptions}
+                            selected={mentorFilter}
+                            onChange={setMentorFilter}
+                            placeholder="Search mentors…"
+                            widthClass="w-52"
                         />
                     </div>
                 )}

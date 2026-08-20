@@ -31,8 +31,10 @@ import { MentorSessionsPanel } from './MentorSessionsPanel';
 import { MenteeDetailSheet } from './MenteeDetailSheet';
 import { ScheduleSessionDialog } from './ScheduleSessionDialog';
 import { AvailabilitySummary, DAY_ORDER } from './MentorAvailabilitySummary';
-import { createDirectConversation } from '@/services/chat/chatApi';
+import { createDirectConversation, describeDirectChatError } from '@/services/chat/chatApi';
 import { reportApiError } from '@/lib/report-api-error';
+import { useChatEnabled } from '@/hooks/use-chat-enabled';
+import { messageActionTitle } from '../-utils/chat-availability';
 import type { MenteeDTO, MentorDTO } from '../-types/mentorship-types';
 
 export type MentorDetailTab = 'overview' | 'students' | 'availability' | 'sessions' | 'feedback';
@@ -378,6 +380,9 @@ function MentorStudentsTab({
     const [scheduleFor, setScheduleFor] = useState<MenteeDTO | null>(null);
     const [messagingId, setMessagingId] = useState<string | null>(null);
     const navigate = useNavigate();
+    // In-App Messages is off until an institute switches it on. Staff see the action
+    // disabled-and-explained rather than hidden — they're who can turn it on.
+    const chat = useChatEnabled();
 
     const query = search.trim().toLowerCase();
     const visible = useMemo(
@@ -406,7 +411,12 @@ function MentorStudentsTab({
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'open-mentee-chat' },
                 extra: { studentUserId: mentee.student_user_id },
-                fallbackMessage: "Couldn't open the chat. Please try again.",
+                // A 403 here is permanent (chat off, or a role pair the institute
+                // forbids) — "try again" would be a lie.
+                fallbackMessage: describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again."
+                ),
             });
         } finally {
             setMessagingId(null);
@@ -506,9 +516,9 @@ function MentorStudentsTab({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => message(m)}
-                                disable={messagingId === m.student_user_id}
+                                disable={!chat.enabled || messagingId === m.student_user_id}
                                 aria-label={`Message ${label}`}
-                                title="Send this student a direct message"
+                                title={messageActionTitle(chat.enabled)}
                             >
                                 <ChatCircle size={18} />
                             </MyButton>
@@ -518,7 +528,7 @@ function MentorStudentsTab({
             },
         ],
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [messagingId]
+        [messagingId, chat.enabled]
     );
 
     if (isLoading) return <Skeleton className="h-24 w-full rounded-md" />;

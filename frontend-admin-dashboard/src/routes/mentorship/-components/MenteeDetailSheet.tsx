@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
     BookOpenText,
     CalendarCheck,
@@ -17,9 +17,11 @@ import { MyInput } from '@/components/design-system/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { createDirectConversation } from '@/services/chat/chatApi';
+import { createDirectConversation, describeDirectChatError } from '@/services/chat/chatApi';
 import { reportApiError } from '@/lib/report-api-error';
 import { useLearnerPackagesQuery } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
+import { useChatEnabled } from '@/hooks/use-chat-enabled';
+import { CHAT_SETTINGS_LINK, messageActionTitle } from '../-utils/chat-availability';
 import { useCreateNote, useMenteeCalls, useStudentTimeline } from '../-hooks/use-mentorship';
 import { MentorAvatar } from './MentorAvatar';
 import { ScheduleSessionDialog } from './ScheduleSessionDialog';
@@ -66,6 +68,10 @@ export function MenteeDetailSheet({
     const [saving, setSaving] = useState(false);
     const [messaging, setMessaging] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
+    // In-App Messages is off until an institute switches it on. The admin looking at
+    // this panel is exactly who can turn it on, so the blocker is named rather than
+    // the action quietly disappearing.
+    const chat = useChatEnabled();
 
     const studentUserId = mentee?.student_user_id;
     const timeline = useStudentTimeline(open ? studentUserId : undefined);
@@ -114,7 +120,12 @@ export function MenteeDetailSheet({
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'open-mentee-chat' },
                 extra: { studentUserId },
-                fallbackMessage: "Couldn't open the chat. Please try again.",
+                // A 403 here is permanent (chat off, or a role pair the institute
+                // forbids) — "try again" would be a lie.
+                fallbackMessage: describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again."
+                ),
             });
         } finally {
             setMessaging(false);
@@ -172,12 +183,24 @@ export function MenteeDetailSheet({
                                         buttonType="secondary"
                                         scale="small"
                                         onClick={message}
-                                        disable={messaging}
-                                        title="Send this student a direct message"
+                                        disable={!chat.enabled || messaging}
+                                        title={messageActionTitle(chat.enabled)}
                                     >
                                         <ChatCircle size={16} /> Message
                                     </MyButton>
                                 </div>
+                                {!chat.enabled && !chat.isLoading && (
+                                    <p className="pt-2 text-caption text-neutral-500">
+                                        Messaging is off for this institute.{' '}
+                                        <Link
+                                            {...CHAT_SETTINGS_LINK}
+                                            className="font-medium text-primary-600 hover:text-primary-700"
+                                        >
+                                            Turn on In-App Messages
+                                        </Link>{' '}
+                                        to message students from here.
+                                    </p>
+                                )}
                             </SheetHeader>
 
                             <div className="flex flex-col gap-6 p-6">

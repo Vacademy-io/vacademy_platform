@@ -411,6 +411,32 @@ const REJECTION_MESSAGES: Record<ChatRejectionCode, string> = {
 };
 
 /**
+ * Why opening a direct conversation failed, in words that match reality.
+ *
+ * The open-a-DM endpoint rejects with a different set of codes than sending a
+ * message does, and all of them are permanent: chat switched off for the institute,
+ * or a role pair the institute's DM matrix forbids. A generic "please try again"
+ * on those sends people round a loop that can never finish, so each gets its own
+ * sentence and only genuinely transient failures keep the retry wording.
+ */
+export const describeDirectChatError = (err: unknown, fallback: string): string => {
+    const response = (err as { response?: { status?: number; data?: { message?: string } } })
+        ?.response;
+    const status = response?.status;
+    if (status == null || status < 400 || status >= 500) return fallback;
+    const raw = response?.data?.message ?? '';
+    if (raw.includes('CHAT_DISABLED')) {
+        return 'In-app messaging is turned off for this institute. Enable Chat in Settings to message from here.';
+    }
+    if (raw.includes('DM_NOT_ALLOWED')) {
+        return "Your institute's chat settings don't allow direct messages between these two roles.";
+    }
+    if (raw.includes('CANNOT_DM_SELF')) return "You can't message yourself.";
+    if (raw.includes('TARGET_REQUIRED')) return "That person's account is missing, so a chat can't be opened.";
+    return fallback;
+};
+
+/**
  * Maps a send-failure error to a known rule-rejection. Returns the code +
  * friendly message for deterministic 4xx rejections, or null for transient
  * errors (network/5xx) that should leave the message in a retryable failed state.

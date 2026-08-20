@@ -1251,7 +1251,84 @@ def _snap_shots_to_word_boundaries(
     return snapped
 
 
-def _whisper_align(audio_path: Path, language: str = "English") -> list:
+def _relabel_words_from_script(word_entries: list, script_text: str) -> list:
+    """Replace ASR word TEXT with the authored script, keeping ASR TIMINGS.
+
+    Whisper transcribes the synthesized audio, so captions inherit ASR errors.
+    On a cranial-nerve script that meant "Rinne" rendered as "René", "hertz" as
+    "herds" and "mastoid" as "mastide" — burned into the captions of a video
+    whose brief pinned those exact terms. The spoken words are known: Whisper
+    should contribute timing, not vocabulary.
+
+    Aligns the two token streams and transfers the script's words onto the
+    matched timings, spreading them across the span when a run differs. Returns
+    the input unchanged when there is no script or the alignment is too poor to
+    trust (a real mismatch means the audio is not this script).
+    """
+    if not word_entries or not script_text or not script_text.strip():
+        return word_entries
+    try:
+        import difflib as _difflib
+
+        script_words = [w for w in re.findall(r"\S+", script_text) if w.strip()]
+        if not script_words:
+            return word_entries
+
+        def _norm(t: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", str(t).lower())
+
+        a_norm = [_norm(w.get("word") or w.get("text") or "") for w in word_entries]
+        b_norm = [_norm(w) for w in script_words]
+        matcher = _difflib.SequenceMatcher(a=a_norm, b=b_norm, autojunk=False)
+        if matcher.ratio() < 0.55:
+            print(f"   \u26a0\ufe0f caption relabel skipped — script/audio similarity "
+                  f"{matcher.ratio():.2f} too low")
+            return word_entries
+
+        out: list = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            a_slice = word_entries[i1:i2]
+            s_slice = script_words[j1:j2]
+            if tag == "equal":
+                for a, sw in zip(a_slice, s_slice):
+                    out.append({"word": sw, "start": a.get("start"), "end": a.get("end")})
+                continue
+            if tag == "delete":
+                continue          # heard but never written — drop it
+            if a_slice:
+                t0 = a_slice[0].get("start") or 0.0
+                t1 = a_slice[-1].get("end") or t0
+            elif out:
+                t0 = t1 = out[-1]["end"]
+            else:
+                t0 = t1 = 0.0
+            step = (t1 - t0) / len(s_slice) if (s_slice and t1 > t0) else 0.0
+            for k, sw in enumerate(s_slice):
+                out.append({
+                    "word": sw,
+                    "start": round(t0 + k * step, 3),
+                    "end": round(t0 + (k + 1) * step, 3) if step else t1,
+                })
+        # keep timings monotonic after the splices
+        for i in range(1, len(out)):
+            if (out[i]["start"] or 0) < (out[i - 1]["start"] or 0):
+                out[i]["start"] = out[i - 1]["start"]
+            if (out[i]["end"] or 0) < (out[i]["start"] or 0):
+                out[i]["end"] = out[i]["start"]
+        changed = sum(
+            1 for a, b in zip(a_norm, [_norm(w["word"]) for w in out]) if a != b
+        )
+        if changed:
+            print(f"   \U0001f4dd captions: {changed} word(s) relabelled from the script "
+                  f"(ASR text discarded, timings kept)")
+        return out
+    except Exception as _rl_err:  # pragma: no cover - never break narration
+        print(f"   \u26a0\ufe0f caption relabel skipped ({_rl_err})")
+        return word_entries
+
+
+def _whisper_align(audio_path: Path, language: str = "English",
+                   script_text: Optional[str] = None) -> list:
     """Standalone Whisper forced alignment. Returns word-level timestamps.
 
     Works for any language supported by Whisper (Hindi, Bengali, etc.).
@@ -1321,7 +1398,7 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
             return []
 
         print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-        return word_entries
+        return _relabel_words_from_script(word_entries, script_text)
     except Exception as e:
         print(f"    ❌ Whisper alignment failed: {e}")
         return []
@@ -2076,8 +2153,12 @@ class GoogleCloudTTSClient:
         return word_entries
 
     def _align_with_whisper(self, audio_path: Path, text: str, language: str = "English") -> list:
-        """Use Whisper for forced alignment to get accurate word timestamps from audio."""
-        return _whisper_align(audio_path, language)
+        """Use Whisper for forced alignment to get accurate word timestamps from audio.
+
+        `text` is the script that was synthesized — it is passed through so the
+        captions keep the author's wording and borrow only Whisper's timings.
+        """
+        return _whisper_align(audio_path, language, script_text=text)
 
     def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
         """Generate word timestamps using Whisper alignment, with linear fallback."""
@@ -10803,7 +10884,7 @@ class VideoGenerationPipeline:
         # Use Whisper forced alignment to get word timings.
         whisper_lang = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
         print(f"    🎯 Running Whisper alignment for Sarvam audio (lang={whisper_lang})...")
-        word_entries = _whisper_align(audio_path, language)
+        word_entries = _whisper_align(audio_path, language, script_text=script_text)
 
         if not word_entries:
             # Fallback: linear interpolation

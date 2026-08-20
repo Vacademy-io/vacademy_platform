@@ -234,6 +234,75 @@ describe('choosing the default certificate template', () => {
     });
 });
 
+describe('the automatic code and number', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        storeState.instituteDetails = instituteDetails(
+            JSON.stringify({
+                imageTemplate: image('tpl-a'),
+                fieldMappings: [],
+                customImages: [],
+                library: [libraryEntry('tpl-a', 'Completion', 'student_name')],
+                defaultTemplateId: 'tpl-a',
+            })
+        );
+    });
+
+    /** Neither is compulsory — the reported bug was that both effectively were. */
+    it('stops stamping the code once it is switched off, and keeps it off', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+
+        const codeSwitch = screen
+            .getByText(/Stamp the (QR code|barcode)/)
+            .closest('label')!
+            .querySelector('[role="switch"]')!;
+        fireEvent.click(codeSwitch);
+        await save();
+
+        expect(savePayload().autoStampCode).toBe(false);
+        // The number is a separate decision and must not be dragged along.
+        expect(savePayload().autoStampNumber).toBe(true);
+    });
+
+    it('switches the number off on its own', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+
+        const numberSwitch = screen
+            .getByText('Stamp the certificate number')
+            .closest('label')!
+            .querySelector('[role="switch"]')!;
+        fireEvent.click(numberSwitch);
+        await save();
+
+        expect(savePayload().autoStampNumber).toBe(false);
+        expect(savePayload().autoStampCode).toBe(true);
+    });
+
+    /** Both on is what every institute had before the switch existed. */
+    it('leaves both on when nothing is touched', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+        await save();
+
+        expect(savePayload().autoStampCode).toBe(true);
+        expect(savePayload().autoStampNumber).toBe(true);
+    });
+
+    /**
+     * Being asked for a verification URL implied the admin had to build the
+     * page. They do not: the platform hosts it on their own portal.
+     */
+    it('never asks for a verification URL', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+
+        expect(screen.queryByLabelText(/custom qr link/i)).toBeNull();
+        expect(screen.queryByPlaceholderText(/your-site\.com/i)).toBeNull();
+    });
+});
+
 describe('uploading more than one design', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -275,6 +344,33 @@ describe('uploading more than one design', () => {
         await save();
 
         expect(savePayload().currentHtmlTemplate).toContain('{{INSTITUTE_LOGO}}');
+    });
+
+    /**
+     * Removing the logo has to stick. Enforcing it on every save meant an admin
+     * could delete it, save, and watch it come back with nothing to explain why.
+     */
+    it('does not put the logo back on a design it was deleted from', async () => {
+        storeState.instituteDetails = instituteDetails(
+            JSON.stringify({
+                imageTemplate: image('tpl-a'),
+                fieldMappings: [],
+                customImages: [],
+                library: [
+                    {
+                        ...libraryEntry('tpl-a', 'Completion', 'student_name'),
+                        // The admin already removed it: only the name is placed.
+                        fieldMappings: [textField('student_name', 'student_name')],
+                    },
+                ],
+                defaultTemplateId: 'tpl-a',
+            })
+        );
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+        await save();
+
+        expect(savePayload().currentHtmlTemplate).not.toContain('{{INSTITUTE_LOGO}}');
     });
 
     /** A design that already places its logo must not gain a second one. */

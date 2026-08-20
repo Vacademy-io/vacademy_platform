@@ -90,6 +90,22 @@ interface Props {
     pageWidthMm?: number;
     /** Sample number shown inside the ghost badge. */
     sampleCertificateId?: string;
+    /**
+     * Whether the platform is allowed to stamp the code / the number on designs
+     * that do not place them. Default on, as the badge always was.
+     */
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    /**
+     * Turn the automatic stamp off for one part of the badge.
+     *
+     * <p>Called both from the ghost badge's own dismiss control and from
+     * removing a placed QR / barcode / Certificate ID field — because removing
+     * the field is what an admin does when they do not want the thing, and
+     * without this the platform simply stamped it back bottom-right. "I deleted
+     * the QR and it came back" was exactly that loop.
+     */
+    onAutoStampChange?: (part: 'code' | 'number', enabled: boolean) => void;
 }
 
 type DragMode =
@@ -119,6 +135,9 @@ export const CertificateVisualEditor = ({
     barcodeContent = 'NUMBER',
     pageWidthMm = 297,
     sampleCertificateId = 'VA-0123-2026',
+    autoStampCode = true,
+    autoStampNumber = true,
+    onAutoStampChange,
 }: Props) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const customImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -182,8 +201,20 @@ export const CertificateVisualEditor = ({
     };
 
     const removeField = (id: string) => {
+        const removed = fieldMappings.find((f) => f.id === id);
         onFieldMappingsChange(fieldMappings.filter((f) => f.id !== id));
         if (selectedId === id) setSelectedId(null);
+
+        // Removing the field is only half the job: the platform stamps a code
+        // and a number onto any design that does not place them, so deleting
+        // one used to bring the stamped version straight back. Take the removal
+        // at face value and stop stamping that part.
+        if (removed && isCodeFieldName(removed.fieldName)) {
+            onAutoStampChange?.('code', false);
+        }
+        if (removed?.fieldName === 'certificate_id') {
+            onAutoStampChange?.('number', false);
+        }
     };
 
     const startMove = (e: React.PointerEvent, f: FieldMapping) => {
@@ -329,8 +360,12 @@ export const CertificateVisualEditor = ({
 
     // What the backend will still stamp bottom-right, given what is placed.
     const badgePlan = useMemo(
-        () => planFromFieldNames(fieldMappings.map((f) => f.fieldName)),
-        [fieldMappings]
+        () =>
+            planFromFieldNames(
+                fieldMappings.map((f) => f.fieldName),
+                { code: autoStampCode, number: autoStampNumber }
+            ),
+        [fieldMappings, autoStampCode, autoStampNumber]
     );
 
     // The ghost is laid out by the browser (it shrink-wraps its contents just
@@ -611,7 +646,7 @@ export const CertificateVisualEditor = ({
                                 onPointerDown={adoptAutoBadge}
                                 onClick={(e) => e.stopPropagation()}
                                 title="Stamped automatically on every certificate — drag to position it yourself"
-                                className="absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
+                                className="group absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
                                 style={{
                                     // Mirrors appendCertificateIdBadge in
                                     // InstituteSettingService — see
@@ -653,6 +688,22 @@ export const CertificateVisualEditor = ({
                                         {sampleCertificateId}
                                     </span>
                                 )}
+                                {onAutoStampChange && (
+                                    <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (badgePlan.code) onAutoStampChange('code', false);
+                                            if (badgePlan.id) onAutoStampChange('number', false);
+                                        }}
+                                        title="Don't print this automatically"
+                                        aria-label="Turn off the automatic stamp"
+                                        className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-white shadow"
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -666,7 +717,7 @@ export const CertificateVisualEditor = ({
                             .filter(Boolean)
                             .join(' + ')}{' '}
                         is stamped bottom-right on every certificate. Drag the dashed box to
-                        position it yourself.
+                        position it yourself, or remove it to stop printing it at all.
                     </p>
                 )}
             </div>

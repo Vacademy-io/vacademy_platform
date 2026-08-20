@@ -63,4 +63,11 @@ public class CertificateVerificationDto {
     private String instituteLogoFileId;
     private String instituteThemeCode;
     private String instituteWebsite;
+
+    /**
+     * A line the institute chose to show on this page — a registrar's contact,
+     * or what the certificate attests to. Public by definition: anyone holding
+     * the link reads it. Blank prints nothing rather than an empty panel.
+     */
+    private String instituteNote;
 }

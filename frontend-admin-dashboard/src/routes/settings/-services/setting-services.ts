@@ -63,6 +63,15 @@ export interface CertificateSavePayload {
      */
     barcodeContent?: BarcodeContent;
     /**
+     * Whether the platform may stamp the code / the number bottom-right on a
+     * design that does not place them itself. Both default to true server-side,
+     * which is what the badge always did.
+     */
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    /** A line the institute shows on the public verification page. '' clears it. */
+    verificationNote?: string;
+    /**
      * Admin-defined fields, for values the platform has no built-in token for.
      * Each becomes a draggable chip and a {{CF_<KEY>}} token on the template.
      * Send `[]` to clear them; `undefined` preserves what the server has.
@@ -138,6 +147,9 @@ export const handleConfigureCertificateSettings = async (
                           // new ones. The admin saw the change stick until the
                           // next hard reload, then watched it revert.
                           barcodeContent: payload.barcodeContent,
+                          autoStampCode: payload.autoStampCode,
+                          autoStampNumber: payload.autoStampNumber,
+                          verificationNote: payload.verificationNote,
                           customFields: payload.customFields,
                       },
                   },

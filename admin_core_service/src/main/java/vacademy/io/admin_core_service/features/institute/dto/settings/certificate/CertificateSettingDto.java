@@ -82,6 +82,32 @@ public class CertificateSettingDto {
     //                       widens the default box when this is selected.
     private String barcodeContent;
 
+    // Whether the platform may stamp the code and the number bottom-right on a
+    // certificate whose design does not place them itself.
+    //
+    // Both default to TRUE when null, which is what every certificate issued
+    // before these existed did — the stamp was unconditional, and an admin who
+    // deleted the QR or the certificate-number field from their design watched
+    // it reappear on the issued PDF with no way to stop it. That is what these
+    // switch off.
+    //
+    // Two flags rather than one because they are two decisions: an institute
+    // that wants its number printed but no machine-readable code (or the
+    // reverse) is a normal request, and the renderer already decides them
+    // independently.
+    //
+    // Turning off the code means nothing on the certificate can be scanned, so
+    // it can no longer be verified by scanning — the admin is told this in the
+    // settings UI before they do it.
+    private Boolean autoStampCode;
+    private Boolean autoStampNumber;
+
+    // A line of the institute's own on the public verification page — a
+    // registrar's contact, a note about what the certificate attests to.
+    // Shown to whoever scans a certificate, so it is public by definition.
+    // Null/blank prints nothing rather than an empty panel.
+    private String verificationNote;
+
     // Admin-defined fields, so an institute can put values on its certificates
     // that the platform has no built-in token for — a grade, a director's name,
     // an accreditation line. Each entry becomes a draggable chip in the visual

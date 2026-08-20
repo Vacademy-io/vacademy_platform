@@ -7,10 +7,11 @@
  * overflow:hidden`, so the long name was sliced — off both ends, because the box
  * centres its content.
  *
- * <p>The certificate now wraps inside the box the admin drew and the server
- * shrinks the font to fit (CertificateTextFitService). This module is the
- * editor's half: the same arithmetic, so an admin can be told a box is too tight
- * *before* issuing, and so the preview shrinks exactly where the PDF will.
+ * <p>The certificate wraps first and shrinks second (CertificateTextFitService):
+ * a long value uses the lines it needs at the size the design chose, and only
+ * gets smaller when even the box's line budget cannot hold it. This module is
+ * the editor's half: the same arithmetic, so an admin can be told a box is too
+ * tight *before* issuing, and so the preview shrinks exactly where the PDF will.
  *
  * <p>Every constant here mirrors CertificateTextFitService. They have to agree —
  * a warning that disagrees with what the server does is worse than no warning.
@@ -108,7 +109,15 @@ export const linesNeeded = (
  */
 export const linesAllowed = (heightPx: number, fontSizePx: number): number => {
     if (!(heightPx > 0) || !(fontSizePx > 0)) return MAX_FIT_LINES;
-    return Math.max(1, Math.floor(heightPx / (fontSizePx * LINE_HEIGHT) + 0.02));
+    // At least two lines, whatever the box height. Shrinking is the last resort,
+    // not the first: a long name set small enough to fit one line reads as a
+    // mistake on a certificate, while the same name across two lines at the size
+    // the design intended reads as the design. A taller box simply raises the
+    // budget further.
+    return Math.max(
+        MAX_FIT_LINES,
+        Math.floor(heightPx / (fontSizePx * LINE_HEIGHT) + 0.02)
+    );
 };
 
 /**

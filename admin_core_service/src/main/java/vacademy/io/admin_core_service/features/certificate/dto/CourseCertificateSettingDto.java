@@ -31,7 +31,27 @@ public class CourseCertificateSettingDto {
     /** Completion percentage required for this course. Null inherits. */
     private Integer thresholdPercent;
 
-    /** Course-specific template HTML. Null inherits the institute template. */
+    /**
+     * Which of the institute's saved certificate designs this course uses.
+     *
+     * <p>An id rather than a copy of the design, deliberately. A course that
+     * stores its own {@link #templateHtml} freezes whatever the template looked
+     * like the day it was chosen: fix a typo on the institute template
+     * afterwards and every course that copied it keeps printing the typo. An id
+     * is resolved at issuance, so a course follows the design it points at.
+     *
+     * <p>Null inherits the institute's default design.
+     */
+    private String templateId;
+
+    /**
+     * Course-specific template HTML, used verbatim. Null inherits.
+     *
+     * <p>Still supported for a course that uploads finished HTML of its own —
+     * that design exists nowhere else, so there is nothing to point at. When
+     * both are set, {@link #templateId} wins: it is the newer choice, and the
+     * admin UI clears this field when one is picked.
+     */
     private String templateHtml;
 
     // Certificate numbering is deliberately NOT overridable per course. The

@@ -254,11 +254,43 @@ public class CertificateVerificationService {
                 .instituteLogoFileId(institute != null ? institute.getLogoFileId() : null)
                 .instituteThemeCode(institute != null ? institute.getInstituteThemeCode() : null)
                 .instituteWebsite(institute != null ? institute.getWebsiteUrl() : null)
+                .instituteNote(readVerificationNote(institute))
                 .courseName(certificate.getCourseName())
                 .issuedAt(certificate.getIssuedAt())
                 .completionPercentage(certificate.getCompletionPercentage())
                 .learnerName(maskName(resolveLearnerName(certificate.getUserId())))
                 .build();
+    }
+
+    /**
+     * The institute's own line for this page, from its certificate settings.
+     *
+     * <p>Read here rather than passed in because verification is reached from
+     * two entry points and both must show the same page. A malformed settings
+     * blob means no note, never a failed verification — this is decoration on a
+     * page whose job is to answer a yes/no question.
+     */
+    private String readVerificationNote(Institute institute) {
+        String settingJson = institute != null ? institute.getSetting() : null;
+        if (!StringUtils.hasText(settingJson)) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode entries =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingJson)
+                            .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode config : entries) {
+                    if ("COURSE_COMPLETION".equals(config.path("key").asText(null))) {
+                        String note = config.path("verificationNote").asText(null);
+                        return StringUtils.hasText(note) ? note.trim() : null;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read the verification note for institute {}", institute.getId(), e);
+        }
+        return null;
     }
 
     private String resolveLearnerName(String userId) {

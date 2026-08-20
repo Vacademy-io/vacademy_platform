@@ -11,6 +11,7 @@ import {
     type CourseCertificateSettings,
 } from '../../-services/course-certificates';
 import { CourseCertificateTemplateUpload } from './CourseCertificateTemplateUpload';
+import { CourseCertificatePicker } from './CourseCertificatePicker';
 
 interface CourseCertificateSettingsDialogProps {
     open: boolean;
@@ -35,7 +36,10 @@ export const CourseCertificateSettingsDialog = ({
     const [enabledChoice, setEnabledChoice] = useState<EnabledChoice>('INHERIT');
     const [overrideThreshold, setOverrideThreshold] = useState(false);
     const [threshold, setThreshold] = useState(80);
-    // null means inherit the institute template.
+    // Two ways for a course to have its own certificate, and only one can be in
+    // force: follow one of the institute's saved designs by id, or use HTML
+    // uploaded for this course alone. Both null means inherit the default.
+    const [templateId, setTemplateId] = useState<string | null>(null);
     const [templateHtml, setTemplateHtml] = useState<string | null>(null);
 
     // Re-seed whenever the dialog opens so a cancelled edit doesn't persist.
@@ -49,6 +53,10 @@ export const CourseCertificateSettingsDialog = ({
             override?.thresholdPercent !== null && override?.thresholdPercent !== undefined
         );
         setThreshold(override?.thresholdPercent ?? settings.institute_threshold_percent);
+        // The resolved id, not the stored one: a course pointing at a design
+        // that has since been deleted is really inheriting, and the dialog has
+        // to show what is being issued rather than what was once chosen.
+        setTemplateId(settings.course_template_id ?? null);
         setTemplateHtml(override?.templateHtml ?? null);
     }, [open, settings]);
 
@@ -58,7 +66,10 @@ export const CourseCertificateSettingsDialog = ({
                 // null clears the override and falls back to the institute default.
                 enabled: enabledChoice === 'INHERIT' ? null : enabledChoice === 'ON',
                 thresholdPercent: overrideThreshold ? threshold : null,
-                templateHtml,
+                templateId,
+                // Never both: a saved design and uploaded HTML would be two
+                // answers to "which certificate does this course print".
+                templateHtml: templateId ? null : templateHtml,
             }),
         onSuccess: () => {
             toast.success('Course certificate settings saved');
@@ -177,12 +188,26 @@ export const CourseCertificateSettingsDialog = ({
                     )}
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                     <Label className="text-subtitle font-medium">Certificate design</Label>
-                    <CourseCertificateTemplateUpload
-                        templateHtml={templateHtml}
-                        onChange={setTemplateHtml}
+                    <CourseCertificatePicker
+                        value={{ templateId, templateHtml }}
+                        onChange={(next) => {
+                            setTemplateId(next.templateId);
+                            setTemplateHtml(next.templateHtml);
+                        }}
+                        disabled={saveMutation.isPending}
                     />
+                    {/* The escape hatch, below the picker rather than beside it:
+                        a design that exists nowhere but this course. Hidden
+                        while a saved template is chosen, so there is only ever
+                        one answer on screen. */}
+                    {!templateId && (
+                        <CourseCertificateTemplateUpload
+                            templateHtml={templateHtml}
+                            onChange={setTemplateHtml}
+                        />
+                    )}
                 </div>
             </div>
         </MyDialog>

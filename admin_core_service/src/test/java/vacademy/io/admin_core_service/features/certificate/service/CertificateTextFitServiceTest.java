@@ -127,27 +127,29 @@ class CertificateTextFitServiceTest {
     // ------------------------------------------------------ fitting to the box
 
     /**
-     * The reported bug: a long course name in a box only one line tall printed
-     * its first line and had the second sliced off, so the admin's certificate
-     * showed a value nobody could read.
+     * Wrapping before shrinking. A long name in a box one line tall keeps the
+     * size the design chose and takes a second line; shrinking it to fit one
+     * line makes it look like a fault on an otherwise formal document.
      */
     @Test
-    void shrinksToOneLineWhenTheBoxOnlyHoldsOne() {
+    void aLongValueWrapsAtFullSizeRatherThanShrinkingToOneLine() {
+        String name = "Bhuvaneshwari Ramachandran";
+        int oneLineTall = (int) Math.round(32 * 1.2);
+
+        assertEquals(2, CertificateTextFitService.linesNeeded(name, 400, 32));
+        assertEquals(32.0, CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall), 0.001);
+    }
+
+    /** Past the line budget it does shrink — that is what the budget is for. */
+    @Test
+    void shrinksOnlyWhenWrappingIsNotEnough() {
         String name = "Advanced Certificate in Data Science and Machine Learning";
         int oneLineTall = (int) Math.round(32 * 1.2);
 
-        double flat = CertificateTextFitService.fitFontSize(name, 400, 32);
-        double heightAware = CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall);
-
-        assertTrue(heightAware < flat,
-                "a one-line-tall box must shrink further than the flat two-line budget");
-        // It bottoms out at the floor rather than reaching one line: half the
-        // chosen size is as small as a name is allowed to get. The serializer's
-        // clamp (fieldTextMaxHeightPx) then still shows those two lines, so the
-        // value is readable — it just overflows the box the admin drew, which
-        // the editor warns about at design time.
-        assertEquals(16.0, heightAware, 0.001, "expected the shrink floor, not clipping");
-        assertEquals(2, CertificateTextFitService.linesNeeded(name, 400, heightAware));
+        assertEquals(3, CertificateTextFitService.linesNeeded(name, 400, 32));
+        double fitted = CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall);
+        assertTrue(fitted < 32, "a three-line value in a two-line budget must shrink");
+        assertTrue(CertificateTextFitService.linesNeeded(name, 400, fitted) <= 2);
     }
 
     /** A box drawn tall enough for three lines gets three, rather than clipping at two. */
@@ -164,9 +166,10 @@ class CertificateTextFitServiceTest {
                 "with no height recorded the flat two-line budget still applies");
     }
 
+    /** Two lines are always on offer, however small the box. */
     @Test
-    void theLineBudgetIsNeverBelowOne() {
-        assertEquals(1, CertificateTextFitService.linesAllowed(4, 32));
+    void theLineBudgetIsNeverBelowTwo() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(4, 32));
     }
 
     /** Templates saved before the height was stamped keep the old flat budget. */
@@ -174,6 +177,11 @@ class CertificateTextFitServiceTest {
     void anUnknownHeightFallsBackToTwoLines() {
         assertEquals(2, CertificateTextFitService.linesAllowed(0, 32));
         assertEquals(2, CertificateTextFitService.linesAllowed(-5, 32));
+    }
+
+    @Test
+    void aTallerBoxRaisesTheBudget() {
+        assertEquals(4, CertificateTextFitService.linesAllowed(4 * 32 * 1.2, 32));
     }
 
     @Test

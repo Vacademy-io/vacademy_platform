@@ -100,6 +100,14 @@ export function VerifiedByCertificate({
         )}
       </dl>
 
+      {data.institute_note && (
+        <div className="border-t border-neutral-100 px-6 py-4 dark:border-neutral-700">
+          <p className="text-caption text-neutral-600 dark:text-neutral-300">
+            {data.institute_note}
+          </p>
+        </div>
+      )}
+
       <footer className="flex flex-col gap-2 border-t border-neutral-100 px-6 py-4 dark:border-neutral-700">
         {/* Says plainly why the name is partial, so it doesn't read as a bug. */}
         <p className="text-caption text-neutral-400">

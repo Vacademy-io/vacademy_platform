@@ -36,31 +36,22 @@ describe("parsePostSubmitConfiguration", () => {
     const parsed = parsePostSubmitConfiguration(
       JSON.stringify({
         postSubmitConfiguration: {
+          enabled: true,
           successTitle: "See you there",
+          // Keys this build no longer knows (artwork was removed) must be
+          // ignored, not crash the public form.
           icon: "confetti",
-          accent: "info",
           imageUrl: "https://cdn.example.com/banner.png",
         },
       })
     );
     expect(parsed.successTitle).toBe("See you there");
-    expect(parsed.icon).toBe("confetti");
-    expect(parsed.accent).toBe("info");
-    expect(parsed.imageUrl).toBe("https://cdn.example.com/banner.png");
+    expect(parsed.enabled).toBe(true);
     expect(parsed.successMessage).toBe(
       DEFAULT_POST_SUBMIT_CONFIGURATION.successMessage
     );
   });
 
-  it("falls back on an icon or accent this build does not know", () => {
-    const parsed = parsePostSubmitConfiguration(
-      JSON.stringify({
-        postSubmitConfiguration: { icon: "rocket", accent: "fuchsia" },
-      })
-    );
-    expect(parsed.icon).toBe(DEFAULT_POST_SUBMIT_CONFIGURATION.icon);
-    expect(parsed.accent).toBe(DEFAULT_POST_SUBMIT_CONFIGURATION.accent);
-  });
 
   it("migrates the original single-button shape", () => {
     // The first cut of this feature wrote showCtaButton/ctaButtonText/
@@ -181,7 +172,7 @@ describe("sanitizePostSubmitHtml", () => {
 describe("resolvePostSubmitButtons", () => {
   const withButtons = (buttons: unknown) =>
     parsePostSubmitConfiguration(
-      JSON.stringify({ postSubmitConfiguration: { buttons } })
+      JSON.stringify({ postSubmitConfiguration: { enabled: true, buttons } })
     );
 
   it("applies tokens to text and link", () => {
@@ -227,21 +218,37 @@ describe("isDefaultPostSubmitConfiguration", () => {
     ).toBe(true);
   });
 
-  it("is false as soon as anything is authored", () => {
+  it("is true whenever the master switch is off, whatever else is set", () => {
+    // Off is the default; nothing in the blob may leak onto a public page.
+    expect(
+      isDefaultPostSubmitConfiguration(
+        parsePostSubmitConfiguration(
+          JSON.stringify({
+            postSubmitConfiguration: {
+              enabled: false,
+              successTitle: "Custom",
+              redirectUrl: "https://example.com",
+              buttons: [{ id: "a", text: "Go", url: "/x", variant: "primary" }],
+            },
+          })
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("is false as soon as anything is authored AND the switch is on", () => {
     const cases = [
       { successTitle: "Hi" },
       { successMessage: "Custom" },
       { content: "<p>x</p>" },
-      { icon: "confetti" },
-      { accent: "info" },
-      { imageUrl: "https://x.example.com/a.png" },
       { allowAnotherResponse: true },
       { anotherResponseText: "Again" },
       { redirectUrl: "/thanks" },
       { redirectDelaySeconds: 3 },
       { buttons: [{ id: "a", text: "Go", url: "/x", variant: "primary" }] },
     ];
-    for (const postSubmitConfiguration of cases) {
+    for (const partial of cases) {
+      const postSubmitConfiguration = { enabled: true, ...partial };
       expect(
         isDefaultPostSubmitConfiguration(
           parsePostSubmitConfiguration(JSON.stringify({ postSubmitConfiguration }))

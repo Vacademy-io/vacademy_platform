@@ -14,6 +14,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ModernCard, ModernCardHeader, ModernCardTitle } from "@/components/design-system/modern-card";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 import { MyButton } from "@/components/design-system/button";
+import { Check } from "@phosphor-icons/react";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import {
@@ -42,8 +43,6 @@ import {
   type PostSubmitTokens,
 } from "../-utils/post-submit-config";
 import { usePostSubmitRedirect } from "../-utils/use-post-submit-redirect";
-import { PostSubmitArtwork } from "./post-submit-artwork";
-import { POST_SUBMIT_BUTTON_ACCENT_CLASS } from "../-utils/post-submit-styles";
 import { toast } from "sonner";
 
 interface AudienceResponseFormProps {
@@ -109,7 +108,9 @@ const AudienceResponseForm = ({
   const { redirectUrl, secondsLeft } = usePostSubmitRedirect(
     postSubmitConfig,
     postSubmitTokens,
-    isSubmitted
+    // Gated on the master switch: a campaign that never enabled this must never
+    // redirect anyone, whatever else is sitting in its setting_json.
+    isSubmitted && postSubmitConfig.enabled
   );
 
   const { data: instituteData, isLoading: isInstituteLoading } =
@@ -325,6 +326,9 @@ const AudienceResponseForm = ({
 
   // Show success message after submission
   if (isSubmitted) {
+    // Master switch off (the default) → the exact screen this page rendered
+    // before the feature existed.
+    const useCustomScreen = postSubmitConfig.enabled;
     const successTitle = applyPostSubmitTokens(
       postSubmitConfig.successTitle,
       postSubmitTokens
@@ -397,26 +401,33 @@ const AudienceResponseForm = ({
               className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg"
             >
               <div className="text-center space-y-6 py-8">
-                {/* Artwork — admin-chosen image, icon and accent. */}
-                <PostSubmitArtwork config={postSubmitConfig} size="lg" className="mb-4" />
+                {/* Success icon — unchanged whether or not the campaign uses a
+                    custom screen; only the copy and actions are configurable. */}
+                <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-success-100">
+                  <Check className="size-10 text-success-600" weight="bold" aria-hidden="true" />
+                </div>
 
                 {/* Success Message — copy, CTA and redirect all come from the
                     campaign's Post Submit Configuration. */}
                 <div className="space-y-3">
-                  {successTitle && (
+                  {(useCustomScreen ? successTitle : "Registration Successful!") && (
                     <h2 className="text-2xl sm:text-3xl font-bold text-neutral-800">
-                      {successTitle}
+                      {useCustomScreen ? successTitle : "Registration Successful!"}
                     </h2>
                   )}
-                  {successHtml ? (
+                  {useCustomScreen && successHtml ? (
                     <div
                       className="text-lg text-neutral-600 [&_a]:text-primary-500 [&_a]:underline [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_img]:mx-auto [&_img]:max-w-full [&_li]:list-inside [&_ol]:list-decimal [&_ul]:list-disc"
                       dangerouslySetInnerHTML={{ __html: successHtml }}
                     />
                   ) : (
-                    successMessage && (
+                    (useCustomScreen
+                      ? successMessage
+                      : "Thank you for your response. Your form has been submitted successfully.") && (
                       <p className="text-lg text-neutral-600 whitespace-pre-line">
-                        {successMessage}
+                        {useCustomScreen
+                          ? successMessage
+                          : "Thank you for your response. Your form has been submitted successfully."}
                       </p>
                     )
                   )}
@@ -433,7 +444,7 @@ const AudienceResponseForm = ({
                   )}
                 </div>
 
-                {(actionButtons.length > 0 || showAnother) && (
+                {useCustomScreen && (actionButtons.length > 0 || showAnother) && (
                   <div className="flex flex-col flex-wrap items-center justify-center gap-3 sm:flex-row">
                     {actionButtons.map((button) => (
                       // Anchors, not buttons: middle-click / "open in new tab"
@@ -446,7 +457,7 @@ const AudienceResponseForm = ({
                           : {})}
                         className={
                           button.variant === "primary"
-                            ? `inline-flex items-center justify-center rounded-lg px-6 py-2.5 text-subtitle font-semibold transition-colors ${POST_SUBMIT_BUTTON_ACCENT_CLASS[postSubmitConfig.accent]}`
+                            ? "inline-flex items-center justify-center rounded-lg bg-primary-500 px-6 py-2.5 text-subtitle font-semibold text-white transition-colors hover:bg-primary-600"
                             : "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-6 py-2.5 text-subtitle font-semibold text-neutral-600 transition-colors hover:border-neutral-400"
                         }
                       >

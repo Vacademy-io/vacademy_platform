@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.live_session.dto.AttendanceCriteriaConfigDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
@@ -33,7 +34,11 @@ import java.util.UUID;
 import java.util.List;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class Step2Service {
+
+    @Autowired
+    private AttendanceCriteriaService attendanceCriteriaService;
 
     @Autowired
     private LiveSessionRepository sessionRepository;
@@ -91,6 +96,7 @@ public class Step2Service {
         liveSessionPaymentService.upsertPaymentConfig(session, request.getPaymentConfig());
         processRecordingAutoLinkConfig(request, session);
         processAudiencePushConfig(request, session);
+        processAttendanceCriteria(session, isEdit);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -467,6 +473,35 @@ public class Step2Service {
      * in Step1Service. Omitting the field on the request leaves the stored
      * config untouched (partial Step2 updates must not silently disable it).
      */
+    /**
+     * Stamps the institute's current minimum-attendance rule onto the class as
+     * it is created, so the class is judged by the rule in force when it was
+     * scheduled. Turning the institute setting on or off afterwards therefore
+     * affects later classes only, and never re-decides attendance for a class
+     * already scheduled or already taught.
+     *
+     * <p>Read here rather than sent by the scheduling form on purpose: if the
+     * settings request had not resolved when the form initialised, the form
+     * would post "disabled" and the class would silently be created with no rule.
+     *
+     * <p>Skipped on edit, so re-saving a class never rewrites its rule. Failures
+     * are swallowed — a class must still be created even if the setting cannot
+     * be read; it simply keeps today's behaviour.
+     */
+    private void processAttendanceCriteria(LiveSession session, boolean isEdit) {
+        if (isEdit) {
+            return;
+        }
+        try {
+            AttendanceCriteriaConfigDTO config =
+                    attendanceCriteriaService.resolveInstituteDefault(session.getInstituteId());
+            session.setAttendanceCriteriaJson(
+                    config.isActive() ? objectMapper.writeValueAsString(config) : null);
+        } catch (Exception e) {
+            log.warn("attendance_criteria.stamp_failed sessionId={}: {}", session.getId(), e.getMessage());
+        }
+    }
+
     private void processRecordingAutoLinkConfig(LiveSessionStep2RequestDTO request, LiveSession session) {
         if (request.getRecordingAutoLinkConfig() == null) {
             return;

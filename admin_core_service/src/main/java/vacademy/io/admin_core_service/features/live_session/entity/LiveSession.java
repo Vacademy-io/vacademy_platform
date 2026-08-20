@@ -146,6 +146,16 @@ public class LiveSession {
     @Column(name = "audience_push_config_json", columnDefinition = "text")
     private String audiencePushConfigJson;
 
+    /**
+     * Minimum-attendance rule this class was scheduled under:
+     * {enabled, minDurationPercent}. Copied from the institute's
+     * LIVE_SESSION_SETTING.defaultAttendanceCriteria at creation, never read
+     * from that setting later. NULL or disabled means the join click alone
+     * decides attendance. See AttendanceCriteriaService.
+     */
+    @Column(name = "attendance_criteria_json", columnDefinition = "text")
+    private String attendanceCriteriaJson;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

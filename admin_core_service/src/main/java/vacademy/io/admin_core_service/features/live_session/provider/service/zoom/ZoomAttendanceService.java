@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Records learner attendance for Zoom sessions.
@@ -41,6 +42,8 @@ public class ZoomAttendanceService {
     private final ZoomMeetingManager zoomMeetingManager;
     private final LiveSessionParticipantRepository participantRepository;
     private final SessionScheduleRepository scheduleRepository;
+    private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
+    private final vacademy.io.admin_core_service.features.live_session.service.AttendanceCriteriaEvaluator attendanceCriteriaEvaluator;
 
     /**
      * Polling fallback: pulls Zoom's post-meeting participant report and records
@@ -88,19 +91,38 @@ public class ZoomAttendanceService {
             }
         }
 
+        // Opt-in per session, so nothing here costs anything for a class that
+        // never enabled it. The admin snapshot must be taken before the upserts,
+        // which reset statusType to ONLINE and would erase a manual mark.
+        vacademy.io.admin_core_service.features.live_session.entity.LiveSession criteriaSession =
+                liveSessionRepository.findById(schedule.getSessionId()).orElse(null);
+        boolean criteriaActive = attendanceCriteriaEvaluator.isActiveFor(criteriaSession);
+        Set<String> adminMarked = criteriaActive
+                ? attendanceCriteriaEvaluator.snapshotAdminMarked(schedule.getId())
+                : null;
+
         Timestamp now = new Timestamp(System.currentTimeMillis());
         int upserts = 0;
+        // Zoom reports no host/moderator flag, so every attendee is scored as a
+        // participant.
+        Map<String, Boolean> roster = new LinkedHashMap<>();
         for (Map.Entry<String, Aggregate> entry : byEmail.entrySet()) {
             String email = entry.getKey();
             Aggregate agg = entry.getValue();
             List<String> userIds = participantRepository.findEnrolledUserIdByEmail(schedule.getSessionId(), email);
             if (!userIds.isEmpty()) {
                 upsertAttendance(schedule, "USER", userIds.get(0), agg, now);
+                roster.put(userIds.get(0), false);
             } else {
                 // Guest / email not matching any enrolled participant.
                 upsertAttendance(schedule, "PROVIDER_EMAIL", email, agg, now);
+                roster.put(email, false);
             }
             upserts++;
+        }
+
+        if (criteriaActive) {
+            attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked);
         }
 
         schedule.setLastAttendanceSyncAt(new Date());

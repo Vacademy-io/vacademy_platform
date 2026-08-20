@@ -27,6 +27,7 @@ export const BulkActionsMenu = ({
     const router = useRouter();
     const {
         openBulkChangeBatchDialog,
+        openBulkExtendAccessDialog,
         openBulkReRegisterDialog,
         openBulkTerminateRegistrationDialog,
         openBulkDeleteDialog,
@@ -65,6 +66,9 @@ export const BulkActionsMenu = ({
                 break;
             case 'Change Batch':
                 openBulkChangeBatchDialog(bulkActionInfo);
+                break;
+            case 'Extend Course Access':
+                openBulkExtendAccessDialog(bulkActionInfo);
                 break;
             case 'Re-register for Next Session':
                 openBulkReRegisterDialog(bulkActionInfo);

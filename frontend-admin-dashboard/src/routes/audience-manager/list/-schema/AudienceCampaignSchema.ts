@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+    DEFAULT_POST_SUBMIT_CONFIGURATION,
+    POST_SUBMIT_ACCENTS,
+    POST_SUBMIT_ICONS,
+} from '@/services/audience-post-submit-settings';
 
 const testInputFieldSchema = z.object({
     id: z.string(),
@@ -33,6 +38,47 @@ const testInputFieldSchema = z.object({
     custom_field_data: z.any().optional(),
 });
 
+/**
+ * Post-submit ("thank you") configuration.
+ *
+ * Every branch here is deliberately UNFAILABLE — `.catch()` / `.default()` on
+ * each leaf, and no `.max()` on the button array. This block has no error UI of
+ * its own, and react-hook-form's `handleSubmit` silently skips the success
+ * handler when *any* field fails, so a strict rule here would turn "Save
+ * Changes" into a dead button with nothing on screen explaining why. A campaign
+ * whose `setting_json` was hand-edited (or written by a future/older client)
+ * must still be editable and savable.
+ *
+ * Real enforcement lives where it can report itself: `validatePostSubmitConfiguration`
+ * (blocks the save with a toast) and `normalizePostSubmitConfiguration` (coerces
+ * and caps on the way to the API).
+ */
+const postSubmitConfigurationSchema = z.object({
+    icon: z.enum(POST_SUBMIT_ICONS).catch(DEFAULT_POST_SUBMIT_CONFIGURATION.icon),
+    accent: z.enum(POST_SUBMIT_ACCENTS).catch(DEFAULT_POST_SUBMIT_CONFIGURATION.accent),
+    imageUrl: z.string().catch(''),
+    successTitle: z.string().catch(DEFAULT_POST_SUBMIT_CONFIGURATION.successTitle),
+    successMessage: z.string().catch(DEFAULT_POST_SUBMIT_CONFIGURATION.successMessage),
+    content: z.string().catch(''),
+    buttons: z
+        .array(
+            z.object({
+                id: z.string().catch(''),
+                text: z.string().catch(''),
+                url: z.string().catch(''),
+                variant: z.enum(['primary', 'secondary']).catch('secondary'),
+            })
+        )
+        // No .max(): the editor caps adding at MAX_POST_SUBMIT_BUTTONS and
+        // normalize slices on the way out. A cap here could only ever block a
+        // save with no visible reason.
+        .catch([]),
+    allowAnotherResponse: z.boolean().catch(false),
+    anotherResponseText: z.string().catch(''),
+    redirectUrl: z.string().catch(''),
+    redirectDelaySeconds: z.number().catch(0),
+});
+
 export const audienceCampaignSchema = z
     .object({
         campaign_name: z
@@ -50,6 +96,12 @@ export const audienceCampaignSchema = z
         sub_org_id: z.string().optional(),
         json_web_metadata: z.string().optional(),
         institute_custom_fields: z.string().optional(),
+        // What the respondent sees the instant the form is submitted. Persisted
+        // inside the campaign's `setting_json` — mirrors the enroll invite's
+        // `postformfillConfiguration`. See services/audience-post-submit-settings.ts.
+        postSubmitConfiguration: postSubmitConfigurationSchema.default(
+            DEFAULT_POST_SUBMIT_CONFIGURATION
+        ),
         custom_fields: z.array(testInputFieldSchema).default([]),
         customHtml: z.string().default(''),
         selectedOptionValue: z.string().default('textfield'),
@@ -97,6 +149,9 @@ export const defaultFormValues: AudienceCampaignForm = {
     sub_org_id: '',
     json_web_metadata: '',
     institute_custom_fields: '',
+    // Fresh `buttons` array: a shallow spread would share the module-level
+    // DEFAULT's array, so one stray mutation would poison every new form.
+    postSubmitConfiguration: { ...DEFAULT_POST_SUBMIT_CONFIGURATION, buttons: [] },
     // custom_fields are loaded dynamically from settings via getCampaignCustomFields()
     // If no fields are configured in settings, the form will start with an empty array
     // Users can add fields manually or configure them in settings

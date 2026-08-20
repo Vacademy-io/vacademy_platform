@@ -36,6 +36,15 @@ import {
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import PostSubmitConfigurationEditor from '@/components/audience/PostSubmitConfigurationEditor';
+import {
+    applyPostSubmitConfiguration,
+    DEFAULT_POST_SUBMIT_CONFIGURATION,
+    fetchAudienceFormSettings,
+    parsePostSubmitConfiguration,
+    validatePostSubmitConfiguration,
+    type AudiencePostSubmitConfiguration,
+} from '@/services/audience-post-submit-settings';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -95,6 +104,10 @@ const buildInitialFormValues = (
         status: campaign.status?.toUpperCase?.() || defaultFormValues.status,
         sub_org_id: campaign.sub_org_id || '',
         json_web_metadata: campaign.json_web_metadata || '',
+        // Thank-you screen config lives inside the campaign's setting_json blob.
+        // parse* tolerates a missing/legacy/unparsable blob and returns defaults,
+        // so campaigns created before this feature still open with a full card.
+        postSubmitConfiguration: parsePostSubmitConfiguration(campaign.setting_json),
         default_initial_score:
             typeof campaign.default_initial_score === 'number'
                 ? campaign.default_initial_score
@@ -177,6 +190,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     // Store initial custom fields for create mode (from settings) so we can restore them on reset
     const initialCreateModeCustomFields = useRef<any[] | null>(null);
+    // Same idea for the post-submit block: the institute-wide default fetched
+    // once in create mode, kept so Reset restores it without a second fetch.
+    const initialCreateModePostSubmit = useRef<AudiencePostSubmitConfiguration | null>(null);
 
     useEffect(() => {
         if (campaignData) {
@@ -336,6 +352,30 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         };
     }, [isEditMode, isLoadingCampaign, setValue]);
 
+    // Create mode: seed the post-submit block from the institute-wide default
+    // (Settings → Lead Settings → Forms) so an admin configures the thank-you
+    // screen once instead of retyping it per campaign. Edit mode is a no-op —
+    // the campaign's own saved block already came through initialFormValues,
+    // and a later change to the institute default must not rewrite it.
+    useEffect(() => {
+        if (isEditMode) return;
+        if (isLoadingCampaign) return;
+
+        let cancelled = false;
+        fetchAudienceFormSettings().then((config) => {
+            if (cancelled) return;
+            initialCreateModePostSubmit.current = config;
+            setValue('postSubmitConfiguration', config, {
+                shouldDirty: false,
+                shouldTouch: false,
+            });
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isEditMode, isLoadingCampaign, setValue]);
+
     // Custom fields array management
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
@@ -406,10 +446,19 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // In create mode, reset form values but preserve the initial custom
             // fields that were loaded via getCampaignCustomFieldsAsync.
             const fieldsToRestore = initialCreateModeCustomFields.current;
+            const postSubmitToRestore = initialCreateModePostSubmit.current;
 
             handleReset();
 
             setTimeout(() => {
+                // Reset means "back to the institute defaults", not "back to the
+                // hardcoded blank" — restore the fetched post-submit default too.
+                if (postSubmitToRestore) {
+                    setValue('postSubmitConfiguration', postSubmitToRestore, {
+                        shouldDirty: false,
+                        shouldTouch: false,
+                    });
+                }
                 if (fieldsToRestore && fieldsToRestore.length > 0) {
                     setValue('custom_fields', fieldsToRestore, {
                         shouldDirty: false,
@@ -647,6 +696,16 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             return;
         }
 
+        // A bad redirect/CTA link only fails on the public form, long after the
+        // admin has left this dialog — block the save instead.
+        const postSubmitError = validatePostSubmitConfiguration(
+            data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+        );
+        if (postSubmitError) {
+            toast.error(postSubmitError);
+            return;
+        }
+
         // Flush any half-typed email in the Team Notifications box into the
         // committed list before building the payload. Returns the final list
         // synchronously so we don't depend on React state having re-rendered
@@ -716,6 +775,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             to_notify: notifyEmails.join(', '),
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: data.json_web_metadata?.trim() || '',
+            // Merge into (not replace) the existing blob — setting_json also
+            // carries other per-campaign settings the backend writes.
+            setting_json: applyPostSubmitConfiguration(
+                campaignData?.setting_json,
+                data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+            ),
             created_by_user_id: userId,
             start_date_local: formatDateTimeForPayload(data.start_date_local, false),
             end_date_local: formatDateTimeForPayload(data.end_date_local, true),
@@ -1209,6 +1274,24 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 campaignId={editingCampaignId}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
+            />
+
+            {/* Post Submit Configuration — the thank-you screen / redirect the
+                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
+            <Controller
+                name="postSubmitConfiguration"
+                control={control}
+                render={({ field }) => (
+                    <PostSubmitConfigurationEditor
+                        // `?? DEFAULT` guards the window between a form.reset()
+                        // and the async default landing — the editor is fully
+                        // controlled and would crash on an undefined value.
+                        value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
+                        onChange={field.onChange}
+                        previewCampaignName={watch('campaign_name') || 'Your Campaign'}
+                        description="What the respondent sees the moment this form is submitted. Prefilled from Settings → Lead Settings → Forms; changes here apply to this campaign only."
+                    />
+                )}
             />
 
             {/* Custom HTML Card */}

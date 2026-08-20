@@ -6,8 +6,8 @@
  * Settings → Forms). It arrives here inside the campaign's `setting_json`,
  * served by the anonymous `open/v1/audience/campaign/{instituteId}/{audienceId}`
  * endpoint, and decides what a visitor sees the instant they submit: the
- * artwork (image + icon + accent), the copy (plain or rich text), any number of
- * action buttons, a "submit another response" button, and an optional redirect.
+ * copy (plain or rich text), any number of action buttons, a "submit another
+ * response" button, and an optional redirect.
  *
  * Every field falls back to the previous hardcoded copy, so campaigns saved
  * before the feature existed render exactly as they did before.
@@ -16,25 +16,6 @@
  * `src/services/audience-post-submit-settings.ts`.
  */
 import DOMPurify from "dompurify";
-
-export const POST_SUBMIT_ICONS = [
-  "check",
-  "confetti",
-  "heart",
-  "envelope",
-  "calendar",
-  "none",
-] as const;
-export type PostSubmitIcon = (typeof POST_SUBMIT_ICONS)[number];
-
-export const POST_SUBMIT_ACCENTS = [
-  "success",
-  "primary",
-  "info",
-  "warning",
-  "neutral",
-] as const;
-export type PostSubmitAccent = (typeof POST_SUBMIT_ACCENTS)[number];
 
 export type PostSubmitButtonVariant = "primary" | "secondary";
 
@@ -48,10 +29,12 @@ export interface PostSubmitButton {
 export const MAX_POST_SUBMIT_BUTTONS = 4;
 
 export interface AudiencePostSubmitConfiguration {
-  icon: PostSubmitIcon;
-  accent: PostSubmitAccent;
-  /** Optional image above the icon (logo, banner, QR code…). */
-  imageUrl: string;
+  /**
+   * Master switch. OFF unless an admin deliberately turned it on, in which case
+   * every surface renders exactly what it rendered before this feature existed
+   * and no redirect fires.
+   */
+  enabled: boolean;
   /** Blank hides the heading. */
   successTitle: string;
   successMessage: string;
@@ -67,9 +50,7 @@ export interface AudiencePostSubmitConfiguration {
 
 export const DEFAULT_POST_SUBMIT_CONFIGURATION: AudiencePostSubmitConfiguration =
   {
-    icon: "check",
-    accent: "success",
-    imageUrl: "",
+    enabled: false,
     successTitle: "Registration Successful!",
     successMessage:
       "Thank you for your response. Your form has been submitted successfully.",
@@ -170,9 +151,7 @@ export const parsePostSubmitConfiguration = (
     Record<string, unknown>;
   const d = DEFAULT_POST_SUBMIT_CONFIGURATION;
   return {
-    icon: toEnum<PostSubmitIcon>(src.icon, POST_SUBMIT_ICONS, d.icon),
-    accent: toEnum<PostSubmitAccent>(src.accent, POST_SUBMIT_ACCENTS, d.accent),
-    imageUrl: toStr(src.imageUrl, d.imageUrl),
+    enabled: toBool(src.enabled, d.enabled),
     successTitle: toStr(src.successTitle, d.successTitle),
     successMessage: toStr(src.successMessage, d.successMessage),
     content: toStr(src.content, d.content),
@@ -185,19 +164,18 @@ export const parsePostSubmitConfiguration = (
 };
 
 /**
- * True when nothing has been authored — the config is byte-for-byte the
- * shipped default. The catalogue surface uses this to keep exactly the
- * thank-you block it rendered before this feature existed, instead of imposing
- * default copy and a heading on live pages that never opted in.
+ * True when this campaign has nothing to render — either the master switch is
+ * off (the default), or it is on but byte-for-byte the shipped defaults.
+ * Renderers use this to keep exactly the thank-you block they showed before
+ * this feature existed, rather than imposing default copy on pages that never
+ * opted in.
  */
 export const isDefaultPostSubmitConfiguration = (
   config: AudiencePostSubmitConfiguration
 ): boolean => {
   const d = DEFAULT_POST_SUBMIT_CONFIGURATION;
+  if (!config.enabled) return true;
   return (
-    config.icon === d.icon &&
-    config.accent === d.accent &&
-    config.imageUrl === d.imageUrl &&
     config.successTitle === d.successTitle &&
     config.successMessage === d.successMessage &&
     config.content === d.content &&

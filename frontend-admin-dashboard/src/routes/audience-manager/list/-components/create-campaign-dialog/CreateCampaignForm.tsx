@@ -1288,6 +1288,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                         // controlled and would crash on an undefined value.
                         value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
                         onChange={field.onChange}
+                        // Collapsed by default: this is an optional advanced
+                        // block, and the create form must look the way it
+                        // always did for admins who don't need it.
+                        collapsible
                         previewCampaignName={watch('campaign_name') || 'Your Campaign'}
                         description="What the respondent sees the moment this form is submitted. Prefilled from Settings → Lead Settings → Forms; changes here apply to this campaign only."
                     />

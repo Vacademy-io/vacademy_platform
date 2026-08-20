@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-    DEFAULT_POST_SUBMIT_CONFIGURATION,
-    POST_SUBMIT_ACCENTS,
-    POST_SUBMIT_ICONS,
-} from '@/services/audience-post-submit-settings';
+import { DEFAULT_POST_SUBMIT_CONFIGURATION } from '@/services/audience-post-submit-settings';
 
 const testInputFieldSchema = z.object({
     id: z.string(),
@@ -54,9 +50,7 @@ const testInputFieldSchema = z.object({
  * and caps on the way to the API).
  */
 const postSubmitConfigurationSchema = z.object({
-    icon: z.enum(POST_SUBMIT_ICONS).catch(DEFAULT_POST_SUBMIT_CONFIGURATION.icon),
-    accent: z.enum(POST_SUBMIT_ACCENTS).catch(DEFAULT_POST_SUBMIT_CONFIGURATION.accent),
-    imageUrl: z.string().catch(''),
+    enabled: z.boolean().catch(false),
     successTitle: z.string().catch(DEFAULT_POST_SUBMIT_CONFIGURATION.successTitle),
     successMessage: z.string().catch(DEFAULT_POST_SUBMIT_CONFIGURATION.successMessage),
     content: z.string().catch(''),

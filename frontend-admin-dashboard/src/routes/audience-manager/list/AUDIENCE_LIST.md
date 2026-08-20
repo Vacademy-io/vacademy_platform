@@ -553,30 +553,37 @@ same idea, different surface.
 
 ### 13.1 Options
 
+**Off by default.** `enabled` is `false` until an admin turns it on. While off,
+every respondent-facing surface renders exactly what it rendered before this
+feature existed and no redirect fires — whatever else is sitting in the blob.
+
 | Field | Effect |
 |---|---|
-| `imageUrl` | Optional image above the icon — logo, event banner, QR code, map. Pasted URL or uploaded in place |
-| `icon` | `check` / `confetti` / `heart` / `envelope` / `calendar` / `none` |
-| `accent` | Token family tinting the icon and solid buttons: `success` / `primary` / `info` / `warning` / `neutral`. Never a hex — theming and dark mode keep working |
+| `enabled` | Master switch. Off = standard confirmation, unchanged |
 | `successTitle` | Heading. Blank hides it |
-| `content` | Rich-text body, authored in the TipTap editor with an "Edit HTML source" escape hatch. Sanitized at render |
-| `successMessage` | Plain-text fallback, used only when `content` is empty |
-| `buttons[]` | Up to `MAX_POST_SUBMIT_BUTTONS` (4) action buttons, each `{text, url, variant}` where variant is solid or outline. External links open in a new tab |
-| `allowAnotherResponse` + `anotherResponseText` | "Submit another response" button with a custom label (kiosk / event desk) |
+| `successMessage` | Plain-text body |
+| `content` | Optional formatted body (TipTap, with an "Edit HTML source" escape hatch). Replaces `successMessage` when set. Sanitized at render |
+| `buttons[]` | Up to `MAX_POST_SUBMIT_BUTTONS` (4) action buttons, each `{text, url, variant}` (solid / outline). External links open in a new tab |
+| `allowAnotherResponse` + `anotherResponseText` | "Submit another response" button with a custom label |
 | `redirectUrl` + `redirectDelaySeconds` | Sends the respondent elsewhere. `0` = immediate; a delay shows a countdown first |
 
-The admin card is split **controls | live preview** — the preview renders the same
-artwork/copy/button structure the learner app renders, with sample token values,
-so the screen can be authored without publishing the campaign and filling in the
-form.
+There is deliberately **no artwork configuration** — no icon picker, accent
+colour or banner image. The success icon stays the one each surface already
+used; only copy, buttons and the redirect are configurable. That keeps the card
+the same shape as the enroll invite's Post Form Fill Configuration.
+
+The card is a single column of stacked fields, and the thank-you screen
+**preview sits behind a Preview button** (a dialog), not a permanent
+side-by-side pane — the pane cost half the campaign dialog to show a few lines
+of text.
 
 `successTitle`, `successMessage`, `content`, button text, button URLs and
 `redirectUrl` all support the tokens `{{name}}`, `{{email}}` and
 `{{campaignName}}`. In URLs the value is URL-encoded, so `?email={{email}}`
 works.
 
-`redirectUrl`, `imageUrl` and button URLs accept a relative path (`/thank-you`)
-or an absolute `http(s)` URL only. `javascript:`, `data:` and protocol-relative
+`redirectUrl` and button URLs accept a relative path (`/thank-you`) or an
+absolute `http(s)` URL only. `javascript:`, `data:` and protocol-relative
 `//host` are rejected — on save in the admin, and again at render time, where an
 unsafe button is dropped rather than rendered as a dead control.
 
@@ -607,7 +614,7 @@ existing blob rather than replacing it — see `applyPostSubmitConfiguration`.
 | Shared campaign link `/audience-response` | `frontend-learner-dashboard-app/src/routes/audience-response/-components/audience-response-form.tsx` |
 | Catalogue inline form + `AudienceFormModal` | `frontend-learner-dashboard-app/src/routes/$tagName/-components/components/LeadFormComponent.tsx` |
 
-Both parse with `parsePostSubmitConfiguration` and share `PostSubmitArtwork`,
+Both parse with `parsePostSubmitConfiguration` and share
 `resolvePostSubmitButtons` and `usePostSubmitRedirect`, so a campaign behaves
 identically wherever its form was filled. Two deliberate differences:
 
@@ -626,17 +633,32 @@ so they render exactly as they did before. The original single-button shape
 
 Three guards keep this from changing behaviour for anyone who never opened the card:
 
-1. **The Zod block is deliberately unfailable** (`.catch()` on every leaf, no
+1. **`enabled` is off by default**, and every renderer plus the redirect hook is
+   gated on it, so an untouched campaign behaves exactly as before. Validation
+   is also skipped while off, so half-finished content can never block a save.
+2. **The Zod block is deliberately unfailable** (`.catch()` on every leaf, no
    `.max()` on `buttons`). This block has no error UI, and RHF's `handleSubmit`
    silently skips the success handler when any field fails — a strict rule here
    would turn "Save Changes" into a dead button with nothing on screen. Real
    enforcement lives in `validatePostSubmitConfiguration` (toast) and
    `normalizePostSubmitConfiguration` (coerce + cap).
-2. **The catalogue keeps its original block** while
-   `isDefaultPostSubmitConfiguration()` is true, so live catalogue pages don't
-   gain a heading or change copy because a default now exists.
-3. **A blank button row never blocks the save.** Adding a button and leaving it
+3. **The catalogue keeps its original block** while
+   `isDefaultPostSubmitConfiguration()` is true — which it always is while the
+   master switch is off — so live catalogue pages don't gain a heading or change
+   copy because a default now exists.
+4. **A blank button row never blocks the save.** Adding a button and leaving it
    empty is a change of mind — normalize drops it. Only half-filled rows error.
+5. **The card is collapsed by default in the campaign form**, behind a header
+   showing an `Off` / `On` chip, so the create flow is visually unchanged for
+   anyone who doesn't use it.
+
+One dependency worth knowing: the body editor passes `minimalToolbar` to
+`RichTextEditor`, and that is **load-bearing, not cosmetic**. The full toolbar's
+"More tools" menu opens a link modal whose Cancel / Apply / Remove buttons carry
+no `type="button"`; this card sits inside the campaign `<form>`, so with the full
+toolbar those would submit the campaign mid-edit. Same for the math modal. (A
+pre-existing quirk of `TipTapEditor` — unreachable in the minimal toolbar, so it
+is not fixed here.)
 
 ### 13.5 Not covered
 
@@ -648,5 +670,5 @@ entity with their own creation flow and do not read this block.
 | File | Role |
 |---|---|
 | [audience-post-submit-settings.ts](src/services/audience-post-submit-settings.ts) | Types, defaults, parse/merge, validation, institute-default fetch/save |
-| [PostSubmitConfigurationEditor.tsx](src/components/audience/PostSubmitConfigurationEditor.tsx) | The one editor UI (controls + live preview), used by both the campaign form and Settings |
+| [PostSubmitConfigurationEditor.tsx](src/components/audience/PostSubmitConfigurationEditor.tsx) | The one editor UI (single column + Preview dialog), used by both the campaign form and Settings |
 | [AudienceFormSettings.tsx](src/routes/settings/-components/AudienceFormSettings.tsx) | Settings → Lead Settings → Forms |

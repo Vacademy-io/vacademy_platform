@@ -3,11 +3,14 @@ import type { ImageTemplate, FieldMapping } from '@/types/certificate/certificat
 import { resolveCertificateCodePlaceholder } from './certificate-code-placeholders';
 import {
     CUSTOM_FIELD_PREFIX,
-    MAX_TEXT_LINES,
     normalizeCustomFieldKey,
     TEXT_LINE_HEIGHT,
 } from './serialize-image-template-to-html';
 import type { CertificateCustomField } from '../-services/setting-services';
+// Text-fitting constants and the line budget come from the one module that
+// mirrors CertificateTextFitService. Re-declaring them here is how the editor,
+// the downloaded preview and the issued certificate drift apart.
+import { FONT_STEP, linesAllowed, MIN_FONT_PX, MIN_FONT_SCALE } from './certificate-text-fit';
 
 /**
  * Sample values used when generating the downloadable template preview PDF.
@@ -47,9 +50,9 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     });
 
 /**
- * Greedy word-wrap into at most {@link MAX_TEXT_LINES} lines, shrinking the font
- * until the value fits — the canvas equivalent of what the issued PDF does
- * (two-line clamp in CSS, font shrink in CertificateTextFitService).
+ * Greedy word-wrap into the lines the box can hold, shrinking the font until the
+ * value fits — the canvas equivalent of what the issued PDF does (box-height
+ * clamp in CSS, font shrink in CertificateTextFitService).
  *
  * Kept in step with the server deliberately: an admin sizes a field against this
  * preview, so a preview that wraps differently from the certificate is worse
@@ -59,6 +62,7 @@ const fitTextToBox = (
     ctx: CanvasRenderingContext2D,
     text: string,
     maxWidth: number,
+    maxHeight: number,
     fontSize: number,
     setFont: (size: number) => void
 ): { lines: string[]; fontSize: number } => {
@@ -68,10 +72,11 @@ const fitTextToBox = (
     for (;;) {
         setFont(size);
         const lines = wrapText(ctx, text, maxWidth);
-        if (lines.length <= MAX_TEXT_LINES || size <= floor) {
-            // At the floor the two-line clamp wins, exactly as the CSS
-            // `max-height` does on the issued certificate.
-            return { lines: lines.slice(0, MAX_TEXT_LINES), fontSize: size };
+        const budget = linesAllowed(maxHeight, size);
+        if (lines.length <= budget || size <= floor) {
+            // At the floor the box wins and the rest is clipped, exactly as the
+            // CSS `max-height` does on the issued certificate.
+            return { lines: lines.slice(0, budget), fontSize: size };
         }
         size = Math.max(floor, size * FONT_STEP);
     }
@@ -151,10 +156,12 @@ const drawField = (
     // *condensed* a long name into the box instead of wrapping it, so the
     // downloaded preview showed a squashed name the real certificate never had.
     const contentWidth = Math.max(1, width - padding * 2);
+    const contentHeight = Math.max(1, height - padding * 2);
     const { lines, fontSize: fittedSize } = fitTextToBox(
         ctx,
         value,
         contentWidth,
+        contentHeight,
         fontSize,
         setFont
     );
@@ -217,15 +224,6 @@ interface DownloadOptions {
      */
     customFields?: CertificateCustomField[];
 }
-
-/**
- * Text-fitting constants, mirrored from the serializer and
- * CertificateTextFitService. All three have to agree or the editor, the
- * downloaded preview and the issued certificate wrap differently.
- */
-const MIN_FONT_SCALE = 0.5;
-const MIN_FONT_PX = 6;
-const FONT_STEP = 0.94;
 
 const SYSTEM_IMAGE_FIELDS = new Set([
     'institute_logo',

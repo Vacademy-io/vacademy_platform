@@ -16,6 +16,7 @@ import {
 } from './certificate-code-placeholders';
 import type { CertificateCustomField } from '../-services/setting-services';
 import { normalizeCustomFieldKey } from './serialize-image-template-to-html';
+import { LONG_SAMPLES } from './certificate-text-fit';
 
 /** Shown when a logo is missing, so the preview has no broken-image icon. */
 const TRANSPARENT_GIF =
@@ -27,6 +28,16 @@ export interface CertificateSampleOptions {
     logoUrl?: string;
     /** The institute's own fields, so they preview with the value they'll print. */
     customFields?: CertificateCustomField[];
+    /**
+     * Preview the awkward case instead of the flattering one: a long learner
+     * name and a long course title, the values that actually break a design.
+     *
+     * <p>Short samples are the default because they are what a certificate
+     * usually carries. But an admin who only ever sees "Alex Sample" has no way
+     * to find out that "Bhuvaneshwari Ramachandran" will not fit, until a
+     * learner receives the certificate. This is the switch that shows them.
+     */
+    useLongValues?: boolean;
 }
 
 export function buildCertificateSampleTokens({
@@ -34,6 +45,7 @@ export function buildCertificateSampleTokens({
     instituteName,
     logoUrl,
     customFields = [],
+    useLongValues = false,
 }: CertificateSampleOptions): Record<string, string> {
     const today = new Date().toLocaleDateString();
 
@@ -76,6 +88,21 @@ export function buildCertificateSampleTokens({
         '{{INSTITUTE_THEME_COLOR}}': '#1e4fa1', // design-lint-ignore
         '{{INSTITUTE_LOGO}}': logoUrl || TRANSPARENT_GIF,
     };
+
+    if (useLongValues) {
+        // Sourced from the same table the editor's fit warning quotes, so the
+        // warning on a field and the preview of that field never disagree.
+        samples['{{STUDENT_NAME}}'] = LONG_SAMPLES.student_name!;
+        samples['{{COURSE_NAME}}'] = LONG_SAMPLES.course_name!;
+        samples['{{PACKAGE_NAME}}'] = LONG_SAMPLES.package_name!;
+        samples['{{PACKAGE_LEVEL}}'] = LONG_SAMPLES.package_level!;
+        samples['{{SESSION_NAME}}'] = LONG_SAMPLES.session_name!;
+        samples['{{EMAIL}}'] = LONG_SAMPLES.email!;
+        samples['{{ENROLLMENT_NUMBER}}'] = LONG_SAMPLES.enrollment_number!;
+        // The institute name is real data, not a sample — substituting a made-up
+        // long one would show the admin a certificate that cannot be issued.
+        samples['{{LEVEL}}'] = LONG_SAMPLES.package_level!;
+    }
 
     for (const field of customFields) {
         const key = normalizeCustomFieldKey(field.key || '');

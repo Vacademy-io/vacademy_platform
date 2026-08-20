@@ -33,6 +33,18 @@ import {
 } from '@/lib/auth/facultyAccessUtils';
 import { CertificateVisualEditor, type CustomImage } from './CertificateVisualEditor';
 import { CertificateTemplateGallery } from './CertificateTemplateGallery';
+import { CertificateTemplateLibrary } from './CertificateTemplateLibrary';
+import {
+    newTemplateId,
+    readTemplateLibrary,
+    type EditorStateJson,
+    resolveDefaultTemplate,
+    templateNameFromFile,
+    uniqueTemplateName,
+    upsertTemplate,
+    withInstituteLogo,
+    type SavedCertificateTemplate,
+} from '../../-utils/certificate-template-library';
 import { TemplateCustomizationPanel } from './TemplateCustomizationPanel';
 import { PdfUploadSection } from '@/routes/certificate-generation/student-data/-components/pdf-upload/pdf-upload-section';
 import type {
@@ -61,6 +73,7 @@ import {
     applyCertificateSamples,
     buildCertificateSampleTokens,
 } from '../../-utils/certificate-preview-samples';
+import { applyTextFitToHtml } from '../../-utils/certificate-text-fit';
 import { downloadCertificateTemplatePreview } from '../../-utils/download-certificate-template';
 import {
     type BuiltinCertificateTemplate,
@@ -426,6 +439,12 @@ const parseImageTemplateJson = (
     customImages: CustomImage[];
     templateCustomizations: TemplateCustomizations | null;
     customUploadSlot: CustomUploadSlot | null;
+    /**
+     * The whole parsed blob, so the template library can read its own keys
+     * without this function having to know about them. Null when the JSON was
+     * absent or unparseable.
+     */
+    raw: EditorStateJson | null;
 } => {
     if (!raw)
         return {
@@ -434,11 +453,13 @@ const parseImageTemplateJson = (
             customImages: [],
             templateCustomizations: null,
             customUploadSlot: null,
+            raw: null,
         };
     try {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.imageTemplate && Array.isArray(parsed.fieldMappings)) {
             return {
+                raw: parsed as EditorStateJson,
                 imageTemplate: parsed.imageTemplate as ImageTemplate,
                 fieldMappings: parsed.fieldMappings as FieldMapping[],
                 customImages: Array.isArray(parsed.customImages) ? parsed.customImages : [],
@@ -457,6 +478,19 @@ const parseImageTemplateJson = (
                     : null,
             };
         }
+        // A blob with no top-level imageTemplate can still carry a library —
+        // that is what an institute whose only design lives in the library
+        // looks like once nothing is open in the editor.
+        if (parsed && typeof parsed === 'object') {
+            return {
+                raw: parsed as EditorStateJson,
+                imageTemplate: null,
+                fieldMappings: [],
+                customImages: [],
+                templateCustomizations: null,
+                customUploadSlot: null,
+            };
+        }
     } catch {
         // fall through
     }
@@ -466,6 +500,7 @@ const parseImageTemplateJson = (
         customImages: [],
         templateCustomizations: null,
         customUploadSlot: null,
+        raw: null,
     };
 };
 
@@ -576,6 +611,19 @@ const CertificatesSettings = () => {
     // when the numbering pattern is empty and the preview comes out blank.
     const sampleCertificateNumber = numberingPreview || 'VA-0123-2026';
 
+    /**
+     * The address a scanned QR really opens: the platform's verification page on
+     * the institute's own portal. Mirrors
+     * CertificateVerificationService.buildVerificationUrl — shown rather than
+     * described, because "your own branded page" is not believable without it.
+     */
+    const verificationPageUrl = useMemo(() => {
+        const host = (instituteDetails?.learner_portal_base_url || '').trim().replace(/\/+$/, '');
+        if (!host) return '';
+        const base = /^https?:\/\//i.test(host) ? host : `https://${host}`;
+        return `${base}/verify/${sampleCertificateNumber}`;
+    }, [instituteDetails?.learner_portal_base_url, sampleCertificateNumber]);
+
     // Visual editor state.
     const [imageTemplate, setImageTemplate] = useState<ImageTemplate | null>(null);
     const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
@@ -594,6 +642,17 @@ const CertificatesSettings = () => {
     // single click restores everything. Cleared only when the admin
     // explicitly removes the upload.
     const [customUploadSlot, setCustomUploadSlot] = useState<CustomUploadSlot | null>(null);
+
+    // Every design this institute has saved, and which of them learners get.
+    // The editor still works on exactly one design at a time (imageTemplate /
+    // fieldMappings above); the library is where the others wait, and
+    // defaultTemplateId is the one whose HTML is written to
+    // currentHtmlCertificateTemplate — the single field the renderer reads.
+    const [templateLibrary, setTemplateLibrary] = useState<SavedCertificateTemplate[]>([]);
+    const [defaultTemplateId, setDefaultTemplateId] = useState<string | null>(null);
+    // Which library entry the editor has open. Null means the open design is
+    // not in the library yet, so saving adds it rather than updating one.
+    const [activeLibraryId, setActiveLibraryId] = useState<string | null>(null);
 
     // Editor mode: 'visual' (drag-and-drop on uploaded image) vs 'html' (raw
     // HTML editing with token chips). HTML mode is an escape hatch for admins
@@ -623,6 +682,13 @@ const CertificatesSettings = () => {
     // the backend. The ref guards against re-hydrating from an unchanged
     // source, so in-progress edits aren't clobbered.
     const hydratedFromRef = useRef<string | null>(null);
+    // Set as soon as hydration finds a saved design, so the first-visit
+    // auto-load below can never fire over one. It cannot rely on reading
+    // `imageTemplate` for that: both effects run in the same commit, so the
+    // auto-load sees the pre-hydration value (null) and would replace the
+    // institute's own template with a built-in — and, now that designs are kept
+    // in a library, leave a stray entry behind as well.
+    const autoDefaultAppliedRef = useRef(false);
     useEffect(() => {
         if (hydratedFromRef.current === settingString) return;
         hydratedFromRef.current = settingString;
@@ -647,15 +713,28 @@ const CertificatesSettings = () => {
         setSequencePadding(ex.certificateNumbering?.sequencePadding ?? 3);
         setQrVerificationUrlTemplate(ex.qrVerificationUrlTemplate ?? '');
         setBadgeCodeType(ex.badgeCodeType === 'BARCODE' ? 'BARCODE' : 'QR');
-        setBarcodeContent(ex.barcodeContent === 'VERIFICATION_CODE' ? 'VERIFICATION_CODE' : 'NUMBER');
+        setBarcodeContent(
+            ex.barcodeContent === 'VERIFICATION_CODE' ? 'VERIFICATION_CODE' : 'NUMBER'
+        );
         setCustomFields(Array.isArray(ex.customFields) ? ex.customFields : []);
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
-        setImageTemplate(parsed.imageTemplate);
+        // The library, and the design the editor should open onto: the default
+        // one, because that is the certificate this institute actually issues.
+        // Institutes that saved before the library existed get their single
+        // design migrated into it here — see readTemplateLibrary.
+        const { library, defaultTemplateId: savedDefaultId } = readTemplateLibrary(parsed.raw);
+        setTemplateLibrary(library);
+        setDefaultTemplateId(savedDefaultId);
+        const openEntry = resolveDefaultTemplate(library, savedDefaultId);
+        setActiveLibraryId(openEntry?.id ?? null);
+        if (openEntry || parsed.imageTemplate) autoDefaultAppliedRef.current = true;
+
+        setImageTemplate(openEntry?.imageTemplate ?? parsed.imageTemplate);
         // Restored from saved settings, so it genuinely is this
         // institute's template, not a starting point.
-        if (parsed.imageTemplate) setIsAutoLoadedTemplate(false);
-        setFieldMappings(parsed.fieldMappings);
-        setCustomImages(parsed.customImages);
+        if (openEntry || parsed.imageTemplate) setIsAutoLoadedTemplate(false);
+        setFieldMappings(openEntry?.fieldMappings ?? parsed.fieldMappings);
+        setCustomImages(openEntry?.customImages ?? parsed.customImages);
         // Restore the custom-upload slot. Priority order:
         //   1. Explicit customUploadSlot field saved on a previous switch.
         //   2. Implicit: if the currently active template is a custom upload,
@@ -675,10 +754,12 @@ const CertificatesSettings = () => {
         // For built-in templates: restore saved customizations or fall back to
         // the template's own defaults so the panel always opens onto sensible
         // values. For custom uploads: nothing to restore — null hides the panel.
-        if (parsed.imageTemplate && isBuiltinTemplateId(parsed.imageTemplate.id)) {
-            const tpl = getBuiltinTemplateById(parsed.imageTemplate.id);
+        const openTemplate = openEntry?.imageTemplate ?? parsed.imageTemplate;
+        if (openTemplate && isBuiltinTemplateId(openTemplate.id)) {
+            const tpl = getBuiltinTemplateById(openTemplate.id);
             setTemplateCustomizations(
-                parsed.templateCustomizations ??
+                openEntry?.templateCustomizations ??
+                    parsed.templateCustomizations ??
                     tpl?.defaultCustomizations(
                         instituteDetails?.institute_theme_code || '#1e4fa1'
                     ) ??
@@ -835,6 +916,31 @@ const CertificatesSettings = () => {
                 customImages: [],
             });
         }
+
+        // Every upload is a template in its own right. Before this, a second
+        // upload overwrote the first and there was no way back to it — which is
+        // also why "make one of them the default" had nothing to choose from.
+        const entry: SavedCertificateTemplate = {
+            id: newTemplateId(),
+            name: uniqueTemplateName(
+                templateLibrary,
+                templateNameFromFile(
+                    nextTemplate.originalFileName || nextTemplate.fileName,
+                    templateLibrary.length + 1
+                )
+            ),
+            imageTemplate: nextTemplate,
+            fieldMappings: [],
+            customImages: [],
+            templateCustomizations: null,
+            updatedAt: Date.now(),
+        };
+        setTemplateLibrary((prev) => upsertTemplate(prev, entry));
+        setActiveLibraryId(entry.id);
+        // The first design an institute saves has to be the default, or it
+        // would have a template library and still issue nothing.
+        setDefaultTemplateId((prev) => prev ?? entry.id);
+
         setActiveView('design');
         setIsAutoLoadedTemplate(false);
     };
@@ -883,6 +989,127 @@ const CertificatesSettings = () => {
         setTemplateCustomizations(initialCustomizations);
         setIsAutoLoadedTemplate(false);
         setActiveView('design');
+
+        // Picking a ready-made design replaces whatever the editor had open —
+        // the same as before this page had a library. "Add template" is the
+        // path to a *new* entry; this one keeps the entry's id and name so an
+        // admin trying out designs doesn't leave a trail of near-duplicates.
+        const entryId = activeLibraryId ?? newTemplateId();
+        const existing = templateLibrary.find((t) => t.id === entryId);
+        const entry: SavedCertificateTemplate = {
+            id: entryId,
+            name: existing?.name ?? uniqueTemplateName(templateLibrary, template.name),
+            imageTemplate: builtinTpl,
+            fieldMappings: defaultMappings,
+            customImages: [],
+            templateCustomizations: initialCustomizations,
+            updatedAt: Date.now(),
+        };
+        setTemplateLibrary((prev) => upsertTemplate(prev, entry));
+        setActiveLibraryId(entryId);
+        setDefaultTemplateId((prev) => prev ?? entryId);
+    };
+
+    /**
+     * Fold whatever the editor currently holds back into its library entry.
+     *
+     * <p>Called before anything that changes which design is open or which is
+     * the default. Without it, moving between templates loses the field
+     * placements the admin just dragged — the edits live in `fieldMappings`,
+     * not in the library, until something puts them there.
+     */
+    const commitActiveToLibrary = (library = templateLibrary): SavedCertificateTemplate[] => {
+        if (!imageTemplate) return library;
+        const entryId = activeLibraryId ?? newTemplateId();
+        const existing = library.find((t) => t.id === entryId);
+        return upsertTemplate(library, {
+            id: entryId,
+            name:
+                existing?.name ??
+                uniqueTemplateName(
+                    library,
+                    templateNameFromFile(
+                        imageTemplate.originalFileName || imageTemplate.fileName,
+                        library.length + 1
+                    )
+                ),
+            imageTemplate,
+            fieldMappings,
+            customImages,
+            templateCustomizations,
+            updatedAt: Date.now(),
+        });
+    };
+
+    /** Open a saved design, keeping the edits made to the one being left. */
+    const handleOpenLibraryTemplate = (id: string) => {
+        const committed = commitActiveToLibrary();
+        const entry = committed.find((t) => t.id === id);
+        if (!entry) return;
+        setTemplateLibrary(committed);
+        setActiveLibraryId(entry.id);
+        setImageTemplate(entry.imageTemplate);
+        setFieldMappings(entry.fieldMappings);
+        setCustomImages(entry.customImages);
+        setTemplateCustomizations(entry.templateCustomizations);
+        setIsAutoLoadedTemplate(false);
+        setActiveView('design');
+    };
+
+    /**
+     * Make a design the one learners receive.
+     *
+     * <p>Also puts the institute's logo on it if it has none. A design becoming
+     * the default is the moment it starts being issued, and a custom upload
+     * starts life with no fields at all — so without this an institute could
+     * make its own artwork default and send out certificates carrying no mark
+     * of who awarded them.
+     */
+    const handleMakeDefaultTemplate = (id: string) => {
+        const committed = commitActiveToLibrary();
+        const entry = committed.find((t) => t.id === id);
+        if (!entry) return;
+        const branded = withInstituteLogo(entry);
+        setTemplateLibrary(upsertTemplate(committed, branded));
+        setDefaultTemplateId(id);
+        // Keep the editor in step when it is showing the design that just
+        // gained a logo, or the admin would only see it after a reload.
+        if (activeLibraryId === id) {
+            setFieldMappings(branded.fieldMappings);
+        }
+    };
+
+    const handleRenameLibraryTemplate = (id: string, name: string) => {
+        setTemplateLibrary((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, name: uniqueTemplateName(prev, name, id) } : t))
+        );
+    };
+
+    const handleDeleteLibraryTemplate = (id: string) => {
+        // The default is not deletable from the UI, so this only ever removes a
+        // design nobody is receiving.
+        if (id === defaultTemplateId) return;
+        const next = templateLibrary.filter((t) => t.id !== id);
+        setTemplateLibrary(next);
+        if (activeLibraryId === id) {
+            const fallback = resolveDefaultTemplate(next, defaultTemplateId);
+            setActiveLibraryId(fallback?.id ?? null);
+            setImageTemplate(fallback?.imageTemplate ?? null);
+            setFieldMappings(fallback?.fieldMappings ?? []);
+            setCustomImages(fallback?.customImages ?? []);
+            setTemplateCustomizations(fallback?.templateCustomizations ?? null);
+        }
+    };
+
+    /** Start a design that is not any of the saved ones. */
+    const handleAddLibraryTemplate = () => {
+        setTemplateLibrary(commitActiveToLibrary());
+        setActiveLibraryId(null);
+        setImageTemplate(null);
+        setFieldMappings([]);
+        setCustomImages([]);
+        setTemplateCustomizations(null);
+        setActiveView('upload');
     };
 
     // Re-activate the admin's custom upload (the 4th gallery card). Restores
@@ -925,7 +1152,6 @@ const CertificatesSettings = () => {
     // already in HTML mode, auto-load the default built-in template so the
     // visual editor opens onto a real, editable design instead of an empty
     // upload zone. Guarded by a ref so it fires only once per page lifetime.
-    const autoDefaultAppliedRef = useRef(false);
     useEffect(() => {
         if (autoDefaultAppliedRef.current) return;
         // Wait until hydration has run at least once so we don't race the
@@ -1015,23 +1241,36 @@ const CertificatesSettings = () => {
             // settings JSON stays small and the backend's PDF renderer gets a
             // stable raster URL. Custom uploads already went through the S3
             // pipeline in handleImageTemplateUpload and need no extra work.
-            let templateForSave = imageTemplate;
+            // Fold the open design back into the library first, then work from
+            // the DEFAULT entry — the renderer reads exactly one template, and
+            // the default is the one it reads. Saving while editing a
+            // non-default design must not quietly change what learners receive.
+            const libraryForSave =
+                editorMode === 'visual' ? commitActiveToLibrary() : templateLibrary;
+            const effectiveDefaultId =
+                defaultTemplateId ?? activeLibraryId ?? libraryForSave[0]?.id ?? null;
+            // Belt and braces alongside "Make default": an institute whose
+            // default predates the library never passed through that button, so
+            // this is where their certificate gains its logo.
+            let defaultEntry = resolveDefaultTemplate(libraryForSave, effectiveDefaultId);
+            if (defaultEntry) defaultEntry = withInstituteLogo(defaultEntry);
+
+            let templateForSave = defaultEntry?.imageTemplate ?? imageTemplate;
             if (
                 editorMode === 'visual' &&
-                imageTemplate &&
-                isBuiltinTemplateId(imageTemplate.id) &&
-                templateCustomizations
+                defaultEntry &&
+                isBuiltinTemplateId(defaultEntry.imageTemplate.id) &&
+                defaultEntry.templateCustomizations
             ) {
-                const tpl = getBuiltinTemplateById(imageTemplate.id);
+                const tpl = getBuiltinTemplateById(defaultEntry.imageTemplate.id);
                 if (tpl) {
                     try {
                         const pngDataUrl = await rasterizeBuiltinTemplate(
                             tpl,
-                            templateCustomizations
+                            defaultEntry.templateCustomizations
                         );
                         const token = getTokenFromCookie(TokenKey.accessToken);
-                        const userId =
-                            (token ? getTokenDecodedData(token) : null)?.user || '';
+                        const userId = (token ? getTokenDecodedData(token) : null)?.user || '';
                         const fileName = `${tpl.id.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.png`;
                         const file = await dataUrlToFile(pngDataUrl, fileName);
                         const fileId = await UploadFileInS3(
@@ -1045,8 +1284,14 @@ const CertificatesSettings = () => {
                         if (fileId) {
                             const url = await getPublicUrl(fileId);
                             if (typeof url === 'string' && url) {
-                                templateForSave = { ...imageTemplate, imageDataUrl: url };
-                                setImageTemplate(templateForSave);
+                                templateForSave = {
+                                    ...defaultEntry.imageTemplate,
+                                    imageDataUrl: url,
+                                };
+                                defaultEntry = {
+                                    ...defaultEntry,
+                                    imageTemplate: templateForSave,
+                                };
                             }
                         }
                     } catch (e) {
@@ -1060,35 +1305,59 @@ const CertificatesSettings = () => {
                 }
             }
 
+            const librarySaved = defaultEntry
+                ? upsertTemplate(libraryForSave, defaultEntry)
+                : libraryForSave;
+
+            // The editor is showing the design that was just rasterized, or
+            // that just gained a logo. Push both back so the canvas matches
+            // what was saved without needing a reload.
+            if (defaultEntry && activeLibraryId === defaultEntry.id) {
+                setImageTemplate(defaultEntry.imageTemplate);
+                setFieldMappings(defaultEntry.fieldMappings);
+            }
+            if (editorMode === 'visual') {
+                setTemplateLibrary(librarySaved);
+                setActiveLibraryId((prev) => prev ?? defaultEntry?.id ?? null);
+                if (defaultEntry) setDefaultTemplateId(defaultEntry.id);
+            }
+
             const renderedHtml =
                 editorMode === 'html'
                     ? htmlTemplate || defaultCertificateHtml
-                    : templateForSave
-                      ? serializeImageTemplateToHtml(templateForSave, fieldMappings, customImages)
+                    : defaultEntry
+                      ? serializeImageTemplateToHtml(
+                            defaultEntry.imageTemplate,
+                            defaultEntry.fieldMappings,
+                            defaultEntry.customImages
+                        )
                       : existing.currentHtmlCertificateTemplate || defaultCertificateHtml;
 
-            // Keep the persisted slot in sync. If the admin is currently on
-            // the custom upload, snapshot the latest state into the slot so
-            // the next reload sees the most recent field placements. If
-            // they're on a built-in, the slot already holds whatever they
-            // last left there.
+            // Legacy custom-upload slot, still written so a client from before
+            // the library reads back a usable upload. It tracks the default
+            // design, which is the one such a client would open.
             const slotForSave: CustomUploadSlot | null =
-                templateForSave && !isBuiltinTemplateId(templateForSave.id)
+                defaultEntry && !isBuiltinTemplateId(defaultEntry.imageTemplate.id)
                     ? {
-                          imageTemplate: templateForSave,
-                          fieldMappings,
-                          customImages,
+                          imageTemplate: defaultEntry.imageTemplate,
+                          fieldMappings: defaultEntry.fieldMappings,
+                          customImages: defaultEntry.customImages,
                       }
                     : customUploadSlot;
 
+            // The pre-library keys still describe the DEFAULT design, so a
+            // client that has not been updated opens the certificate this
+            // institute actually issues rather than an empty editor.
             const editorJson =
-                editorMode === 'visual' && templateForSave
+                editorMode === 'visual' && defaultEntry
                     ? JSON.stringify({
-                          imageTemplate: templateForSave,
-                          fieldMappings,
-                          customImages,
-                          templateCustomizations,
+                          imageTemplate: defaultEntry.imageTemplate,
+                          fieldMappings: defaultEntry.fieldMappings,
+                          customImages: defaultEntry.customImages,
+                          templateCustomizations: defaultEntry.templateCustomizations,
                           customUploadSlot: slotForSave,
+                          library: librarySaved,
+                          defaultTemplateId: defaultEntry.id,
                       })
                     : undefined;
             const htmlAuthored = editorMode === 'html' ? htmlTemplate : undefined;
@@ -1148,11 +1417,11 @@ const CertificatesSettings = () => {
                     imageTemplateJson:
                         editorMode === 'visual'
                             ? editorJson
-                            : (existing?.imageTemplateJson ?? undefined),
+                            : existing?.imageTemplateJson ?? undefined,
                     htmlEditorTemplate:
                         editorMode === 'html'
                             ? htmlAuthored
-                            : (existing?.htmlEditorTemplate ?? undefined),
+                            : existing?.htmlEditorTemplate ?? undefined,
                     preferredEditorMode: editorMode,
                     // These must mirror exactly what was just sent to the server.
                     // The record spreads `existing` first, so omitting them left
@@ -1296,7 +1565,7 @@ const CertificatesSettings = () => {
                 </Alert>
             )}
 
-            <div className="rounded-lg border bg-card p-6 space-y-6">
+            <div className="space-y-6 rounded-lg border bg-card p-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="text-base font-semibold">Auto-issue certificates</h3>
@@ -1366,9 +1635,7 @@ const CertificatesSettings = () => {
                                     type="number"
                                     min={50}
                                     value={customWidthMm}
-                                    onChange={(e) =>
-                                        setCustomWidthMm(Number(e.target.value) || 0)
-                                    }
+                                    onChange={(e) => setCustomWidthMm(Number(e.target.value) || 0)}
                                     className="mt-1 w-full rounded border px-3 py-2 text-sm"
                                 />
                             </div>
@@ -1381,9 +1648,7 @@ const CertificatesSettings = () => {
                                     type="number"
                                     min={50}
                                     value={customHeightMm}
-                                    onChange={(e) =>
-                                        setCustomHeightMm(Number(e.target.value) || 0)
-                                    }
+                                    onChange={(e) => setCustomHeightMm(Number(e.target.value) || 0)}
                                     className="mt-1 w-full rounded border px-3 py-2 text-sm"
                                 />
                             </div>
@@ -1402,7 +1667,9 @@ const CertificatesSettings = () => {
                 </div>
 
                 <div className="rounded-md bg-muted/40 p-3">
-                    <p className="text-xs text-muted-foreground">Next certificate will be numbered</p>
+                    <p className="text-xs text-muted-foreground">
+                        Next certificate will be numbered
+                    </p>
                     <p className="font-mono text-lg font-semibold">{numberingPreview}</p>
                 </div>
 
@@ -1496,19 +1763,21 @@ const CertificatesSettings = () => {
                     <select
                         id="badge-code-type"
                         value={badgeCodeType}
-                        onChange={(e) => setBadgeCodeType(e.target.value === 'BARCODE' ? 'BARCODE' : 'QR')}
+                        onChange={(e) =>
+                            setBadgeCodeType(e.target.value === 'BARCODE' ? 'BARCODE' : 'QR')
+                        }
                         className="mt-1 w-full rounded border px-3 py-2 text-sm"
                     >
                         <option value="QR">QR code (default)</option>
                         <option value="BARCODE">Barcode (Code 128)</option>
                     </select>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        Stamped next to the certificate number, bottom-right — the design below shows
-                        you exactly where. To position it yourself instead, drag that badge, or drag
-                        the <strong>QR Code</strong> / <strong>Barcode</strong> field onto the design.
-                        The same goes for the number: wherever you place{' '}
-                        <strong>Certificate ID</strong>, it stops being stamped automatically, so you
-                        never get two of either.
+                        Stamped next to the certificate number, bottom-right — the design below
+                        shows you exactly where. To position it yourself instead, drag that badge,
+                        or drag the <strong>QR Code</strong> / <strong>Barcode</strong> field onto
+                        the design. The same goes for the number: wherever you place{' '}
+                        <strong>Certificate ID</strong>, it stops being stamped automatically, so
+                        you never get two of either.
                     </p>
                 </div>
 
@@ -1558,23 +1827,57 @@ const CertificatesSettings = () => {
 
                 <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
 
-                <div>
-                    <label className="text-sm font-medium" htmlFor="qr-verify-url">
-                        QR verification link (optional)
-                    </label>
-                    <input
-                        id="qr-verify-url"
-                        type="text"
-                        value={qrVerificationUrlTemplate}
-                        placeholder="https://your-site.com/verify?c={{CERTIFICATE_ID}}"
-                        onChange={(e) => setQrVerificationUrlTemplate(e.target.value)}
-                        className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        Controls what the QR Code field encodes. Blank encodes the certificate
-                        number itself. Include {'{{CERTIFICATE_ID}}'} and a scan will open your
-                        verification page instead.
-                    </p>
+                <div className="space-y-2">
+                    <div className="text-sm font-medium">Where a scan lands</div>
+                    {/* Admins kept asking what URL to paste here. Nothing, in
+                        almost every case: the verification page is a page the
+                        platform hosts on the institute's own portal, so a scan
+                        already lands on their domain. Showing the real address
+                        is the shortest way to say that. */}
+                    <div className="rounded border bg-muted/30 p-3 text-xs text-muted-foreground">
+                        {verificationPageUrl ? (
+                            <>
+                                Scanning the QR opens your own branded verification page:{' '}
+                                <span className="font-mono text-foreground">
+                                    {verificationPageUrl}
+                                </span>
+                                . It shows &ldquo;Verified by{' '}
+                                {effectiveInstituteName || 'your institute'}&rdquo; with your logo,
+                                and needs no login. Scanning the barcode gives a code that verifies
+                                on the same page.
+                            </>
+                        ) : (
+                            <>
+                                Scans will verify on the platform verification page. Set your
+                                learner portal address in Dashboard → Edit institute profile and the
+                                page moves to your own domain, branded as yours.
+                            </>
+                        )}
+                    </div>
+
+                    <details className="rounded border px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-medium text-neutral-600">
+                            Send scans somewhere else instead
+                        </summary>
+                        <label className="mt-2 block text-xs font-medium" htmlFor="qr-verify-url">
+                            Custom QR link
+                        </label>
+                        <input
+                            id="qr-verify-url"
+                            type="text"
+                            value={qrVerificationUrlTemplate}
+                            placeholder="https://your-site.com/verify?c={{CERTIFICATE_ID}}"
+                            onChange={(e) => setQrVerificationUrlTemplate(e.target.value)}
+                            className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Include {'{{CERTIFICATE_ID}}'} and the QR will open your page instead of
+                            the one above. Note that your page receives only the certificate number,
+                            which is not a credential — so it cannot actually prove the certificate
+                            is genuine. Leave this blank unless you have your own verification
+                            system.
+                        </p>
+                    </details>
                 </div>
             </div>
 
@@ -1659,36 +1962,38 @@ const CertificatesSettings = () => {
                                     </MyButton>
                                 )}
                                 {editorMode === 'visual' && (
-                                <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
-                                {[
-                                    { key: 'upload', label: 'Upload', icon: UploadIcon },
-                                    { key: 'design', label: 'Design', icon: PaintBrush },
-                                    { key: 'preview', label: 'Preview', icon: Eye },
-                                ].map(({ key, label, icon: Icon }) => (
-                                    <button
-                                        key={key}
-                                        onClick={() =>
-                                            setActiveView(key as 'upload' | 'design' | 'preview')
-                                        }
-                                        disabled={
-                                            (key === 'design' || key === 'preview') &&
-                                            !imageTemplate
-                                        }
-                                        className={cn(
-                                            'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all',
-                                            activeView === key
-                                                ? 'bg-white text-purple-600 shadow-sm'
-                                                : 'text-neutral-600 hover:text-neutral-700',
-                                            (key === 'design' || key === 'preview') &&
-                                                !imageTemplate &&
-                                                'cursor-not-allowed opacity-50'
-                                        )}
-                                    >
-                                        <Icon className="size-4" />
-                                        {label}
-                                    </button>
-                                ))}
-                                </div>
+                                    <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
+                                        {[
+                                            { key: 'upload', label: 'Upload', icon: UploadIcon },
+                                            { key: 'design', label: 'Design', icon: PaintBrush },
+                                            { key: 'preview', label: 'Preview', icon: Eye },
+                                        ].map(({ key, label, icon: Icon }) => (
+                                            <button
+                                                key={key}
+                                                onClick={() =>
+                                                    setActiveView(
+                                                        key as 'upload' | 'design' | 'preview'
+                                                    )
+                                                }
+                                                disabled={
+                                                    (key === 'design' || key === 'preview') &&
+                                                    !imageTemplate
+                                                }
+                                                className={cn(
+                                                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all',
+                                                    activeView === key
+                                                        ? 'bg-white text-purple-600 shadow-sm'
+                                                        : 'text-neutral-600 hover:text-neutral-700',
+                                                    (key === 'design' || key === 'preview') &&
+                                                        !imageTemplate &&
+                                                        'cursor-not-allowed opacity-50'
+                                                )}
+                                            >
+                                                <Icon className="size-4" />
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -1713,14 +2018,55 @@ const CertificatesSettings = () => {
                         />
                     )}
 
+                    {editorMode === 'visual' && activeView !== 'preview' && (
+                        <CertificateTemplateLibrary
+                            templates={templateLibrary}
+                            activeTemplateId={activeLibraryId}
+                            defaultTemplateId={defaultTemplateId}
+                            onOpen={handleOpenLibraryTemplate}
+                            onMakeDefault={handleMakeDefaultTemplate}
+                            onRename={handleRenameLibraryTemplate}
+                            onDelete={handleDeleteLibraryTemplate}
+                            onAdd={handleAddLibraryTemplate}
+                            disabled={loading}
+                        />
+                    )}
+
+                    {/* Says which design is issued whenever that is not the one
+                        on screen. Without it an admin can spend a session
+                        perfecting a template that no learner will ever see. */}
+                    {editorMode === 'visual' &&
+                        activeLibraryId &&
+                        defaultTemplateId &&
+                        activeLibraryId !== defaultTemplateId && (
+                            <Alert
+                                variant="default"
+                                className="border-amber-300 bg-amber-50 text-amber-900"
+                            >
+                                <AlertTriangle className="size-4" />
+                                <AlertDescription>
+                                    You are editing{' '}
+                                    <strong>
+                                        {templateLibrary.find((t) => t.id === activeLibraryId)
+                                            ?.name || 'this template'}
+                                    </strong>
+                                    . Learners still receive{' '}
+                                    <strong>
+                                        {templateLibrary.find((t) => t.id === defaultTemplateId)
+                                            ?.name || 'the default template'}
+                                    </strong>
+                                    . Use <strong>Make default</strong> on a card above to change
+                                    that.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
                     {editorMode === 'visual' && activeView === 'design' && (
                         <CertificateTemplateGallery
                             activeTemplateId={activeTemplateId}
                             hasCustomUpload={hasCustomUpload}
                             customThumbnailUrl={customThumbnailUrl}
-                            themeColor={
-                                instituteDetails?.institute_theme_code || '#1e4fa1'
-                            }
+                            themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
                             onSelectBuiltin={handleSelectBuiltinTemplate}
                             onSelectCustom={handleSelectCustomUpload}
                             disabled={loading}
@@ -1747,77 +2093,80 @@ const CertificatesSettings = () => {
                         })()}
 
                     {editorMode === 'visual' && (
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-                        {(activeView === 'design' || activeView === 'preview') &&
-                            imageTemplate && (
-                                <div className="lg:col-span-1">
-                                    <div className="rounded-lg border bg-card p-4 space-y-3">
-                                        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                            Drag a field
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {paletteFields.map((f) => (
-                                                <DraggableFieldChip key={f.name} field={f} />
-                                            ))}
-                                        </div>
-                                        <div className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
-                                            {fieldMappings.length} field
-                                            {fieldMappings.length === 1 ? '' : 's'} placed
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+                            {(activeView === 'design' || activeView === 'preview') &&
+                                imageTemplate && (
+                                    <div className="lg:col-span-1">
+                                        <div className="space-y-3 rounded-lg border bg-card p-4">
+                                            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                                Drag a field
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {paletteFields.map((f) => (
+                                                    <DraggableFieldChip key={f.name} field={f} />
+                                                ))}
+                                            </div>
+                                            <div className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
+                                                {fieldMappings.length} field
+                                                {fieldMappings.length === 1 ? '' : 's'} placed
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                        <div
-                            className={cn(
-                                activeView === 'upload' ? 'col-span-1' : 'lg:col-span-3'
-                            )}
-                        >
-                            {activeView === 'upload' && (
-                                <PdfUploadSection
-                                    onImageTemplateUpload={handleImageTemplateUpload}
-                                    onTemplateRemove={handleTemplateRemove}
-                                    uploadedTemplate={imageTemplate ?? undefined}
-                                    isLoading={loading}
-                                />
-                            )}
+                            <div
+                                className={cn(
+                                    activeView === 'upload' ? 'col-span-1' : 'lg:col-span-3'
+                                )}
+                            >
+                                {activeView === 'upload' && (
+                                    <PdfUploadSection
+                                        onImageTemplateUpload={handleImageTemplateUpload}
+                                        onTemplateRemove={handleTemplateRemove}
+                                        uploadedTemplate={imageTemplate ?? undefined}
+                                        isLoading={loading}
+                                    />
+                                )}
 
-                            {activeView === 'design' && imageTemplate && (
-                                <CertificateVisualEditor
-                                    imageTemplate={imageTemplate}
-                                    fieldMappings={fieldMappings}
-                                    onFieldMappingsChange={setFieldMappings}
-                                    systemImageUrls={{ institute_logo: logoUrl }}
-                                    customImages={customImages}
-                                    onCustomImagesChange={setCustomImages}
-                                    badgeCodeType={badgeCodeType}
-                                    barcodeContent={barcodeContent}
-                                    // The editor works in canvas pixels, but
-                                    // whether a code scans is a printed-millimetre
-                                    // question — which depends on the page size.
-                                    pageWidthMm={
-                                        aspectRatioToMm(aspectRatio, customWidthMm, customHeightMm)
-                                            .wMm
-                                    }
-                                    sampleCertificateId={sampleCertificateNumber}
-                                />
-                            )}
+                                {activeView === 'design' && imageTemplate && (
+                                    <CertificateVisualEditor
+                                        imageTemplate={imageTemplate}
+                                        fieldMappings={fieldMappings}
+                                        onFieldMappingsChange={setFieldMappings}
+                                        systemImageUrls={{ institute_logo: logoUrl }}
+                                        customImages={customImages}
+                                        onCustomImagesChange={setCustomImages}
+                                        badgeCodeType={badgeCodeType}
+                                        barcodeContent={barcodeContent}
+                                        // The editor works in canvas pixels, but
+                                        // whether a code scans is a printed-millimetre
+                                        // question — which depends on the page size.
+                                        pageWidthMm={
+                                            aspectRatioToMm(
+                                                aspectRatio,
+                                                customWidthMm,
+                                                customHeightMm
+                                            ).wMm
+                                        }
+                                        sampleCertificateId={sampleCertificateNumber}
+                                    />
+                                )}
 
-                            {activeView === 'preview' && imageTemplate && (
-                                <CertificateSettingsPreview
-                                    imageTemplate={imageTemplate}
-                                    fieldMappings={fieldMappings}
-                                    customImages={customImages}
-                                    logoUrl={logoUrl}
-                                    instituteName={effectiveInstituteName}
-                                    badgeCodeType={badgeCodeType}
-                                    barcodeContent={barcodeContent}
-                                    customFields={sanitizedCustomFields}
-                                    sampleCertificateId={sampleCertificateNumber}
-                                />
-                            )}
+                                {activeView === 'preview' && imageTemplate && (
+                                    <CertificateSettingsPreview
+                                        imageTemplate={imageTemplate}
+                                        fieldMappings={fieldMappings}
+                                        customImages={customImages}
+                                        logoUrl={logoUrl}
+                                        instituteName={effectiveInstituteName}
+                                        badgeCodeType={badgeCodeType}
+                                        barcodeContent={barcodeContent}
+                                        customFields={sanitizedCustomFields}
+                                        sampleCertificateId={sampleCertificateNumber}
+                                    />
+                                )}
+                            </div>
                         </div>
-                    </div>
                     )}
                 </div>
             </DndContext>
@@ -2133,6 +2482,11 @@ const CertificateSettingsPreview = ({
     sampleCertificateId: string;
     customFields: CertificateCustomField[];
 }) => {
+    // Off by default: the everyday certificate carries short values, and an
+    // admin should see that first. The switch is what makes the awkward case
+    // discoverable at design time rather than at issuance.
+    const [longValues, setLongValues] = useState(false);
+
     const srcDoc = useMemo(() => {
         const html = serializeImageTemplateToHtml(imageTemplate, fieldMappings, customImages);
         // Read the plan off the un-substituted template, exactly as the backend
@@ -2146,13 +2500,18 @@ const CertificateSettingsPreview = ({
                 instituteName,
                 logoUrl,
                 customFields,
+                useLongValues: longValues,
             })
         );
+        // Shrink long values exactly as CertificateTextFitService will at
+        // issuance. Without this the preview was the one view of the design
+        // that did NOT behave like the certificate.
+        const fitted = applyTextFitToHtml(out);
         // Mirror the server's automatic badge so the preview shows the code and
         // number an admin has not placed themselves — the parts that would
         // otherwise appear for the first time on an issued PDF.
         return injectAutoBadge(
-            out,
+            fitted,
             buildAutoBadgeHtml({
                 badgePlan,
                 codeType: badgeCodeType,
@@ -2170,6 +2529,7 @@ const CertificateSettingsPreview = ({
         barcodeContent,
         customFields,
         sampleCertificateId,
+        longValues,
     ]);
 
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -2202,6 +2562,10 @@ const CertificateSettingsPreview = ({
     return (
         <div className="flex h-[700px] w-full flex-col overflow-hidden rounded border bg-neutral-50">
             <div className="flex items-center justify-end gap-2 border-b bg-white px-3 py-2">
+                <label className="mr-auto flex items-center gap-2 text-sm text-neutral-600">
+                    <Switch checked={longValues} onCheckedChange={setLongValues} />
+                    Preview with long names
+                </label>
                 <button
                     type="button"
                     onClick={zoomOut}

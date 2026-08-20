@@ -4,12 +4,22 @@ import { verifyCertificate, type VerificationResult } from "@/services/certifica
 import {
   ErrorCard,
   InvalidCard,
-  ValidCard,
   VerifyingCard,
 } from "../-components/verification-cards";
+import { VerifiedByCertificate } from "../-components/verified-by-certificate";
 
 /**
  * Public certificate verification page — where a scanned certificate QR lands.
+ *
+ * <p>Renders the institute's own attestation template rather than an app
+ * screen: this is opened by strangers judging a document, and "verified by
+ * <institute>" over the institute's mark is the thing that answers their
+ * question. See VerifiedByCertificate.
+ *
+ * <p>Served from the institute's learner portal, so a white-labelled school
+ * sends its graduates' verifiers to its own domain — the QR is built as
+ * `<learnerPortalBaseUrl>/verify/<number>?t=<token>` in
+ * CertificateVerificationService.buildVerificationUrl.
  *
  * Reachable without logging in. `/verify` is in the public-route allowlist in
  * use-domain-routing.ts (both copies), so domain routing does not bounce an
@@ -40,9 +50,11 @@ function CertificateVerificationPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-10 dark:bg-neutral-900">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-xl">
         {result === null && <VerifyingCard />}
-        {result?.status === "valid" && <ValidCard data={result.data} />}
+        {result?.status === "valid" && (
+          <VerifiedByCertificate data={result.data} verifiedVia="QR code" />
+        )}
         {result?.status === "invalid" && (
           <>
             <InvalidCard certificateId={certificateId} />

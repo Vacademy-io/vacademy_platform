@@ -199,6 +199,25 @@ export interface StudentCourseDetailsSettings {
         canAskDoubt: boolean;
         /** Optional for backwards compat. Missing means default ("breadcrumb"). */
         sidebarNavigation?: SlidesSidebarNavigation;
+        /**
+         * Collapse the app's own left nav rail while the slide viewer is open,
+         * the way focus mode does. Unset means "follow the sidebar mode": the
+         * sidebar-less viewer collapses the rail, every other mode leaves it
+         * alone. An explicit true/false always wins.
+         */
+        collapseSidebarOnOpen?: boolean;
+        /**
+         * Show an explicit "Mark as complete" control in the slide viewer — the
+         * checkbox Udemy, Coursera and LinkedIn Learning put beside a lesson.
+         * Automatic tracking is unchanged; this is the manual override for what
+         * dwell-time and watch-percentage cannot see. Writes the same progress
+         * record as the automatic path and is reversible.
+         *
+         * Tri-state, like collapseSidebarOnOpen: unset follows the sidebar mode
+         * (the sidebar-less viewer shows it, since it has no tick list or
+         * progress readout of its own), explicit true/false wins.
+         */
+        manualCompletion?: boolean;
     };
     /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
      *  means "full" so saved settings keep rendering today's page. */

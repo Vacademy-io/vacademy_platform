@@ -1027,6 +1027,56 @@ export default function StudentDisplaySettings(): JSX.Element {
                             />
                             <Label className="text-xs">Feedback Visible</Label>
                         </div>
+                        {/* Tri-state in storage (unset = follow the sidebar mode,
+                            i.e. shown only in the sidebar-less viewer). The
+                            switch renders the value actually in effect, so
+                            saving pins whatever the admin can see. */}
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.manualCompletion ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            manualCompletion: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                &quot;Mark as Complete&quot; Button in Slide Viewer
+                            </Label>
+                        </div>
+                        {/* Tri-state in storage (unset = follow the sidebar mode),
+                            but a switch can only show two. It renders the value
+                            that is actually in effect, so saving simply pins
+                            whatever the admin can see. */}
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.collapseSidebarOnOpen ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            collapseSidebarOnOpen: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                Collapse App Sidebar in Slide Viewer
+                            </Label>
+                        </div>
                         <div className="flex items-center gap-2">
                             <Switch
                                 checked={settings.courseDetails.slidesView.canAskDoubt}

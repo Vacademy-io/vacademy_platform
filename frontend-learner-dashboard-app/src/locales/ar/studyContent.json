@@ -65,7 +65,11 @@
         "next": "التالي",
         "previousSlide": "الشريحة السابقة",
         "nextSlide": "الشريحة التالية",
-        "doubts": "الاستفسارات"
+        "doubts": "الاستفسارات",
+        "markComplete": "وضع علامة مكتمل",
+        "markCompleteAria": "وضع علامة مكتمل على هذه الشريحة",
+        "completed": "مكتمل",
+        "completedAria": "مكتمل — اختر لإلغاء علامة الاكتمال"
     },
     "videoState": {
         "generating": "جارٍ إنشاء الفيديو...",

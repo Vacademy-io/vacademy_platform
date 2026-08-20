@@ -52,6 +52,33 @@ public class LearnerTrackingController {
                                                 moduleId, subjectId, packageSessionId, user));
         }
 
+        /**
+         * Explicit learner-driven completion for a slide (the "Mark as complete"
+         * checkbox). Idempotent and reversible — pass completed=false to undo,
+         * which recomputes the slide's real percentage from its activity logs
+         * rather than zeroing it.
+         */
+        @PostMapping("/mark-slide-completion")
+        public ResponseEntity<Boolean> markSlideCompletion(
+                        @RequestParam String slideId,
+                        @RequestParam String slideType,
+                        @RequestParam(required = false) String chapterId,
+                        @RequestParam(required = false) String moduleId,
+                        @RequestParam(required = false) String subjectId,
+                        @RequestParam(required = false) String packageSessionId,
+                        @RequestParam(defaultValue = "true") boolean completed,
+                        @RequestAttribute("user") CustomUserDetails user) {
+                return ResponseEntity.ok(learnerTrackingService.markSlideCompletion(
+                                slideId,
+                                slideType,
+                                chapterId,
+                                moduleId,
+                                subjectId,
+                                packageSessionId,
+                                completed,
+                                user));
+        }
+
         @GetMapping("/get-learner-document-activity-logs")
         public Page<ActivityLogDTO> getDocumentActivityLogs(
                         @RequestParam("userId") String userId,

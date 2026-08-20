@@ -16,6 +16,7 @@ import {
   shouldFilterItem,
 } from "@/components/drip-conditions/helpers";
 import {
+  CaretLeft,
   CaretRight,
   CheckCircle,
   Circle,
@@ -1008,6 +1009,58 @@ export const CourseStructureDetails = ({
       }
     },
     [queryClient],
+  );
+
+  /**
+   * Content-only layout: a chapter card opens the first slide in the viewer
+   * instead of drilling into a slide list. That list was a dead stop in this
+   * layout — the viewer's own Prev/Next already walks the chapter, so the
+   * extra screen only added a tap between the learner and the content.
+   *
+   * Returns false when it could not resolve a slide to open (nothing loaded,
+   * empty chapter, or everything drip-locked); the caller then falls back to
+   * the slide list, which is the only surface that can explain why.
+   */
+  const openFirstSlideInChapter = useCallback(
+    async (
+      subjectId: string,
+      moduleId: string,
+      chapterId: string
+    ): Promise<boolean> => {
+      let slides = slidesMap[chapterId];
+      if (!slides) {
+        try {
+          const raw = await queryClient.fetchQuery({
+            queryKey: ["slides", chapterId],
+            queryFn: () => fetchSlidesByChapterId(chapterId),
+            staleTime: 15_000,
+          });
+          slides = Array.isArray(raw)
+            ? (raw as Slide[])
+            : ((raw as { data?: Slide[] } | null | undefined)?.data ?? []);
+          // Seed the map so the fallback list has data if we bail out below.
+          const loaded = slides;
+          setSlidesMap((prev) => ({ ...prev, [chapterId]: loaded }));
+          setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
+        } catch {
+          return false;
+        }
+      }
+
+      const target = (slides || []).find((sl) => {
+        const evaluation = slideEvaluations[sl.id];
+        return !evaluation?.isHidden && !evaluation?.isLocked;
+      });
+      if (!target) return false;
+
+      await handleSlideNavigation(subjectId, moduleId, chapterId, target.id);
+      return true;
+    },
+    // handleSlideNavigation is re-created every render (it closes over dialog
+    // state); referencing it here would defeat the memo, and it is stable in
+    // behaviour, so it is deliberately not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slidesMap, slideEvaluations, queryClient]
   );
 
   const loadAllSlidesBulk = useCallback(
@@ -2644,6 +2697,28 @@ export const CourseStructureDetails = ({
           </div>
         </div>
 
+        {/* Content-only replaces the breadcrumb trail with one Back control.
+            The trail was pure chrome here: at the top level it rendered a lone
+            "Subjects" pill pointing at the screen you were already on. It is
+            not dropped outright, though — it was also the ONLY way back up the
+            drill-down, so removing it with nothing in its place would strand a
+            learner one level deep in a course. This shows only when there is
+            somewhere to go back to. */}
+        {contentOnly && !isModulesLoading && (selectedSubjectId || selectedModuleId) && (
+          <button
+            type="button"
+            className="mb-4 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            onClick={() => {
+              if (selectedModuleId) setSelectedModuleId(null);
+              else setSelectedSubjectId(null);
+              setSelectedChapterId(null);
+            }}
+          >
+            <CaretLeft size={14} />
+            <span>Back</span>
+          </button>
+        )}
+
         {/* Breadcrumbs — only for the levels this course actually exposes.
             The full subject > module > chapter trail on a shallower course put
             the seeded "DEFAULT" levels back in front of the learner: the crumbs
@@ -2651,7 +2726,8 @@ export const CourseStructureDetails = ({
             into a grid holding a single card called "Default". A flat 2-level
             course has no trail left, so the bar goes away entirely; the last
             condition keeps it from rendering as an empty strip. */}
-        {!isModulesLoading &&
+        {!contentOnly &&
+          !isModulesLoading &&
           showsChapterLevel &&
           (showsSubjectLevel ||
             (showsModuleLevel && selectedSubjectId) ||
@@ -2935,6 +3011,22 @@ export const CourseStructureDetails = ({
                 .map((ch, idx) => {
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
+                  // Content-only sends the learner straight into the viewer;
+                  // the slide list only appears as a fallback when no slide
+                  // can be opened (empty chapter, or every slide drip-locked),
+                  // because that screen is what explains the reason.
+                  const openChapter = async (chapterId: string) => {
+                    if (contentOnly && isSlideClickable()) {
+                      const opened = await openFirstSlideInChapter(
+                        selectedSubjectId || "",
+                        selectedModuleId || "",
+                        chapterId,
+                      );
+                      if (opened) return;
+                    }
+                    setSelectedChapterId(chapterId);
+                    await getSlidesWithChapterId(chapterId);
+                  };
                   return (
                     <Card
                       key={ch.id}
@@ -2953,8 +3045,7 @@ export const CourseStructureDetails = ({
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;
-                        setSelectedChapterId(ch.id);
-                        await getSlidesWithChapterId(ch.id);
+                        await openChapter(ch.id);
                       }}
                       onKeyDown={async (e) => {
                         if (
@@ -2962,8 +3053,7 @@ export const CourseStructureDetails = ({
                           !isChapterLocked
                         ) {
                           e.preventDefault();
-                          setSelectedChapterId(ch.id);
-                          await getSlidesWithChapterId(ch.id);
+                          await openChapter(ch.id);
                         }
                       }}
                     >

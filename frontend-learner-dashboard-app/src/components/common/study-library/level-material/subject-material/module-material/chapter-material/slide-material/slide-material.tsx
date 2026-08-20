@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import {
+  MarkCompleteButton,
+  MANUALLY_COMPLETABLE_SLIDE_TYPES,
+  type CompletionContext,
+} from "./mark-complete-button";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { usePresenceHeartbeat } from "@/hooks/study-library/usePresenceHeartbeat";
@@ -50,6 +55,8 @@ export const SlideMaterial = ({
   standaloneNav = false,
   onPastLastSlide,
   onBeforeFirstSlide,
+  manualCompletion = false,
+  completionContext,
 }: {
   // Optional: lets the host route mirror the active slide into the URL so the
   // course-tree sidebar (which highlights by URL slideId) and a browser
@@ -65,6 +72,12 @@ export const SlideMaterial = ({
   // of a chapter and stops. Only wired when there is a chapter to move to.
   onPastLastSlide?: (() => void) | undefined;
   onBeforeFirstSlide?: (() => void) | undefined;
+  // Explicit "Mark as complete" beside Prev/Next. Opt-in per institute; the
+  // automatic tracking underneath it is unchanged either way.
+  manualCompletion?: boolean;
+  // Parent ids the completion write needs so the backend can roll the change
+  // up into chapter / module / subject / course progress.
+  completionContext?: CompletionContext | undefined;
 }) => {
   const { t, i18n } = useTranslation("studyContent");
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -1259,6 +1272,21 @@ export const SlideMaterial = ({
             </span>
             <CaretRight size={14} />
           </button>
+          {/* Consumption slides only — the synthesised feedback slide is not
+              content, and graded types complete by submission. */}
+          {manualCompletion &&
+            activeItem &&
+            MANUALLY_COMPLETABLE_SLIDE_TYPES.has(
+              activeItem.source_type || ""
+            ) && (
+              <MarkCompleteButton
+                slideId={activeItem.id}
+                slideType={activeItem.source_type as string}
+                percentageCompleted={activeItem.percentage_completed || 0}
+                context={completionContext ?? {}}
+                compact={standaloneNav}
+              />
+            )}
           <div className="h-4 w-px bg-neutral-200"></div>
           <AskDoubtButton />
         </div>

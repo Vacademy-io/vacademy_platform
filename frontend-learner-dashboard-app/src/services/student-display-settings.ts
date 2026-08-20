@@ -233,6 +233,15 @@ function mergeWithDefaults(
         sidebarNavigation:
           incoming?.courseDetails?.slidesView?.sidebarNavigation ??
           d.courseDetails.slidesView.sidebarNavigation,
+        // Deliberately no `?? default`: undefined is a real state here
+        // ("follow the sidebar mode"), so defaulting it would collapse the
+        // tri-state into a boolean and lose the inference.
+        collapseSidebarOnOpen:
+          incoming?.courseDetails?.slidesView?.collapseSidebarOnOpen,
+        // Same tri-state contract as collapseSidebarOnOpen above: undefined
+        // means "follow the sidebar mode", so it must not be defaulted here.
+        manualCompletion:
+          incoming?.courseDetails?.slidesView?.manualCompletion,
       },
       enrolledLayout:
         incoming?.courseDetails?.enrolledLayout ??

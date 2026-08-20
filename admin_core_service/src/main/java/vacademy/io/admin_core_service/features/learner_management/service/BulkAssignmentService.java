@@ -116,8 +116,14 @@ public class BulkAssignmentService {
     @org.springframework.context.annotation.Lazy
     private WorkflowTriggerService workflowTriggerService;
 
+    // How to treat a learner who already has a standing enrollment on the target package
+    // session — an ACTIVE mapping, or an INVITED one still awaiting acceptance. A dormant
+    // mapping (TERMINATED/INACTIVE/EXPIRED) is not an existing enrollment and always
+    // proceeds to a re-enrollment, so these only ever apply to Case A.
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
+    /** Accepted for API compatibility; now behaves exactly like {@link #DUPLICATE_SKIP}. */
+    @SuppressWarnings("unused")
     private static final String DUPLICATE_RE_ENROLL = "RE_ENROLL";
 
     /**
@@ -535,37 +541,45 @@ public class BulkAssignmentService {
                 StudentSessionInstituteGroupMapping mapping = existingMapping.get();
                 String existingStatus = mapping.getStatus();
 
-                // Case A: Already ACTIVE
-                if (LearnerSessionStatusEnum.ACTIVE.name().equals(existingStatus)) {
+                // Case A: a standing enrollment — either ACTIVE access, or an INVITED
+                // mapping whose invitation is still outstanding. Both are duplicates:
+                // re-enrolling would double up live access, or trample a pending invite
+                // the learner may still be about to accept. duplicateHandling decides.
+                if (LearnerSessionStatusEnum.ACTIVE.name().equals(existingStatus)
+                        || LearnerSessionStatusEnum.INVITED.name().equals(existingStatus)) {
+                    String reason = LearnerSessionStatusEnum.ACTIVE.name().equals(existingStatus)
+                            ? "Already enrolled (ACTIVE)"
+                            : "Invitation already pending (INVITED)";
                     if (DUPLICATE_ERROR.equals(duplicateHandling)) {
-                        return buildFailedResult(userId, userMap, packageSessionId,
-                                "Already enrolled (ACTIVE)");
+                        return buildFailedResult(userId, userMap, packageSessionId, reason);
                     }
-                    // SKIP or RE_ENROLL both skip for ACTIVE
                     return BulkAssignResultItemDTO.builder()
                             .userId(userId).userEmail(userEmail)
                             .packageSessionId(packageSessionId)
                             .status("SKIPPED").actionTaken("NONE")
-                            .message("Already enrolled (ACTIVE)")
+                            .message(reason)
                             .build();
                 }
 
-                // Case B: TERMINATED / INACTIVE / EXPIRED → RE_ENROLL or SKIP
-                if (DUPLICATE_RE_ENROLL.equals(duplicateHandling)) {
-                    return handleReEnroll(mapping, userId, userEmail, config,
-                            instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment);
-                } else if (DUPLICATE_ERROR.equals(duplicateHandling)) {
-                    return buildFailedResult(userId, userMap, packageSessionId,
-                            "Existing enrollment found with status: " + existingStatus);
-                } else {
-                    // SKIP
-                    return BulkAssignResultItemDTO.builder()
-                            .userId(userId).userEmail(userEmail)
-                            .packageSessionId(packageSessionId)
-                            .status("SKIPPED").actionTaken("NONE")
-                            .message("Existing enrollment with status: " + existingStatus)
-                            .build();
-                }
+                // Case B: TERMINATED / INACTIVE / EXPIRED — a dormant mapping. The learner
+                // holds no access and has nothing outstanding, so this is a genuine
+                // enrollment rather than a duplicate, and it proceeds whatever
+                // duplicateHandling says. That option answers "what if they are ALREADY
+                // ENROLLED", which only Case A is.
+                //
+                // Previously SKIP (the wizard's default) dropped these on the floor, so an
+                // admin re-enrolling a hard-terminated learner got a silent "SKIPPED" and no
+                // enrollment. Note the asymmetry that made it confusing: a hard terminate on
+                // a plan-backed learner moves the row off this package session (see
+                // UserPlanService.cancelUserPlan force-branch) and so lands in Case C, while
+                // a learner with no UserPlan is flipped to TERMINATED in place
+                // (BulkDeassignmentService) and stays right here in Case B.
+                //
+                // The row is REUSED rather than left for Case C to insert alongside: a second
+                // row for the same (user, package session) would trip
+                // uq_dest_pkg_inst_user_status where that index exists.
+                return handleReEnroll(mapping, userId, userEmail, config,
+                        instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment);
             }
 
             // Case C: No existing mapping → create new

@@ -263,14 +263,25 @@ public final class TtsVoiceCatalog {
             v("ketaki", "female", MODEL_SMALLEST_PRO),
             v("meher", "female", MODEL_SMALLEST_PRO));
 
-    private static final Map<String, List<Map<String, String>>> BY_MODEL = Map.of(
-            MODEL_SARVAM, SARVAM_VOICES,
-            MODEL_RUMIK, RUMIK_VOICES,
-            MODEL_GOOGLE, GOOGLE_VOICES,
-            MODEL_SMALLEST, SMALLEST_VOICES,
-            MODEL_EDGE, EDGE_VOICES,
-            MODEL_DEEPGRAM, DEEPGRAM_VOICES,
-            MODEL_SMALLEST_PRO, SMALLEST_PRO_VOICES);
+    /**
+     * The ONE place every palette is registered. Ordered (LinkedHashMap) because
+     * {@link #all()} flattens it and the picker shows voices in this order.
+     *
+     * <p>Adding an engine means adding it HERE and nowhere else: all(), models(),
+     * IDS_BY_MODEL and isVoiceOf() all derive from this map. all() used to keep its
+     * own hand-written list of palettes and silently omitted smallest_pro and
+     * deepgram — their engines showed in the picker with an EMPTY voice dropdown.
+     */
+    private static final Map<String, List<Map<String, String>>> BY_MODEL = new LinkedHashMap<>();
+    static {
+        BY_MODEL.put(MODEL_GOOGLE, GOOGLE_VOICES);
+        BY_MODEL.put(MODEL_EDGE, EDGE_VOICES);
+        BY_MODEL.put(MODEL_SMALLEST, SMALLEST_VOICES);
+        BY_MODEL.put(MODEL_SMALLEST_PRO, SMALLEST_PRO_VOICES);
+        BY_MODEL.put(MODEL_DEEPGRAM, DEEPGRAM_VOICES);
+        BY_MODEL.put(MODEL_RUMIK, RUMIK_VOICES);
+        BY_MODEL.put(MODEL_SARVAM, SARVAM_VOICES);
+    }
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {
@@ -287,8 +298,9 @@ public final class TtsVoiceCatalog {
 
     /** Every voice, model-tagged. The frontend groups by {@code model}. */
     public static List<Map<String, String>> all() {
-        return java.util.stream.Stream.of(GOOGLE_VOICES, EDGE_VOICES, SMALLEST_VOICES,
-                RUMIK_VOICES, SARVAM_VOICES).flatMap(List::stream).toList();
+        // Derived from BY_MODEL on purpose — a hand-written palette list here is
+        // exactly what shipped smallest_pro and deepgram with empty dropdowns.
+        return BY_MODEL.values().stream().flatMap(List::stream).toList();
     }
 
     public static List<Map<String, String>> forModel(String model) {

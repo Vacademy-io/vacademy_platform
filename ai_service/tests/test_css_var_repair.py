@@ -86,3 +86,51 @@ def test_inline_flex_row_is_pinned_only_when_the_content_implies_a_row():
 
     # No growing child -> no evidence of a row -> leave it alone.
     assert repair_inline_flex_direction("<div style='display:flex'><div>a</div></div>")[1] == []
+
+
+def test_helper_imposed_direction_is_neutralised_without_a_growing_child():
+    """The class-based trigger: a helper known to impose flex-direction loses
+    to an element that authored its own container, even when no child grows."""
+    from html_contract_repair import repair_inline_flex_direction
+
+    html = ("<div class='process-flow' style='display:flex;align-items:flex-start'>"
+            "<div>one</div><div>two</div></div>")
+    out, fixes = repair_inline_flex_direction(html)
+    assert fixes and "flex-direction:row" in out
+
+
+def test_helper_max_width_cap_lifts_only_when_the_shot_sized_itself():
+    from html_contract_repair import repair_inline_flex_direction
+
+    sized = "<div class='process-flow' style='display:flex;width:100%'>x</div>"
+    out, fixes = repair_inline_flex_direction(sized)
+    assert "max-width:none" in out, fixes
+
+    unsized = "<div class='process-flow' style='display:flex'>x</div>"
+    assert "max-width:none" not in repair_inline_flex_direction(unsized)[0]
+
+
+def test_author_declared_properties_are_never_touched():
+    from html_contract_repair import repair_inline_flex_direction
+
+    html = ("<div class='process-flow' style='display:flex;flex-direction:column;"
+            "width:50%;max-width:400px'><div style='flex:1'>a</div></div>")
+    out, fixes = repair_inline_flex_direction(html)
+    assert fixes == [] and out == html
+
+
+def test_unrelated_classes_and_plain_elements_are_untouched():
+    from html_contract_repair import repair_inline_flex_direction
+
+    html = "<div class='some-card' style='display:flex'><div>a</div></div>"
+    assert repair_inline_flex_direction(html)[1] == []
+
+
+def test_repair_is_idempotent_across_both_triggers():
+    from html_contract_repair import repair_inline_flex_direction
+
+    html = ("<div class='process-flow' style='display:flex;width:100%'>"
+            "<div style='flex:1'>a</div></div>")
+    once, first = repair_inline_flex_direction(html)
+    twice, second = repair_inline_flex_direction(once)
+    assert first and second == [] and twice == once

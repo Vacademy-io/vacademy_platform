@@ -550,34 +550,96 @@ def repair_dark_bed_text(html: str) -> Tuple[str, List[str]]:
 # are left exactly as they were.
 
 _INLINE_STYLE_RE = re.compile(r"""style\s*=\s*(['"])(.*?)\1""", re.I | re.S)
+_CLASS_ATTR_RE = re.compile(r"""class\s*=\s*(['"])(.*?)\1""", re.I | re.S)
+_TAG_RE = re.compile(r"<\w+\b[^>]*>", re.S)
 _DISPLAY_FLEX_RE = re.compile(r"display\s*:\s*(?:inline-)?flex\b", re.I)
-_FLEX_DIRECTION_RE = re.compile(r"flex-direction\s*:", re.I)
 _FLEX_CHILD_RE = re.compile(r"flex\s*:\s*[1-9]|flex-grow\s*:\s*[1-9]", re.I)
+
+# Helper classes the harness injects that impose a property a shot CANNOT win
+# by declaring `display:flex` inline — the helper's declaration is separate, so
+# it survives unless the shot happens to name that exact property too. This map
+# is generated from the harness CSS and pinned by a test: a new helper class
+# carrying one of these properties fails that test until it is classified here,
+# which is what stops this bug class from reappearing one screenshot at a time.
+_HELPER_IMPOSED: Dict[str, Tuple[str, ...]] = {
+    "equation-build-row": ("flex-wrap",),
+    "full-screen-center": ("flex-direction",),
+    "image-split-layout": ("grid-template-columns",),
+    "image-text-overlay": ("flex-direction",),
+    "layout-split": ("grid-template-columns", "max-width"),
+    "node-body": ("flex-direction",),
+    "process-flow": ("flex-direction", "max-width"),
+}
+
+# What the element implied by authoring its own container and staying silent.
+_IMPLIED_DEFAULT = {
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "max-width": "none",
+}
+
+
+def _declares(style: str, prop: str) -> bool:
+    return bool(re.search(rf"(?<![\w-]){re.escape(prop)}\s*:", style, re.I))
 
 
 def repair_inline_flex_direction(html: str) -> Tuple[str, List[str]]:
-    """Pin `flex-direction:row` on elements that declare `display:flex` inline
-    without a direction, when their children imply a row.
+    """Stop a helper class from overriding the layout a shot authored inline.
 
-    Returns `(html, applied_fixes)`. Idempotent — once the direction is present
-    the element no longer matches.
+    An element that declares `display:flex` inline is authoring its own
+    container — restating what the helper class already provides reads as
+    intent. But inline styles only win for the properties they actually name,
+    so a helper's `flex-direction: column` (or `max-width: 960px`) applies
+    unopposed and turns an intended row into a stack taller than the frame.
+
+    Fires on either signal:
+      * the element carries a helper class known to impose the property, or
+      * a child grows (`flex:1`), which is meaningless in the column a helper
+        would impose and is the model's clearest statement of a row.
+
+    Returns `(html, applied_fixes)`. Idempotent.
     """
     if not html or "display" not in html:
         return html, []
     fixes: List[str] = []
 
-    def _sub(m: "re.Match") -> str:
-        quote, style = m.group(1), m.group(2)
-        if not _DISPLAY_FLEX_RE.search(style) or _FLEX_DIRECTION_RE.search(style):
-            return m.group(0)
-        # Only act when the container's own content implies a row: a child that
-        # grows (`flex:1`) is meaningless in the column the helper imposes, and
-        # is the model's clearest statement that these sit side by side.
-        tail = html[m.end():m.end() + 2600]
-        if not _FLEX_CHILD_RE.search(tail):
-            return m.group(0)
-        sep = "" if style.rstrip().endswith(";") or not style.strip() else ";"
-        fixes.append("pinned flex-direction:row on inline display:flex")
-        return f'style={quote}{style}{sep}flex-direction:row;{quote}'
+    def _fix_tag(m: "re.Match") -> str:
+        tag = m.group(0)
+        sm = _INLINE_STYLE_RE.search(tag)
+        if not sm:
+            return tag
+        style = sm.group(2)
+        if not _DISPLAY_FLEX_RE.search(style):
+            return tag
+        cm = _CLASS_ATTR_RE.search(tag)
+        classes = set((cm.group(2) if cm else "").split())
+        imposed: set = set()
+        for cls in classes:
+            imposed.update(_HELPER_IMPOSED.get(cls, ()))
 
-    return _INLINE_STYLE_RE.sub(_sub, html), fixes
+        additions: List[str] = []
+        for prop, default in _IMPLIED_DEFAULT.items():
+            if _declares(style, prop):
+                continue                      # the author named it; leave it
+            if prop == "max-width":
+                # Only lift a cap when the element sized itself explicitly.
+                if prop not in imposed or not _declares(style, "width"):
+                    continue
+            elif prop not in imposed:
+                # No known helper imposes it here — fall back to the row
+                # heuristic for flex-direction only.
+                if prop != "flex-direction":
+                    continue
+                tail = html[m.end():m.end() + 2600]
+                if not _FLEX_CHILD_RE.search(tail):
+                    continue
+            additions.append(f"{prop}:{default}")
+
+        if not additions:
+            return tag
+        sep = "" if style.rstrip().endswith(";") or not style.strip() else ";"
+        new_style = f"{style}{sep}{';'.join(additions)};"
+        fixes.append(f"pinned {', '.join(additions)} on inline display:flex")
+        return tag[:sm.start(2)] + new_style + tag[sm.end(2):]
+
+    return _TAG_RE.sub(_fix_tag, html), fixes

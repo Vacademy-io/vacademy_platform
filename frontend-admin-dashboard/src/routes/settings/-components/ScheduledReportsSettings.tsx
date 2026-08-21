@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { MyInput } from '@/components/design-system/input';
 import { MyTable } from '@/components/design-system/table';
+import { MyDialog } from '@/components/design-system/dialog';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
     Select,
@@ -22,10 +23,13 @@ import {
     fetchRuns,
     fetchSections,
     newSchedule,
+    previewReport,
     previewScope,
+    runReportNow,
     saveReportSetting,
     type ReportSchedule,
     type ReportSettingConfig,
+    type PreviewResult,
     type ReportRun,
     type ScopePreview,
 } from '../-services/scheduled-reports-service';
@@ -82,6 +86,8 @@ export default function ScheduledReportsSettings() {
     const [config, setConfig] = useState<ReportSettingConfig>(EMPTY_REPORT_SETTING);
     const [saving, setSaving] = useState(false);
     const [preview, setPreview] = useState<Record<string, ScopePreview | null>>({});
+    const [rendered, setRendered] = useState<PreviewResult | null>(null);
+    const [busyId, setBusyId] = useState<string | null>(null);
 
     const { data: stored, isLoading } = useQuery({
         queryKey: ['report-setting'],
@@ -126,6 +132,42 @@ export default function ScheduledReportsSettings() {
             setPreview((prev) => ({ ...prev, [schedule.id]: p }));
         } catch {
             toast.error('Could not work out how many reports this would create');
+        }
+    }
+
+    async function handlePreview(schedule: ReportSchedule) {
+        setBusyId(schedule.id);
+        try {
+            setRendered(await previewReport(schedule));
+        } catch {
+            toast.error('Could not build the preview');
+        } finally {
+            setBusyId(null);
+        }
+    }
+
+    async function handleRunNow(schedule: ReportSchedule) {
+        // Real emails to real people — make the blast radius explicit before it
+        // happens, not afterwards in the audit log.
+        const who =
+            schedule.recipients.roles.length > 0
+                ? `everyone with the ${schedule.recipients.roles.join('/')} role`
+                : `${schedule.recipients.userIds.length} selected recipient(s)`;
+        if (
+            !window.confirm(
+                `Send "${schedule.name}" now to ${who}?\n\nThis sends real email and cannot be recalled. Use Preview if you only want to see it.`
+            )
+        ) {
+            return;
+        }
+        setBusyId(schedule.id);
+        try {
+            toast.success(await runReportNow(schedule));
+            refetchRuns();
+        } catch {
+            toast.error('Could not send the report');
+        } finally {
+            setBusyId(null);
         }
     }
 
@@ -373,6 +415,20 @@ export default function ScheduledReportsSettings() {
                                 <MyButton buttonType="secondary" onClick={() => runPreview(s)}>
                                     Check how many reports
                                 </MyButton>
+                                <MyButton
+                                    buttonType="secondary"
+                                    disabled={busyId === s.id || s.sections.length === 0}
+                                    onClick={() => handlePreview(s)}
+                                >
+                                    {busyId === s.id ? 'Building…' : 'Preview'}
+                                </MyButton>
+                                <MyButton
+                                    buttonType="text"
+                                    disabled={busyId === s.id || s.sections.length === 0}
+                                    onClick={() => handleRunNow(s)}
+                                >
+                                    Send now
+                                </MyButton>
                             </div>
 
                             {p && (
@@ -487,6 +543,37 @@ export default function ScheduledReportsSettings() {
                     )}
                 </div>
             </div>
+
+            {rendered && (
+                <MyDialog
+                    heading="Report preview"
+                    open={true}
+                    onOpenChange={() => setRendered(null)}
+                    dialogWidth="max-w-3xl"
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="text-caption text-neutral-500">
+                            Exactly what you would receive. Nothing has been sent and nothing has
+                            been charged.
+                        </p>
+                        {rendered.note && (
+                            <p className="rounded-md border border-warning-500 bg-warning-50 p-2 text-caption text-warning-700">
+                                {rendered.note}
+                            </p>
+                        )}
+                        {rendered.html ? (
+                            <iframe
+                                title="Report preview"
+                                className="h-96 w-full rounded-md border border-border bg-white"
+                                sandbox=""
+                                srcDoc={rendered.html}
+                            />
+                        ) : (
+                            <p className="text-body">Nothing would be sent for this schedule.</p>
+                        )}
+                    </div>
+                </MyDialog>
+            )}
         </SettingsPageShell>
     );
 }

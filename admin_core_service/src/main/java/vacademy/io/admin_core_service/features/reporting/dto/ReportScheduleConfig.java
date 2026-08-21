@@ -55,6 +55,29 @@ public class ReportScheduleConfig {
 
     private Integer creditCapPerRun;
 
+    /**
+     * Shallow copy, so a manual run can carry a distinct id without mutating the
+     * schedule the institute actually saved.
+     */
+    public ReportScheduleConfig copy() {
+        ReportScheduleConfig c = new ReportScheduleConfig();
+        c.id = this.id;
+        c.name = this.name;
+        c.enabled = this.enabled;
+        c.frequency = this.frequency;
+        c.dayOfWeek = this.dayOfWeek;
+        c.dayOfMonth = this.dayOfMonth;
+        c.hour = this.hour;
+        c.sections = new ArrayList<>(this.sections == null ? List.of() : this.sections);
+        c.scopeType = this.scopeType;
+        c.scopeIds = new ArrayList<>(this.scopeIds == null ? List.of() : this.scopeIds);
+        c.recipients = this.recipients;
+        c.skipIfNoData = this.skipIfNoData;
+        c.ai = this.ai;
+        c.creditCapPerRun = this.creditCapPerRun;
+        return c;
+    }
+
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Recipients {

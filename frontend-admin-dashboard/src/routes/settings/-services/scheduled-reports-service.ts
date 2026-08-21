@@ -179,6 +179,25 @@ export async function previewScope(schedule: ReportSchedule): Promise<ScopePrevi
     return res.data;
 }
 
+export interface PreviewResult {
+    html: string | null;
+    note: string | null;
+    documentsPerRun: number;
+    namedLearners: number;
+}
+
+/** Render the report as the calling admin would receive it. Sends nothing. */
+export async function previewReport(schedule: ReportSchedule): Promise<PreviewResult> {
+    const res = await authenticatedAxiosInstance.post(`${REPORTING_BASE}/preview`, schedule);
+    return res.data;
+}
+
+/** Run it for real, now — emails every resolved recipient. */
+export async function runReportNow(schedule: ReportSchedule): Promise<string> {
+    const res = await authenticatedAxiosInstance.post(`${REPORTING_BASE}/run-now`, schedule);
+    return typeof res.data === 'string' ? res.data : 'Report sent.';
+}
+
 export async function fetchRuns(): Promise<ReportRun[]> {
     const res = await authenticatedAxiosInstance.get(`${REPORTING_BASE}/runs`);
     return Array.isArray(res.data) ? res.data : [];

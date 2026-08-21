@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.reporting.entity.ReportRun;
 import vacademy.io.admin_core_service.features.reporting.entity.ReportRunRecipient;
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRecipientRepository;
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRepository;
+import vacademy.io.admin_core_service.features.reporting.service.ReportRunService;
 import vacademy.io.admin_core_service.features.reporting.service.ReportingScopeResolver;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSectionRegistry;
@@ -45,6 +46,7 @@ public class ReportingController {
     private final ReportingScopeResolver scopeResolver;
     private final ReportRunRepository runRepository;
     private final ReportRunRecipientRepository recipientRepository;
+    private final ReportRunService runService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     /**
@@ -96,6 +98,41 @@ public class ReportingController {
             @RequestBody ReportScheduleConfig schedule) {
         String instituteId = requireInstituteId(request, user);
         return ResponseEntity.ok(scopeResolver.preview(instituteId, schedule));
+    }
+
+    /**
+     * Render this schedule as the calling admin would receive it — without
+     * sending, recording a run, or charging.
+     *
+     * The loop that was missing: previously the only way to see a report was to
+     * email real people, so every iteration cost somebody an inbox. Preview
+     * deliberately does not take the idempotency path, so looking at Monday's
+     * report today does not consume Monday's window.
+     */
+    @PostMapping("/preview")
+    public ResponseEntity<ReportRunService.PreviewResult> preview(
+            HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestBody ReportScheduleConfig schedule) {
+        String instituteId = requireInstituteId(request, user);
+        return ResponseEntity.ok(runService.preview(instituteId, schedule, user.getUserId()));
+    }
+
+    /**
+     * Run this schedule immediately, for real — same pipeline, same audit, real
+     * emails to every resolved recipient.
+     *
+     * Recorded under a distinct schedule id so a manual send can never consume
+     * the scheduled window and silently cancel the next real run.
+     */
+    @PostMapping("/run-now")
+    public ResponseEntity<String> runNow(
+            HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestBody ReportScheduleConfig schedule) {
+        String instituteId = requireInstituteId(request, user);
+        runService.runNow(instituteId, null, schedule);
+        return ResponseEntity.ok("Report sent. Check Recent reports for who received it.");
     }
 
     /**

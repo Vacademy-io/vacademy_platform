@@ -50,6 +50,23 @@ public class ReportWindowResolver {
         };
     }
 
+    /**
+     * The window this schedule WOULD cover if it ran now, ignoring whether it is
+     * due. Preview and manual runs need the same window semantics as a real run
+     * without waiting for Monday to come round.
+     */
+    public Window previewWindow(ReportScheduleConfig schedule, String timezone) {
+        ZoneId zone = safeZone(timezone);
+        LocalDate today = LocalDate.now(zone);
+        String freq = schedule.getFrequency() == null
+                ? "weekly" : schedule.getFrequency().toLowerCase(Locale.ROOT);
+        return switch (freq) {
+            case "daily" -> window(today.minusDays(1), today, zone, "yesterday");
+            case "monthly" -> window(today.minusMonths(1), today, zone, "the last month");
+            default -> window(today.minusDays(7), today, zone, "the last 7 days");
+        };
+    }
+
     private Optional<Window> dailyWindow(ReportScheduleConfig s, ZoneId zone, ZonedDateTime localNow) {
         if (localNow.getHour() < s.getHour()) return Optional.empty();
         LocalDate today = localNow.toLocalDate();

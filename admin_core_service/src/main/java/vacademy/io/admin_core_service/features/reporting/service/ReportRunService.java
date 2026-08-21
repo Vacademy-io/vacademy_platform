@@ -57,6 +57,8 @@ public class ReportRunService {
     private final AuthService authService;
     private final ReportingScopeResolver scopeResolver;
     private final ReportRecipientResolver recipientResolver;
+    private final ReportWindowResolver windowResolver;
+    private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     /**
      * Fan out one schedule into its documents and run each independently.
@@ -247,6 +249,106 @@ public class ReportRunService {
 
     /** What a delivery pass actually did. */
     private record Delivery(int sent, int namedLearners) {}
+
+    /**
+     * Render a schedule exactly as ONE named reader would receive it, without
+     * sending anything, writing a run row, or charging.
+     *
+     * This is the loop that was missing: until now the only way to see a report
+     * was to email real people, so every iteration cost an inbox. Preview is
+     * scoped to the caller — an admin sees the admin document, a teacher sees
+     * their own cohorts — because "what will this look like" is only a useful
+     * answer if it is the reader's actual view rather than an idealised one.
+     *
+     * Deliberately does NOT take the idempotency path: previewing must not
+     * consume the window and stop the real run from happening later.
+     */
+    public PreviewResult preview(String instituteId, ReportScheduleConfig schedule, String asUserId) {
+        ReportWindowResolver.Window window = windowResolver.previewWindow(schedule, null);
+
+        List<ReportingScopeResolver.Scope> scopes = scopeResolver.resolve(instituteId, schedule);
+        if (scopes.isEmpty()) {
+            return new PreviewResult(null, "This schedule resolves to no reports.", 0, 0);
+        }
+        ReportingScopeResolver.Scope scope = scopes.get(0);
+
+        List<ReportSection> selected = registry.resolve(schedule.getSections(), null).stream()
+                .filter(sec -> sec.supportedScopes().contains(scope.type()))
+                .toList();
+        if (selected.isEmpty()) {
+            return new PreviewResult(null,
+                    "No selected section supports " + scope.type() + " scope.", scopes.size(), 0);
+        }
+
+        // Resolve the caller among the schedule's recipients so the preview shows
+        // THEIR document. If they are not a recipient, fall back to an
+        // unrestricted view and say so in the note.
+        List<ReportRecipientResolver.Recipient> recipients =
+                recipientResolver.resolve(instituteId, schedule);
+        ReportRecipientResolver.Recipient me = recipients.stream()
+                .filter(r -> r.getUserId() != null && r.getUserId().equals(asUserId))
+                .findFirst().orElse(null);
+
+        ReportContext ctx = ReportContext.builder()
+                .instituteId(instituteId).zone(window.zone())
+                .windowStart(window.start()).windowEnd(window.end())
+                .scopeType(scope.type()).scopeId(scope.id()).scopeLabel(scope.label())
+                .visibleLearnerIds(me == null ? null : me.getVisibleLearnerIds())
+                .build();
+
+        Set<String> roles = me == null ? null : me.getRoles();
+        Set<String> visibleKeys = registry.resolve(schedule.getSections(), roles).stream()
+                .map(ReportSection::key).collect(Collectors.toSet());
+
+        List<SectionFacts> facts = new ArrayList<>();
+        for (ReportSection sec : selected) {
+            if (!visibleKeys.contains(sec.key())) continue;
+            facts.add(truncateForDisplay(sec.compute(ctx)));
+        }
+
+        int named = facts.stream().filter(SectionFacts::isIdentifying)
+                .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum();
+
+        String note = me == null
+                ? "You are not a recipient of this schedule — showing the unrestricted view."
+                : null;
+        if (facts.stream().allMatch(SectionFacts::isEmpty) && schedule.isSkipIfNoData()) {
+            note = "Nothing to report for this window — the real run would be skipped.";
+        }
+
+        String html = renderer.render(
+                instituteNameOf(instituteId), scope.label(), window.label(), facts);
+        return new PreviewResult(html, note, scopes.size(), named);
+    }
+
+    public record PreviewResult(String html, String note, int documentsPerRun, int namedLearners) {}
+
+    private String instituteNameOf(String instituteId) {
+        try {
+            return instituteRepository.findById(instituteId)
+                    .map(i -> i.getInstituteName() == null ? "Vacademy" : i.getInstituteName())
+                    .orElse("Vacademy");
+        } catch (Exception e) {
+            return "Vacademy";
+        }
+    }
+
+    /**
+     * Run a schedule immediately, for real — same pipeline, same audit, same
+     * emails.
+     *
+     * The run is recorded under a distinct schedule id ("<id>@manual:<epoch>") so
+     * it can never collide with the scheduled run's idempotency key. A manual
+     * send must not consume the window and silently cancel Monday's report, and
+     * two manual sends should both appear in the audit rather than the second
+     * being swallowed as a duplicate.
+     */
+    public void runNow(String instituteId, String instituteName, ReportScheduleConfig schedule) {
+        ReportScheduleConfig manual = schedule.copy();
+        manual.setId(schedule.getId() + "@manual:" + System.currentTimeMillis());
+        execute(instituteId, instituteName, manual,
+                windowResolver.previewWindow(schedule, null));
+    }
 
     private Delivery deliver(String instituteId, String instituteName,
                         ReportWindowResolver.Window window, ReportRun run,

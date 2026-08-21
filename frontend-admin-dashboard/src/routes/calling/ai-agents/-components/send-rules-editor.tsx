@@ -364,9 +364,7 @@ export function SendRulesEditor({
                                     <Textarea
                                         rows={4}
                                         placeholder={
-                                            'Aapka scholarship quiz link
-
-' +
+                                            'Aapka scholarship quiz link\n\n' +
                                             'Namaste {{name}}, yeh raha aapka link: ...'
                                         }
                                         value={rule.messageBody || ''}

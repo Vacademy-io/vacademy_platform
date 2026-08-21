@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react';
 import { nanoid } from 'nanoid';
 import {
+    getCertificateNumberingStatus,
     handleConfigureCertificateSettings,
     type BarcodeContent,
     type CertificateAspectRatio,
@@ -527,6 +528,8 @@ type CertificateConfig = {
         prefix?: string;
         suffix?: string;
         sequencePadding?: number;
+        startFrom?: number;
+        resetAnnually?: boolean;
     };
     qrVerificationUrlTemplate?: string;
     badgeCodeType?: 'QR' | 'BARCODE';
@@ -667,6 +670,20 @@ const CertificatesSettings = () => {
     const [numberingPrefix, setNumberingPrefix] = useState<string>('');
     const [numberingSuffix, setNumberingSuffix] = useState<string>('');
     const [sequencePadding, setSequencePadding] = useState<number>(3);
+    // Where the series begins, for an institute continuing from paper records or
+    // another system. 0 means unset — the counter simply carries on. The backend
+    // treats it as a floor, so a value at or below what is already issued is
+    // ignored rather than reissuing a live certificate number.
+    const [numberingStartFrom, setNumberingStartFrom] = useState<number>(0);
+    // Absent means true, matching the backend: the counter has always reset each
+    // January, and every institute saved before this setting existed relies on
+    // that.
+    const [numberingResetAnnually, setNumberingResetAnnually] = useState<boolean>(true);
+    // Highest position the counter has handed out, read from the server. Drives
+    // the sample numbers and the "that start number is already used" warning.
+    const [highestIssuedSequence, setHighestIssuedSequence] = useState<number | undefined>(
+        undefined
+    );
     const [qrVerificationUrlTemplate, setQrVerificationUrlTemplate] = useState<string>('');
     const [badgeCodeType, setBadgeCodeType] = useState<'QR' | 'BARCODE'>('QR');
     // Defaults to NUMBER, which is what every certificate issued before this
@@ -741,8 +758,37 @@ const CertificatesSettings = () => {
         [instituteDetails?.institute_name]
     );
 
-    // Sequence 1 is the honest illustration: the counter resets each year, so
-    // the first certificate of the year really is 001.
+    // The position the next certificate actually takes. Mirrors the backend's
+    // max(counter + 1, startFrom) — the sample numbers shown all over this page
+    // are supposed to be what gets issued, and a hardcoded 1 told an institute
+    // already sitting at #1200 that its series starts over.
+    const nextCertificateSequence = useMemo(
+        () => Math.max((highestIssuedSequence ?? 0) + 1, numberingStartFrom, 1),
+        [highestIssuedSequence, numberingStartFrom]
+    );
+
+    // Read where the counter stands. Depends only on which counter is selected —
+    // the yearly one or the continuous one — so it does not refetch while the
+    // admin types a start number; that value is applied locally on top.
+    useEffect(() => {
+        let cancelled = false;
+        getCertificateNumberingStatus({ resetAnnually: numberingResetAnnually })
+            .then((status) => {
+                if (!cancelled && typeof status?.highestIssuedSequence === 'number') {
+                    setHighestIssuedSequence(status.highestIssuedSequence);
+                }
+            })
+            .catch(() => {
+                // A counter we cannot read is not worth blocking the page for:
+                // the builder falls back to showing the series from #1, and the
+                // backend applies the real floor at issuance either way.
+                if (!cancelled) setHighestIssuedSequence(undefined);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [numberingResetAnnually]);
+
     const numberingPreview = useMemo(
         () =>
             formatCertificateNumberPreview({
@@ -750,10 +796,17 @@ const CertificatesSettings = () => {
                 prefix: numberingPrefix.trim() || derivedPrefix,
                 suffix: numberingSuffix,
                 padding: sequencePadding,
-                sequence: 1,
+                sequence: nextCertificateSequence,
                 year: new Date().getFullYear(),
             }),
-        [numberingPattern, numberingPrefix, numberingSuffix, sequencePadding, derivedPrefix]
+        [
+            numberingPattern,
+            numberingPrefix,
+            numberingSuffix,
+            sequencePadding,
+            derivedPrefix,
+            nextCertificateSequence,
+        ]
     );
 
     // Same number the editor ghost and both previews show, so a sample number
@@ -861,6 +914,12 @@ const CertificatesSettings = () => {
         setNumberingPrefix(ex.certificateNumbering?.prefix ?? '');
         setNumberingSuffix(ex.certificateNumbering?.suffix ?? '');
         setSequencePadding(ex.certificateNumbering?.sequencePadding ?? 3);
+        setNumberingStartFrom(
+            typeof ex.certificateNumbering?.startFrom === 'number'
+                ? Math.max(0, ex.certificateNumbering.startFrom)
+                : 0
+        );
+        setNumberingResetAnnually(ex.certificateNumbering?.resetAnnually !== false);
         setQrVerificationUrlTemplate(ex.qrVerificationUrlTemplate ?? '');
         setBadgeCodeType(ex.badgeCodeType === 'BARCODE' ? 'BARCODE' : 'QR');
         setBarcodeContent(
@@ -1594,6 +1653,13 @@ const CertificatesSettings = () => {
                     prefix: numberingPrefix.trim() || undefined,
                     suffix: numberingSuffix.trim() || undefined,
                     sequencePadding,
+                    // 0 in local state means "no start number". Omit it rather
+                    // than sending 0: the backend replaces the whole
+                    // certificateNumbering object on save, so an omitted field
+                    // clears the stored floor — which is exactly what emptying
+                    // the box should do.
+                    startFrom: numberingStartFrom > 0 ? numberingStartFrom : undefined,
+                    resetAnnually: numberingResetAnnually,
                 },
                 // Empty string, not undefined: undefined hits the backend's
                 // preserve-on-null merge, so "Use my portal instead" could
@@ -1657,6 +1723,8 @@ const CertificatesSettings = () => {
                         prefix: numberingPrefix.trim() || undefined,
                         suffix: numberingSuffix.trim() || undefined,
                         sequencePadding,
+                        startFrom: numberingStartFrom > 0 ? numberingStartFrom : undefined,
+                        resetAnnually: numberingResetAnnually,
                     },
                     qrVerificationUrlTemplate: qrVerificationUrlTemplate.trim(),
                     badgeCodeType,
@@ -1870,6 +1938,8 @@ const CertificatesSettings = () => {
                             prefix: numberingPrefix,
                             suffix: numberingSuffix,
                             sequencePadding,
+                            startFrom: numberingStartFrom,
+                            resetAnnually: numberingResetAnnually,
                         }}
                         onChange={(patch) => {
                             if (patch.pattern !== undefined) setNumberingPattern(patch.pattern);
@@ -1877,8 +1947,12 @@ const CertificatesSettings = () => {
                             if (patch.suffix !== undefined) setNumberingSuffix(patch.suffix);
                             if (patch.sequencePadding !== undefined)
                                 setSequencePadding(patch.sequencePadding);
+                            if (patch.startFrom !== undefined) setNumberingStartFrom(patch.startFrom);
+                            if (patch.resetAnnually !== undefined)
+                                setNumberingResetAnnually(patch.resetAnnually);
                         }}
                         derivedPrefix={derivedPrefix}
+                        highestIssuedSequence={highestIssuedSequence}
                         disabled={loading}
                         // The builder previews through the page's own formatter, so
                         // the samples cannot drift from the number that is issued.

@@ -1,5 +1,20 @@
 -- Certificate numbering + course-dashboard support.
 --
+-- RENUMBERED from V444 to V462 on 2026-08-21. Version 444 had ALREADY been used
+-- by V444__Knowledge_base_generations.sql, which applied to stage/prod on
+-- 2026-08-11; that migration was later renumbered to V446 and 444 was reused
+-- here. Flyway keys on the version number alone, so it saw 444 as applied and
+-- skipped this file — and because every environment sets
+-- `spring.flyway.validate-on-migrate=false`, the checksum mismatch that would
+-- normally have caught it was never reported. The result was silent: the table
+-- below never existed in prod, so every certificate issuance failed with
+-- `relation "certificate_number_sequence" does not exist` from the moment the
+-- allocator shipped.
+--
+-- Everything here is idempotent (IF NOT EXISTS + a swallowed duplicate-object
+-- block), so re-running it on an environment where the old V444 did apply is a
+-- no-op rather than an error.
+--
 -- Two problems this fixes.
 --
 -- 1. Certificate numbers were random, not sequential. `generateUniqueCertificateId`

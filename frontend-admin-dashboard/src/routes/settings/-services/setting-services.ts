@@ -1,5 +1,5 @@
 import { getInstituteId } from '@/constants/helper';
-import { CONFIGURE_CERTIFICATE_SETTINGS } from '@/constants/urls';
+import { CERTIFICATE_NUMBERING_STATUS, CONFIGURE_CERTIFICATE_SETTINGS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { certificateHtml } from '../-utils/certificate-html';
 
@@ -46,6 +46,22 @@ export interface CertificateSavePayload {
         prefix?: string;
         suffix?: string;
         sequencePadding?: number;
+        /**
+         * Where the series should begin — for an institute continuing from
+         * paper records or another system. A floor, not a set: the backend
+         * takes max(counter + 1, startFrom), so raising it moves the series
+         * forward and lowering it below what is already issued does nothing.
+         * The certificate number is the issued row's primary key, so reusing
+         * one is not an option.
+         */
+        startFrom?: number;
+        /**
+         * Whether the counter restarts every 1 January. Omit or send true for
+         * the historical behaviour; false keeps one unbroken series, which is
+         * what a format with no {YYYY}/{YY} token needs in order to stay unique
+         * across a year boundary.
+         */
+        resetAnnually?: boolean;
     };
     /**
      * What {{CERTIFICATE_QR}} encodes. Blank encodes the bare certificate
@@ -165,6 +181,39 @@ export const handleConfigureCertificateSettings = async (
                       },
                   },
               },
+    });
+    return response?.data;
+};
+
+export interface CertificateNumberingStatus {
+    /** Position the next certificate would take, with the start number applied. */
+    nextSequence: number;
+    /** Highest position already handed out; 0 when nothing has been issued. */
+    highestIssuedSequence: number;
+    /** Counter this reflects: the issuance year, or 0 for a series that never resets. */
+    bucket: number;
+    /** True when the start number sits at or below what is already issued, so it does nothing. */
+    startFromIgnored: boolean;
+}
+
+/**
+ * Read where the certificate counter stands.
+ *
+ * <p>The numbering screen needs this to show real sample numbers. Without it the
+ * samples were hardcoded 1/2/3, which reads as "your series starts at 1" to an
+ * institute already sitting at 1200 — and made it impossible to tell an admin
+ * that the start number they just typed is below what has already been printed.
+ */
+export const getCertificateNumberingStatus = async (params?: {
+    startFrom?: number;
+    resetAnnually?: boolean;
+}): Promise<CertificateNumberingStatus> => {
+    const response = await authenticatedAxiosInstance.get(CERTIFICATE_NUMBERING_STATUS, {
+        params: {
+            instituteId: getInstituteId(),
+            startFrom: params?.startFrom,
+            resetAnnually: params?.resetAnnually,
+        },
     });
     return response?.data;
 };

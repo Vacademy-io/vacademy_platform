@@ -1040,6 +1040,19 @@ public class SlideService {
                     : videoSlide.getPublishedVideoLengthInMillis());
             newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
             newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+            // Used to be dropped, so every copied video lost the information the
+            // players route on. A copied VIMEO or FILE_ID slide came back with a
+            // null source_type and fell through to the YouTube player, which can
+            // play neither — the learner got an empty frame. (YouTube copies
+            // survived by luck, since YouTube is the fallback.)
+            newVideoSlide.setSourceType(videoSlide.getSourceType());
+            // embeddedType/embeddedData are deliberately NOT copied. The split
+            // screen JSON embeds the SOURCE video row's own id (videoSlideId /
+            // originalVideoData.id), and the admin editor writes back to that id
+            // in preference to the slide's real video row — so a verbatim copy
+            // would make edits to the copy corrupt the original course. Copying
+            // them needs an id remap first (cf. DripConditionRemapper); until
+            // then a copied split-screen slide stays a plain video, as before.
             newVideoSlide = videoSlideRepository.save(newVideoSlide);
             return newVideoSlide.getId();
         }

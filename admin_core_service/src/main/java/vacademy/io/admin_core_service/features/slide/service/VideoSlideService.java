@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerT
 import vacademy.io.admin_core_service.features.slide.dto.*;
 import vacademy.io.admin_core_service.features.slide.entity.*;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
+import vacademy.io.admin_core_service.features.slide.enums.VideoSlideSourceType;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.VideoSlideQuestionOptionRepository;
 import vacademy.io.admin_core_service.features.slide.repository.VideoSlideRepository;
@@ -450,6 +451,15 @@ public class VideoSlideService {
                 }
             }
         }
+
+        // Runs after the URLs are applied so it sees the final values. Repairs
+        // rows already stored without a source type: the branch above only
+        // overwrites when the client sends one, so those would otherwise stay
+        // blank through every edit.
+        videoSlide.setSourceType(VideoSlideSourceType.resolveSourceType(
+                videoSlide.getSourceType(),
+                videoSlide.getUrl(),
+                videoSlide.getPublishedUrl()));
     }
 
 }

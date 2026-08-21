@@ -163,6 +163,9 @@ export const VIMOTION_VIDEO_THUMBNAIL_REGENERATE = (videoId: string) =>
     `${AI_SERVICE_BASE_URL}/external/video/v1/thumbnail/${videoId}/regenerate`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
+// Where the institute's certificate counter currently stands. Read-only and
+// reserves nothing, so the numbering screen can call it while the admin edits.
+export const CERTIFICATE_NUMBERING_STATUS = `${BASE_URL}/admin-core-service/institute/v1/certificate/numbering-status`;
 // Course-scoped certificate management, backing the Certificates tab on the
 // course page. Settings are addressed by packageId (an override applies to every
 // batch of the course); the dashboard and learner list are addressed by

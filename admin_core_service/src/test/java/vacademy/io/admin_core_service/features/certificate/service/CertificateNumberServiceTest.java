@@ -1,10 +1,12 @@
 package vacademy.io.admin_core_service.features.certificate.service;
 
 import org.junit.jupiter.api.Test;
+import vacademy.io.admin_core_service.features.certificate.repository.CertificateNumberSequenceDao;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
 import vacademy.io.common.institute.entity.Institute;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Covers the certificate-number formatter against the three formats the redesign
@@ -153,5 +155,73 @@ class CertificateNumberServiceTest {
     void configuredPrefixWinsOverInstituteName() {
         CertificateNumberingDto dto = CertificateNumberingDto.builder().prefix("AIIMS").build();
         assertEquals("AIIMS", service.resolvePrefix(institute("Shiksha Nation"), dto));
+    }
+
+    // --- Start number and reset scope -------------------------------------
+    //
+    // Allocation itself is one atomic SQL statement (see
+    // CertificateNumberSequenceDao) and is exercised against a database, not
+    // here. What these pin is the config-to-parameter translation: which counter
+    // is asked for, and what floor is handed to it. Getting either wrong is
+    // silent — the certificate still issues, just with the wrong number.
+
+    @Test
+    void startFromDefaultsToNoFloor() {
+        assertEquals(0L, CertificateNumberService.startFrom(null));
+        assertEquals(0L, CertificateNumberService.startFrom(CertificateNumberingDto.builder().build()));
+    }
+
+    @Test
+    void startFromPassesTheConfiguredFloorThrough() {
+        assertEquals(1500L, CertificateNumberService.startFrom(
+                CertificateNumberingDto.builder().startFrom(1500L).build()));
+    }
+
+    /**
+     * A negative floor is normalised away rather than reaching SQL, where
+     * {@code GREATEST} would take it as "no floor" anyway — but only by accident.
+     */
+    @Test
+    void startFromClampsNegativesToNoFloor() {
+        assertEquals(0L, CertificateNumberService.startFrom(
+                CertificateNumberingDto.builder().startFrom(-40L).build()));
+    }
+
+    /** Unset means the historical behaviour: the counter resets each January. */
+    @Test
+    void bucketDefaultsToTheIssuanceYear() {
+        assertEquals(2026, CertificateNumberService.bucketFor(null, 2026));
+        assertEquals(2026, CertificateNumberService.bucketFor(
+                CertificateNumberingDto.builder().build(), 2026));
+        assertEquals(2026, CertificateNumberService.bucketFor(
+                CertificateNumberingDto.builder().resetAnnually(true).build(), 2026));
+    }
+
+    /**
+     * Turning the reset off has to select one counter for every year, otherwise
+     * "start at 1500" would re-apply every 1 January and an institute whose
+     * pattern carries no year token would re-issue numbers already printed.
+     */
+    @Test
+    void bucketIsTheContinuousCounterWhenTheResetIsOff() {
+        CertificateNumberingDto dto = CertificateNumberingDto.builder().resetAnnually(false).build();
+        assertEquals(CertificateNumberSequenceDao.CONTINUOUS_BUCKET,
+                CertificateNumberService.bucketFor(dto, 2026));
+        assertEquals(CertificateNumberService.bucketFor(dto, 2026),
+                CertificateNumberService.bucketFor(dto, 2027));
+        assertNotEquals(CertificateNumberService.bucketFor(dto, 2026),
+                CertificateNumberService.bucketFor(null, 2026));
+    }
+
+    /** The start number is a position in the counter — the format still applies. */
+    @Test
+    void aStartedSeriesStillFormatsThroughThePattern() {
+        CertificateNumberingDto dto = CertificateNumberingDto.builder()
+                .pattern("{PREFIX}-{SEQ:4}")
+                .startFrom(1500L)
+                .resetAnnually(false)
+                .build();
+        assertEquals("SN-1500", service.format(dto, "SN", null, 1500L, 2026));
+        assertEquals("SN-1501", service.format(dto, "SN", null, 1501L, 2026));
     }
 }

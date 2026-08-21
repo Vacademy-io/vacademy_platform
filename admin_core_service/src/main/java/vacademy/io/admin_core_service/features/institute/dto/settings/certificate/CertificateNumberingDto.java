@@ -50,4 +50,34 @@ public class CertificateNumberingDto {
 
     /** Zero-pad width for a bare {@code {SEQ}}. Null falls back to 4. */
     private Integer sequencePadding;
+
+    /**
+     * The number the series should start at — "our certificates continue from
+     * 1500", the common ask when an institute is migrating off paper or off
+     * another system.
+     *
+     * <p>It is a <b>floor, not a set</b>. Allocation takes
+     * {@code max(counter + 1, startFrom)}, so raising it moves the series
+     * forward and lowering it does nothing. That is what makes it safe to put in
+     * front of an admin: the certificate number is the issued row's primary key,
+     * so re-issuing a number already printed on a learner's certificate would
+     * collide, and the settings screen warns when a value is being ignored.
+     *
+     * <p>Null or {@code <= 0} means "no floor" — the counter simply continues.
+     */
+    private Long startFrom;
+
+    /**
+     * Whether the counter restarts on 1 January (the historical behaviour, and
+     * still the default when null).
+     *
+     * <p>Set false for one unbroken series across years. This matters more than
+     * it looks: with a yearly reset and a pattern carrying no {@code {YYYY}} /
+     * {@code {YY}} token — {@code {PREFIX}{SEQ:4}} is an offered preset — the
+     * first certificate of the next year formats to a number already issued, and
+     * the insert collides on the primary key. It matters again with
+     * {@link #startFrom}: a yearly reset re-applies the floor every January, so
+     * a series told to start at 1500 would start at 1500 again next year.
+     */
+    private Boolean resetAnnually;
 }

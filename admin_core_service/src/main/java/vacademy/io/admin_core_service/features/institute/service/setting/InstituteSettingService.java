@@ -35,6 +35,7 @@ import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEn
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.certificate.dto.ResolvedCertificateConfig;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
 import vacademy.io.admin_core_service.features.certificate.entity.IssuedCertificate;
 import vacademy.io.admin_core_service.features.certificate.repository.IssuedCertificateRepository;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateCodeService;
@@ -747,9 +748,25 @@ public class InstituteSettingService {
                             mapping.getUserId(), packageSessionId).isPresent()) {
                 return; // already have an audit row
             }
+            // Resolve the institute's numbering config rather than passing null.
+            // Null means "shipped defaults", which draws from the per-year
+            // counter — but an institute that turned the yearly restart off is
+            // counting in a different one, so a backfill could hand out a number
+            // that series has already issued. It also means backfilled rows now
+            // carry the institute's own format instead of the default shape.
+            CertificateNumberingDto backfillNumbering = null;
+            try {
+                ResolvedCertificateConfig backfillConfig = certificateSettingsResolver.resolve(
+                        mapping.getInstitute(), null, CertificateTypeEnum.COURSE_COMPLETION.name());
+                backfillNumbering = backfillConfig != null ? backfillConfig.getNumbering() : null;
+            } catch (Exception e) {
+                log.warn("Could not read numbering settings while backfilling a certificate for user {}; "
+                        + "using defaults", mapping.getUserId(), e);
+            }
             // Generate once and write to *both* `id` (PK) and `certificate_id`
             // (self-documenting column) so the two stay 1:1.
-            String backfilledCertId = certificateNumberService.generate(mapping.getInstitute(), null, null);
+            String backfilledCertId = certificateNumberService.generate(
+                    mapping.getInstitute(), backfillNumbering, null);
             IssuedCertificate audit = IssuedCertificate.builder()
                     .id(backfilledCertId)
                     .certificateId(backfilledCertId)

@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingStatusDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteCertificateManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -62,6 +63,19 @@ public class InstituteCertificateController {
                                                            @RequestBody CertificateSettingRequest request,
                                                            @RequestParam("instituteId") String instituteId){
         return instituteCertificateManager.updateCertificateSetting(userDetails,instituteId, request);
+    }
+
+    /**
+     * Where the certificate counter stands, for a start number and reset mode the
+     * admin is currently trying out. Reserves nothing, so the settings screen can
+     * call it as the form changes.
+     */
+    @GetMapping("/numbering-status")
+    public ResponseEntity<CertificateNumberingStatusDto> getNumberingStatus(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                           @RequestParam("instituteId") String instituteId,
+                                                                           @RequestParam(value = "startFrom", required = false) Long startFrom,
+                                                                           @RequestParam(value = "resetAnnually", required = false) Boolean resetAnnually){
+        return instituteCertificateManager.getNumberingStatus(userDetails, instituteId, startFrom, resetAnnually);
     }
 
 }

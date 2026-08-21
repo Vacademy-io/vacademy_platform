@@ -6,9 +6,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.certificate.notification.CertificateIssuedNotificationService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateNumberService;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateSettingsResolver;
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingStatusDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
@@ -35,6 +38,7 @@ public class InstituteCertificateManager {
     private final CertificateIssuedNotificationService certificateIssuedNotificationService;
     private final AuthService authService;
     private final CertificateSettingsResolver certificateSettingsResolver;
+    private final CertificateNumberService certificateNumberService;
 
     public InstituteCertificateManager(InstituteSettingService instituteSettingService,
                                        StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository,
@@ -42,7 +46,8 @@ public class InstituteCertificateManager {
                                        MediaService mediaService,
                                        CertificateIssuedNotificationService certificateIssuedNotificationService,
                                        AuthService authService,
-                                       CertificateSettingsResolver certificateSettingsResolver) {
+                                       CertificateSettingsResolver certificateSettingsResolver,
+                                       CertificateNumberService certificateNumberService) {
         this.instituteSettingService = instituteSettingService;
         this.studentSessionInstituteGroupMappingRepository = studentSessionInstituteGroupMappingRepository;
         this.instituteRepository = instituteRepository;
@@ -50,6 +55,7 @@ public class InstituteCertificateManager {
         this.certificateIssuedNotificationService = certificateIssuedNotificationService;
         this.authService = authService;
         this.certificateSettingsResolver = certificateSettingsResolver;
+        this.certificateNumberService = certificateNumberService;
     }
 
     public ResponseEntity<String> generateAutomatedCourseCompletionCertificate(CustomUserDetails userDetails, String learnerId, String packageSessionId, String instituteId, CertificationGenerationRequest request) {
@@ -193,5 +199,38 @@ public class InstituteCertificateManager {
 
         instituteSettingService.updateCertificateSetting(institute.get(), request);
         return ResponseEntity.ok("Updated Successfully");
+    }
+
+    /**
+     * Where the counter stands for a candidate numbering config.
+     *
+     * <p>Deliberately takes the values the admin is currently typing rather than
+     * what is saved: the settings screen previews live, and a preview computed
+     * from saved settings would show numbers the unsaved form is not going to
+     * produce. Nothing is reserved — see
+     * {@link CertificateNumberService#peekNextSequence}.
+     */
+    public ResponseEntity<CertificateNumberingStatusDto> getNumberingStatus(CustomUserDetails userDetails,
+                                                                            String instituteId,
+                                                                            Long startFrom,
+                                                                            Boolean resetAnnually) {
+        if (!instituteRepository.existsById(instituteId)) {
+            throw new VacademyException(HttpStatus.NOT_FOUND, "Institute Not Found");
+        }
+
+        CertificateNumberingDto candidate = CertificateNumberingDto.builder()
+                .startFrom(startFrom)
+                .resetAnnually(resetAnnually)
+                .build();
+
+        long highestIssued = certificateNumberService.highestIssuedSequence(instituteId, candidate);
+        long next = certificateNumberService.peekNextSequence(instituteId, candidate);
+
+        return ResponseEntity.ok(CertificateNumberingStatusDto.builder()
+                .nextSequence(next)
+                .highestIssuedSequence(highestIssued)
+                .bucket(CertificateNumberService.bucketFor(candidate, Calendar.getInstance().get(Calendar.YEAR)))
+                .startFromIgnored(startFrom != null && startFrom > 0 && startFrom <= highestIssued)
+                .build());
     }
 }

@@ -60,7 +60,7 @@ public class CertificateNumberService {
         if (!StringUtils.hasText(instituteId)) {
             throw new IllegalArgumentException("Cannot allocate a certificate number without an institute id");
         }
-        long sequence = sequenceDao.allocateNext(instituteId, year);
+        long sequence = sequenceDao.allocateNext(instituteId, bucketFor(numbering, year), startFrom(numbering));
         return format(numbering, resolvePrefix(institute, numbering), courseCode, sequence, year);
     }
 
@@ -71,6 +71,49 @@ public class CertificateNumberService {
     public String preview(Institute institute, CertificateNumberingDto numbering, String courseCode, long sequence) {
         int year = Calendar.getInstance().get(Calendar.YEAR);
         return format(numbering, resolvePrefix(institute, numbering), courseCode, sequence, year);
+    }
+
+    /**
+     * The position the next certificate would take, reserving nothing.
+     *
+     * <p>The settings screen previews on every keystroke, so this must not
+     * consume the series — and it must go through the same floor and bucket
+     * rules as {@link #generate}, or the samples an admin approves are not the
+     * numbers they get.
+     */
+    public long peekNextSequence(String instituteId, CertificateNumberingDto numbering) {
+        int year = Calendar.getInstance().get(Calendar.YEAR);
+        return sequenceDao.peekNext(instituteId, bucketFor(numbering, year), startFrom(numbering));
+    }
+
+    /**
+     * Highest position already handed out under the numbering config's bucket,
+     * ignoring the floor — {@code 0} when nothing has been issued yet.
+     *
+     * <p>Lets the settings screen say "you have already issued up to 1200, so a
+     * start of 900 is ignored" instead of silently dropping the value.
+     */
+    public long highestIssuedSequence(String instituteId, CertificateNumberingDto numbering) {
+        int year = Calendar.getInstance().get(Calendar.YEAR);
+        return sequenceDao.highestAllocated(instituteId, bucketFor(numbering, year));
+    }
+
+    /**
+     * Which counter this institute draws from: the issuance year, or one
+     * unbroken series when the admin has turned the annual reset off.
+     */
+    public static int bucketFor(CertificateNumberingDto numbering, int year) {
+        boolean resetAnnually = numbering == null || numbering.getResetAnnually() == null
+                || numbering.getResetAnnually();
+        return resetAnnually ? year : CertificateNumberSequenceDao.CONTINUOUS_BUCKET;
+    }
+
+    /** The configured start-at floor, normalised — 0 means "no floor". */
+    public static long startFrom(CertificateNumberingDto numbering) {
+        if (numbering == null || numbering.getStartFrom() == null) {
+            return 0L;
+        }
+        return Math.max(0L, numbering.getStartFrom());
     }
 
     String format(CertificateNumberingDto numbering, String prefix, String courseCode, long sequence, int year) {

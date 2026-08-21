@@ -1,6 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
-import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
+import { BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 
 /**
  * Scheduled reports (REPORT_SETTING) — config read/write plus the three
@@ -13,7 +13,12 @@ import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 
 export const REPORT_SETTING_KEY = 'REPORT_SETTING';
 const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
-const REPORTING_BASE = '/admin-core-service/reporting/v1';
+// MUST be absolute. A relative path resolves against the dashboard's own origin
+// (dash.vacademy.io), which serves the SPA, not the API: GETs quietly return
+// index.html — which parses as "no sections available" — and POSTs come back
+// 405 Method Not Allowed from the static host. Every other service in this app
+// builds URLs from BASE_URL for exactly this reason.
+const REPORTING_BASE = `${BASE_URL}/admin-core-service/reporting/v1`;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

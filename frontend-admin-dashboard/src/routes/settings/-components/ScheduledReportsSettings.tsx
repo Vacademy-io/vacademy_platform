@@ -87,7 +87,11 @@ export default function ScheduledReportsSettings() {
         queryKey: ['report-setting'],
         queryFn: fetchReportSetting,
     });
-    const { data: sections = [] } = useQuery({
+    const {
+        data: sections = [],
+        isLoading: sectionsLoading,
+        error: sectionsError,
+    } = useQuery({
         queryKey: ['report-sections'],
         queryFn: fetchSections,
     });
@@ -269,10 +273,26 @@ export default function ScheduledReportsSettings() {
                                         </span>
                                     </label>
                                 ))}
-                                {availableSections.length === 0 && (
-                                    <p className="text-caption text-neutral-500">
-                                        No section has data for this institute yet.
+                                {/* "The list is empty" and "the list failed to
+                                    load" must not read the same. Saying no
+                                    section has data when the request actually
+                                    failed sends an admin looking for a data
+                                    problem that does not exist. */}
+                                {sectionsError ? (
+                                    <p className="text-caption text-danger-600">
+                                        Could not load the available sections. Refresh to try
+                                        again — this is not the same as having no data.
                                     </p>
+                                ) : sectionsLoading ? (
+                                    <p className="text-caption text-neutral-500">
+                                        Checking which sections have data…
+                                    </p>
+                                ) : (
+                                    sections.length === 0 && (
+                                        <p className="text-caption text-neutral-500">
+                                            No section has data for this institute yet.
+                                        </p>
+                                    )
                                 )}
                             </div>
 

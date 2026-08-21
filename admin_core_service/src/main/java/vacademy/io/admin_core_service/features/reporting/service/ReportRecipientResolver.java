@@ -52,6 +52,15 @@ public class ReportRecipientResolver {
         private final Set<String> roles;
         /** Null = may see every learner. Non-null = hard limit, enforced downstream. */
         private final List<String> visibleLearnerIds;
+        /**
+         * Cohorts (package_session ids) this reader may see, or null for all.
+         *
+         * The learner list above cannot scope a section whose subject is a CLASS
+         * rather than a person — live attendance names no learner, so filtering it
+         * by learner id is a no-op and a teacher would receive every colleague's
+         * attendance rates. Same source mapping, one level up.
+         */
+        private final List<String> visibleCohortIds;
     }
 
     public List<Recipient> resolve(String instituteId, ReportScheduleConfig schedule) {
@@ -110,6 +119,7 @@ public class ReportRecipientResolver {
                     .name(u.getFullName())
                     .roles(roles)
                     .visibleLearnerIds(resolveVisibleLearners(instituteId, u.getId(), roles))
+                    .visibleCohortIds(resolveVisibleCohorts(instituteId, u.getId(), roles))
                     .build());
         }
         return out;
@@ -135,6 +145,32 @@ public class ReportRecipientResolver {
             return List.of();
         }
     }
+
+    /**
+     * @return null when the reader may see every cohort, else the package sessions
+     *         they are mapped to. Empty means "may see none", and stays distinct.
+     */
+    private List<String> resolveVisibleCohorts(String instituteId, String userId, Set<String> roles) {
+        if (roles.contains("ADMIN") || roles.contains("SUPER_ADMIN")) return null;
+        if (!roles.contains("TEACHER") && !roles.contains("EVALUATOR")) return List.of();
+        try {
+            return jdbcTemplate.queryForList(TEACHER_COHORTS_SQL, String.class, userId, instituteId);
+        } catch (Exception e) {
+            log.warn("[reporting] cohort lookup failed for teacher {} — showing no classes", userId, e);
+            return List.of();
+        }
+    }
+
+    /** The package sessions this faculty member teaches. Fails closed. */
+    private static final String TEACHER_COHORTS_SQL = """
+            SELECT DISTINCT f.package_session_id
+            FROM faculty_subject_package_session_mapping f
+            JOIN package_session ps ON ps.id = f.package_session_id
+            JOIN package_institute pi ON pi.package_id = ps.package_id
+            WHERE f.user_id = ?
+              AND f.status <> 'DELETED'
+              AND pi.institute_id = ?
+            """;
 
     /**
      * Learners enrolled in the package sessions this faculty member is mapped to.

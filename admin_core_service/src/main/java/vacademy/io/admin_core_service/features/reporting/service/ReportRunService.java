@@ -185,6 +185,7 @@ public class ReportRunService {
             for (var g : groups.entrySet()) {
                 ReportContext groupCtx = ctx.toBuilder()
                         .visibleLearnerIds(g.getValue().get(0).getVisibleLearnerIds())
+                        .visibleCohortIds(g.getValue().get(0).getVisibleCohortIds())
                         .build();
                 List<SectionFacts> f = new ArrayList<>();
                 for (ReportSection sec : selected) {
@@ -294,6 +295,7 @@ public class ReportRunService {
                 .windowStart(window.start()).windowEnd(window.end())
                 .scopeType(scope.type()).scopeId(scope.id()).scopeLabel(scope.label())
                 .visibleLearnerIds(me == null ? null : me.getVisibleLearnerIds())
+                .visibleCohortIds(me == null ? null : me.getVisibleCohortIds())
                 .build();
 
         Set<String> roles = me == null ? null : me.getRoles();
@@ -428,7 +430,13 @@ public class ReportRunService {
 
     /** Recipients with the same visibility get the same computed facts. */
     private static String visibilityKey(ReportRecipientResolver.Recipient r) {
-        List<String> ids = r.getVisibleLearnerIds();
+        // Both axes belong in the key. They move together today (same faculty
+        // mapping), but keying on only one would silently hand one reader another
+        // reader's computed facts the moment they diverge.
+        return part(r.getVisibleLearnerIds()) + "|" + part(r.getVisibleCohortIds());
+    }
+
+    private static String part(List<String> ids) {
         if (ids == null) return "ALL";
         return "SCOPED:" + new java.util.TreeSet<>(ids).hashCode() + ":" + ids.size();
     }
@@ -443,10 +451,22 @@ public class ReportRunService {
     private SectionFacts truncateForDisplay(SectionFacts f) {
         List<SectionFacts.Row> rows = f.getRows();
         if (rows == null || rows.size() <= MAX_DISPLAY_ROWS) return f;
+
+        // Declare the cut. A table that just stops reads as the complete list, and
+        // a section may deliberately put its most important rows LAST — live
+        // attendance appends the classes recording nothing after the ranked ones,
+        // and silently dropping those loses the finding the section exists to make.
+        List<SectionFacts.Row> shown = new ArrayList<>(rows.subList(0, MAX_DISPLAY_ROWS));
+        int columns = f.getColumns() == null ? 1 : Math.max(1, f.getColumns().size());
+        SectionFacts.Row.RowBuilder note = SectionFacts.Row.builder()
+                .value((rows.size() - MAX_DISPLAY_ROWS) + " further rows not shown");
+        for (int i = 1; i < columns; i++) note.value("");
+        shown.add(note.build());
+
         return SectionFacts.builder()
                 .sectionKey(f.getSectionKey()).title(f.getTitle())
                 .identifying(f.isIdentifying()).headlines(f.getHeadlines())
-                .columns(f.getColumns()).rows(rows.subList(0, MAX_DISPLAY_ROWS))
+                .columns(f.getColumns()).rows(shown)
                 .empty(f.isEmpty()).build();
     }
 

@@ -6,6 +6,7 @@ import type {
     ChatMessageResponse,
 } from '@/services/chat/chatApi';
 import { formatClockTime, toUtcDate } from './chatTime';
+import { MessageText } from './MessageText';
 
 export interface ThreadMessage extends ChatMessageResponse {
     /** Local-only dedup key threaded through the optimistic send for reconciliation/retry. */
@@ -173,9 +174,11 @@ export function ChatThread({
                                             )}
 
                                             {m.content && (
-                                                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                                                    {m.content}
-                                                </div>
+                                                <MessageText
+                                                    text={m.content}
+                                                    isOwn={isOwn}
+                                                    className="text-sm leading-relaxed"
+                                                />
                                             )}
                                         </>
                                     )}

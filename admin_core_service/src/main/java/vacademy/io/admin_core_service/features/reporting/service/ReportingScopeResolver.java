@@ -138,12 +138,41 @@ public class ReportingScopeResolver {
     }
 
     // Parameters for each: instituteId, allFlag, comma-separated ids.
+
+    /**
+     * Batch labels must be DISTINGUISHABLE, not merely present. This label is the
+     * document's heading and its subject line, so when a schedule fans out per
+     * batch, a duplicated label means the recipient gets several reports they
+     * cannot tell apart.
+     *
+     * That is the normal case, not an edge case: {@code package_session.name} is
+     * null across every institute checked, so the label falls back to the package
+     * name — and one institute has four distinct batches all called "Premium Pro
+     * Group 2". Level and academic year are what separate them, appended only when
+     * they are not already part of the name, so batches that DO name their class
+     * don't come out as "Summer Sprint - Class 6 · Class 6 · 2026-27".
+     */
     private static final String BATCH_SQL = """
-            SELECT DISTINCT ps.id AS id,
-                   COALESCE(NULLIF(ps.name, ''), p.package_name) AS label
+            SELECT DISTINCT ps.id AS id, lbl.label AS label
             FROM package_session ps
             JOIN package_institute pi ON pi.package_id = ps.package_id
             LEFT JOIN package p ON p.id = ps.package_id
+            LEFT JOIN level l ON l.id = ps.level_id
+            LEFT JOIN session sn ON sn.id = ps.session_id
+            LEFT JOIN LATERAL (
+                SELECT CASE
+                         WHEN sn.session_name IS NULL OR btrim(sn.session_name) = ''
+                              OR wl ILIKE '%' || sn.session_name || '%'
+                         THEN wl ELSE wl || ' · ' || sn.session_name END AS label
+                FROM (
+                    SELECT CASE
+                             WHEN l.level_name IS NULL OR btrim(l.level_name) = ''
+                                  OR b ILIKE '%' || l.level_name || '%'
+                             THEN b ELSE b || ' · ' || l.level_name END AS wl
+                    FROM (SELECT COALESCE(NULLIF(btrim(ps.name), ''),
+                                          p.package_name) AS b) base
+                ) withLevel
+            ) lbl ON TRUE
             WHERE pi.institute_id = ?
               AND ps.status <> 'DELETED'
               AND (CAST(? AS boolean) OR ps.id = ANY (string_to_array(?, ',')))

@@ -56,7 +56,21 @@ public class ReportContext {
      */
     private final List<String> visibleLearnerIds;
 
+    /**
+     * Cohorts (package_session ids) this document may describe, or null for all.
+     *
+     * The learner-id list above only scopes sections that name people. A section
+     * whose rows are CLASSES passes a learner filter untouched, so without this a
+     * teacher would be emailed every colleague's attendance. EMPTY means "may
+     * describe no cohort" and must stay distinct from null, exactly as above.
+     */
+    private final List<String> visibleCohortIds;
+
     public enum ScopeType { INSTITUTE, BATCH, SUBJECT, FACULTY }
+
+    public boolean cohortRestricted() {
+        return visibleCohortIds != null;
+    }
 
     public boolean namingRestricted() {
         return visibleLearnerIds != null;

@@ -55,6 +55,10 @@ public class PlivoHttpClient {
      * the counsellor's phone and {@code answerUrl} returns Plivo XML that dials the
      * lead ({@code <Dial><Number>}); {@code from} is the institute's Plivo caller-ID.
      *
+     * <p>Recording is NOT requested here — it is a {@code <Record>} element in the
+     * answer XML (see {@link PlivoRecordXml}); Plivo's call-create API has no
+     * {@code record} argument.
+     *
      * <p>Plivo's create-call response is {@code {"message","request_uuid","api_id"}}
      * — the stable {@code call_uuid} arrives on the answer/hangup callbacks, so the
      * adapter correlates by the {@code corr} URL param it bakes into the callbacks
@@ -65,7 +69,7 @@ public class PlivoHttpClient {
     @SuppressWarnings("unchecked")
     public Map<String, Object> createCall(ProviderCredentials creds, String from, String to,
                                           String answerUrl, String hangupUrl, String ringUrl,
-                                          boolean record, String ringTimeoutSeconds) {
+                                          String ringTimeoutSeconds) {
         String authId = requireAuthId(creds);
         URI uri = URI.create(baseUrl + "/v1/Account/" + authId + "/Call/");
 
@@ -85,10 +89,16 @@ public class PlivoHttpClient {
             body.put("ring_method", "POST");
         }
         if (ringTimeoutSeconds != null) body.put("ring_timeout", ringTimeoutSeconds);
-        // Recording on the parent leg; the bridged <Dial> can also record. We record
-        // at the dial level (in the answer XML) to capture the two-party audio, so we
-        // leave the call-level record flag off here unless explicitly asked.
-        if (record) body.put("record", Boolean.TRUE);
+        // NO recording flag here: Plivo's Create-a-Call API has no `record` argument
+        // (its full argument list is from/to/answer_url/answer_method/ring_url/
+        // ring_method/hangup_url/hangup_method/fallback_url/fallback_method/caller_name/
+        // send_digits/send_on_preanswer/time_limit/hangup_on_ring/machine_detection*/
+        // sip_headers/sip_auth_*/ring_timeout/parent_call_uuid/parent_auth_id/
+        // error_if_parent_not_found/call_type). Plivo drops the unknown key silently, so
+        // the old `record: true` here recorded nothing while reading as if it did. Recording
+        // is requested from the answer XML instead — <Record> for a bridge (PlivoRecordXml)
+        // or <Record recordSession> for an AI stream. To record an already-live call the
+        // API is a separate endpoint: POST /v1/Account/{authId}/Call/{callUuid}/Record/.
 
         HttpHeaders headers = basicAuthHeaders(creds);
         headers.setContentType(MediaType.APPLICATION_JSON);

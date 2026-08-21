@@ -104,6 +104,28 @@ function ruleProblems(rule: AiCallActionRule): string[] {
     return problems;
 }
 
+/**
+ * How many placeholders a Meta template body declares, and the text around them.
+ *
+ * Meta parameters are POSITIONAL - {{1}}, {{2}} - and the send is rejected outright if the
+ * count we supply differs ("number of localizable_params (10) does not match the expected
+ * number of params (2)"). So the editor has to ask for exactly as many values as the chosen
+ * template declares, no more and no fewer.
+ */
+function templatePlaceholders(bodyText: string): number {
+    const found = new Set<number>();
+    const re = /\{\{\s*(\d+)\s*\}\}/g;
+    let m = re.exec(bodyText || '');
+    while (m !== null) {
+        found.add(Number(m[1]));
+        m = re.exec(bodyText || '');
+    }
+    return found.size;
+}
+
+/** The variables a call can always fill, offered as a hint next to each parameter. */
+const SUGGESTED_VARS = ['name', 'phone', 'email'];
+
 const BLANK: AiCallActionRule = {
     enabled: true,
     timing: 'POST_CALL',
@@ -494,6 +516,55 @@ Namaste {{name}}, ...`}
                                 )}
                             </div>
                         </div>
+
+                        {isWhatsApp && rule.template && (() => {
+                            const chosen = templates.find((t) => t.name === rule.template);
+                            const body =
+                                chosen?.components?.find((c) => c.type === 'BODY')?.text || '';
+                            const count = templatePlaceholders(body);
+                            if (!chosen) return null;
+                            if (count === 0) {
+                                return (
+                                    <p className="text-caption text-neutral-500">
+                                        This template takes no variables — nothing else to fill in.
+                                    </p>
+                                );
+                            }
+                            const params = rule.templateParams || [];
+                            return (
+                                <div className="space-y-1.5">
+                                    <Label className="text-caption">
+                                        What goes in the template&apos;s {count} blank
+                                        {count > 1 ? 's' : ''}
+                                    </Label>
+                                    {Array.from({ length: count }).map((_, n) => (
+                                        <Input
+                                            key={n}
+                                            className="h-8"
+                                            placeholder={
+                                                'Blank ' +
+                                                (n + 1) +
+                                                ' — a variable like ' +
+                                                SUGGESTED_VARS[n % SUGGESTED_VARS.length] +
+                                                ', or type fixed text'
+                                            }
+                                            value={params[n] || ''}
+                                            onChange={(e) => {
+                                                const next = Array.from({ length: count }).map(
+                                                    (_x, k) =>
+                                                        k === n ? e.target.value : params[k] || ''
+                                                );
+                                                update(i, { templateParams: next });
+                                            }}
+                                        />
+                                    ))}
+                                    <p className="text-caption text-neutral-500">
+                                        Meta fills these in order. Give exactly {count} — a
+                                        different number and the message is rejected.
+                                    </p>
+                                </div>
+                            );
+                        })()}
 
                         {!isMeeting && !isWhatsApp && (
                             <p className="text-caption text-neutral-500">

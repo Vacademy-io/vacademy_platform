@@ -26,6 +26,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { whatsappTemplateService } from '@/services/whatsapp-template-service';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { fetchEmailTemplates } from '@/routes/calling/ai-agents/-services/ai-agents';
 import type { AiCallActionRule } from '@/routes/settings/-components/AiAgentsCard';
 
 type TriggerKind = 'promised' | 'disposition' | 'meeting' | 'extracted';
@@ -94,6 +96,16 @@ export function SendRulesEditor({
     // templates — getMetaTemplates reads the STORED list, it does not call Meta.
     const templatesLoading = templatesQuery.isLoading;
     const templatesFailed = templatesQuery.isError;
+
+    const emailTemplatesQuery = useQuery({
+        queryKey: ['institute-email-templates'],
+        queryFn: () => fetchEmailTemplates(getCurrentInstituteId() || ''),
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+    });
+    const emailTemplates = (emailTemplatesQuery.data ?? []).filter(
+        (t) => (t.status || 'ACTIVE').toUpperCase() !== 'INACTIVE'
+    );
 
     const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
 
@@ -386,6 +398,39 @@ export function SendRulesEditor({
                                         </p>
                                     </>
                                 ) : (
+                                    <>
+                                        {emailTemplates.length > 0 && (
+                                            <Select
+                                                value=""
+                                                onValueChange={(v) => {
+                                                    const t = emailTemplates.find(
+                                                        (x) => x.id === v
+                                                    );
+                                                    if (!t) return;
+                                                    // Copy, do not reference: the email path
+                                                    // sends draft_body verbatim, so the rule
+                                                    // has to own the text.
+                                                    const subject = (t.subject || t.name || '').trim();
+                                                    const content = (t.content || '').trim();
+                                                    update(i, {
+                                                        messageBody: subject
+                                                            ? subject + '\n\n' + content
+                                                            : content,
+                                                    });
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8">
+                                                    <SelectValue placeholder="Start from one of your email templates" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {emailTemplates.map((t) => (
+                                                        <SelectItem key={t.id} value={t.id}>
+                                                            {t.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
                                     <Textarea
                                         rows={4}
                                         placeholder={`Subject line goes here
@@ -394,6 +439,7 @@ Namaste {{name}}, ...`}
                                         value={rule.messageBody || ''}
                                         onChange={(e) => update(i, { messageBody: e.target.value })}
                                     />
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -401,7 +447,12 @@ Namaste {{name}}, ...`}
                         {!isMeeting && !isWhatsApp && (
                             <p className="text-caption text-neutral-500">
                                 Email is sent exactly as written — the first line becomes the
-                                subject. Use {'{{name}}'} for the caller&apos;s name.
+                                subject. Variables are filled from the lead&apos;s own record:{' '}
+                                {'{{name}}'}, {'{{phone}}'}, {'{{email}}'}, any field your form
+                                captured (e.g. {'{{course_interested}}'}), and anything the agent
+                                captured on the call. A variable that lead has no value for is
+                                left as written — so pick a template that matches the data you
+                                collect.
                             </p>
                         )}
 

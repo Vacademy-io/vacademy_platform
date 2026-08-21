@@ -15,6 +15,10 @@ import VimeoPlayerWrapper from "./vimeo-player";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
+import {
+  resolveVideoSourceType,
+  extractVimeoId,
+} from "@/utils/study-library/video-source-type";
 // Removed SidebarTrigger and useSidebar - using doubt sidebar store instead
 import { ChatText, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/sidebar";
@@ -661,17 +665,24 @@ export const SlideMaterial = ({
           }
 
           // Regular video handling
-          const videoSourceType = videoSlide?.source_type;
+          // Falls back to the URL when source_type is blank, so a Vimeo link
+          // never lands on the YouTube player (which renders an empty frame).
+          const videoSourceType = resolveVideoSourceType(videoSlide);
+          // Prefer the field matching the slide's status, but fall back to the
+          // other one: resolveVideoSourceType reads published_url||url, so
+          // without this a row carrying only the opposite field would resolve
+          // to FILE_ID and then fail with "file ID not available".
           const fileId =
-            videoStatus === "PUBLISHED"
+            (videoStatus === "PUBLISHED"
               ? videoSlide?.published_url
-              : videoSlide?.url;
+              : videoSlide?.url) ||
+            videoSlide?.published_url ||
+            videoSlide?.url;
 
           switch (videoSourceType) {
             case "VIMEO": {
               const vimeoUrl = videoSlide?.published_url || videoSlide?.url || "";
-              const vimeoIdMatch = vimeoUrl.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
-              const vimeoId = vimeoIdMatch?.[1] || "";
+              const vimeoId = extractVimeoId(vimeoUrl);
               setContent(
                 <div
                   key={`video-${activeItem.id}`}

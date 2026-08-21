@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -412,7 +413,7 @@ public class AiCallActionService {
         a.setStatus("OPEN");
         a.setTemplateName(blankToNull(rule.getTemplate()));
         a.setTemplateLanguage(blankToNull(rule.getTemplateLanguage()));
-        a.setVariablesJson(variablesJson(vars));
+        a.setVariablesJson(variablesJson(rule, channel, vars));
         a.setDraftBody(draftBody(rule, channel, leadName, vars));
         a.setRationale(rationale + " — rule "
                 + (notBlank(rule.getLabel()) ? rule.getLabel() : rule.getId()) + ".");
@@ -509,12 +510,52 @@ public class AiCallActionService {
         vars.putIfAbsent(camel.toString(), value.trim());
     }
 
-    private String variablesJson(Map<String, String> vars) {
+    /**
+     * WhatsApp gets POSITIONAL parameters and nothing else; email gets the full named map.
+     *
+     * <p>UnifiedSendService maps a variable name to a position only when the stored template
+     * DECLARES that name, and keeps every other key verbatim as a parameter of its own
+     * ("might be positional already"). So handing it our whole variable map padded the
+     * payload and Meta rejected the send on count alone:
+     * "(#132000) number of localizable_params (10) does not match the expected number of
+     * params (2)" - calls 09394294 and 42309d27, both dispositioned Quiz_Link_Sent with
+     * nothing sent. Keys "1".."N" pass straight through, so the count is exactly what the
+     * admin configured on the rule.
+     *
+     * <p>Email has no such constraint - it is substituted by name into the body text, and an
+     * unmatched placeholder is simply left as written.
+     */
+    private String variablesJson(AiCallActionRule rule, String channel, Map<String, String> vars) {
         try {
-            return mapper.writeValueAsString(vars == null ? Map.of() : vars);
+            if (!"WHATSAPP".equals(channel)) {
+                return mapper.writeValueAsString(vars == null ? Map.of() : vars);
+            }
+            Map<String, String> positional = new java.util.LinkedHashMap<>();
+            List<String> params = rule.getTemplateParams();
+            if (params != null) {
+                int i = 1;
+                for (String param : params) {
+                    positional.put(String.valueOf(i++), resolveParam(param, vars));
+                }
+            }
+            return mapper.writeValueAsString(positional);
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    /** A configured parameter is a variable name we can fill, or a literal to send as-is. */
+    private static String resolveParam(String param, Map<String, String> vars) {
+        if (param == null) return "";
+        String key = param.trim();
+        boolean braced = key.startsWith("{{") && key.endsWith("}}");
+        if (braced) key = key.substring(2, key.length() - 2).trim();
+        if (vars != null) {
+            String v = vars.get(key);
+            if (v != null && !v.isBlank()) return v;
+        }
+        // A {{placeholder}} we cannot fill must not travel to Meta as literal braces.
+        return braced ? "" : param.trim();
     }
 
     /**

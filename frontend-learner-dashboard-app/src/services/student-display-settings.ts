@@ -242,10 +242,21 @@ function mergeWithDefaults(
         // means "follow the sidebar mode", so it must not be defaulted here.
         manualCompletion:
           incoming?.courseDetails?.slidesView?.manualCompletion,
+        // Tri-state like the two above — undefined means "follow the sidebar
+        // mode", so neither may be defaulted here.
+        chapterCompleteCta:
+          incoming?.courseDetails?.slidesView?.chapterCompleteCta,
+        feedbackInSlideNav:
+          incoming?.courseDetails?.slidesView?.feedbackInSlideNav,
+        // Plain enum with a real default — "CHAPTER" is today's cadence.
+        feedbackTrigger:
+          incoming?.courseDetails?.slidesView?.feedbackTrigger ?? "CHAPTER",
       },
       enrolledLayout:
         incoming?.courseDetails?.enrolledLayout ??
         d.courseDetails.enrolledLayout,
+      // Tri-state — undefined means "follow enrolledLayout".
+      chapterOpensFirstSlide: incoming?.courseDetails?.chapterOpensFirstSlide,
     },
     allCourses: {
       tabs: mergeArrayById(incoming?.allCourses?.tabs, d.allCourses.tabs).map(

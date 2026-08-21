@@ -24,6 +24,10 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     }),
     useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useMentorDashboard: () => ({ data: { mentors: [] } }),
+    // The reschedule dialog resolves the host mentor's booking slug to show real slots;
+    // for an admin it reads the mentor list, for a mentor their own profile.
+    useMyMentorProfile: () => ({ data: null }),
+    useMentorSlots: () => ({ data: { slots: [] }, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({

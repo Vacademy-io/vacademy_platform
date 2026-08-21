@@ -180,6 +180,15 @@ export type SlidesSidebarNavigation = 'breadcrumb' | 'ancestors' | 'hidden';
  */
 export type EnrolledCourseLayout = 'full' | 'contentOnly';
 
+/**
+ * How far the learner must get before the "Give Feedback" slide is offered.
+ * "CHAPTER" (default) is today's behaviour — after every chapter. MODULE /
+ * SUBJECT / COURSE ask once per section instead, which is what a long course
+ * wants; NEVER disables the auto-open while leaving the sidebar's Feedback
+ * button working.
+ */
+export type FeedbackTrigger = 'CHAPTER' | 'MODULE' | 'SUBJECT' | 'COURSE' | 'NEVER';
+
 export interface StudentCourseDetailsSettings {
     tabs: StudentCourseDetailsTabConfig[];
     defaultTab: StudentCourseDetailsTabId;
@@ -218,10 +227,30 @@ export interface StudentCourseDetailsSettings {
          * progress readout of its own), explicit true/false wins.
          */
         manualCompletion?: boolean;
+        /**
+         * "Chapter complete — next up" hand-off bar. Tri-state: unset follows
+         * the sidebar mode (shown only in the sidebar-less viewer, the one that
+         * dead-ends without it), explicit true/false wins.
+         */
+        chapterCompleteCta?: boolean;
+        /**
+         * Whether the "Give Feedback" slide sits in the Prev/Next sequence.
+         * Tri-state: unset follows the sidebar mode. Independent of
+         * feedbackVisible, which is the master switch.
+         */
+        feedbackInSlideNav?: boolean;
+        /** See {@link FeedbackTrigger}. Missing means 'CHAPTER' (today). */
+        feedbackTrigger?: FeedbackTrigger;
     };
     /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
      *  means "full" so saved settings keep rendering today's page. */
     enrolledLayout?: EnrolledCourseLayout;
+    /**
+     * Tapping a chapter card opens its first available slide straight in the
+     * viewer instead of listing the chapter's slides first. Tri-state: unset
+     * follows enrolledLayout (content-only skips the list), explicit wins.
+     */
+    chapterOpensFirstSlide?: boolean;
 }
 
 // Course Settings

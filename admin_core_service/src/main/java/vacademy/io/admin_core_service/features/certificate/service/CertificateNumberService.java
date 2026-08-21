@@ -88,11 +88,29 @@ public class CertificateNumberService {
         // {SEQ} / {SEQ:n} first — it is the only token carrying an argument.
         StringBuilder sb = new StringBuilder();
         Matcher m = SEQ_TOKEN.matcher(pattern);
+        boolean hasSequence = false;
         while (m.find()) {
+            hasSequence = true;
             int padding = m.group(1) != null ? Integer.parseInt(m.group(1)) : defaultPadding;
             m.appendReplacement(sb, Matcher.quoteReplacement(zeroPad(sequence, padding)));
         }
         m.appendTail(sb);
+
+        // A pattern with no sequence token formats to the same string for every
+        // learner — and the number is the certificate's primary key, so the
+        // second one issued collides. It is an easy pattern to write by
+        // accident: typing the digits of a number you like ("{PREFIX}000111")
+        // reads as a starting point rather than as a constant.
+        //
+        // Appending the sequence rather than rejecting the pattern keeps the
+        // admin's format and its intent, and keeps issuance working. The
+        // settings page warns about it up front; this is the backstop for
+        // patterns saved before it did.
+        if (!hasSequence) {
+            log.warn("Certificate pattern '{}' contains no {SEQ} token; appending the sequence to keep numbers unique",
+                    pattern);
+            sb.append(zeroPad(sequence, defaultPadding));
+        }
 
         String out = sb.toString()
                 .replace("{PREFIX}", prefix == null ? "" : prefix)

@@ -147,6 +147,27 @@ export type SlidesSidebarNavigation = "breadcrumb" | "ancestors" | "hidden";
  */
 export type EnrolledCourseLayout = "full" | "contentOnly";
 
+/**
+ * How far the learner must get before the "Give Feedback" slide is offered.
+ *
+ * - "CHAPTER" (default): at the end of every chapter — today's behaviour.
+ * - "MODULE" / "SUBJECT": once the whole module / subject is done, so long
+ *   courses ask once per section instead of after every chapter.
+ * - "COURSE": once, at the end of the course.
+ * - "NEVER": never offered automatically. The sidebar's Feedback button (when
+ *   feedbackVisible is on) still works — this only controls the auto-open.
+ *
+ * Asking after every chapter is the right cadence for a short course and
+ * fatiguing for a forty-chapter one, which is why it is a setting rather than
+ * a constant.
+ */
+export type FeedbackTrigger =
+  | "CHAPTER"
+  | "MODULE"
+  | "SUBJECT"
+  | "COURSE"
+  | "NEVER";
+
 export interface StudentCourseDetailsSettings {
   tabs: StudentCourseDetailsTabConfig[];
   defaultTab: StudentCourseDetailsTabId;
@@ -201,10 +222,37 @@ export interface StudentCourseDetailsSettings {
      * can put it in every viewer or take it out of all of them.
      */
     manualCompletion?: boolean;
+    /**
+     * "Chapter complete — next up" hand-off bar. Tri-state: unset follows the
+     * sidebar mode (shown only in the sidebar-less viewer, which is the one
+     * that dead-ends without it), explicit true/false wins.
+     */
+    chapterCompleteCta?: boolean;
+    /**
+     * Whether the synthesised "Give Feedback" slide sits in the Prev/Next
+     * sequence. Tri-state: unset follows the sidebar mode — the sidebar-less
+     * viewer leaves it out so Next rolls into the next chapter instead of a
+     * form, every other mode keeps today's behaviour. Independent of
+     * feedbackVisible, which is the master switch.
+     */
+    feedbackInSlideNav?: boolean;
+    /** See {@link FeedbackTrigger}. Missing means "CHAPTER" (today). */
+    feedbackTrigger?: FeedbackTrigger;
   };
   /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
    *  means "full" so saved settings keep rendering today's page. */
   enrolledLayout?: EnrolledCourseLayout;
+  /**
+   * Tapping a chapter card opens its first available slide straight in the
+   * viewer instead of listing the chapter's slides first.
+   *
+   * Tri-state: unset follows enrolledLayout — the content-only page skips the
+   * list (the viewer's own Prev/Next already walks the chapter, so the list is
+   * one tap between the learner and the content), the full page keeps it.
+   * Explicit true/false wins. The list still appears either way when no slide
+   * can be opened, since that screen is what explains why.
+   */
+  chapterOpensFirstSlide?: boolean;
 }
 
 // All Courses page

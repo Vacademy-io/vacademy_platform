@@ -4,8 +4,9 @@ import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn, toTitleCase } from "@/lib/utils";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
-import { LockedBadge } from "@/components/drip-conditions";
+import { LockedBadge, LockNotice } from "@/components/drip-conditions";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useCourseDripSchedule } from "@/hooks/use-course-drip-schedule";
 import { evaluateDripCondition } from "@/utils/drip-conditions";
 import type {
   LearnerProgressData,
@@ -138,6 +139,14 @@ export type CourseInitSubject = {
   subject_order?: number;
 };
 
+/**
+ * Column counts for the content-only drill-down grid. Exported so the page's
+ * loading skeleton lays out identically — a skeleton that promises two columns
+ * and resolves into one is worse than no skeleton.
+ */
+export const CONTENT_ONLY_CARD_GRID =
+  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+
 export const CourseStructureDetails = ({
   selectedSession,
   selectedLevel,
@@ -147,6 +156,7 @@ export const CourseStructureDetails = ({
   selectedTab,
   isEnrolledInCourse,
   contentOnly,
+  chapterOpensFirstSlide,
   onLoadingChange,
   updateModuleStats,
   paymentType,
@@ -164,6 +174,10 @@ export const CourseStructureDetails = ({
    *  tab strip collapses to Content Structure regardless of what the tab
    *  settings say. See EnrolledCourseLayout in student-display-settings. */
   contentOnly?: boolean;
+  /** Tapping a chapter card opens its first available slide in the viewer
+   *  instead of listing the chapter's slides. Resolved by the page from
+   *  courseDetails.chapterOpensFirstSlide. */
+  chapterOpensFirstSlide?: boolean;
   onLoadingChange?: (loading: boolean) => void;
   updateModuleStats?: (
     modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
@@ -494,7 +508,7 @@ export const CourseStructureDetails = ({
   const contentGridClass = cn(
     "grid gap-4",
     contentOnly
-      ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+      ? CONTENT_ONLY_CARD_GRID
       : "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
   );
 
@@ -555,6 +569,30 @@ export const CourseStructureDetails = ({
     useDripConditions(effectiveDripConditionJson, "chapter");
   const { condition: slideCondition, hasConditions: hasSlideConditions } =
     useDripConditions(effectiveDripConditionJson, "slide");
+
+  // Conditions the admin actually configured (they are saved into the
+  // institute's course settings, not onto the content rows), plus the
+  // learner's own day-1 anchor for day-wise schedules.
+  const dripSchedule = useCourseDripSchedule(
+    searchParams.courseId,
+    packageSessionId,
+  );
+  const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
+  // Anchors plus the first-item strictness flag, spread into every
+  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
+  // rest: institutes that have not turned this on keep today's behaviour.
+  const dripAnchors = useMemo(
+    () => ({
+      enrollmentDate: dripSchedule.enrollmentDate,
+      sessionStartDate: dripSchedule.sessionStartDate,
+      strictFirstItem: dripSchedule.applyConfiguredRules,
+    }),
+    [
+      dripSchedule.enrollmentDate,
+      dripSchedule.sessionStartDate,
+      dripSchedule.applyConfiguredRules,
+    ],
+  );
 
   // Drill-down state for Content Structure tab
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
@@ -654,6 +692,7 @@ export const CourseStructureDetails = ({
         recentScores: allChapters
           .slice(0, index)
           .map((prev) => calculateChapterProgress(prev.id)),
+        ...dripAnchors,
       };
     });
 
@@ -696,19 +735,31 @@ export const CourseStructureDetails = ({
         }
       }
 
-      // Use chapter-specific condition if available, otherwise fall back to package-level
-      const conditionToUse = chapterDripCondition || chapterCondition;
-      const hasCondition = !!chapterDripCondition || hasChapterConditions;
+      // What the admin configured wins: those conditions live in the institute's
+      // course settings, which is the only place the dashboard writes them.
+      // The row's own drip_condition and the package-level fallback are kept
+      // for anything saved before that path existed.
+      const configuredCondition = dripConditionFor("chapter", chapter.id);
+      const conditionToUse =
+        configuredCondition || chapterDripCondition || chapterCondition;
+      const hasCondition =
+        !!configuredCondition || !!chapterDripCondition || hasChapterConditions;
 
-      // Check global flag first, then per-item condition's is_enabled flag
+      // Two independent switches, deliberately not merged: `isDrippingEnable`
+      // owns the original row-level path, while a configured condition has
+      // already passed the new path's own opt-in inside conditionFor.
       const shouldEvaluate =
-        isDrippingEnable &&
+        (isDrippingEnable || !!configuredCondition) &&
         hasCondition &&
         conditionToUse?.is_enabled !== false;
 
       const evaluation =
         shouldEvaluate && conditionToUse
-          ? evaluateDripCondition(conditionToUse, progressData)
+          ? evaluateDripCondition(
+              conditionToUse,
+              progressData,
+              dripNow ? new Date(dripNow) : new Date(),
+            )
           : {
               isLocked: false,
               isHidden: false,
@@ -723,6 +774,9 @@ export const CourseStructureDetails = ({
     subjectModulesMap,
     calculateChapterProgress,
     isDrippingEnable,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
 
   // Evaluate drip conditions for slides
@@ -762,6 +816,7 @@ export const CourseStructureDetails = ({
           recentScores: slides
             .slice(0, index)
             .map((s) => s.percentage_completed || 0),
+          ...dripAnchors,
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -798,19 +853,27 @@ export const CourseStructureDetails = ({
           }
         }
 
-        // Use slide-specific condition if available, otherwise fall back to package-level
-        const conditionToUse = slideDripCondition || slideCondition;
-        const hasCondition = !!slideDripCondition || hasSlideConditions;
+        // Admin-configured conditions win over anything stamped on the row —
+        // see the chapter evaluation above for why.
+        const configuredCondition = dripConditionFor("slide", slide.id);
+        const conditionToUse =
+          configuredCondition || slideDripCondition || slideCondition;
+        const hasCondition =
+          !!configuredCondition || !!slideDripCondition || hasSlideConditions;
 
-        // Check global flag first, then per-item condition's is_enabled flag
+        // See the chapter evaluation above for why these stay separate.
         const shouldEvaluate =
-          isDrippingEnable &&
+          (isDrippingEnable || !!configuredCondition) &&
           hasCondition &&
           conditionToUse?.is_enabled !== false;
 
         const evaluation =
           shouldEvaluate && conditionToUse
-            ? evaluateDripCondition(conditionToUse, progressData)
+            ? evaluateDripCondition(
+                conditionToUse,
+                progressData,
+                dripNow ? new Date(dripNow) : new Date(),
+              )
             : {
                 isLocked: false,
                 isHidden: false,
@@ -828,7 +891,91 @@ export const CourseStructureDetails = ({
     isDrippingEnable,
     subjectModulesMap,
     calculateChapterProgress,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
+
+  /**
+   * Locks for the two levels above a chapter.
+   *
+   * Subjects and modules carry no progress of their own, so their rules are
+   * evaluated against the rolled-up percentage the cards already show. Ordering
+   * is course order, which is what a "one module per day" schedule counts in.
+   */
+  const buildContainerEvaluations = useCallback(
+    (
+      level: "subject" | "module",
+      items: Array<{ id: string; percentage: number }>,
+    ): Record<string, DripConditionEvaluation> => {
+      const evaluations: Record<string, DripConditionEvaluation> = {};
+      const prerequisiteCompletions: Record<string, number> = {};
+      items.forEach((item) => {
+        prerequisiteCompletions[item.id] = item.percentage;
+      });
+
+      items.forEach((item, index) => {
+        // Subject and module locking exists only on the new path, so
+        // conditionFor's opt-in is the whole gate — the old row-level switch
+        // never governed these levels and must not be consulted here.
+        const condition = dripConditionFor(level, item.id);
+        if (!condition || condition.is_enabled === false) {
+          evaluations[item.id] = {
+            isLocked: false,
+            isHidden: false,
+            unlockMessage: null,
+          };
+          return;
+        }
+        evaluations[item.id] = evaluateDripCondition(
+          condition,
+          {
+          percentageCompleted: item.percentage,
+          previousItemId: index > 0 ? items[index - 1]?.id : undefined,
+          previousItemCompletion:
+            index > 0 ? (items[index - 1]?.percentage ?? 0) : 0,
+          itemIndex: index,
+          prerequisiteCompletions,
+          recentScores: items.slice(0, index).map((prev) => prev.percentage),
+          ...dripAnchors,
+          },
+          dripNow ? new Date(dripNow) : new Date(),
+        );
+      });
+      return evaluations;
+    },
+    [dripConditionFor, dripAnchors, dripNow],
+  );
+
+  const subjectEvaluations = useMemo(
+    () =>
+      buildContainerEvaluations(
+        "subject",
+        (studyLibraryData ?? []).map((subject) => ({
+          id: subject.id,
+          percentage: calculateSubjectProgress(subject.id),
+        })),
+      ),
+    // calculateSubjectProgress reads subjectModulesMap, so that map is the
+    // real input here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [buildContainerEvaluations, studyLibraryData, subjectModulesMap],
+  );
+
+  const moduleEvaluations = useMemo(
+    () =>
+      buildContainerEvaluations(
+        "module",
+        Object.values(subjectModulesMap)
+          .flatMap((modules) => modules)
+          .map((mod) => ({
+            id: mod.module.id,
+            percentage: calculateModuleProgress(mod),
+          })),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [buildContainerEvaluations, subjectModulesMap],
+  );
 
   // Helpers to safely extract optional thumbnail IDs without using any
   const getSubjectThumbnailId = (subject: SubjectType): string | undefined => {
@@ -1476,15 +1623,25 @@ export const CourseStructureDetails = ({
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
               const subjectContentIndent = "ps-1 sm:ps-6";
+              const subjectEval = subjectEvaluations[subject.id];
+              if (shouldFilterItem(subjectEval)) return null;
+              const isSubjectLocked = isItemLocked(subjectEval);
               return (
                 <Collapsible
                   key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
+                  open={isSubjectOpen && !isSubjectLocked}
+                  onOpenChange={() => {
+                    if (isSubjectLocked) return;
+                    toggleSubject(subject.id);
+                  }}
                 >
                   <CollapsibleTrigger
+                    disabled={isSubjectLocked}
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      isSubjectLocked
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:bg-muted/60",
                       // Vibrant Styles
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
@@ -1501,6 +1658,7 @@ export const CourseStructureDetails = ({
                       />
                       {renderStatusIcon(calculateSubjectProgress(subject.id), {
                         size: 18,
+                        locked: isSubjectLocked,
                       })}
                       {thumbUrlById[`subject:${subject.id}`] && (
                         <img
@@ -1540,15 +1698,23 @@ export const CourseStructureDetails = ({
                             </>
                           );
                         })()}
-                        {/* Download the whole subject. The structure page offered offline
-                            controls only at chapter and slide level, so "save this subject"
-                            meant tapping every chapter inside it. */}
-                        <DownloadNodeButton
-                          nodeId={subject.id}
-                          nodeType="SUBJECT"
-                          packageSessionId={packageSessionId}
-                          compact
-                        />
+                        {isSubjectLocked ? (
+                          <LockedBadge
+                            size="sm"
+                            showText={false}
+                            unlockMessage={subjectEval?.unlockMessage}
+                          />
+                        ) : (
+                          /* Download the whole subject. The structure page offered offline
+                             controls only at chapter and slide level, so "save this subject"
+                             meant tapping every chapter inside it. */
+                          <DownloadNodeButton
+                            nodeId={subject.id}
+                            nodeType="SUBJECT"
+                            packageSessionId={packageSessionId}
+                            compact
+                          />
+                        )}
                       </div>
                     </div>
                   </CollapsibleTrigger>
@@ -1560,17 +1726,28 @@ export const CourseStructureDetails = ({
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
                           const moduleContentIndent = `ps-1 sm:ps-5`;
+                          const moduleEval = moduleEvaluations[mod.module.id];
+                          if (shouldFilterItem(moduleEval)) return null;
+                          const isModuleLocked = isItemLocked(moduleEval);
                           return (
                             <Collapsible
                               key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
+                              open={isModuleOpen && !isModuleLocked}
+                              onOpenChange={() => {
+                                if (isModuleLocked) return;
+                                toggleModule(mod.module.id);
+                              }}
                             >
                               <CollapsibleTrigger
+                                disabled={isModuleLocked}
                                 className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  isModuleLocked
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "hover:bg-muted/60",
                                   // Vibrant Styles
-                                  "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
+                                  !isModuleLocked &&
+                                    "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                   // Play Styles — quiet hover, ink text
                                   "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink",
                                 )}
@@ -1583,6 +1760,7 @@ export const CourseStructureDetails = ({
                                   />
                                   {renderStatusIcon(
                                     calculateModuleProgress(mod),
+                                    { locked: isModuleLocked },
                                   )}
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
@@ -1612,14 +1790,22 @@ export const CourseStructureDetails = ({
                                     {renderCompletionBadge(
                                       calculateModuleProgress(mod),
                                     )}
-                                    {/* Download the whole module — same reasoning as the subject
-                                        control above. */}
-                                    <DownloadNodeButton
-                                      nodeId={mod.module.id}
-                                      nodeType="MODULE"
-                                      packageSessionId={packageSessionId}
-                                      compact
-                                    />
+                                    {isModuleLocked ? (
+                                      <LockedBadge
+                                        size="sm"
+                                        showText={false}
+                                        unlockMessage={moduleEval?.unlockMessage}
+                                      />
+                                    ) : (
+                                      /* Download the whole module — same reasoning as the
+                                         subject control above. */
+                                      <DownloadNodeButton
+                                        nodeId={mod.module.id}
+                                        nodeType="MODULE"
+                                        packageSessionId={packageSessionId}
+                                        compact
+                                      />
+                                    )}
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -1762,13 +1948,17 @@ export const CourseStructureDetails = ({
                                               })()}
                                               {/* Offline download for the whole chapter (plan B7). Renders
                                                   nothing on unsupported platforms; stops propagation itself
-                                                  so it never toggles the collapsible. */}
-                                              <DownloadNodeButton
-                                                nodeId={ch.id}
-                                                nodeType="CHAPTER"
-                                                packageSessionId={packageSessionId}
-                                                compact
-                                              />
+                                                  so it never toggles the collapsible. Hidden while the
+                                                  chapter is drip-locked — downloading it would hand over
+                                                  exactly the content the lock is withholding. */}
+                                              {!isChapterLocked && (
+                                                <DownloadNodeButton
+                                                  nodeId={ch.id}
+                                                  nodeType="CHAPTER"
+                                                  packageSessionId={packageSessionId}
+                                                  compact
+                                                />
+                                              )}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -2843,18 +3033,36 @@ export const CourseStructureDetails = ({
             runs. */}
         {!isModulesLoading && showsSubjectLevel && !selectedSubjectId && (
           <div className={contentGridClass}>
-            {studyLibraryData?.map((subject, idx) => (
+            {studyLibraryData
+              ?.filter((subject) => !subjectEvaluations[subject.id]?.isHidden)
+              .map((subject, idx) => {
+              const subjectEval = subjectEvaluations[subject.id];
+              const isSubjectLocked = isItemLocked(subjectEval);
+              return (
               <Card
                 key={subject.id}
                 role="button"
-                tabIndex={0}
-                aria-label={toTitleCase(subject.subject_name)}
-                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                tabIndex={isSubjectLocked ? -1 : 0}
+                aria-label={
+                  toTitleCase(subject.subject_name) +
+                  (isSubjectLocked ? " (locked)" : "")
+                }
+                aria-disabled={isSubjectLocked}
+                className={cn(
+                  "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                  isSubjectLocked
+                    ? "opacity-70 cursor-not-allowed"
+                    : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                )}
                 onClick={() => {
+                  if (isSubjectLocked) return;
                   setSelectedSubjectId(subject.id);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (
+                    (e.key === "Enter" || e.key === " ") &&
+                    !isSubjectLocked
+                  ) {
                     e.preventDefault();
                     setSelectedSubjectId(subject.id);
                   }
@@ -2900,39 +3108,60 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {isSubjectLocked && (
+                      <LockNotice message={subjectEval?.unlockMessage} />
+                    )}
                     {/* Download the whole subject. This tab drills down
                         subject -> module -> chapter -> slide as cards, so each
                         level needs its own control; without it the only way to
                         save a subject was to open every chapter in it. */}
-                    <div className="flex items-center gap-1.5">
-                      <DownloadNodeButton
-                        nodeId={subject.id}
-                        nodeType="SUBJECT"
-                        packageSessionId={packageSessionId}
-                      />
-                    </div>
+                    {!isSubjectLocked && (
+                      <div className="flex items-center gap-1.5">
+                        <DownloadNodeButton
+                          nodeId={subject.id}
+                          nodeType="SUBJECT"
+                          packageSessionId={packageSessionId}
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Modules */}
         {!isModulesLoading && showsModuleLevel && selectedSubjectId && !selectedModuleId && (
           <div className={contentGridClass}>
-            {(subjectModulesMap[selectedSubjectId] || []).map((m, idx) => (
+            {(subjectModulesMap[selectedSubjectId] || [])
+              .filter((m) => !moduleEvaluations[m.module.id]?.isHidden)
+              .map((m, idx) => {
+              const moduleEval = moduleEvaluations[m.module.id];
+              const isModuleLocked = isItemLocked(moduleEval);
+              return (
               <Card
                 key={m.module.id}
                 role="button"
-                tabIndex={0}
-                aria-label={toTitleCase(m.module.module_name)}
-                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                tabIndex={isModuleLocked ? -1 : 0}
+                aria-label={
+                  toTitleCase(m.module.module_name) +
+                  (isModuleLocked ? " (locked)" : "")
+                }
+                aria-disabled={isModuleLocked}
+                className={cn(
+                  "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                  isModuleLocked
+                    ? "opacity-70 cursor-not-allowed"
+                    : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                )}
                 onClick={() => {
+                  if (isModuleLocked) return;
                   setSelectedModuleId(m.module.id);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if ((e.key === "Enter" || e.key === " ") && !isModuleLocked) {
                     e.preventDefault();
                     setSelectedModuleId(m.module.id);
                   }
@@ -2978,19 +3207,25 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {isModuleLocked && (
+                      <LockNotice message={moduleEval?.unlockMessage} />
+                    )}
                     {/* Download the whole module — same reasoning as the
                         subject card. */}
-                    <div className="flex items-center gap-1.5">
-                      <DownloadNodeButton
-                        nodeId={m.module.id}
-                        nodeType="MODULE"
-                        packageSessionId={packageSessionId}
-                      />
-                    </div>
+                    {!isModuleLocked && (
+                      <div className="flex items-center gap-1.5">
+                        <DownloadNodeButton
+                          nodeId={m.module.id}
+                          nodeType="MODULE"
+                          packageSessionId={packageSessionId}
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -3011,12 +3246,13 @@ export const CourseStructureDetails = ({
                 .map((ch, idx) => {
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
-                  // Content-only sends the learner straight into the viewer;
-                  // the slide list only appears as a fallback when no slide
-                  // can be opened (empty chapter, or every slide drip-locked),
-                  // because that screen is what explains the reason.
+                  // When the institute has opted in, a chapter card sends the
+                  // learner straight into the viewer; the slide list only
+                  // appears as a fallback when no slide can be opened (empty
+                  // chapter, or every slide drip-locked), because that screen
+                  // is what explains the reason.
                   const openChapter = async (chapterId: string) => {
-                    if (contentOnly && isSlideClickable()) {
+                    if (chapterOpensFirstSlide && isSlideClickable()) {
                       const opened = await openFirstSlideInChapter(
                         selectedSubjectId || "",
                         selectedModuleId || "",
@@ -3097,16 +3333,17 @@ export const CourseStructureDetails = ({
                               {idx + 1}
                             </p>
                           )}
-                          <div className="flex items-center gap-1.5">
-                            {isChapterLocked && (
-                              <LockedBadge size="sm" unlockMessage="" />
-                            )}
-                            <DownloadNodeButton
-                              nodeId={ch.id}
-                              nodeType="CHAPTER"
-                              packageSessionId={packageSessionId}
-                            />
-                          </div>
+                          {isChapterLocked ? (
+                            <LockNotice message={evaluation?.unlockMessage} />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <DownloadNodeButton
+                                nodeId={ch.id}
+                                nodeType="CHAPTER"
+                                packageSessionId={packageSessionId}
+                              />
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

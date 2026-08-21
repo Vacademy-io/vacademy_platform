@@ -6,9 +6,9 @@ import { MyInput } from "@/components/design-system/input";
 import {
   ErrorCard,
   InvalidCard,
-  ValidCard,
   VerifyingCard,
 } from "./-components/verification-cards";
+import { VerifiedByCertificate } from "./-components/verified-by-certificate";
 import {
   verifyScannedCertificate,
   type VerificationResult,
@@ -50,7 +50,7 @@ function CertificateScanVerificationPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-10 dark:bg-neutral-900">
-      <div className="flex w-full max-w-md flex-col gap-6">
+      <div className="flex w-full max-w-xl flex-col gap-6">
         <form
           onSubmit={onSubmit}
           className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:bg-neutral-800"
@@ -100,7 +100,9 @@ function CertificateScanVerificationPage() {
         </form>
 
         {state.kind === "checking" && <VerifyingCard />}
-        {result?.status === "valid" && <ValidCard data={result.data} />}
+        {result?.status === "valid" && (
+          <VerifiedByCertificate data={result.data} verifiedVia="code you entered" />
+        )}
         {result?.status === "invalid" && (
           <InvalidCard>
             <p className="text-center text-body text-neutral-500">

@@ -19,8 +19,9 @@ import type {
 // text boxes and the serializer emits a raw data URI as visible text.
 import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
 import {
+    fieldContentHeightPx,
     fieldContentWidthPx,
-    MAX_TEXT_LINES,
+    fieldTextMaxHeightPx,
     TEXT_LINE_HEIGHT,
 } from '../../-utils/serialize-image-template-to-html';
 import { textFitWarning } from '../../-utils/certificate-text-fit';
@@ -89,6 +90,22 @@ interface Props {
     pageWidthMm?: number;
     /** Sample number shown inside the ghost badge. */
     sampleCertificateId?: string;
+    /**
+     * Whether the platform is allowed to stamp the code / the number on designs
+     * that do not place them. Default on, as the badge always was.
+     */
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    /**
+     * Turn the automatic stamp off for one part of the badge.
+     *
+     * <p>Called both from the ghost badge's own dismiss control and from
+     * removing a placed QR / barcode / Certificate ID field — because removing
+     * the field is what an admin does when they do not want the thing, and
+     * without this the platform simply stamped it back bottom-right. "I deleted
+     * the QR and it came back" was exactly that loop.
+     */
+    onAutoStampChange?: (part: 'code' | 'number', enabled: boolean) => void;
 }
 
 type DragMode =
@@ -118,6 +135,9 @@ export const CertificateVisualEditor = ({
     barcodeContent = 'NUMBER',
     pageWidthMm = 297,
     sampleCertificateId = 'VA-0123-2026',
+    autoStampCode = true,
+    autoStampNumber = true,
+    onAutoStampChange,
 }: Props) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const customImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -181,8 +201,20 @@ export const CertificateVisualEditor = ({
     };
 
     const removeField = (id: string) => {
+        const removed = fieldMappings.find((f) => f.id === id);
         onFieldMappingsChange(fieldMappings.filter((f) => f.id !== id));
         if (selectedId === id) setSelectedId(null);
+
+        // Removing the field is only half the job: the platform stamps a code
+        // and a number onto any design that does not place them, so deleting
+        // one used to bring the stamped version straight back. Take the removal
+        // at face value and stop stamping that part.
+        if (removed && isCodeFieldName(removed.fieldName)) {
+            onAutoStampChange?.('code', false);
+        }
+        if (removed?.fieldName === 'certificate_id') {
+            onAutoStampChange?.('number', false);
+        }
     };
 
     const startMove = (e: React.PointerEvent, f: FieldMapping) => {
@@ -328,8 +360,12 @@ export const CertificateVisualEditor = ({
 
     // What the backend will still stamp bottom-right, given what is placed.
     const badgePlan = useMemo(
-        () => planFromFieldNames(fieldMappings.map((f) => f.fieldName)),
-        [fieldMappings]
+        () =>
+            planFromFieldNames(
+                fieldMappings.map((f) => f.fieldName),
+                { code: autoStampCode, number: autoStampNumber }
+            ),
+        [fieldMappings, autoStampCode, autoStampNumber]
     );
 
     // The ghost is laid out by the browser (it shrink-wraps its contents just
@@ -455,6 +491,7 @@ export const CertificateVisualEditor = ({
                                 : textFitWarning({
                                       fieldName: selectedField.fieldName,
                                       widthPx: fieldContentWidthPx(selectedField),
+                                      heightPx: fieldContentHeightPx(selectedField),
                                       fontSizePx: selectedField.style.fontSize,
                                       bold: selectedField.style.fontWeight === 'bold',
                                   })
@@ -561,7 +598,12 @@ export const CertificateVisualEditor = ({
                                                     fontWeight: f.style.fontWeight,
                                                     textAlign: f.style.alignment,
                                                     lineHeight: TEXT_LINE_HEIGHT,
-                                                    maxHeight: `${MAX_TEXT_LINES * TEXT_LINE_HEIGHT}em`,
+                                                    // The drawn box is the clamp,
+                                                    // exactly as the serializer
+                                                    // emits it — so a field that
+                                                    // will be cut on the PDF is
+                                                    // cut here too.
+                                                    maxHeight: fieldTextMaxHeightPx(f),
                                                     overflow: 'hidden',
                                                     overflowWrap: 'break-word',
                                                 }}
@@ -604,7 +646,7 @@ export const CertificateVisualEditor = ({
                                 onPointerDown={adoptAutoBadge}
                                 onClick={(e) => e.stopPropagation()}
                                 title="Stamped automatically on every certificate — drag to position it yourself"
-                                className="absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
+                                className="group absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
                                 style={{
                                     // Mirrors appendCertificateIdBadge in
                                     // InstituteSettingService — see
@@ -646,6 +688,22 @@ export const CertificateVisualEditor = ({
                                         {sampleCertificateId}
                                     </span>
                                 )}
+                                {onAutoStampChange && (
+                                    <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (badgePlan.code) onAutoStampChange('code', false);
+                                            if (badgePlan.id) onAutoStampChange('number', false);
+                                        }}
+                                        title="Don't print this automatically"
+                                        aria-label="Turn off the automatic stamp"
+                                        className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-white shadow"
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -659,7 +717,7 @@ export const CertificateVisualEditor = ({
                             .filter(Boolean)
                             .join(' + ')}{' '}
                         is stamped bottom-right on every certificate. Drag the dashed box to
-                        position it yourself.
+                        position it yourself, or remove it to stop printing it at all.
                     </p>
                 )}
             </div>
@@ -731,13 +789,20 @@ const FloatingPropertiesPanel = ({
 
     return (
         <div
-            className="fixed z-50 w-80 rounded-lg border border-neutral-200 bg-white shadow-lg"
-            style={{ left: pos.x, top: pos.y }}
+            className="fixed z-50 flex w-80 flex-col rounded-lg border border-neutral-200 bg-white shadow-lg"
+            // Capped to what is left of the viewport below the panel's own top
+            // edge. Without this the panel is as tall as its content, so on a
+            // laptop screen the Position and Field Size groups — the X/Y boxes
+            // an admin actually came here to type into — sat below the fold
+            // with nothing to scroll: the page itself does not scroll a
+            // position:fixed element.
+            style={{ left: pos.x, top: pos.y, maxHeight: `calc(100vh - ${pos.y}px - 16px)` }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Draggable Header */}
+            {/* Draggable Header — shrink-0 so it stays put while the body
+                scrolls under it. */}
             <div
-                className="flex cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
+                className="flex shrink-0 cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
                 onMouseDown={onHeaderDown}
             >
                 <div className="flex items-center gap-2">
@@ -769,8 +834,8 @@ const FloatingPropertiesPanel = ({
                 </div>
             </div>
 
-            {/* Panel Content */}
-            <div className="p-4">
+            {/* Panel Content — the scrolling half. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
                 <div className="space-y-4">
                     {scanWarning && (
                         <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">

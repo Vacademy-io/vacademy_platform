@@ -34,6 +34,11 @@ export function useCourseDisplaySettings() {
   const [enrolledLayout, setEnrolledLayout] = useState<EnrolledCourseLayout>(
     () => readDebugEnrolledLayout() ?? "full"
   );
+  // undefined = "follow enrolledLayout" (see chapterOpensFirstSlide in
+  // student-display-settings). Resolved by the page, which knows the layout.
+  const [chapterOpensFirstSlide, setChapterOpensFirstSlide] = useState<
+    boolean | undefined
+  >(undefined);
 
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -47,6 +52,7 @@ export function useCourseDisplaySettings() {
           setEnrolledLayout(
             readDebugEnrolledLayout() ?? cd.enrolledLayout ?? "full"
           );
+          setChapterOpensFirstSlide(cd.chapterOpensFirstSlide);
         }
       })
       .catch(() => {
@@ -55,6 +61,7 @@ export function useCourseDisplaySettings() {
         setHideAuthorName(false);
         setShowInstructors(false);
         setEnrolledLayout(readDebugEnrolledLayout() ?? "full");
+        setChapterOpensFirstSlide(undefined);
       });
   }, []);
 
@@ -64,5 +71,6 @@ export function useCourseDisplaySettings() {
     hideAuthorName,
     showInstructors,
     enrolledLayout,
+    chapterOpensFirstSlide,
   };
 }

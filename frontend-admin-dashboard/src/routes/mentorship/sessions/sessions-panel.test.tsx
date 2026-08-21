@@ -11,6 +11,9 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useSessionAction: () => ({ mutateAsync: sessionActionMutate, isPending: false }),
     // Feeds the "all mentors" filter next to the tabs.
     useMentorDashboard: () => ({ data: { mentors: [{ id: 'm1', display_name: 'Asha Nair' }] } }),
+    // The reschedule dialog resolves the host mentor's booking slug to show real slots.
+    useMyMentorProfile: () => ({ data: null }),
+    useMentorSlots: () => ({ data: { slots: [] }, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({

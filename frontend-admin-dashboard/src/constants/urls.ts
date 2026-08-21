@@ -1282,6 +1282,10 @@ export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
 export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 
 // Mentorship (mentors + assignments + dashboard)
+export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+export const OPEN_BOOKING_SLOTS = (instituteId: string, slug: string) =>
+    `${OPEN_BOOKING_BASE}/page/${instituteId}/${slug}/slots`;
+
 export const MENTORSHIP_BASE = `${BASE_URL}/admin-core-service/mentorship/v1`;
 export const MENTORSHIP_MENTORS = `${MENTORSHIP_BASE}/mentors`;
 export const MENTORSHIP_MENTOR_BY_ID = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}`;
@@ -1308,6 +1312,8 @@ export const MENTORSHIP_SESSION_CANCEL = `${MENTORSHIP_BASE}/sessions/cancel`;
 export const MENTORSHIP_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/sessions/reschedule`;
 export const MENTORSHIP_MY_SESSION_CANCEL = `${MENTORSHIP_BASE}/my-sessions/cancel`;
 export const MENTORSHIP_MY_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/my-sessions/reschedule`;
+export const MENTORSHIP_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/sessions/schedule`;
+export const MENTORSHIP_MY_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/my-sessions/schedule`;
 export const MENTORSHIP_MENTOR_MENTEES = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/mentees`;
 export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/availability`;
 

@@ -45,4 +45,44 @@ public class CertificateVerificationDto {
 
     /** Masked, e.g. "A··· S·····". Never the full name. */
     private String learnerName;
+
+    /**
+     * Institute branding, so the verification page can present itself as the
+     * institute's own rather than as a platform page with a name typed on it.
+     *
+     * <p>Sent on the response rather than looked up by the page, because a
+     * verification link is opened by strangers on whatever domain the QR
+     * happens to carry — an employer scanning a certificate is not logged in
+     * and has no institute context to resolve branding from. Without these the
+     * page could only render generically, which reads as "some third party
+     * says this is fine" rather than "the institute that awarded it says so".
+     *
+     * <p>All three are public-by-nature: a logo and a brand colour are on the
+     * certificate itself, and the website is printed in its footer.
+     */
+    private String instituteLogoFileId;
+    private String instituteThemeCode;
+    private String instituteWebsite;
+
+    /**
+     * A line the institute chose to show on this page — a registrar's contact,
+     * or what the certificate attests to. Public by definition: anyone holding
+     * the link reads it. Blank prints nothing rather than an empty panel.
+     */
+    private String instituteNote;
+
+    /**
+     * How the institute has set this page up, sent with the result rather than
+     * looked up by the page: whoever scans a certificate is not logged in and
+     * has no institute context to resolve settings from.
+     *
+     * <p>Null means the shipped default. The course, date and completion flags
+     * are what the institute chose to disclose — the masked name and the number
+     * are not optional, because without them the page confirms that <em>a</em>
+     * certificate exists rather than the one in the reader's hand.
+     */
+    private String headline;
+    private Boolean showCourse;
+    private Boolean showIssueDate;
+    private Boolean showCompletion;
 }

@@ -1,13 +1,16 @@
 import type {
   DripConditionJson,
   DripConditionRule,
+  DripConditionRuleType,
   DateBasedParams,
+  RelativeDateParams,
   CompletionBasedParams,
   PrerequisiteParams,
   SequentialParams,
 } from "./types";
 import {
   isDateBasedParams,
+  isRelativeDateParams,
   isCompletionBasedParams,
   isPrerequisiteBasedParams,
   isSequentialBasedParams,
@@ -35,6 +38,25 @@ export interface LearnerProgressData {
   previousItemCompletion?: number;
   /** Zero-based index of current item in the list (for count-based exceptions) */
   itemIndex?: number;
+  /**
+   * Day 1 of the learner's schedule for `relative_date` rules — normally the
+   * date they enrolled in this course. Undefined means "not known yet"; such
+   * rules then pass rather than lock, so a failed lookup never walls a learner
+   * out of a course they paid for.
+   */
+  enrollmentDate?: Date | string | null;
+  /** Batch/session start date, used by `relative_date` rules anchored to it. */
+  sessionStartDate?: Date | string | null;
+  /**
+   * Narrow the "first item is always accessible" escape hatch to progress
+   * rules only, so a time rule on item 0 is actually honoured.
+   *
+   * Defaults to false, which keeps the original broad exemption. Institutes
+   * that have never opted into the configured-rules path still have live
+   * date rules whose first item has been open for months; flipping that
+   * silently would close it under them.
+   */
+  strictFirstItem?: boolean;
 }
 
 /**
@@ -49,6 +71,56 @@ export interface DripConditionEvaluation {
   unlockMessage: string | null;
   /** Detailed reason for lock/hide (for debugging) */
   reason?: string;
+}
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const toDate = (value: Date | string | null | undefined): Date | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+/**
+ * The calendar day a `relative_date` rule counts from. Defaults to the
+ * learner's enrollment; `session_start` gives every learner in a batch the
+ * same schedule instead.
+ */
+function resolveAnchorDate(
+  params: RelativeDateParams,
+  progressData: LearnerProgressData
+): Date | null {
+  if (params.anchor === "session_start") {
+    return toDate(progressData.sessionStartDate);
+  }
+  return toDate(progressData.enrollmentDate);
+}
+
+/**
+ * Anchor + N days, snapped to the given local time-of-day.
+ *
+ * Days are counted in local calendar days, not in 24h blocks: a learner who
+ * enrolls at 23:50 still gets day 2 ten minutes later rather than a day later,
+ * which is what "Day 2" means to everyone reading the schedule.
+ */
+function addDaysAtTime(
+  anchor: Date,
+  offsetDays: number,
+  unlockTime?: string
+): Date {
+  const result = new Date(
+    anchor.getFullYear(),
+    anchor.getMonth(),
+    anchor.getDate() + offsetDays
+  );
+  const [hours, minutes] = (unlockTime || "00:00").split(":");
+  result.setHours(
+    Math.min(23, Math.max(0, Number(hours) || 0)),
+    Math.min(59, Math.max(0, Number(minutes) || 0)),
+    0,
+    0
+  );
+  return result;
 }
 
 /**
@@ -85,6 +157,47 @@ function evaluateRule(
       return {
         passed: isPassed,
         message: isPassed ? undefined : `Available from ${unlockDateFormatted}`,
+      };
+    }
+
+    case "relative_date": {
+      if (!isRelativeDateParams(params)) {
+        return { passed: true, message: "Invalid relative date params" };
+      }
+      const relativeParams = params as RelativeDateParams;
+      const anchorDate = resolveAnchorDate(relativeParams, progressData);
+
+      // No anchor (enrollment date not loaded, or the learner has no
+      // enrollment record) — fail open. A drip schedule that cannot be
+      // computed must not become a wall.
+      if (!anchorDate) {
+        return { passed: true };
+      }
+
+      const unlockAt = addDaysAtTime(
+        anchorDate,
+        Math.max(1, Math.round(relativeParams.unlock_on_day || 1)) - 1,
+        relativeParams.unlock_time
+      );
+      const isPassed = currentDate >= unlockAt;
+      if (isPassed) {
+        return { passed: true };
+      }
+
+      const daysLeft = Math.max(
+        1,
+        Math.ceil((unlockAt.getTime() - currentDate.getTime()) / DAY_IN_MS)
+      );
+      const unlockDateFormatted = unlockAt.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      return {
+        passed: false,
+        message: `Unlocks in ${daysLeft} day${
+          daysLeft === 1 ? "" : "s"
+        } (${unlockDateFormatted})`,
       };
     }
 
@@ -198,6 +311,16 @@ function evaluateRule(
 }
 
 /**
+ * Rules that depend on the learner having done something first. Only these get
+ * the "first item is always open" escape hatch — see evaluateDripCondition.
+ */
+const PROGRESS_RULE_TYPES: readonly DripConditionRuleType[] = [
+  "completion_based",
+  "prerequisite",
+  "sequential",
+];
+
+/**
  * Evaluate drip condition for a specific item
  */
 export function evaluateDripCondition(
@@ -223,10 +346,20 @@ export function evaluateDripCondition(
     };
   }
 
-  // EXCEPTION: First item (index 0) is ALWAYS accessible
-  // Users need at least one item to start with
+  // EXCEPTION: the first item is always accessible when every rule on it is a
+  // PROGRESS rule. Those rules read "finish what came before", and nothing
+  // comes before item 0 — without this they deadlock the whole course.
+  //
+  // Under `strictFirstItem` time rules are excluded from the exemption. They
+  // cannot deadlock (the clock always advances), and a day-wise schedule that
+  // silently unlocked its first item early would be wrong: "Day 5" has to mean
+  // day 5 even for the first chapter of a module. Opt-in, because live courses
+  // already rely on the broader exemption.
   const itemIndex = progressData.itemIndex ?? 0;
-  if (itemIndex === 0) {
+  const rulesDeadlockOnFirstItem =
+    !progressData.strictFirstItem ||
+    condition.rules.every((rule) => PROGRESS_RULE_TYPES.includes(rule.type));
+  if (itemIndex === 0 && rulesDeadlockOnFirstItem) {
     return {
       isLocked: false,
       isHidden: false,

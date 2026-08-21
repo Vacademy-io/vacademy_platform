@@ -21,10 +21,11 @@ import org.springframework.util.StringUtils;
  * because the box centres its content, the slice took characters off both ends.
  *
  * <p><b>The fix, in two halves.</b> The serialized template now wraps text and
- * clamps it to two lines. That alone stops anything overflowing the certificate,
- * but a value needing three lines would still be cut. This service closes that
- * gap: it measures the substituted value and steps the font down until it fits
- * in two lines.
+ * clamps it to the box the admin drew. That alone stops anything overflowing the
+ * certificate, but a value needing more lines than the box holds would still be
+ * cut. This service closes that gap: it measures the substituted value and steps
+ * the font down until it fits — in both directions, since the serializer stamps
+ * the box's height as well as its width.
  *
  * <p><b>Why here and not in CSS.</b> There is no CSS that says "shrink to fit",
  * and the PDF renderer runs no JavaScript. The renderer knows the box; only the
@@ -43,8 +44,17 @@ import org.springframework.util.StringUtils;
 @Service
 public class CertificateTextFitService {
 
-    /** Matches MAX_TEXT_LINES in serialize-image-template-to-html.ts. */
+    /**
+     * Line budget for a field whose box height was never recorded — every
+     * template saved before {@code data-fit-height} existed. Newer templates
+     * get their budget from the box itself; see {@link #linesAllowed}.
+     *
+     * <p>Matches MAX_TEXT_LINES in serialize-image-template-to-html.ts.
+     */
     private static final int MAX_LINES = 2;
+
+    /** Matches TEXT_LINE_HEIGHT in serialize-image-template-to-html.ts. */
+    private static final double LINE_HEIGHT = 1.2;
 
     /**
      * How far the font may shrink, as a fraction of what the admin chose. Past
@@ -157,8 +167,11 @@ public class CertificateTextFitService {
         if (width <= 0 || fontSize <= 0) {
             return;
         }
+        // Absent on templates saved before the height was emitted; those keep
+        // the flat two-line budget they were designed against.
+        double height = parsePositiveDouble(element.attr("data-fit-height"));
 
-        double fitted = fitFontSize(text, width, fontSize);
+        double fitted = fitFontSize(text, width, fontSize, height);
         if (fitted >= fontSize) {
             // Already fits. Leave the style attribute untouched rather than
             // rewriting it to the same value.
@@ -168,19 +181,57 @@ public class CertificateTextFitService {
     }
 
     /**
-     * Largest size at or below {@code fontSizePx} whose text wraps into no more
-     * than {@link #MAX_LINES} lines, or the floor if none does.
+     * Largest size at or below {@code fontSizePx} whose wrapped text fits the
+     * box, or the floor if none does.
+     *
+     * <p>Kept for callers (and tests) that only know the width; a box of
+     * unknown height falls back to the historical two-line budget.
      */
     static double fitFontSize(String text, double widthPx, double fontSizePx) {
+        return fitFontSize(text, widthPx, fontSizePx, 0);
+    }
+
+    /**
+     * The height-aware fit.
+     *
+     * <p>Width alone was not enough. The clamp used to be a flat two lines, so a
+     * long course title printed its first two lines and had the rest sliced off.
+     * Now the box's height raises the line budget — a tall box may take three or
+     * four lines at full size — while two lines stay available whatever the box,
+     * so wrapping is what absorbs a long value and the font only shrinks when
+     * even that is not enough.
+     *
+     * @param heightPx content height of the box, or 0 when it is not known
+     */
+    static double fitFontSize(String text, double widthPx, double fontSizePx, double heightPx) {
         double floor = Math.max(MIN_FONT_PX, fontSizePx * MIN_SCALE);
         double size = fontSizePx;
         while (size > floor) {
-            if (linesNeeded(text, widthPx, size) <= MAX_LINES) {
+            if (linesNeeded(text, widthPx, size) <= linesAllowed(heightPx, size)) {
                 return size;
             }
             size *= STEP;
         }
         return Math.min(fontSizePx, floor);
+    }
+
+    /**
+     * Lines the box can show at this font size — at least one, because a box
+     * smaller than a single line still has to print something. A height of 0
+     * means "not recorded", which keeps the flat {@link #MAX_LINES} budget.
+     *
+     * <p>The epsilon absorbs sub-pixel rounding: a box drawn at exactly two
+     * lines must not be judged to hold 1.99 of them.
+     */
+    static int linesAllowed(double heightPx, double fontSizePx) {
+        if (heightPx <= 0 || fontSizePx <= 0) {
+            return MAX_LINES;
+        }
+        // Never fewer than MAX_LINES. Shrinking is the last resort: a long name
+        // set small enough to fit one line reads as a fault on a certificate,
+        // where the same name across two lines at the size the design chose
+        // reads as the design. A taller box raises the budget further.
+        return Math.max(MAX_LINES, (int) Math.floor(heightPx / (fontSizePx * LINE_HEIGHT) + 0.02));
     }
 
     /**

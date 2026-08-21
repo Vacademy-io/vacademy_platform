@@ -238,19 +238,86 @@ public class CertificateVerificationService {
     }
 
     private CertificateVerificationDto toDto(IssuedCertificate certificate) {
-        String instituteName = instituteRepository.findById(certificate.getInstituteId())
-                .map(Institute::getInstituteName)
-                .orElse("");
+        // One lookup for the whole institute rather than one per field: the
+        // page needs its branding as well as its name, and two round trips to
+        // the same row on a public endpoint is a free way to make a scan slower.
+        Institute institute = instituteRepository.findById(certificate.getInstituteId())
+                .orElse(null);
 
         return CertificateVerificationDto.builder()
                 .valid(true)
                 .certificateId(certificate.getCertificateId())
-                .instituteName(instituteName)
+                .instituteName(institute != null ? institute.getInstituteName() : "")
+                // Branding travels with the response so the page renders as the
+                // institute's own on whatever domain the scan landed on. See
+                // the field docs on CertificateVerificationDto.
+                .instituteLogoFileId(institute != null ? institute.getLogoFileId() : null)
+                .instituteThemeCode(institute != null ? institute.getInstituteThemeCode() : null)
+                .instituteWebsite(institute != null ? institute.getWebsiteUrl() : null)
+                .instituteNote(readVerificationSetting(institute, "verificationNote"))
+                .headline(readVerificationSetting(institute, "verificationHeadline"))
+                .showCourse(readVerificationFlag(institute, "verificationShowCourse"))
+                .showIssueDate(readVerificationFlag(institute, "verificationShowIssueDate"))
+                .showCompletion(readVerificationFlag(institute, "verificationShowCompletion"))
                 .courseName(certificate.getCourseName())
                 .issuedAt(certificate.getIssuedAt())
                 .completionPercentage(certificate.getCompletionPercentage())
                 .learnerName(maskName(resolveLearnerName(certificate.getUserId())))
                 .build();
+    }
+
+    /**
+     * The institute's own line for this page, from its certificate settings.
+     *
+     * <p>Read here rather than passed in because verification is reached from
+     * two entry points and both must show the same page. A malformed settings
+     * blob means no note, never a failed verification — this is decoration on a
+     * page whose job is to answer a yes/no question.
+     */
+    private String readVerificationSetting(Institute institute, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = readVerificationNode(institute, field);
+        if (value == null) {
+            return null;
+        }
+        String text = value.asText(null);
+        return StringUtils.hasText(text) ? text.trim() : null;
+    }
+
+    /** Null when unset, so the page can tell "off" from "never configured". */
+    private Boolean readVerificationFlag(Institute institute, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = readVerificationNode(institute, field);
+        return value != null && value.isBoolean() ? value.asBoolean() : null;
+    }
+
+    /**
+     * One field off the institute's certificate settings.
+     *
+     * <p>A malformed settings blob means the page falls back to its defaults,
+     * never a failed verification: this is presentation on a page whose job is
+     * to answer a yes/no question about a document someone is holding.
+     */
+    private com.fasterxml.jackson.databind.JsonNode readVerificationNode(Institute institute, String field) {
+        String settingJson = institute != null ? institute.getSetting() : null;
+        if (!StringUtils.hasText(settingJson)) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode entries =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingJson)
+                            .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode config : entries) {
+                    if ("COURSE_COMPLETION".equals(config.path("key").asText(null))) {
+                        com.fasterxml.jackson.databind.JsonNode value = config.path(field);
+                        return value.isMissingNode() || value.isNull() ? null : value;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read verification setting '{}' for institute {}",
+                    field, institute.getId(), e);
+        }
+        return null;
     }
 
     private String resolveLearnerName(String userId) {

@@ -118,7 +118,7 @@ export const getPaymentOptions = async (
 export const transformLocalPlanToApiFormat = (localPlan: PaymentPlan): PaymentPlanApi => {
     let actualPrice = 0;
     let elevatedPrice = 0;
-    let validityDays = localPlan.validityDays || 365;
+    let validityDays: number | null = localPlan.validityDays || 365;
 
     if (
         localPlan.type === PaymentPlans.SUBSCRIPTION &&
@@ -155,6 +155,9 @@ export const transformLocalPlanToApiFormat = (localPlan: PaymentPlan): PaymentPl
     } else if (localPlan.type === PaymentPlans.FREE) {
         actualPrice = 0;
         elevatedPrice = 0;
+        // A free plan expresses "unlimited" as a null validity. The `|| 365` default above
+        // would silently turn that into a one-year window.
+        validityDays = localPlan.validityDays ?? null;
     }
 
     return {
@@ -189,6 +192,18 @@ export const transformApiPlanToLocalFormat = (apiPlan: PaymentPlanApi): PaymentP
     // One-time plans keep their access window in config.upfront so the editor can
     // re-open on the right radio option; validity_in_days alone cannot distinguish
     // "lifetime" from "not configured yet".
+    if (type === 'FREE') {
+        const free = (config as { free?: Record<string, unknown> }).free || {};
+        config = {
+            ...config,
+            free: {
+                ...free,
+                accessType: apiPlan.validity_in_days == null ? 'unlimited' : 'limited',
+                validityDays: apiPlan.validity_in_days ?? undefined,
+            },
+        };
+    }
+
     if (type === 'ONE_TIME') {
         const upfront = (config as { upfront?: Record<string, unknown> }).upfront || {};
         config = {

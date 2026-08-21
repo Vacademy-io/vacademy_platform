@@ -13,7 +13,12 @@ const getMenuOptions = (status?: string) => {
         return ['Re-enroll Student'];
     }
 
-    return ['Change Batch', 'Terminate Registration', 'Re-register for Next Session'];
+    return [
+        'Change Batch',
+        'Extend Course Access',
+        'Terminate Registration',
+        'Re-register for Next Session',
+    ];
 };
 
 export const StudentMenuOptions = ({ student }: { student: StudentTable }) => {
@@ -23,6 +28,7 @@ export const StudentMenuOptions = ({ student }: { student: StudentTable }) => {
         openReRegisterDialog,
         openTerminateRegistrationDialog,
         openDeleteDialog,
+        openBulkExtendAccessDialog,
     } = useDialogStore();
 
     const [showReEnrollDialog, setShowReEnrollDialog] = useState(false);
@@ -35,6 +41,16 @@ export const StudentMenuOptions = ({ student }: { student: StudentTable }) => {
                 break;
             case 'Change Batch':
                 openChangeBatchDialog(student);
+                break;
+            // Reuses the bulk dialog with a single-learner selection: it already targets
+            // user_ids x package_session_ids, and one row is simply the 1x1 case. Avoids a
+            // second dialog that would have to stay behaviourally in step with it.
+            case 'Extend Course Access':
+                openBulkExtendAccessDialog({
+                    selectedStudentIds: [student.id],
+                    selectedStudents: [student],
+                    displayText: student.full_name || '1 learner',
+                });
                 break;
             case 'Extend Session':
                 openExtendSessionDialog(student);

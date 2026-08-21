@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.booking.repository.BookingInstanc
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
 import vacademy.io.admin_core_service.features.booking.dto.PublicBookingDTOs;
 import vacademy.io.admin_core_service.features.booking.service.PublicBookingService;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs.ScheduleSessionRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs.MentorSessionDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs.RecordSessionRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs.SessionStatsDTO;
@@ -22,6 +23,7 @@ import vacademy.io.admin_core_service.features.mentorship.enums.SessionOutcome;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorSessionFeedbackRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorSessionRecordRepository;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorStudentAssignmentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -59,6 +61,16 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MentorSessionService {
 
+    /** Who is asking to act on a session, and therefore what they are allowed to touch. */
+    public enum SessionActor {
+        /** Institute admin — may act on any mentorship session in their institute. */
+        ADMIN,
+        /** A mentor — may act only on sessions they host. */
+        MENTOR,
+        /** A learner — may act only on sessions they are the invitee of. */
+        STUDENT
+    }
+
     /** Appointment states that mean the session never happened. */
     private static final Set<String> INACTIVE_BOOKING_STATUSES = Set.of("CANCELLED", "RESCHEDULED");
     /** How far back the admin session list and stats look by default. */
@@ -72,6 +84,7 @@ public class MentorSessionService {
     private final MentorRepository mentorRepository;
     private final PublicBookingService publicBookingService;
     private final AuthService authService;
+    private final MentorStudentAssignmentRepository assignmentRepository;
 
     // ============================== mentor: record an outcome ==============================
 
@@ -237,6 +250,130 @@ public class MentorSessionService {
         return sessions(instituteId, mentor.getId(), null, "AWAITING_REVIEW", DEFAULT_HISTORY_DAYS);
     }
 
+    // ============================== learner: my own sessions ==============================
+
+    /**
+     * The sessions a learner is the invitee of. Same assembly as the admin list, then
+     * stripped of the mentor's private notes — a learner sees when, with whom, whether it
+     * happened and their own rating, never what the mentor wrote about them.
+     */
+    public List<MentorSessionDTO> sessionsForStudent(String instituteId, String studentUserId, String lifecycle) {
+        return sessions(instituteId, null, studentUserId, lifecycle, DEFAULT_HISTORY_DAYS).stream()
+                .map(MentorSessionService::withoutMentorNotes)
+                .collect(Collectors.toList());
+    }
+
+    /** Same DTO minus the mentor-only fields. */
+    private static MentorSessionDTO withoutMentorNotes(MentorSessionDTO dto) {
+        dto.setNotes(null);
+        return dto;
+    }
+
+    // ============================== schedule a 1:1 ==============================
+
+    /**
+     * Book a 1:1 for a learner without the learner filling anything in.
+     *
+     * <p>Deliberately routed through the same {@link PublicBookingService#book} the learner's
+     * own booking page uses, so a scheduled session is the same kind of object as a
+     * self-booked one: it respects the mentor's availability and notice rules, gets the same
+     * Meet link, reminders, calendar event and confirmation email, and shows up in every
+     * session view without a special case. The only thing this method adds is deciding who
+     * may schedule for whom, and filling the learner's contact details in on their behalf.
+     */
+    // Deliberately NOT @Transactional. PublicBookingService.book is not transactional either:
+    // it creates the live session, allocates a Meet link and dispatches notifications, all of
+    // which are external HTTP calls. Holding a pool connection open across those is the
+    // pattern MentorAssignmentService.afterCommit exists to avoid. Nothing here needs
+    // atomicity of its own — it reads, delegates, then re-reads.
+    public MentorSessionDTO scheduleSession(String instituteId, CustomUserDetails user,
+                                            ScheduleSessionRequest req, SessionActor actor) {
+        if (req == null || req.getStudentUserId() == null || req.getStudentUserId().isBlank()) {
+            throw new VacademyException("studentUserId is required");
+        }
+        if (req.getStartTime() == null || req.getStartTime().isBlank()) {
+            throw new VacademyException("A start time is required");
+        }
+
+        Mentor mentor = resolveSchedulingMentor(instituteId, user, req, actor);
+        String slug = bookingSlugOf(mentor);
+
+        UserDTO student = hydrate(List.of(req.getStudentUserId())).get(req.getStudentUserId());
+        if (student == null) {
+            throw new VacademyException("That learner could not be found");
+        }
+        boolean hasEmail = student.getEmail() != null && !student.getEmail().isBlank();
+        boolean hasPhone = student.getMobileNumber() != null && !student.getMobileNumber().isBlank();
+        if (!hasEmail && !hasPhone) {
+            // The booking flow needs somewhere to send the confirmation; without either
+            // the learner would be scheduled into a session they are never told about.
+            throw new VacademyException("That learner has no email or phone number on file, "
+                    + "so we can't send them the session details");
+        }
+
+        String studentName = firstNonBlank(student.getFullName(), student.getUsername());
+
+        PublicBookingDTOs.PublicBookRequestDTO booking = new PublicBookingDTOs.PublicBookRequestDTO();
+        booking.setName(studentName == null ? "Learner" : studentName);
+        booking.setEmail(hasEmail ? student.getEmail() : null);
+        booking.setPhone(hasPhone ? student.getMobileNumber() : null);
+        booking.setStartTime(req.getStartTime());
+        booking.setInviteeTimezone(req.getInviteeTimezone());
+        booking.setDurationMinutes(req.getDurationMinutes());
+
+        // trusted=true: the caller is an authenticated admin or the hosting mentor, so the
+        // public link's anti-abuse caps (which exist for anonymous strangers) don't apply.
+        PublicBookingDTOs.PublicBookingViewDTO created =
+                publicBookingService.book(instituteId, slug, booking, req.getStudentUserId(), true);
+        if (created == null) throw new VacademyException("Could not schedule that session");
+
+        // The booking view is token-keyed; the session views are id-keyed, so re-read the
+        // instance and return it through the same path every other session view uses.
+        BookingInstance instance = bookingInstanceRepository.findByManageToken(created.getManageToken())
+                .orElseThrow(() -> new VacademyException("Session was booked but could not be read back"));
+        return reload(instituteId, instance.getId());
+    }
+
+    /**
+     * Which mentor's calendar is being booked. An admin names one; a mentor is always
+     * themselves — accepting a mentor_id from a mentor would let them fill a colleague's
+     * calendar.
+     */
+    private Mentor resolveSchedulingMentor(String instituteId, CustomUserDetails user,
+                                           ScheduleSessionRequest req, SessionActor actor) {
+        if (actor == SessionActor.ADMIN) {
+            if (req.getMentorId() == null || req.getMentorId().isBlank()) {
+                throw new VacademyException("mentorId is required");
+            }
+            return mentorRepository.findById(req.getMentorId())
+                    .filter(m -> instituteId.equals(m.getInstituteId()))
+                    .filter(m -> !MentorStatus.DELETED.name().equals(m.getStatus()))
+                    .orElseThrow(() -> new VacademyException("Mentor not found"));
+        }
+        Mentor mentor = mentorRepository
+                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
+                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+        // A mentor schedules with their own mentees only. Admins are not restricted:
+        // scheduling an intro session is exactly how a pairing often starts.
+        assignmentRepository
+                .findByInstituteIdAndMentorIdAndStudentUserIdAndStatus(
+                        instituteId, mentor.getId(), req.getStudentUserId(), MentorStatus.ACTIVE.name())
+                .orElseThrow(() -> new VacademyException("That learner is not one of your mentees"));
+        return mentor;
+    }
+
+    /** The mentor's bookable slug, or a message that names the fix. */
+    private String bookingSlugOf(Mentor mentor) {
+        if (mentor.getBookingPageId() == null || mentor.getBookingPageId().isBlank()) {
+            throw new VacademyException("This mentor has no booking page yet — enable booking for them first");
+        }
+        return bookingPageRepository.findById(mentor.getBookingPageId())
+                .map(BookingPage::getSlug)
+                .filter(slug -> slug != null && !slug.isBlank())
+                .orElseThrow(() -> new VacademyException(
+                        "This mentor has no booking page yet — enable booking for them first"));
+    }
+
     // ============================== cancel / reschedule ==============================
 
     /**
@@ -248,12 +385,20 @@ public class MentorSessionService {
      * decide whether the caller may act, and to refuse anything that isn't a mentorship session.
      *
      * @param asAdmin true when the caller passed institute-admin validation; a mentor may only
-     *                touch sessions they host.
+     *                touch sessions they host. Prefer the {@link SessionActor} overload.
      */
     @Transactional
     public MentorSessionDTO cancelSession(String instituteId, CustomUserDetails user,
                                           String bookingInstanceId, String reason, boolean asAdmin) {
-        BookingInstance booking = authorizeSession(instituteId, user, bookingInstanceId, asAdmin);
+        return cancelSession(instituteId, user, bookingInstanceId, reason,
+                asAdmin ? SessionActor.ADMIN : SessionActor.MENTOR);
+    }
+
+    /** Cancel as a named actor — see {@link SessionActor} for what each may touch. */
+    @Transactional
+    public MentorSessionDTO cancelSession(String instituteId, CustomUserDetails user,
+                                          String bookingInstanceId, String reason, SessionActor actor) {
+        BookingInstance booking = authorizeSession(instituteId, user, bookingInstanceId, actor);
         publicBookingService.cancelInstance(booking, trimTo(reason, 1000));
         return reload(instituteId, booking.getId());
     }
@@ -269,10 +414,19 @@ public class MentorSessionService {
     public MentorSessionDTO rescheduleSession(String instituteId, CustomUserDetails user,
                                               String bookingInstanceId, String newStartTime,
                                               String inviteeTimezone, boolean asAdmin) {
+        return rescheduleSession(instituteId, user, bookingInstanceId, newStartTime, inviteeTimezone,
+                asAdmin ? SessionActor.ADMIN : SessionActor.MENTOR);
+    }
+
+    /** Reschedule as a named actor — see {@link SessionActor} for what each may touch. */
+    @Transactional
+    public MentorSessionDTO rescheduleSession(String instituteId, CustomUserDetails user,
+                                              String bookingInstanceId, String newStartTime,
+                                              String inviteeTimezone, SessionActor actor) {
         if (newStartTime == null || newStartTime.isBlank()) {
             throw new VacademyException("A new start time is required");
         }
-        BookingInstance booking = authorizeSession(instituteId, user, bookingInstanceId, asAdmin);
+        BookingInstance booking = authorizeSession(instituteId, user, bookingInstanceId, actor);
 
         PublicBookingDTOs.PublicRescheduleRequestDTO request = new PublicBookingDTOs.PublicRescheduleRequestDTO();
         request.setStartTime(newStartTime);
@@ -286,12 +440,12 @@ public class MentorSessionService {
     /**
      * Resolve a session the caller may act on, or refuse.
      *
-     * <p>Admins may act on any mentorship session in their institute. A mentor may act only on
-     * sessions they host. Either way the booking must be a mentorship session — an admin must
-     * not be able to cancel a sales call through the mentorship API.
+     * <p>Admins may act on any mentorship session in their institute; a mentor only on sessions
+     * they host; a learner only on sessions booked for them. Whoever asks, the booking must be a
+     * mentorship session — an admin must not be able to cancel a sales call through this API.
      */
     private BookingInstance authorizeSession(String instituteId, CustomUserDetails user,
-                                             String bookingInstanceId, boolean asAdmin) {
+                                             String bookingInstanceId, SessionActor actor) {
         if (bookingInstanceId == null || bookingInstanceId.isBlank()) {
             throw new VacademyException("bookingInstanceId is required");
         }
@@ -304,11 +458,14 @@ public class MentorSessionService {
                 .findByInstituteIdAndUserIdAndStatusNot(instituteId, booking.getHostUserId(), MentorStatus.DELETED.name())
                 .orElseThrow(() -> new VacademyException("That booking isn't a mentorship session"));
 
-        if (!asAdmin && !user.getUserId().equals(booking.getHostUserId())) {
-            // Indistinguishable from "no such session" on purpose — a mentor shouldn't be able
-            // to probe for other mentors' bookings by id.
-            throw new VacademyException("Session not found");
-        }
+        // A failed ownership check is reported as "not found" on purpose — otherwise the id
+        // space becomes a probe for other people's bookings.
+        boolean permitted = switch (actor) {
+            case ADMIN -> true;
+            case MENTOR -> user.getUserId().equals(booking.getHostUserId());
+            case STUDENT -> user.getUserId() != null && user.getUserId().equals(booking.getInviteeUserId());
+        };
+        if (!permitted) throw new VacademyException("Session not found");
         return booking;
     }
 

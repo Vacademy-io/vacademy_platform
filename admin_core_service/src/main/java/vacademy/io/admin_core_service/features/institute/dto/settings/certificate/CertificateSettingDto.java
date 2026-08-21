@@ -82,6 +82,51 @@ public class CertificateSettingDto {
     //                       widens the default box when this is selected.
     private String barcodeContent;
 
+    // Whether the platform may stamp the code and the number bottom-right on a
+    // certificate whose design does not place them itself.
+    //
+    // Both default to TRUE when null, which is what every certificate issued
+    // before these existed did — the stamp was unconditional, and an admin who
+    // deleted the QR or the certificate-number field from their design watched
+    // it reappear on the issued PDF with no way to stop it. That is what these
+    // switch off.
+    //
+    // Two flags rather than one because they are two decisions: an institute
+    // that wants its number printed but no machine-readable code (or the
+    // reverse) is a normal request, and the renderer already decides them
+    // independently.
+    //
+    // Turning off the code means nothing on the certificate can be scanned, so
+    // it can no longer be verified by scanning — the admin is told this in the
+    // settings UI before they do it.
+    private Boolean autoStampCode;
+    private Boolean autoStampNumber;
+
+    // The public verification page — what someone scanning a certificate sees.
+    //
+    // Editable because the page speaks for the institute to an outsider, and
+    // institutes do not all say the same thing: a university confirming a degree
+    // and a training provider confirming attendance want different words and
+    // disclose different amounts. Everything here is public by definition,
+    // since anyone holding the link reads it.
+    //
+    // Null on every field means the shipped default, so a page that was never
+    // configured reads exactly as it does today.
+
+    // Replaces "This certificate is genuine" when set.
+    private String verificationHeadline;
+
+    // A line of the institute's own — a registrar's contact, a note about what
+    // the certificate attests to. Blank prints nothing rather than an empty panel.
+    private String verificationNote;
+
+    // Which particulars the page lists. The learner's (masked) name and the
+    // certificate number are always shown: without them the page confirms that
+    // *a* certificate exists rather than the one in the reader's hand.
+    private Boolean verificationShowCourse;
+    private Boolean verificationShowIssueDate;
+    private Boolean verificationShowCompletion;
+
     // Admin-defined fields, so an institute can put values on its certificates
     // that the platform has no built-in token for — a grade, a director's name,
     // an accreditation line. Each entry becomes a draggable chip in the visual

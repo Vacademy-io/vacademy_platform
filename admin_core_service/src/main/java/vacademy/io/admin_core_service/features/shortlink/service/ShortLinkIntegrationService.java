@@ -72,6 +72,29 @@ public class ShortLinkIntegrationService {
      */
     public String getOrCreateShortLink(String source, String sourceId, String destinationUrl,
             String instituteId) {
+        return getOrCreateShortLink(source, sourceId, destinationUrl, instituteId, null);
+    }
+
+    /**
+     * As above, but asks media_service for a specific code.
+     *
+     * <p>The hint is a request, not a guarantee. media_service slugifies it and uses
+     * it only if it is still free; otherwise it appends a random suffix, and a blank
+     * hint means a random code — which is exactly the behaviour of the four-argument
+     * form, so existing callers are unaffected.</p>
+     *
+     * <p>It also only applies the first time. A learner who already has a link keeps
+     * it, because media_service matches on (source, sourceId) before it ever looks
+     * at the hint.</p>
+     *
+     * @param shortCodeHint desired code, e.g. a mobile number so the link reads
+     *                      {@code u.suchbliss.com/s/919829227181}. Anything readable
+     *                      here is also guessable — do not pass a hint that would let
+     *                      someone enumerate learners where the destination is not
+     *                      itself behind a login.
+     */
+    public String getOrCreateShortLink(String source, String sourceId, String destinationUrl,
+            String instituteId, String shortCodeHint) {
         if (destinationUrl == null || destinationUrl.isBlank()) {
             return null;
         }
@@ -80,6 +103,7 @@ public class ShortLinkIntegrationService {
                 .sourceId(sourceId)
                 .destinationUrl(destinationUrl)
                 .instituteId(instituteId)
+                .shortCode(shortCodeHint == null || shortCodeHint.isBlank() ? null : shortCodeHint.trim())
                 .build();
         try {
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(

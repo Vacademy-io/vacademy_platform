@@ -10,6 +10,10 @@
  * does not position itself. Placing a QR/barcode field replaces the automatic
  * code; placing a Certificate ID field replaces the automatic number. Place
  * both and no badge is stamped at all.
+ *
+ * It is also switchable per institute (autoStampCode / autoStampNumber). Until
+ * it was, removing the QR or the number from a design just brought the stamped
+ * one back bottom-right, which made a certificate without them impossible.
  */
 import {
     CERTIFICATE_BARCODE_PLACEHOLDER,
@@ -29,17 +33,21 @@ export const PX_PER_MM = 96 / 25.4;
 export const AUTO_BADGE = {
     rightMm: 10,
     bottomMm: 8,
-    paddingXPx: 8,
-    paddingYPx: 3,
-    borderPx: 1,
-    borderRadiusPx: 4,
-    idFontSizePx: 10,
-    idMarginTopPx: 2,
-    letterSpacing: '0.5px',
+    // No panel, no border: the stamp is the code and the number, nothing else.
+    // Drawn as a bordered chip it read as a sticker applied to the certificate,
+    // and on artwork a grey box is the first thing the eye lands on. The QR
+    // carries its own white quiet zone, so it scans without one.
+    paddingXPx: 0,
+    paddingYPx: 0,
+    borderPx: 0,
+    borderRadiusPx: 0,
+    idFontSizePx: 8,
+    idMarginTopPx: 3,
+    letterSpacing: '0.4px',
     fontFamily: 'Arial, sans-serif',
-    borderColor: '#d0d7de', // design-lint-ignore — mirrors the server-rendered PDF
-    textColor: '#444444', // design-lint-ignore — mirrors the server-rendered PDF
-    background: 'rgba(255,255,255,0.85)',
+    borderColor: 'transparent',
+    textColor: '#6b7280', // design-lint-ignore — mirrors the server-rendered PDF
+    background: 'transparent',
 } as const;
 
 /**
@@ -189,11 +197,30 @@ export interface AutoBadgePlan {
 
 const plan = (code: boolean, id: boolean): AutoBadgePlan => ({ code, id, any: code || id });
 
+/**
+ * Whether the institute lets the platform stamp each part at all.
+ *
+ * <p>Both default to true, which is what the badge always did. They exist
+ * because it used to be unconditional: deleting the QR or the certificate
+ * number from a design simply brought the stamped one back, so a certificate
+ * without a code or without a visible number could not be produced.
+ */
+export interface AutoStampSettings {
+    code?: boolean;
+    number?: boolean;
+}
+
 /** Plan from what the visual editor has placed on the canvas. */
-export const planFromFieldNames = (fieldNames: Iterable<string>): AutoBadgePlan => {
+export const planFromFieldNames = (
+    fieldNames: Iterable<string>,
+    stamp: AutoStampSettings = {}
+): AutoBadgePlan => {
     const placed = new Set(fieldNames);
     const placesCode = placed.has('certificate_qr') || placed.has('certificate_barcode');
-    return plan(!placesCode, !placed.has('certificate_id'));
+    return plan(
+        !placesCode && stamp.code !== false,
+        !placed.has('certificate_id') && stamp.number !== false
+    );
 };
 
 /**
@@ -204,9 +231,12 @@ export const planFromFieldNames = (fieldNames: Iterable<string>): AutoBadgePlan 
 const hasToken = (html: string, token: string): boolean =>
     new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, 'i').test(html || '');
 
-export const planFromHtml = (html: string): AutoBadgePlan => {
+export const planFromHtml = (html: string, stamp: AutoStampSettings = {}): AutoBadgePlan => {
     const placesCode = hasToken(html, 'CERTIFICATE_QR') || hasToken(html, 'CERTIFICATE_BARCODE');
-    return plan(!placesCode, !hasToken(html, 'CERTIFICATE_ID'));
+    return plan(
+        !placesCode && stamp.code !== false,
+        !hasToken(html, 'CERTIFICATE_ID') && stamp.number !== false
+    );
 };
 
 const escapeAttr = (s: string): string =>
@@ -238,13 +268,13 @@ export const buildAutoBadgeHtml = ({
         ? `<span style="display:block;margin-top:${AUTO_BADGE.idMarginTopPx}px;">` +
           `${escapeAttr(certificateId)}</span>`
         : '';
+    // Byte-for-byte what appendCertificateIdBadge emits: no panel, no border,
+    // no padding — declaring them at zero would be the same pixels but a
+    // different string, and these two are meant to be comparable by eye.
     return (
         `<div style="position:fixed;bottom:${AUTO_BADGE.bottomMm}mm;right:${AUTO_BADGE.rightMm}mm;` +
         `font-family:${AUTO_BADGE.fontFamily};font-size:${AUTO_BADGE.idFontSizePx}px;` +
-        `color:${AUTO_BADGE.textColor};background:${AUTO_BADGE.background};` +
-        `padding:${AUTO_BADGE.paddingYPx}px ${AUTO_BADGE.paddingXPx}px;` +
-        `border:${AUTO_BADGE.borderPx}px solid ${AUTO_BADGE.borderColor};` +
-        `border-radius:${AUTO_BADGE.borderRadiusPx}px;letter-spacing:${AUTO_BADGE.letterSpacing};` +
+        `color:${AUTO_BADGE.textColor};letter-spacing:${AUTO_BADGE.letterSpacing};` +
         `text-align:center;">${codeImg}${idSpan}</div>`
     );
 };

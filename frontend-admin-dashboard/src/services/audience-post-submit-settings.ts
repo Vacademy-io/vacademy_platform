@@ -27,45 +27,6 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 // ─── Shape ───────────────────────────────────────────────────────────────────
 
-/**
- * Artwork above the heading. Names are stable strings (not component refs) so
- * the config stays plain JSON; each renderer maps them to its own icon set.
- */
-export const POST_SUBMIT_ICONS = [
-    'check',
-    'confetti',
-    'heart',
-    'envelope',
-    'calendar',
-    'none',
-] as const;
-export type PostSubmitIcon = (typeof POST_SUBMIT_ICONS)[number];
-
-export const POST_SUBMIT_ICON_LABELS: Record<PostSubmitIcon, string> = {
-    check: 'Check mark',
-    confetti: 'Celebration',
-    heart: 'Heart',
-    envelope: 'Envelope',
-    calendar: 'Calendar',
-    none: 'No icon',
-};
-
-/**
- * Accent applied to the icon (and to primary buttons on the public page).
- * Deliberately a token family name, never a hex value — the renderers map it to
- * design-system classes so institute theming and dark mode keep working.
- */
-export const POST_SUBMIT_ACCENTS = ['success', 'primary', 'info', 'warning', 'neutral'] as const;
-export type PostSubmitAccent = (typeof POST_SUBMIT_ACCENTS)[number];
-
-export const POST_SUBMIT_ACCENT_LABELS: Record<PostSubmitAccent, string> = {
-    success: 'Green',
-    primary: 'Brand',
-    info: 'Blue',
-    warning: 'Amber',
-    neutral: 'Neutral',
-};
-
 export type PostSubmitButtonVariant = 'primary' | 'secondary';
 
 export interface PostSubmitButton {
@@ -80,11 +41,12 @@ export interface PostSubmitButton {
 export const MAX_POST_SUBMIT_BUTTONS = 4;
 
 export interface AudiencePostSubmitConfiguration {
-    // ── Artwork ──
-    icon: PostSubmitIcon;
-    accent: PostSubmitAccent;
-    /** Optional image shown above the icon (logo, event banner, QR code…). */
-    imageUrl: string;
+    /**
+     * Master switch. OFF by default: until an admin deliberately turns this on,
+     * every respondent-facing surface renders exactly what it rendered before
+     * this feature existed, and no redirect ever fires.
+     */
+    enabled: boolean;
 
     // ── Copy ──
     /** Heading on the thank-you screen. Blank hides it. */
@@ -109,9 +71,7 @@ export interface AudiencePostSubmitConfiguration {
 }
 
 export const DEFAULT_POST_SUBMIT_CONFIGURATION: AudiencePostSubmitConfiguration = {
-    icon: 'check',
-    accent: 'success',
-    imageUrl: '',
+    enabled: false,
     successTitle: 'Registration Successful!',
     successMessage: 'Thank you for your response. Your form has been submitted successfully.',
     content: '',
@@ -205,9 +165,7 @@ export const normalizePostSubmitConfiguration = (
 ): AudiencePostSubmitConfiguration => {
     const src = (raw ?? {}) as Partial<AudiencePostSubmitConfiguration> & Record<string, unknown>;
     return {
-        icon: toEnum<PostSubmitIcon>(src.icon, POST_SUBMIT_ICONS, base.icon),
-        accent: toEnum<PostSubmitAccent>(src.accent, POST_SUBMIT_ACCENTS, base.accent),
-        imageUrl: toStr(src.imageUrl, base.imageUrl),
+        enabled: toBool(src.enabled, base.enabled),
         successTitle: toStr(src.successTitle, base.successTitle),
         successMessage: toStr(src.successMessage, base.successMessage),
         content: toStr(src.content, base.content),
@@ -327,10 +285,8 @@ export const isDefaultPostSubmitConfiguration = (
     config: AudiencePostSubmitConfiguration
 ): boolean => {
     const d = DEFAULT_POST_SUBMIT_CONFIGURATION;
+    if (!config.enabled) return true;
     return (
-        config.icon === d.icon &&
-        config.accent === d.accent &&
-        config.imageUrl === d.imageUrl &&
         config.successTitle === d.successTitle &&
         config.successMessage === d.successMessage &&
         config.content === d.content &&
@@ -346,11 +302,11 @@ export const isDefaultPostSubmitConfiguration = (
 export const validatePostSubmitConfiguration = (
     config: AudiencePostSubmitConfiguration
 ): string | null => {
+    // Switched off means nothing here reaches a respondent, so half-finished
+    // content must never stand between the admin and saving the campaign.
+    if (!config.enabled) return null;
     if (!isValidPostSubmitUrl(config.redirectUrl)) {
         return 'Redirect URL must be a relative path (/thank-you) or an http(s) URL.';
-    }
-    if (config.imageUrl.trim() && !isValidPostSubmitUrl(config.imageUrl)) {
-        return 'Image URL must be a relative path or an http(s) URL.';
     }
     for (const [index, button] of config.buttons.entries()) {
         // A row the admin added and then left completely blank is a change of

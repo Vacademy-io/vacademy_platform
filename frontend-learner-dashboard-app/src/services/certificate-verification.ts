@@ -18,6 +18,26 @@ export interface CertificateVerification {
   completion_percentage: number | null;
   /** Masked, e.g. "A··· S·····" — never the learner's full name. */
   learner_name: string;
+  /**
+   * Institute branding, so the verification page can present itself as the
+   * institute's own. It travels on the response because whoever scans a
+   * certificate is not logged in and may be on any domain — there is no
+   * institute context on the page to resolve branding from.
+   */
+  institute_logo_file_id?: string | null;
+  institute_theme_code?: string | null;
+  institute_website?: string | null;
+  /** A line the institute chose to show here, or nothing. */
+  institute_note?: string | null;
+  /**
+   * How the institute set this page up. Null on any field means the shipped
+   * default — the page must read the same for an institute that never
+   * configured it as it did before any of this existed.
+   */
+  headline?: string | null;
+  show_course?: boolean | null;
+  show_issue_date?: boolean | null;
+  show_completion?: boolean | null;
 }
 
 export type VerificationResult =

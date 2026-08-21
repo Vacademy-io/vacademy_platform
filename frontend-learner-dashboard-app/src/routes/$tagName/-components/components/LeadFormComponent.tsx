@@ -19,7 +19,6 @@ import {
   type PostSubmitTokens,
 } from "@/routes/audience-response/-utils/post-submit-config";
 import { usePostSubmitRedirect } from "@/routes/audience-response/-utils/use-post-submit-redirect";
-import { PostSubmitArtwork } from "@/routes/audience-response/-components/post-submit-artwork";
 import { isSpamSubmission } from "../../-utils/website-lead";
 import { emitLeadCaptured } from "../../-utils/catalogue-tracking";
 
@@ -127,8 +126,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   const { redirectUrl, secondsLeft } = usePostSubmitRedirect(
     postSubmitConfig,
     postSubmitTokens,
-    // Never redirect the admin previewing the page in the builder.
-    done && !isPreviewMode
+    // Gated on the master switch, and never for the admin previewing the page.
+    done && !isPreviewMode && postSubmitConfig.enabled
   );
 
   const isLeft = align === "left";
@@ -293,17 +292,11 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
         role="status"
       >
-        {/* Artwork is admin-configurable; the catalogue's own check icon is the
-            fallback for campaigns that turned the icon off but set no image. */}
-        {postSubmitConfig.icon === "none" && !postSubmitConfig.imageUrl.trim() ? (
-          <CheckCircle
-            weight="duotone"
-            className="size-10 text-catalogue-brand-ink"
-            aria-hidden="true"
-          />
-        ) : (
-          <PostSubmitArtwork config={postSubmitConfig} size="sm" />
-        )}
+        <CheckCircle
+          weight="duotone"
+          className="size-10 text-catalogue-brand-ink"
+          aria-hidden="true"
+        />
         {heading && (
           <p className="catalogue-h3 text-catalogue-text-primary">{heading}</p>
         )}

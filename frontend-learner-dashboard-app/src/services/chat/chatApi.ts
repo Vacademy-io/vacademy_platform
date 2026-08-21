@@ -339,3 +339,8 @@ export async function reportChat(
   );
   return res.data;
 }
+
+
+// Re-exported so callers keep importing chat helpers from one place, while the
+// implementation stays free of URL/config imports and therefore unit-testable.
+export { describeDirectChatError } from "./direct-chat-error";

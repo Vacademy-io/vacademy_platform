@@ -12,10 +12,8 @@ import {
 
 const CONFIG = {
     ...DEFAULT_POST_SUBMIT_CONFIGURATION,
+    enabled: true,
     successTitle: 'You are in',
-    icon: 'confetti' as const,
-    accent: 'info' as const,
-    imageUrl: 'https://cdn.example.com/banner.png',
     buttons: [
         {
             id: 'b1',
@@ -50,12 +48,6 @@ describe('parsePostSubmitConfiguration', () => {
         expect(parsed.successTitle).toBe('Done');
         expect(parsed.successMessage).toBe(DEFAULT_POST_SUBMIT_CONFIGURATION.successMessage);
         expect(parsed.buttons).toEqual([]);
-    });
-
-    it('falls back on an icon or accent this build does not know', () => {
-        const parsed = normalizePostSubmitConfiguration({ icon: 'rocket', accent: 'fuchsia' });
-        expect(parsed.icon).toBe(DEFAULT_POST_SUBMIT_CONFIGURATION.icon);
-        expect(parsed.accent).toBe(DEFAULT_POST_SUBMIT_CONFIGURATION.accent);
     });
 
     it('migrates the original single-button shape', () => {
@@ -170,12 +162,6 @@ describe('validatePostSubmitConfiguration', () => {
         expect(validatePostSubmitConfiguration({ ...CONFIG, buttons: [] })).toBeNull();
     });
 
-    it('rejects an unsafe image URL', () => {
-        expect(
-            validatePostSubmitConfiguration({ ...CONFIG, imageUrl: 'javascript:alert(1)' })
-        ).toMatch(/Image URL/);
-    });
-
     it('rejects an unsafe redirect', () => {
         expect(
             validatePostSubmitConfiguration({ ...CONFIG, redirectUrl: 'javascript:alert(1)' })
@@ -202,6 +188,7 @@ describe('isDefaultPostSubmitConfiguration', () => {
         expect(
             isDefaultPostSubmitConfiguration({
                 ...DEFAULT_POST_SUBMIT_CONFIGURATION,
+                enabled: true,
                 successTitle: 'Hi',
             })
         ).toBe(false);
@@ -213,6 +200,7 @@ describe('blank button rows', () => {
     // validation must not block the save over a row that will never be stored.
     const blankRow = {
         ...DEFAULT_POST_SUBMIT_CONFIGURATION,
+        enabled: true,
         buttons: [{ id: 'b1', text: '   ', url: '  ', variant: 'primary' as const }],
     };
 
@@ -228,8 +216,37 @@ describe('blank button rows', () => {
         expect(
             validatePostSubmitConfiguration({
                 ...DEFAULT_POST_SUBMIT_CONFIGURATION,
+                enabled: true,
                 buttons: [{ id: 'b1', text: 'Go', url: '', variant: 'primary' }],
             })
         ).toMatch(/needs a link/);
+    });
+});
+
+describe('the master switch', () => {
+    it('is OFF by default', () => {
+        expect(DEFAULT_POST_SUBMIT_CONFIGURATION.enabled).toBe(false);
+        expect(parsePostSubmitConfiguration(undefined).enabled).toBe(false);
+    });
+
+    it('makes an off config inert no matter what else is stored', () => {
+        const off = { ...CONFIG, enabled: false };
+        // Nothing may reach a respondent, and nothing may block the save.
+        expect(isDefaultPostSubmitConfiguration(off)).toBe(true);
+        expect(
+            validatePostSubmitConfiguration({ ...off, redirectUrl: 'javascript:alert(1)' })
+        ).toBeNull();
+    });
+
+    it('still validates once it is switched on', () => {
+        expect(
+            validatePostSubmitConfiguration({ ...CONFIG, redirectUrl: 'javascript:alert(1)' })
+        ).toMatch(/Redirect URL/);
+    });
+
+    it('survives the setting_json round trip', () => {
+        expect(
+            parsePostSubmitConfiguration(applyPostSubmitConfiguration(null, CONFIG)).enabled
+        ).toBe(true);
     });
 });

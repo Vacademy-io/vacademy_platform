@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Check,
     ChatCenteredDots,
@@ -14,7 +14,9 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { MyPagination } from '@/components/design-system/pagination';
+import { MyTable } from '@/components/design-system/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useDecideMentorRequest, useMentorRequests, useMentors } from '../-hooks/use-mentorship';
 import { MentorshipPageHeader } from './MentorshipPageHeader';
 import type { MentorDTO, MentorRequestDTO } from '../-types/mentorship-types';
@@ -59,18 +61,191 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
         null
     );
 
+    const [search, setSearch] = useState('');
+
     const { data, isLoading, isError, refetch } = useMentorRequests(
         instituteId,
         status,
         page,
         PAGE_SIZE
     );
-    const requests = data?.content ?? [];
+    const allRequests = useMemo(() => data?.content ?? [], [data?.content]);
+
+    // Search narrows the loaded page. The requests endpoint takes no query, and the
+    // count line below always says which of the two numbers is which, so a match on
+    // another page is never silently presented as "no results".
+    const query = search.trim().toLowerCase();
+    const requests = useMemo(
+        () =>
+            query
+                ? allRequests.filter((r) =>
+                      [r.student_name, r.student_email, r.mentor_name, r.message].some((f) =>
+                          (f ?? '').toLowerCase().includes(query)
+                      )
+                  )
+                : allRequests,
+        [allRequests, query]
+    );
 
     const switchTab = (next: string) => {
         setStatus(next);
         setPage(0);
+        setSearch('');
     };
+
+    const columns = useMemo<ColumnDef<MentorRequestDTO>[]>(
+        () => [
+            {
+                id: 'learner',
+                header: 'Learner',
+                size: 230,
+                cell: ({ row }) => {
+                    const r = row.original;
+                    return (
+                        <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-caption font-semibold text-primary-600">
+                                {initials(r.student_name)}
+                            </span>
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-body font-medium text-neutral-700">
+                                    {r.student_name || r.student_user_id}
+                                </span>
+                                {r.student_email && (
+                                    <span className="truncate text-caption text-neutral-400">
+                                        {r.student_email}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'mentor',
+                header: 'Requested mentor',
+                size: 200,
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (!r.mentor_id) {
+                        return (
+                            <span className="flex w-fit items-center gap-1 rounded-full bg-neutral-100 px-2 py-1 text-caption text-neutral-600">
+                                <UsersThree size={13} /> Any available mentor
+                            </span>
+                        );
+                    }
+                    return (
+                        <div className="flex min-w-0 items-center gap-2">
+                            <MentorAvatar
+                                fileId={r.mentor_profile_image_file_id}
+                                name={r.mentor_name}
+                                className="size-7 shrink-0 text-caption"
+                            />
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-body text-neutral-700">
+                                    {r.mentor_name || 'a mentor'}
+                                </span>
+                                {typeof r.mentor_available_slots === 'number' && (
+                                    <span
+                                        className={`text-caption ${
+                                            r.mentor_available_slots === 0
+                                                ? 'text-danger-600'
+                                                : 'text-neutral-400'
+                                        }`}
+                                    >
+                                        {r.mentor_available_slots === 0
+                                            ? 'At their limit'
+                                            : `${r.mentor_available_slots} places left`}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'message',
+                header: 'Message',
+                size: 240,
+                cell: ({ row }) => {
+                    const r = row.original;
+                    const note = r.status !== 'PENDING' ? r.decision_note : null;
+                    if (!r.message && !note) {
+                        return <span className="text-caption text-neutral-300">—</span>;
+                    }
+                    return (
+                        <div className="flex min-w-0 flex-col gap-1">
+                            {r.message && (
+                                <span
+                                    className="line-clamp-2 flex items-start gap-1.5 text-caption text-neutral-600"
+                                    title={r.message}
+                                >
+                                    <ChatCenteredDots
+                                        size={13}
+                                        className="mt-0.5 shrink-0 text-neutral-400"
+                                    />
+                                    {r.message}
+                                </span>
+                            )}
+                            {note && (
+                                <span
+                                    className="line-clamp-2 text-caption text-neutral-400"
+                                    title={note}
+                                >
+                                    Note: {note}
+                                </span>
+                            )}
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'requested',
+                header: 'Requested',
+                size: 160,
+                cell: ({ row }) => (
+                    <span className="flex items-center gap-1 text-caption text-neutral-500">
+                        <Clock size={12} /> {fmtDate(row.original.created_at)}
+                    </span>
+                ),
+            },
+            {
+                id: 'actions',
+                header: 'Decision',
+                size: 190,
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (r.status !== 'PENDING') {
+                        return (
+                            <StatusBadge status={r.status} decidedAt={r.decided_at} />
+                        );
+                    }
+                    return (
+                        <div className="flex items-center gap-2">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setDecide({ request: r, approve: false })}
+                                title="Decline with an optional reason the learner sees"
+                            >
+                                <X size={16} /> Decline
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="small"
+                                onClick={() => setDecide({ request: r, approve: true })}
+                                title="Pair this learner with a mentor"
+                            >
+                                <Check size={16} /> Approve
+                            </MyButton>
+                        </div>
+                    );
+                },
+            },
+        ],
+        []
+    );
 
     return (
         <div className="flex flex-col gap-6 p-6">
@@ -99,6 +274,37 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
                         )}
                     </button>
                 ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                    <MagnifyingGlass
+                        size={16}
+                        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                    />
+                    <MyInput
+                        input={search}
+                        onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setSearch(e.target.value)
+                        }
+                        inputType="text"
+                        inputPlaceholder="Search by learner, mentor or message"
+                        className="pl-9 sm:w-full"
+                    />
+                </div>
+                {query && (
+                    <span className="text-caption text-neutral-500">
+                        {requests.length} of {allRequests.length} on this page match
+                        {' · '}
+                        <button
+                            type="button"
+                            className="font-medium text-primary-500 hover:text-primary-600"
+                            onClick={() => setSearch('')}
+                        >
+                            Clear
+                        </button>
+                    </span>
+                )}
             </div>
 
             {isLoading ? (
@@ -134,19 +340,43 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
                         Retry
                     </MyButton>
                 </div>
-            ) : requests.length === 0 ? (
+            ) : allRequests.length === 0 ? (
                 <EmptyRequests status={status} />
+            ) : requests.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                    <MagnifyingGlass size={32} className="text-neutral-300" />
+                    <p className="text-body font-medium text-neutral-700">
+                        No requests on this page match &ldquo;{search.trim()}&rdquo;
+                    </p>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setSearch('')}
+                    >
+                        Clear search
+                    </MyButton>
+                </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    {requests.map((r) => (
-                        <RequestRow
-                            key={r.id}
-                            request={r}
-                            onApprove={() => setDecide({ request: r, approve: true })}
-                            onDecline={() => setDecide({ request: r, approve: false })}
+                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                        <MyTable<MentorRequestDTO>
+                            data={{
+                                content: requests,
+                                total_pages: data?.total_pages ?? 1,
+                                page_no: page,
+                                page_size: PAGE_SIZE,
+                                total_elements: data?.total_elements ?? requests.length,
+                                last: data?.last ?? true,
+                            }}
+                            columns={columns}
+                            isLoading={false}
+                            error={null}
+                            currentPage={page}
+                            scrollable
                         />
-                    ))}
-                    {(data?.total_pages ?? 0) > 1 && (
+                    </div>
+                    {!query && (data?.total_pages ?? 0) > 1 && (
                         <MyPagination
                             currentPage={page}
                             totalPages={data?.total_pages ?? 1}
@@ -163,117 +393,6 @@ export function MentorRequestsPanel({ instituteId }: { instituteId: string | und
                     if (!open) setDecide(null);
                 }}
             />
-        </div>
-    );
-}
-
-function RequestRow({
-    request,
-    onApprove,
-    onDecline,
-}: {
-    request: MentorRequestDTO;
-    onApprove: () => void;
-    onDecline: () => void;
-}) {
-    const pending = request.status === 'PENDING';
-    const anyMentor = !request.mentor_id;
-
-    return (
-        <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-100 text-body font-semibold text-primary-600">
-                    {initials(request.student_name)}
-                </span>
-                <div className="flex min-w-0 flex-col gap-1">
-                    <span className="text-body font-medium text-neutral-700">
-                        {request.student_name || request.student_user_id}
-                    </span>
-                    {request.student_email && (
-                        <span className="text-caption text-neutral-400">
-                            {request.student_email}
-                        </span>
-                    )}
-
-                    <span className="flex flex-wrap items-center gap-1.5 text-caption text-neutral-500">
-                        {anyMentor ? (
-                            <span className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600">
-                                <UsersThree size={13} /> Any available mentor
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-1.5">
-                                Requested
-                                <MentorAvatar
-                                    fileId={request.mentor_profile_image_file_id}
-                                    name={request.mentor_name}
-                                    className="size-5 text-caption"
-                                />
-                                <b className="font-medium text-neutral-700">
-                                    {request.mentor_name || 'a mentor'}
-                                </b>
-                                {typeof request.mentor_available_slots === 'number' && (
-                                    <span
-                                        className={
-                                            request.mentor_available_slots === 0
-                                                ? 'text-danger-600'
-                                                : 'text-neutral-400'
-                                        }
-                                    >
-                                        ·{' '}
-                                        {request.mentor_available_slots === 0
-                                            ? 'full'
-                                            : `${request.mentor_available_slots} places left`}
-                                    </span>
-                                )}
-                            </span>
-                        )}
-                        <span className="flex items-center gap-1 text-neutral-400">
-                            <Clock size={12} /> {fmtDate(request.created_at)}
-                        </span>
-                    </span>
-
-                    {request.message && (
-                        <p className="mt-1 flex items-start gap-1.5 rounded-md bg-neutral-50 p-2 text-caption text-neutral-600">
-                            <ChatCenteredDots
-                                size={14}
-                                className="mt-0.5 shrink-0 text-neutral-400"
-                            />
-                            {request.message}
-                        </p>
-                    )}
-
-                    {!pending && request.decision_note && (
-                        <span className="text-caption text-neutral-400">
-                            Note: {request.decision_note}
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {pending ? (
-                <div className="flex items-center gap-2">
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={onDecline}
-                        title="Decline with an optional reason the learner sees"
-                    >
-                        <X size={16} /> Decline
-                    </MyButton>
-                    <MyButton
-                        type="button"
-                        buttonType="primary"
-                        scale="small"
-                        onClick={onApprove}
-                        title="Pair this learner with a mentor"
-                    >
-                        <Check size={16} /> Approve
-                    </MyButton>
-                </div>
-            ) : (
-                <StatusBadge status={request.status} decidedAt={request.decided_at} />
-            )}
         </div>
     );
 }

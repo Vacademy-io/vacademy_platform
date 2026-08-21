@@ -16,15 +16,34 @@ vi.mock('@/routes/mentorship/-hooks/use-mentorship', () => ({
     useMentorSessions: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
     useSessionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useMentorDashboard: (...a: unknown[]) => useMentorDashboardMock(...a),
+    // Reached through the student side sheet and the schedule dialog the Students tab opens.
+    useMyMentorProfile: () => ({ data: null }),
+    useStudentTimeline: () => ({ data: [], isLoading: false }),
+    useMenteeCalls: () => ({ data: [], isLoading: false }),
+    useCreateNote: () => ({ mutateAsync: vi.fn() }),
+    useScheduleSession: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useMentorSlots: () => ({ data: { slots: [] }, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
-// The view links back to the list; the test has no router around it.
+// The view links back to the list and the student rows open a chat; the test has no
+// router around it.
 vi.mock('@tanstack/react-router', () => ({
     Link: ({ children, ...rest }: { children?: React.ReactNode; to?: string }) => (
         <a {...rest}>{children}</a>
     ),
+    useNavigate: () => vi.fn(),
+    // MyTable mounts the shared student-menu dialogs, which reach for the router.
+    useRouter: () => ({ navigate: vi.fn(), invalidate: vi.fn() }),
+}));
+vi.mock('@/routes/manage-students/students-list/-services/getLearnerPackages', () => ({
+    useLearnerPackagesQuery: () => ({ data: { content: [] }, isLoading: false }),
 }));
 vi.mock('@/routes/mentorship/-components/MentorAvatar', () => ({
     MentorAvatar: () => <span data-testid="avatar" />,
+}));
+
+const chatEnabledMock = vi.fn();
+vi.mock('@/hooks/use-chat-enabled', () => ({
+    useChatEnabled: () => chatEnabledMock(),
 }));
 
 import { useState } from 'react';
@@ -72,6 +91,8 @@ describe('MentorDetailView', () => {
         useMentorAvailabilityMock.mockReturnValue({ ...idle, data: null });
         useMentorFeedbackMock.mockReturnValue({ ...idle, data: [] });
         useMentorDashboardMock.mockReturnValue({ ...idle, data: { mentors: [mentor()] } });
+        // Chat is off by default institute-wide; individual tests opt in.
+        chatEnabledMock.mockReturnValue({ enabled: false, isLoading: false });
     });
 
     const open = (m: MentorDTO = mentor()) => {
@@ -157,6 +178,100 @@ describe('MentorDetailView', () => {
         fireEvent.click(screen.getByRole('button', { name: /^Students/ }));
         expect(screen.getByText('Riya Sharma')).toBeInTheDocument();
         expect(screen.getByText('Auto-assigned')).toBeInTheDocument();
+    });
+
+    const withOneMentee = () => {
+        useMentorMenteesMock.mockReturnValue({
+            ...idle,
+            data: [
+                {
+                    assignment_id: 'a1',
+                    mentor_id: 'm1',
+                    student_user_id: 'stu-1',
+                    name: 'Riya Sharma',
+                    email: 'riya@example.com',
+                    mobile_number: '9998887776',
+                    assignment_method: 'MANUAL',
+                },
+            ],
+        });
+        open();
+        fireEvent.click(screen.getByRole('button', { name: /^Students/ }));
+    };
+
+    it('shows the student table as a table, with the contact details an admin scans for', () => {
+        withOneMentee();
+        expect(screen.getByRole('table')).toBeInTheDocument();
+        expect(screen.getByText('riya@example.com')).toBeInTheDocument();
+        expect(screen.getByText('9998887776')).toBeInTheDocument();
+    });
+
+    it('opens the student side sheet — not a new page — when their name is clicked', () => {
+        withOneMentee();
+        // Nothing from the sheet is on screen until the row is opened.
+        expect(screen.queryByText('Learning')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Riya Sharma' }));
+
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('Learning')).toBeInTheDocument();
+        expect(screen.getByText('Scheduled calls')).toBeInTheDocument();
+        // The table stays mounted behind the sheet, so closing it puts the admin back
+        // where they were. It is aria-hidden while the sheet is modal, so this asks the
+        // DOM directly rather than the accessibility tree.
+        expect(document.querySelector('table')).not.toBeNull();
+    });
+
+    it('offers a 1:1 with that student, without asking which mentor', () => {
+        withOneMentee();
+        fireEvent.click(screen.getByRole('button', { name: /Schedule a 1:1 with Riya Sharma/ }));
+
+        expect(screen.getByText('Schedule a 1:1')).toBeInTheDocument();
+        // The learner is fixed by the row it was opened from, and the mentor by the
+        // detail view — so neither picker appears.
+        expect(screen.getByText('Learner')).toBeInTheDocument();
+        expect(screen.queryByText('Choose a mentor')).not.toBeInTheDocument();
+    });
+
+    it('disables Message and names the blocker when In-App Messages is off', () => {
+        withOneMentee();
+        // In-App Messages is off until an institute switches it on, and the backend
+        // refuses every conversation call with 403 CHAT_DISABLED until then. The action
+        // stays VISIBLE for staff — an admin is who can turn it on, so hiding it would
+        // read as "mentorship messaging doesn't exist".
+        const button = screen.getByRole('button', { name: /Message Riya Sharma/ });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', expect.stringContaining('In-App Messages'));
+        // The actions that DO work are untouched.
+        expect(screen.getByRole('button', { name: /View Riya Sharma/ })).toBeEnabled();
+    });
+
+    it('enables Message once the institute has In-App Messages on', () => {
+        chatEnabledMock.mockReturnValue({ enabled: true, isLoading: false });
+        withOneMentee();
+        const button = screen.getByRole('button', { name: /Message Riya Sharma/ });
+        expect(button).toBeEnabled();
+        expect(button).toHaveAttribute('title', 'Send this student a direct message');
+    });
+
+    it('search narrows the student table', () => {
+        useMentorMenteesMock.mockReturnValue({
+            ...idle,
+            data: [
+                { assignment_id: 'a1', mentor_id: 'm1', student_user_id: 's1', name: 'Riya Sharma' },
+                { assignment_id: 'a2', mentor_id: 'm1', student_user_id: 's2', name: 'Ravi Kumar' },
+            ],
+        });
+        open();
+        fireEvent.click(screen.getByRole('button', { name: /^Students/ }));
+        expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
+
+        fireEvent.change(screen.getByPlaceholderText(/Search by name/), {
+            target: { value: 'riya' },
+        });
+
+        expect(screen.getByText('Riya Sharma')).toBeInTheDocument();
+        expect(screen.queryByText('Ravi Kumar')).not.toBeInTheDocument();
     });
 
     it('feedback is only fetched once that tab is opened', () => {

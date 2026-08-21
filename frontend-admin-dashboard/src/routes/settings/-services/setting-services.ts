@@ -63,6 +63,22 @@ export interface CertificateSavePayload {
      */
     barcodeContent?: BarcodeContent;
     /**
+     * Whether the platform may stamp the code / the number bottom-right on a
+     * design that does not place them itself. Both default to true server-side,
+     * which is what the badge always did.
+     */
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    /**
+     * The public verification page's own settings. '' clears a text field;
+     * undefined leaves whatever the server holds.
+     */
+    verificationNote?: string;
+    verificationHeadline?: string;
+    verificationShowCourse?: boolean;
+    verificationShowIssueDate?: boolean;
+    verificationShowCompletion?: boolean;
+    /**
      * Admin-defined fields, for values the platform has no built-in token for.
      * Each becomes a draggable chip and a {{CF_<KEY>}} token on the template.
      * Send `[]` to clear them; `undefined` preserves what the server has.
@@ -131,6 +147,21 @@ export const handleConfigureCertificateSettings = async (
                           certificateNumbering: payload.certificateNumbering,
                           qrVerificationUrlTemplate: payload.qrVerificationUrlTemplate,
                           badgeCodeType: payload.badgeCodeType,
+                          // These two were declared on the payload type but
+                          // never put in the request body, so the backend's
+                          // preserve-on-null merge kept the old values while
+                          // the settings page patched its local store with the
+                          // new ones. The admin saw the change stick until the
+                          // next hard reload, then watched it revert.
+                          barcodeContent: payload.barcodeContent,
+                          autoStampCode: payload.autoStampCode,
+                          autoStampNumber: payload.autoStampNumber,
+                          verificationNote: payload.verificationNote,
+                          verificationHeadline: payload.verificationHeadline,
+                          verificationShowCourse: payload.verificationShowCourse,
+                          verificationShowIssueDate: payload.verificationShowIssueDate,
+                          verificationShowCompletion: payload.verificationShowCompletion,
+                          customFields: payload.customFields,
                       },
                   },
               },

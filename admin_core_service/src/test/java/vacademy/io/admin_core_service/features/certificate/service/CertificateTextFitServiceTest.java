@@ -115,6 +115,94 @@ class CertificateTextFitServiceTest {
                 + text + "</div></div></body></html>";
     }
 
+    /** The same field, with the box height the newer serializer stamps on it. */
+    private String field(String text, int width, int height, int fontSize) {
+        return "<html><body><div style=\"position:absolute\">"
+                + "<div style=\"width:100%;font-size:" + fontSize + "px\""
+                + " data-fit-width=\"" + width + "\" data-fit-height=\"" + height + "\""
+                + " data-fit-size=\"" + fontSize + "\">"
+                + text + "</div></div></body></html>";
+    }
+
+    // ------------------------------------------------------ fitting to the box
+
+    /**
+     * Wrapping before shrinking. A long name in a box one line tall keeps the
+     * size the design chose and takes a second line; shrinking it to fit one
+     * line makes it look like a fault on an otherwise formal document.
+     */
+    @Test
+    void aLongValueWrapsAtFullSizeRatherThanShrinkingToOneLine() {
+        String name = "Bhuvaneshwari Ramachandran";
+        int oneLineTall = (int) Math.round(32 * 1.2);
+
+        assertEquals(2, CertificateTextFitService.linesNeeded(name, 400, 32));
+        assertEquals(32.0, CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall), 0.001);
+    }
+
+    /** Past the line budget it does shrink — that is what the budget is for. */
+    @Test
+    void shrinksOnlyWhenWrappingIsNotEnough() {
+        String name = "Advanced Certificate in Data Science and Machine Learning";
+        int oneLineTall = (int) Math.round(32 * 1.2);
+
+        assertEquals(3, CertificateTextFitService.linesNeeded(name, 400, 32));
+        double fitted = CertificateTextFitService.fitFontSize(name, 400, 32, oneLineTall);
+        assertTrue(fitted < 32, "a three-line value in a two-line budget must shrink");
+        assertTrue(CertificateTextFitService.linesNeeded(name, 400, fitted) <= 2);
+    }
+
+    /** A box drawn tall enough for three lines gets three, rather than clipping at two. */
+    @Test
+    void aTallBoxKeepsTheAdminsChosenSize() {
+        String name = "Advanced Certificate in Data Science and Machine Learning";
+        int threeLinesTall = (int) Math.round(3 * 32 * 1.2);
+
+        assertEquals(3, CertificateTextFitService.linesNeeded(name, 400, 32));
+        assertEquals(32.0,
+                CertificateTextFitService.fitFontSize(name, 400, 32, threeLinesTall),
+                0.001);
+        assertTrue(CertificateTextFitService.fitFontSize(name, 400, 32) < 32,
+                "with no height recorded the flat two-line budget still applies");
+    }
+
+    /** Two lines are always on offer, however small the box. */
+    @Test
+    void theLineBudgetIsNeverBelowTwo() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(4, 32));
+    }
+
+    /** Templates saved before the height was stamped keep the old flat budget. */
+    @Test
+    void anUnknownHeightFallsBackToTwoLines() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(0, 32));
+        assertEquals(2, CertificateTextFitService.linesAllowed(-5, 32));
+    }
+
+    @Test
+    void aTallerBoxRaisesTheBudget() {
+        assertEquals(4, CertificateTextFitService.linesAllowed(4 * 32 * 1.2, 32));
+    }
+
+    @Test
+    void aBoxDrawnAtExactlyTwoLinesHoldsTwo() {
+        assertEquals(2, CertificateTextFitService.linesAllowed(2 * 32 * 1.2, 32));
+    }
+
+    @Test
+    void fitsALongCourseNameToTheHeightStampedOnTheField() {
+        String out = service.fitTemplate(
+                field("Advanced Certificate in Data Science and Machine Learning", 400, 40, 32));
+        assertFalse(out.contains("font-size:32px"),
+                "a value needing more lines than the box holds must shrink: " + out);
+    }
+
+    /** A field whose value fits its box must not be resized just because it now has a height. */
+    @Test
+    void leavesAValueThatFitsItsBoxAlone() {
+        assertTrue(service.fitTemplate(field("Alex Sample", 400, 60, 32)).contains("font-size:32px"));
+    }
+
     @Test
     void fitsALongNameInAFieldSizedForAShortOne() {
         String out = service.fitTemplate(field("Bhuvaneshwari Ramachandran", 200, 32));

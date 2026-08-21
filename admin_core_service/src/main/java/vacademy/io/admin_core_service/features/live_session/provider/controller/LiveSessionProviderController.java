@@ -56,6 +56,7 @@ public class LiveSessionProviderController {
     private final ProviderMeetingBatchService providerMeetingBatchService;
     private final vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
+    private final vacademy.io.admin_core_service.features.live_session.service.AttendanceCriteriaEvaluator attendanceCriteriaEvaluator;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -520,6 +521,18 @@ public class LiveSessionProviderController {
 
             String sessionId = schedule.getSessionId();
 
+            // Attendance criteria are opt-in per session, so everything here is
+            // skipped for a class that never enabled them. The admin snapshot
+            // must be read before the loop: processAnalyticsAttendee resets
+            // statusType to ONLINE when it upgrades a row, which would otherwise
+            // erase the evidence that an admin had marked this learner by hand.
+            vacademy.io.admin_core_service.features.live_session.entity.LiveSession criteriaSession =
+                    liveSessionRepository.findById(sessionId).orElse(null);
+            boolean criteriaActive = attendanceCriteriaEvaluator.isActiveFor(criteriaSession);
+            java.util.Set<String> adminMarked = criteriaActive
+                    ? attendanceCriteriaEvaluator.snapshotAdminMarked(scheduleId)
+                    : null;
+
             if (callback.getAttendees() != null) {
                 for (BbbAnalyticsCallbackDTO.Attendee attendee : callback.getAttendees()) {
                     if (attendee.getExtUserId() == null || attendee.getExtUserId().isBlank()) {
@@ -533,6 +546,23 @@ public class LiveSessionProviderController {
                                 attendee.getExtUserId(), e.getMessage());
                     }
                 }
+            }
+
+            // The roster is the only authoritative statement of who was actually
+            // in the room — our own attendance rows only record that someone
+            // opened the join link. Apply the class's rule now that durations
+            // have been merged.
+            if (criteriaActive) {
+                java.util.Map<String, Boolean> roster = new java.util.HashMap<>();
+                if (callback.getAttendees() != null) {
+                    for (BbbAnalyticsCallbackDTO.Attendee a : callback.getAttendees()) {
+                        if (a.getExtUserId() != null && !a.getExtUserId().isBlank()) {
+                            roster.merge(a.getExtUserId(), Boolean.TRUE.equals(a.getModerator()),
+                                    (x, y) -> x || y);
+                        }
+                    }
+                }
+                attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked);
             }
 
             schedule.setLastAttendanceSyncAt(new java.util.Date());

@@ -86,6 +86,8 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
+/** Per-enrollment detail: carries the learner's enrollment date for one batch. */
+export const LEARNER_BATCH_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/batch-details`;
 // Learner self-service payment method (saved card + billing details)
 export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/learner/payment-method/v1/summary`;
 export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;
@@ -303,6 +305,11 @@ export const MENTORSHIP_MY_REQUEST_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/mentorship/v1/my-requests/${id}`;
 export const MENTORSHIP_MY_PENDING_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-pending-feedback`;
 export const MENTORSHIP_MY_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-feedback`;
+// The learner's own 1:1 sessions — list, cancel, reschedule. Distinct from
+// /my-sessions/*, which is the MENTOR's side of the same feature.
+export const MENTORSHIP_MY_MENTOR_SESSIONS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentor-sessions`;
+export const MENTORSHIP_MY_MENTOR_SESSION_CANCEL = `${MENTORSHIP_MY_MENTOR_SESSIONS}/cancel`;
+export const MENTORSHIP_MY_MENTOR_SESSION_RESCHEDULE = `${MENTORSHIP_MY_MENTOR_SESSIONS}/reschedule`;
 // A learner's own bookings (by invitee user id) — membership-scoped, self only.
 export const MEETINGS_BY_LEAD = `${BASE_URL}/admin-core-service/v1/meetings/by-lead`;
 

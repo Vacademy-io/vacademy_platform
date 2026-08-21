@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.telephony.core.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -59,6 +60,23 @@ public class AiCallActionRule {
 
     /** Meta-approved template name for WhatsApp; the notification template for email. */
     private String template;
+
+    /**
+     * WhatsApp only: what goes into the template's placeholders, in order.
+     *
+     * <p>Each entry is either a variable name we can resolve for this lead (name, phone, a
+     * captured form field) or a literal to send as-is.
+     *
+     * <p>The count MUST equal the template's parameter count. Meta rejects the whole send
+     * otherwise - "(#132000) number of localizable_params (10) does not match the expected
+     * number of params (2)", which is what killed calls 09394294 and 42309d27. We used to
+     * hand UnifiedSendService the entire variable map, and anything it cannot match to a
+     * declared template name it keeps verbatim ("might be positional already"), so every
+     * extra key became an extra parameter.
+     *
+     * <p>Empty means the template takes no parameters.
+     */
+    private List<String> templateParams;
 
     /** Meta identifies a template by name + language, so both travel to the action row. */
     private String templateLanguage;

@@ -92,6 +92,11 @@ export interface AiCallActionRule {
     template?: string;
     templateLanguage?: string;
     /**
+     * WhatsApp only: what fills the template's {{1}}, {{2}}, ... in order. The count must
+     * equal the template's parameter count or Meta rejects the send outright (#132000).
+     */
+    templateParams?: string[];
+    /**
      * EMAIL only: the message the person receives. Email has no template layer — it is
      * sent verbatim and its FIRST LINE becomes the subject. Supports {{name}}.
      */

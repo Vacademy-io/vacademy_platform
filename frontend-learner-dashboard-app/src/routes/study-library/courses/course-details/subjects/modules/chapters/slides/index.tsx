@@ -38,6 +38,7 @@ import { useSlides, Slide } from "@/hooks/study-library/use-slides";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { useModulesWithChaptersStore, ModulesWithChapters } from "@/stores/study-library/use-modules-with-chapters-store";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useCourseDripSchedule } from "@/hooks/use-course-drip-schedule";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
 import {
   evaluateDripCondition,
@@ -391,6 +392,26 @@ function Slides() {
     courseDetails?.dripCondition ||
     null;
 
+  // Conditions the admin configured live in the institute's course settings,
+  // not on the slide rows — same source the course page reads.
+  const dripSchedule = useCourseDripSchedule(courseId, resolvedSessionId);
+  const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
+  // Anchors plus the first-item strictness flag, spread into every
+  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
+  // rest: institutes that have not turned this on keep today's behaviour.
+  const dripAnchors = useMemo(
+    () => ({
+      enrollmentDate: dripSchedule.enrollmentDate,
+      sessionStartDate: dripSchedule.sessionStartDate,
+      strictFirstItem: dripSchedule.applyConfiguredRules,
+    }),
+    [
+      dripSchedule.enrollmentDate,
+      dripSchedule.sessionStartDate,
+      dripSchedule.applyConfiguredRules,
+    ],
+  );
+
   const { condition: slideCondition } = useDripConditions(
     dripConditionJson,
     "slide"
@@ -575,6 +596,7 @@ function Slides() {
           recentScores: slides
             .slice(0, index)
             .map((s: Slide) => s.percentage_completed || 0),
+          ...dripAnchors,
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -611,19 +633,27 @@ function Slides() {
           }
         }
 
-        // Use slide-specific condition if available, otherwise fall back to package-level
-        const conditionToUse = slideDripCondition || slideCondition;
-        const hasCondition = !!slideDripCondition || !!slideCondition;
+        // Admin-configured conditions win over anything stamped on the row.
+        const configuredCondition = dripConditionFor("slide", slide.id);
+        const conditionToUse =
+          configuredCondition || slideDripCondition || slideCondition;
+        const hasCondition =
+          !!configuredCondition || !!slideDripCondition || !!slideCondition;
 
-        // Check global flag first, then per-item condition's is_enabled flag
+        // `isDrippingEnable` owns the original row-level path; a configured
+        // condition has already cleared the new path's opt-in in conditionFor.
         const shouldEvaluate =
-          isDrippingEnable &&
+          (isDrippingEnable || !!configuredCondition) &&
           hasCondition &&
           conditionToUse?.is_enabled !== false;
 
         const evaluation =
           shouldEvaluate && conditionToUse
-            ? evaluateDripCondition(conditionToUse, progressData)
+            ? evaluateDripCondition(
+                conditionToUse,
+                progressData,
+                dripNow ? new Date(dripNow) : new Date(),
+              )
             : {
               isLocked: false,
               isHidden: false,
@@ -747,6 +777,9 @@ function Slides() {
     feedbackInSlideNav,
     feedbackBoundaryReached,
     feedbackSeenKey,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
 
   const [moduleName, setModuleName] = useState("");

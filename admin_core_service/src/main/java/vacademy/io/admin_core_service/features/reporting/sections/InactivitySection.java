@@ -33,9 +33,17 @@ import java.util.Set;
  * and the detail list is capped. Measured on the largest institute (8,226 active
  * learners): 151ms, entirely from shared buffers, 465kB peak aggregate memory.
  *
- * A learner with no rows at all is the MOST inactive, not the least — hence the
- * left join and {@code NULLS FIRST}. An inner join would silently hide exactly
- * the people this section exists to surface.
+ * A learner with no rows at all is still counted — an inner join would hide them
+ * entirely — but they are reported SEPARATELY and never named.
+ *
+ * <h3>Why "never started" and "went quiet" are split</h3>
+ * Measured at the largest institute: of 7,064 enrolled learners, 4,800 have never
+ * had a single activity row and 1,906 were active and then stopped. Reporting one
+ * combined "quiet" number produces 6,706 — 95% of the roll — and a named list
+ * dominated by people who never began, which an admin already knows and cannot act
+ * on. The recoverable cohort is the 1,906, so those are the ones named, ordered by
+ * most recently lapsed: someone who stopped last week is far more reachable than
+ * someone who stopped in March.
  */
 @Component
 @Slf4j
@@ -75,8 +83,9 @@ public class InactivitySection implements ReportSection {
 
     @Override
     public String description() {
-        return "Enrolled learners with no activity in the last " + INACTIVE_DAYS
-                + " days, and how engaged they were before they stopped.";
+        return "Learners who were active and have now stopped for " + INACTIVE_DAYS
+                + "+ days, most recently lapsed first. Counts learners who never "
+                + "started separately — they are a different problem.";
     }
 
     @Override
@@ -118,7 +127,8 @@ public class InactivitySection implements ReportSection {
                 LOOKBACK_DAYS);
 
         int activeLearners = 0;
-        int inactive7 = 0, inactive14 = 0, inactive30 = 0;
+        int neverStarted = 0, activeThisWeek = 0;
+        int lapsed7 = 0, lapsed30 = 0;
         List<SectionFacts.Row> detail = new ArrayList<>();
         Instant now = Instant.now();
 
@@ -128,14 +138,20 @@ public class InactivitySection implements ReportSection {
             Timestamp lastSeenTs = (Timestamp) r.get("last_seen");
             Long ops30 = r.get("ops_30d") == null ? 0L : ((Number) r.get("ops_30d")).longValue();
 
-            long daysQuiet = lastSeenTs == null
-                    ? Long.MAX_VALUE
-                    : Duration.between(lastSeenTs.toInstant(), now).toDays();
+            if (lastSeenTs == null) {
+                // Never began. Counted, never named — a 4,800-name list of people
+                // who never started is not something an admin can act on.
+                neverStarted++;
+                continue;
+            }
 
-            if (daysQuiet >= 30) inactive30++;
-            if (daysQuiet >= 14) inactive14++;
-            if (daysQuiet < INACTIVE_DAYS) continue;
-            inactive7++;
+            long daysQuiet = Duration.between(lastSeenTs.toInstant(), now).toDays();
+            if (daysQuiet < INACTIVE_DAYS) {
+                activeThisWeek++;
+                continue;
+            }
+            lapsed7++;
+            if (daysQuiet >= 30) lapsed30++;
 
             // Teacher recipients only ever see their own cohorts. Enforced here,
             // server-side, so a mis-configured schedule cannot widen it.
@@ -145,25 +161,26 @@ public class InactivitySection implements ReportSection {
             detail.add(SectionFacts.Row.builder()
                     .subjectId(userId)
                     .value(str(r.get("full_name"), "(unnamed learner)"))
-                    .value(daysQuiet == Long.MAX_VALUE ? "never active" : daysQuiet + " days ago")
+                    .value(daysQuiet + " days ago")
                     .value(String.valueOf(ops30))
                     .build());
         }
 
-        boolean nothingToSay = inactive7 == 0;
+        boolean nothingToSay = lapsed7 == 0;
 
         return SectionFacts.builder()
                 .sectionKey(key())
                 .title(title())
                 .identifying(true)
                 .empty(nothingToSay)
-                .headline("Enrolled learners", String.valueOf(activeLearners))
-                .headline("Quiet " + INACTIVE_DAYS + "+ days", String.valueOf(inactive7))
-                .headline("Quiet 14+ days", String.valueOf(inactive14))
-                .headline("Quiet 30+ days", String.valueOf(inactive30))
+                .headline("Enrolled", String.valueOf(activeLearners))
+                .headline("Active this week", String.valueOf(activeThisWeek))
+                .headline("Went quiet", String.valueOf(lapsed7))
+                .headline("Quiet 30+ days", String.valueOf(lapsed30))
+                .headline("Never started", String.valueOf(neverStarted))
                 .column("Learner")
-                .column("Last active")
-                .column("Activity in last 30d")
+                .column("Stopped")
+                .column("Activity before stopping")
                 .rows(detail)
                 .build();
     }
@@ -209,6 +226,6 @@ public class InactivitySection implements ReportSection {
                 ORDER BY st.created_at DESC NULLS LAST
                 LIMIT 1
             ) s ON TRUE
-            ORDER BY sn.last_seen ASC NULLS FIRST
+            ORDER BY sn.last_seen DESC NULLS LAST
             """;
 }

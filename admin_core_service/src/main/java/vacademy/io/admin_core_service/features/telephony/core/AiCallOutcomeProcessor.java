@@ -980,7 +980,8 @@ public class AiCallOutcomeProcessor {
         String callKey = (r.getCallLogId() != null && !r.getCallLogId().isBlank())
                 ? r.getCallLogId() : r.getCorrelationId();
         aiCallActionService.applyPostCall(agent, instituteId, callKey,
-                lead.userId(), lead.responseId(), root, r.getDisposition(), r.getCustomerName());
+                lead.userId(), lead.responseId(), root, r.getDisposition(), r.getCustomerName(),
+                r.getPhoneNumber(), r.getCustomerEmail());
     }
 
     private vacademy.io.common.auth.dto.UserServiceDTO buildHostPrincipal(String hostUserId) {

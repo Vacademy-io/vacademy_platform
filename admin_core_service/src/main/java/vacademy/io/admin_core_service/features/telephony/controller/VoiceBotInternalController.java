@@ -189,8 +189,10 @@ public class VoiceBotInternalController {
 
         String leadName = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
+        String leadPhone = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+                : userMobileResolver.findMobile(row.getUserId()).orElse(null);
         int created = aiCallActionService.applyMidCall(agent, row.getInstituteId(), row.getId(),
-                row.getUserId(), row.getResponseId(), artefact, leadName);
+                row.getUserId(), row.getResponseId(), artefact, leadName, leadPhone, null);
         log.info("vacademy-ai: mid-call action corr={} artefact={} created={}",
                 corr, artefact, created);
         return ResponseEntity.ok(Map.of("ok", true, "created", created));

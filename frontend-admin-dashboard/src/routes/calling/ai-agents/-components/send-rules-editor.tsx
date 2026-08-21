@@ -62,32 +62,6 @@ function triggerKindOf(rule: AiCallActionRule): TriggerKind {
     return 'promised';
 }
 
-/**
- * The ONLY variables that resolve on this path.
- *
- * Unified send substitutes exactly the keys the caller supplies and ships any other
- * `{{x}}` to the inbox literally (see UnifiedVariableAliases). AiCallActionService
- * supplies one value - the caller's name - which UnifiedVariableAliases then fills in
- * across this whole family. Anything else in a template reaches the parent as raw
- * `{{...}}` text, so the editor has to say so before it is saved.
- */
-const RESOLVABLE_VARS = new Set([
-    'name', 'fullName', 'full_name', 'fullname', 'user_name', 'userName',
-    'student_name', 'studentName', 'parentName', 'parent_name',
-    'leadName', 'lead_name', 'recipient_name', 'recipientName',
-]);
-
-function unresolvedVars(body?: string): string[] {
-    const found = new Set<string>();
-    const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
-    let m = re.exec(body || '');
-    while (m !== null) {
-        if (m[1] && !RESOLVABLE_VARS.has(m[1])) found.add(m[1]);
-        m = re.exec(body || '');
-    }
-    return Array.from(found);
-}
-
 const BLANK: AiCallActionRule = {
     enabled: true,
     timing: 'POST_CALL',
@@ -471,23 +445,15 @@ Namaste {{name}}, ...`}
                         </div>
 
                         {!isMeeting && !isWhatsApp && (
-                            <>
-                                <p className="text-caption text-neutral-500">
-                                    Email is sent exactly as written — the first line becomes the
-                                    subject. Use {'{{name}}'} for the caller&apos;s name.
-                                </p>
-                                {unresolvedVars(rule.messageBody).length > 0 && (
-                                    <p className="text-caption text-warning-600">
-                                        These will reach the reader as raw text, because a call
-                                        cannot supply them:{' '}
-                                        {unresolvedVars(rule.messageBody)
-                                            .map((v) => '{{' + v + '}}')
-                                            .join(', ')}
-                                        . Remove them or replace them with wording that does not
-                                        need data we do not have.
-                                    </p>
-                                )}
-                            </>
+                            <p className="text-caption text-neutral-500">
+                                Email is sent exactly as written — the first line becomes the
+                                subject. Variables are filled from the lead&apos;s own record:{' '}
+                                {'{{name}}'}, {'{{phone}}'}, {'{{email}}'}, any field your form
+                                captured (e.g. {'{{course_interested}}'}), and anything the agent
+                                captured on the call. A variable that lead has no value for is
+                                left as written — so pick a template that matches the data you
+                                collect.
+                            </p>
                         )}
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

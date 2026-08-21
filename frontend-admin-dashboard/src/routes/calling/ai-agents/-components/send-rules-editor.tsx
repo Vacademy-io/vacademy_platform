@@ -26,6 +26,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { whatsappTemplateService } from '@/services/whatsapp-template-service';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { fetchEmailTemplates } from '@/routes/calling/ai-agents/-services/ai-agents';
 import type { AiCallActionRule } from '@/routes/settings/-components/AiAgentsCard';
 
 type TriggerKind = 'promised' | 'disposition' | 'meeting' | 'extracted';
@@ -58,6 +60,32 @@ function triggerKindOf(rule: AiCallActionRule): TriggerKind {
     if (w.meetingRequested) return 'meeting';
     if (w.extracted && Object.keys(w.extracted).length) return 'extracted';
     return 'promised';
+}
+
+/**
+ * The ONLY variables that resolve on this path.
+ *
+ * Unified send substitutes exactly the keys the caller supplies and ships any other
+ * `{{x}}` to the inbox literally (see UnifiedVariableAliases). AiCallActionService
+ * supplies one value - the caller's name - which UnifiedVariableAliases then fills in
+ * across this whole family. Anything else in a template reaches the parent as raw
+ * `{{...}}` text, so the editor has to say so before it is saved.
+ */
+const RESOLVABLE_VARS = new Set([
+    'name', 'fullName', 'full_name', 'fullname', 'user_name', 'userName',
+    'student_name', 'studentName', 'parentName', 'parent_name',
+    'leadName', 'lead_name', 'recipient_name', 'recipientName',
+]);
+
+function unresolvedVars(body?: string): string[] {
+    const found = new Set<string>();
+    const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+    let m = re.exec(body || '');
+    while (m !== null) {
+        if (m[1] && !RESOLVABLE_VARS.has(m[1])) found.add(m[1]);
+        m = re.exec(body || '');
+    }
+    return Array.from(found);
 }
 
 const BLANK: AiCallActionRule = {
@@ -94,6 +122,16 @@ export function SendRulesEditor({
     // templates — getMetaTemplates reads the STORED list, it does not call Meta.
     const templatesLoading = templatesQuery.isLoading;
     const templatesFailed = templatesQuery.isError;
+
+    const emailTemplatesQuery = useQuery({
+        queryKey: ['institute-email-templates'],
+        queryFn: () => fetchEmailTemplates(getCurrentInstituteId() || ''),
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+    });
+    const emailTemplates = (emailTemplatesQuery.data ?? []).filter(
+        (t) => (t.status || 'ACTIVE').toUpperCase() !== 'INACTIVE'
+    );
 
     const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
 
@@ -386,6 +424,39 @@ export function SendRulesEditor({
                                         </p>
                                     </>
                                 ) : (
+                                    <>
+                                        {emailTemplates.length > 0 && (
+                                            <Select
+                                                value=""
+                                                onValueChange={(v) => {
+                                                    const t = emailTemplates.find(
+                                                        (x) => x.id === v
+                                                    );
+                                                    if (!t) return;
+                                                    // Copy, do not reference: the email path
+                                                    // sends draft_body verbatim, so the rule
+                                                    // has to own the text.
+                                                    const subject = (t.subject || t.name || '').trim();
+                                                    const content = (t.content || '').trim();
+                                                    update(i, {
+                                                        messageBody: subject
+                                                            ? subject + '\n\n' + content
+                                                            : content,
+                                                    });
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8">
+                                                    <SelectValue placeholder="Start from one of your email templates" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {emailTemplates.map((t) => (
+                                                        <SelectItem key={t.id} value={t.id}>
+                                                            {t.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
                                     <Textarea
                                         rows={4}
                                         placeholder={`Subject line goes here
@@ -394,15 +465,29 @@ Namaste {{name}}, ...`}
                                         value={rule.messageBody || ''}
                                         onChange={(e) => update(i, { messageBody: e.target.value })}
                                     />
+                                    </>
                                 )}
                             </div>
                         </div>
 
                         {!isMeeting && !isWhatsApp && (
-                            <p className="text-caption text-neutral-500">
-                                Email is sent exactly as written — the first line becomes the
-                                subject. Use {'{{name}}'} for the caller&apos;s name.
-                            </p>
+                            <>
+                                <p className="text-caption text-neutral-500">
+                                    Email is sent exactly as written — the first line becomes the
+                                    subject. Use {'{{name}}'} for the caller&apos;s name.
+                                </p>
+                                {unresolvedVars(rule.messageBody).length > 0 && (
+                                    <p className="text-caption text-warning-600">
+                                        These will reach the reader as raw text, because a call
+                                        cannot supply them:{' '}
+                                        {unresolvedVars(rule.messageBody)
+                                            .map((v) => '{{' + v + '}}')
+                                            .join(', ')}
+                                        . Remove them or replace them with wording that does not
+                                        need data we do not have.
+                                    </p>
+                                )}
+                            </>
                         )}
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

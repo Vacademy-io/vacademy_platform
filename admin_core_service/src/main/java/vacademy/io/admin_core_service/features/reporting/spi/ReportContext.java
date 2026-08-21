@@ -1,0 +1,64 @@
+package vacademy.io.admin_core_service.features.reporting.spi;
+
+import lombok.Builder;
+import lombok.Getter;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.List;
+
+/**
+ * Everything a {@link ReportSection} needs to compute one document.
+ *
+ * A context describes ONE rendered document, not one schedule: a subject-scoped
+ * schedule across 30 subjects produces 30 contexts (and, once Phase 2 wires
+ * billing, 30 charges). Keeping the scope inside the context is what lets a
+ * section stay ignorant of how the fan-out was decided.
+ *
+ * Window boundaries are computed in the institute's own zone and then stored as
+ * instants. The admin_core JVM runs UTC and must keep running UTC — resolving
+ * "last week" against the server zone would silently shift every window by 5.5
+ * hours for an Indian institute.
+ */
+@Getter
+@Builder
+public class ReportContext {
+
+    private final String instituteId;
+
+    /** Zone the window boundaries were computed in, e.g. Asia/Kolkata. */
+    private final ZoneId zone;
+
+    /** Inclusive start of the reporting window. */
+    private final Instant windowStart;
+
+    /** Exclusive end of the reporting window. */
+    private final Instant windowEnd;
+
+    /** INSTITUTE | BATCH | SUBJECT | FACULTY. Phase 0 only emits INSTITUTE. */
+    private final ScopeType scopeType;
+
+    /**
+     * The scoped entity this document covers — a package_session id for BATCH,
+     * subject id for SUBJECT, user id for FACULTY. Null for INSTITUTE.
+     */
+    private final String scopeId;
+
+    /** Human label for the scope, used in the subject line and heading. */
+    private final String scopeLabel;
+
+    /**
+     * Learner ids this document is allowed to name, or null for "no restriction".
+     *
+     * This is how the teacher-scoping rule is enforced: a TEACHER recipient is
+     * hard-limited to their own cohorts server-side, and a schedule cannot
+     * override it. Sections MUST intersect against this before naming anyone.
+     */
+    private final List<String> visibleLearnerIds;
+
+    public enum ScopeType { INSTITUTE, BATCH, SUBJECT, FACULTY }
+
+    public boolean namingRestricted() {
+        return visibleLearnerIds != null;
+    }
+}

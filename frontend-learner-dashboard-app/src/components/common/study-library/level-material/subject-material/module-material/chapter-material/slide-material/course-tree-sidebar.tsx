@@ -12,11 +12,27 @@
 //     render at the parent level. Siblings disable this — a real "Default"
 //     subject alongside others is preserved.
 //   • Rows are single-line: slide titles are de-duplicated against their
-//     ancestor names (teachers often prefix every slide with the module
-//     name, which drowned the part that differs) and truncate with the
-//     full title on the `title` attribute for hover/screen readers.
+//     ancestor names (teachers often stamp every slide with the module name
+//     at one end or the other, which drowned the part that differs) and
+//     truncate — the full title appears as a tooltip ONLY when the label is
+//     actually clipped, so hovering a short row no longer pops a redundant
+//     tooltip over its neighbours.
+//   • One emphasis per view: the ancestors of the current slide are marked
+//     with a left accent rail and coloured text, and the filled highlight is
+//     reserved for the single active slide. (Tinting the whole path gave four
+//     adjacent identical fills, so "you are here" was ambiguous.)
+//   • Colour carries type and progress, never decoration. Each slide's icon
+//     sits in a chip tinted by what the slide asks the learner to DO (watch /
+//     read / answer / practise), from the same palette the flat per-chapter
+//     sidebar uses, so a colour means the same thing in both sidebar modes.
+//     Progress is a hairline along the bottom edge of a row — inside the row,
+//     so it survives the sticky pin — at every level from module to slide.
+//   • Counts follow one rule at every level — "children of mine completed" —
+//     rendered as `total` while nothing is done, `done/total` in flight, and
+//     a check once complete. The unit is named in the chip's tooltip, since
+//     the numbers alone can't say whether they count chapters or slides.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import {
   BookOpen,
@@ -34,29 +50,31 @@ import {
   ChatText,
   GraduationCap,
   Stack,
-  BookmarkSimple,
+  LockSimple,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
-import { toTitleCase } from "@/lib/utils";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import {
   fetchModulesWithChapters,
   fetchModulesWithChaptersPublic,
 } from "@/services/study-library/getModulesWithChapters";
-import { calculateOverallCompletion } from "./chapter-sidebar-slides";
 import type {
   ModulesWithChapters,
   Chapter,
 } from "@/stores/study-library/use-modules-with-chapters-store";
 import { fetchSlidesByChapterId, type Slide } from "@/hooks/study-library/use-slides";
 import { getSlideCompletionThreshold } from "@/constants/study-library";
+import { isItemLocked } from "@/components/drip-conditions/helpers";
+import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import {
   computeDisplayTitles,
   getSlideMeta,
   getSlideTitle,
+  humanizeTitle,
 } from "./slide-display-utils";
+import { getSlideTypeColors } from "./slide-type-colors";
 
 type BreadcrumbSubject = {
   id: string;
@@ -66,6 +84,10 @@ type BreadcrumbSubject = {
 
 type Props = {
   courseId: string;
+  /** Used only to spot a lone subject that just repeats the course name (a
+   *  very common one-subject setup) — that row is then passed through rather
+   *  than costing every descendant an indent level. */
+  courseName?: string | null;
   sessionId: string; // treated as packageSessionId by the modules API
   subjects: BreadcrumbSubject[];
   currentSubjectId: string;
@@ -91,6 +113,28 @@ type Props = {
  *  pulls its children up one depth. */
 const isDefaultName = (name: string | null | undefined): boolean =>
   (name || "").trim().toLowerCase() === "default";
+
+const normalizeName = (name: string | null | undefined): string =>
+  (name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** A single subject whose name just repeats the course is the same kind of
+ *  placeholder as a "Default" one: it can never be usefully collapsed (that
+ *  would hide the whole course), it duplicates the course name already in the
+ *  sidebar header, and it costs every module, chapter and slide beneath it a
+ *  full indent level — which at 19rem is where the titles start truncating.
+ *  Two or more subjects are real navigation and always render. */
+const isRedundantLoneSubject = (
+  subjects: BreadcrumbSubject[],
+  courseName: string | null | undefined
+): boolean => {
+  if (subjects.length !== 1) return false;
+  const subject = normalizeName(subjects[0]?.subject_name);
+  const course = normalizeName(courseName);
+  // A two-letter name would match by substring against almost anything, so
+  // only an exact match counts for very short names.
+  if (subject.length < 3 || course.length < 3) return subject === course && !!subject;
+  return subject === course || course.includes(subject) || subject.includes(course);
+};
 
 function getSlideIcon(slide: Slide) {
   const type = slide.source_type?.toUpperCase();
@@ -124,74 +168,249 @@ function getSlideIcon(slide: Slide) {
   }
 }
 
+// Fixed row height for the expandable levels. The sticky offsets below are
+// derived from it, so a padding-only change here would silently leave gaps
+// between the pinned rows.
+const EXPANDER_ROW_H = 36;
+
+/** Reveal a row inside its own scroll container. `scrollIntoView` walks every
+ *  scrollable ancestor, which on mobile also yanks the page behind the
+ *  offcanvas sheet — this touches the sidebar's scroller and nothing else. */
+function revealInScrollParent(el: HTMLElement) {
+  let parent = el.parentElement;
+  while (parent && parent !== document.body) {
+    const overflowY = getComputedStyle(parent).overflowY;
+    if (
+      /(auto|scroll|overlay)/.test(overflowY) &&
+      parent.scrollHeight > parent.clientHeight + 1
+    ) {
+      const parentRect = parent.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const delta =
+        elRect.top -
+        parentRect.top -
+        (parent.clientHeight - elRect.height) / 2;
+      parent.scrollTop = Math.max(0, parent.scrollTop + delta);
+      return;
+    }
+    parent = parent.parentElement;
+  }
+}
+
+/** Attach the full text as a native tooltip only when the label is actually
+ *  clipped — or when `always` says the rendered label isn't a piece of the
+ *  real title (a row shown by type because its own name only repeated its
+ *  chapter), where the original is worth a hover even though it fits. Set
+ *  imperatively so a fully-visible row never pops a tooltip that repeats
+ *  what's already on screen and covers its neighbours. */
+const titleWhenClipped =
+  (text: string, always = false) =>
+  (e: React.MouseEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    el.title = always || el.scrollWidth > el.clientWidth + 1 ? text : "";
+  };
+
+/** Right-hand progress chip shared by every expandable level. One rule:
+ *  the number counts this row's direct children, `done/total` appears only
+ *  once something is done, and a completed level collapses to a check.
+ *
+ *  Its colour tracks PROGRESS rather than whether the row is on the current
+ *  path — grey while untouched, primary once the learner is under way, a
+ *  green check when the level is finished. Where you are is already said by
+ *  the accent rail and the row's text colour; what's left to do wasn't said
+ *  anywhere, and it's the thing a learner scans a long course for. */
+const CountChip = ({
+  done,
+  total,
+  unitLabel,
+}: {
+  done: number | null;
+  total: number;
+  unitLabel: string;
+}) => {
+  if (done != null && done >= total) {
+    return (
+      <CheckCircle
+        className="w-4 h-4 flex-shrink-0 text-success-500"
+        weight="fill"
+        aria-label={`All ${total} ${unitLabel} completed`}
+      />
+    );
+  }
+  const started = !!done;
+  return (
+    <span
+      title={
+        done == null
+          ? `${total} ${unitLabel}`
+          : `${done} of ${total} ${unitLabel} completed`
+      }
+      className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold tabular-nums [.ui-play_&]:font-black ${
+        started
+          ? "bg-primary-100 text-primary-500"
+          : "bg-gray-100 text-gray-500"
+      }`}
+    >
+      {started ? `${done}/${total}` : total}
+    </span>
+  );
+};
+
+/** Progress along the bottom edge of a row, the way a video scrubber marks a
+ *  partly-watched item. It lives inside the row so a pinned (sticky) header
+ *  keeps its own bar, and it costs no horizontal space at all — which a
+ *  "42%" label would take straight out of the title. */
+const ProgressEdge = ({
+  pct,
+  startPx,
+}: {
+  pct: number;
+  startPx: number;
+}) => {
+  if (pct <= 0) return null;
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-gradient-to-r from-primary-300 to-primary-500"
+      style={{
+        // Dynamic: the row's own indent and its completion percentage.
+        insetInlineStart: `${startPx}px`,
+        width: `calc((100% - ${startPx + 12}px) * ${Math.min(pct, 100) / 100})`,
+      }}
+    />
+  );
+};
+
 // ── Leaf: a slide row ───────────────────────────────────────────────────────
 const SlideRow = ({
   slide,
   isActive,
+  isLocked,
+  lockMessage,
   depth,
   displayTitle,
   onClick,
 }: {
   slide: Slide;
   isActive: boolean;
+  /** Drip-gated: shown with a lock and not navigable, matching the flat
+   *  per-chapter sidebar. Only known for slides the route has evaluated. */
+  isLocked?: boolean;
+  lockMessage?: string | null;
   depth: number;
   /** De-duplicated title from computeDisplayTitles (ancestor + sibling
-   *  prefixes stripped); the full title stays on the `title` attribute. */
+   *  prefixes stripped); the full title stays in the clipped-only tooltip. */
   displayTitle: string;
   onClick: () => void;
 }) => {
   const Icon = getSlideIcon(slide);
+  const colors = getSlideTypeColors(slide);
   const title = getSlideTitle(slide);
+  const label = humanizeTitle(displayTitle);
+  // computeDisplayTitles falls back to a type label for slides named exactly
+  // like their chapter; those aren't a substring of the real title, so keep
+  // the original reachable on hover regardless of clipping.
+  const labelIsExcerpt = title.toLowerCase().includes(displayTitle.toLowerCase());
   const meta = getSlideMeta(slide);
-  const isComplete = (slide.percentage_completed ?? 0) >= getSlideCompletionThreshold();
+  const pct = Math.min(slide.percentage_completed ?? 0, 100);
+  const isComplete = pct >= getSlideCompletionThreshold();
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const indent = depth * 14 + 12;
+
+  // Auto-reveal the current slide. The ancestor chain is auto-expanded on
+  // mount, but in a 20-chapter course that puts the active row well below the
+  // fold — the learner opened the viewer to a sidebar that looked like it had
+  // scrolled nowhere. Runs only when a row becomes active, so it never
+  // fights the learner's own scrolling.
+  useEffect(() => {
+    if (isActive && rowRef.current) revealInScrollParent(rowRef.current);
+  }, [isActive]);
+
   return (
     <button
+      ref={rowRef}
       type="button"
-      onClick={onClick}
-      title={title}
-      style={{ paddingLeft: `${depth * 14 + 12}px` }}
-      className={`w-full flex items-center gap-2 pe-3 py-2 text-start text-caption border-s-2 transition-colors ${
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-current={isActive ? "true" : undefined}
+      aria-disabled={isLocked || undefined}
+      onClick={isLocked ? undefined : onClick}
+      title={isLocked ? lockMessage || "Locked" : undefined}
+      style={{ paddingLeft: `${indent}px` }}
+      className={`relative w-full flex items-center gap-2 pe-3 py-2 text-start text-caption border-s-2 transition-colors ${
         isActive
           ? "border-primary-500 bg-primary-50 text-primary-700 font-semibold"
           : "border-transparent text-gray-700 hover:bg-gray-50"
-      }`}
+      } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
     >
-      <Icon
-        className={`w-4 h-4 flex-shrink-0 ${
-          isActive ? "text-primary-600" : "text-gray-400"
+      {/* The icon chip is the row's colour: tinted at rest, filled solid on
+          the row the learner is on. Keeping it the TYPE's colour rather than
+          the accent means the current row still says what it is, and the
+          chip's hue survives whatever primary an institute has themed to. */}
+      <span
+        className={`flex w-5 h-5 flex-shrink-0 items-center justify-center rounded-md [.ui-play_&]:rounded-lg ${
+          isLocked
+            ? "bg-gray-100"
+            : isActive
+            ? colors.solid
+            : colors.bg
         }`}
-        weight={isActive ? "fill" : "regular"}
-      />
-      <span className="min-w-0 flex-1 truncate leading-tight">{displayTitle}</span>
-      {meta && !isActive && (
-        <span className="text-3xs text-gray-400 tabular-nums flex-shrink-0">
+      >
+        <Icon
+          className={`w-3.5 h-3.5 ${
+            isLocked
+              ? "text-gray-400"
+              : isActive
+              ? "text-white"
+              : colors.detailText
+          }`}
+          weight={isActive ? "fill" : "regular"}
+        />
+      </span>
+      <span
+        onMouseEnter={titleWhenClipped(title, !labelIsExcerpt)}
+        className="min-w-0 flex-1 truncate leading-tight [.ui-play_&]:font-bold"
+      >
+        {label}
+      </span>
+      {meta && (
+        <span
+          className={`text-2xs tabular-nums flex-shrink-0 ${
+            isActive ? "text-primary-500" : "text-gray-400"
+          }`}
+        >
           {meta}
         </span>
       )}
-      {isComplete && !isActive && (
-        <CheckCircle
-          className="w-3.5 h-3.5 text-success-500 flex-shrink-0"
-          weight="fill"
-        />
+      {isLocked ? (
+        <LockSimple className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" weight="fill" />
+      ) : (
+        isComplete && (
+          <CheckCircle
+            className="w-4 h-4 text-success-500 flex-shrink-0"
+            weight="fill"
+          />
+        )
       )}
-      {isActive && (
-        <span className="text-3xs font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
-          Now
-        </span>
+      {!isComplete && !isLocked && (
+        <ProgressEdge pct={pct} startPx={indent} />
       )}
     </button>
   );
 };
 
 // ── Expandable row (subject/module/chapter) ─────────────────────────────────
-// Each level gets a distinct icon so the learner can tell the hierarchy apart
-// at a glance without reading indentation: a grad-cap for subjects, stacked
-// layers for modules, and a bookmark for chapters.
-const KIND_ICON: Record<"subject" | "module" | "chapter", PhosphorIcon> = {
-  subject: GraduationCap,
-  module: Stack,
-  chapter: BookmarkSimple,
-};
+// Subjects and modules carry a level icon so they read as containers even
+// when scrolled mid-list. Chapters deliberately don't: the chevron, the
+// indent and the smaller type already place them, and at a 19rem sidebar the
+// 20px that icon took was 20px off every chapter title — which is where the
+// truncation the learner actually notices was coming from.
+const KIND_ICON: Record<"subject" | "module" | "chapter", PhosphorIcon | null> =
+  {
+    subject: GraduationCap,
+    module: Stack,
+    chapter: null,
+  };
 
 const ExpanderRow = ({
   label,
@@ -200,8 +419,10 @@ const ExpanderRow = ({
   isOpen,
   isOnCurrentPath,
   loading,
-  subLabel,
-  subLabelTitle,
+  done,
+  total,
+  unitLabel,
+  progressPct,
   onToggle,
 }: {
   label: string;
@@ -210,46 +431,60 @@ const ExpanderRow = ({
   isOpen: boolean;
   isOnCurrentPath: boolean;
   loading?: boolean;
-  /** Compact count shown as a right-aligned chip (e.g. "0/8"). */
-  subLabel?: string;
-  /** Hover/screen-reader expansion of the chip (e.g. "0 of 8 Slides completed"). */
-  subLabelTitle?: string;
+  /** Direct children completed; null while that isn't known yet (children
+   *  load lazily), which renders the size alone instead of a fake "0/". */
+  done?: number | null;
+  /** Direct children in total; 0/undefined hides the chip entirely. */
+  total?: number | null;
+  /** Plural noun for the chip's tooltip ("Chapters", "Slides") — the numbers
+   *  alone can't say what they count. */
+  unitLabel: string;
+  /** 0–100 completion for this level, drawn as a hairline along the row's
+   *  bottom edge. Gives a long course a visible sense of momentum without
+   *  taking a pixel of title width. */
+  progressPct?: number | null;
   onToggle: () => void;
 }) => {
   const weightClass =
-    kind === "subject"
-      ? "font-semibold text-caption"
-      : kind === "module"
+    kind === "chapter"
       ? "font-medium text-caption"
-      : "font-medium text-2xs";
+      : "font-semibold text-caption";
   const KindIcon = KIND_ICON[kind];
 
   // Sticky stacking — each level pins below the one above it while its
   // subtree is scrolled through, so the learner always sees the path they're
   // in without scrolling back up.
   //
-  // Offset is driven by `depth` (the actual rendered depth) rather than
-  // `kind`, because "Default" placeholder levels are skipped and their
-  // children render one level up. Pinning by kind left a gap at the top
-  // whenever the subject (or module) was a hidden Default.
-  const stickyClasses =
-    depth === 0
-      ? "sticky top-0 z-30"
-      : depth === 1
-      ? "sticky top-10 z-20"
-      : "sticky top-20 z-10";
-  const bgClass = isOnCurrentPath
-    ? "bg-primary-50"
-    : "bg-white hover:bg-gray-50";
+  // Offsets are derived from the real row height and from `depth` (the actual
+  // rendered depth) rather than `kind`, because pass-through levels are
+  // skipped and their children render one level up. Beyond the third level we
+  // stop pinning: four stacked headers would eat a third of the panel.
+  const canStick = depth <= 2;
+  const zClass = depth === 0 ? "z-30" : depth === 1 ? "z-20" : "z-10";
+
+  // A finished level settles into a faint success wash. It's the one place a
+  // fill is spent on something other than "you are here", and it reads
+  // correctly next to it: green says done, the accent rail says current.
+  const isComplete = done != null && !!total && done >= total;
 
   return (
     <button
       type="button"
-      onClick={onToggle}
-      style={{ paddingLeft: `${depth * 14 + 8}px` }}
-      className={`w-full flex items-center gap-1.5 pe-3 py-2 text-start transition-colors ${stickyClasses} ${bgClass}`}
-      title={label}
+      role="treeitem"
+      aria-level={depth + 1}
       aria-expanded={isOpen}
+      onClick={onToggle}
+      style={{
+        paddingLeft: `${depth * 14 + 6}px`,
+        top: canStick ? depth * EXPANDER_ROW_H : undefined,
+      }}
+      className={`relative w-full h-9 flex items-center gap-1.5 pe-2 text-start border-s-2 transition-colors ${
+        isComplete
+          ? "bg-success-50 hover:bg-success-100"
+          : "bg-white hover:bg-gray-50"
+      } ${canStick ? `sticky ${zClass}` : ""} ${
+        isOnCurrentPath ? "border-primary-300" : "border-transparent"
+      }`}
     >
       {isOpen ? (
         <ChevronDownIcon
@@ -264,34 +499,29 @@ const ExpanderRow = ({
           }`}
         />
       )}
-      <KindIcon
-        className={`w-3.5 h-3.5 flex-shrink-0 ${
-          isOnCurrentPath ? "text-primary-500" : "text-gray-400"
-        }`}
-        weight={isOnCurrentPath ? "fill" : "regular"}
-      />
+      {KindIcon && (
+        <KindIcon
+          className={`w-3.5 h-3.5 flex-shrink-0 ${
+            isOnCurrentPath ? "text-primary-500" : "text-gray-400"
+          }`}
+          weight={isOnCurrentPath ? "fill" : "regular"}
+        />
+      )}
       <span
-        className={`${weightClass} min-w-0 flex-1 truncate leading-tight ${
+        onMouseEnter={titleWhenClipped(humanizeTitle(label))}
+        className={`${weightClass} min-w-0 flex-1 truncate leading-tight [.ui-play_&]:font-bold ${
           isOnCurrentPath ? "text-primary-700" : "text-gray-800"
         }`}
       >
-        {toTitleCase(label)}
+        {humanizeTitle(label)}
       </span>
       {loading && (
         <div className="w-3 h-3 border-2 border-primary-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
       )}
-      {subLabel && !loading && (
-        <span
-          title={subLabelTitle}
-          className={`flex-shrink-0 rounded-full px-2 py-0.5 text-3xs font-semibold tabular-nums ${
-            isOnCurrentPath
-              ? "bg-white text-primary-600"
-              : "bg-gray-100 text-gray-500"
-          }`}
-        >
-          {subLabel}
-        </span>
+      {!loading && !!total && (
+        <CountChip done={done ?? null} total={total} unitLabel={unitLabel} />
       )}
+      <ProgressEdge pct={progressPct ?? 0} startPx={depth * 14 + 6} />
     </button>
   );
 };
@@ -299,6 +529,7 @@ const ExpanderRow = ({
 // `courseId` stays in Props for call-site clarity but isn't needed here —
 // the modules/slides APIs key off subject, session and chapter ids alone.
 export const CourseTreeSidebar = ({
+  courseName,
   sessionId,
   subjects,
   currentSubjectId,
@@ -308,6 +539,16 @@ export const CourseTreeSidebar = ({
   currentSubjectModules,
   onSlideSelect,
 }: Props) => {
+  // Drip-condition verdicts for the slides the route has evaluated (the
+  // current chapter). Anything not in here is left unlocked rather than
+  // guessed at — see the note on SlideRow.isLocked.
+  const slideEvaluations = useContentStore((state) => state.slideEvaluations);
+
+  const passThroughSubject = useMemo(
+    () => isRedundantLoneSubject(subjects, courseName),
+    [subjects, courseName]
+  );
+
   // Expansion state — Sets keyed by the node's full path (subjectId /
   // subjectId:moduleId / subjectId:moduleId:chapterId) rather than the
   // bare id, so a module or chapter that appears in multiple subjects
@@ -487,11 +728,11 @@ export const CourseTreeSidebar = ({
   // immediately even though the subject row itself is hidden.
   useEffect(() => {
     for (const s of subjects) {
-      if (isDefaultName(s.subject_name)) {
+      if (isDefaultName(s.subject_name) || passThroughSubject) {
         loadSubjectModules(s.id);
       }
     }
-  }, [subjects, loadSubjectModules]);
+  }, [subjects, passThroughSubject, loadSubjectModules]);
 
   // Same idea for any "Default"-named chapter — load its slides up-front so
   // they render in place of the hidden chapter row.
@@ -546,19 +787,14 @@ export const CourseTreeSidebar = ({
         chapterKey(subjectId, moduleId, chapter.id)
       );
 
-      // Chip: "done/total". Before the slides are fetched, fall back to the
-      // per-type counts the chapter object already carries so collapsed
-      // chapters still show their size.
+      // Count: direct children (slides). Before the slides are fetched, fall
+      // back to the per-type counts the chapter object already carries so a
+      // collapsed chapter still shows its size — with `done` unknown rather
+      // than asserted as 0.
       const slidesTerm = getTerminologyPlural(
         ContentTerms.Slides,
         SystemTerms.Slides
       );
-      const doneCount = slides
-        ? slides.filter(
-            (s) =>
-              (s.percentage_completed ?? 0) >= getSlideCompletionThreshold()
-          ).length
-        : null;
       const fallbackTotal =
         (chapter.video_count ?? 0) +
         (chapter.pdf_count ?? 0) +
@@ -566,15 +802,13 @@ export const CourseTreeSidebar = ({
         (chapter.question_slide_count ?? 0) +
         (chapter.assignment_slide_count ?? 0) +
         (chapter.unknown_count ?? 0);
-      const chip =
-        slides && slides.length > 0
-          ? {
-              label: `${doneCount}/${slides.length}`,
-              title: `${doneCount} of ${slides.length} ${slidesTerm} completed`,
-            }
-          : !slides && fallbackTotal > 0
-          ? { label: `${fallbackTotal}`, title: `${fallbackTotal} ${slidesTerm}` }
-          : undefined;
+      const doneCount = slides
+        ? slides.filter(
+            (sl) =>
+              (sl.percentage_completed ?? 0) >= getSlideCompletionThreshold()
+          ).length
+        : null;
+      const totalCount = slides ? slides.length : fallbackTotal;
 
       return (
         <div key={`${subjectId}::${moduleId}::${chapter.id}`}>
@@ -585,8 +819,10 @@ export const CourseTreeSidebar = ({
             isOpen={isOpen}
             isOnCurrentPath={isOnPath}
             loading={isLoading}
-            subLabel={chip?.label}
-            subLabelTitle={chip?.title}
+            done={doneCount}
+            total={totalCount}
+            unitLabel={slidesTerm}
+            progressPct={chapter.percentage_completed ?? 0}
             onToggle={() => toggleChapter(subjectId, moduleId, chapter.id)}
           />
           {isOpen && slides && slides.length > 0 && (() => {
@@ -595,58 +831,44 @@ export const CourseTreeSidebar = ({
               chapter.chapter_name,
             ]);
             return (
-              <div className="relative">
+              <div className="relative" role="group">
                 <span
                   aria-hidden
                   className="pointer-events-none absolute bottom-0 top-0 w-px bg-gray-100"
                   style={{ insetInlineStart: `${depth * 14 + 14}px` }}
                 />
-                {/* Progress lives with the chapter it describes (the old
-                    detached "Chapter progress" footer duplicated the chip).
-                    Hairline-thin so an empty 0% track reads as a rule, not
-                    a mystery pill. */}
-                {isOnPath && (
-                  <div
-                    className="pb-1.5 pe-3 pt-0.5"
-                    style={{ paddingLeft: `${(depth + 1) * 14 + 12}px` }}
-                  >
-                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className="h-full rounded-full bg-primary-500 transition-all duration-500 ease-out"
-                        style={{
-                          width: `${Math.min(calculateOverallCompletion(slides), 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
                 {slides
-                  .filter((s) => s.id !== "feedback-slide")
-                  .map((slide) => (
-                    <SlideRow
-                      key={slide.id}
-                      slide={slide}
-                      depth={depth + 1}
-                      isActive={slide.id === currentSlideId}
-                      displayTitle={
-                        displayTitles.get(slide.id) ?? getSlideTitle(slide)
-                      }
-                      onClick={() =>
-                        onSlideSelect({
-                          subjectId,
-                          moduleId,
-                          chapterId: chapter.id,
-                          slideId: slide.id,
-                        })
-                      }
-                    />
-                  ))}
+                  .filter((sl) => sl.id !== "feedback-slide")
+                  .map((slide) => {
+                    const evaluation = slideEvaluations[slide.id];
+                    return (
+                      <SlideRow
+                        key={slide.id}
+                        slide={slide}
+                        depth={depth + 1}
+                        isActive={slide.id === currentSlideId}
+                        isLocked={evaluation ? isItemLocked(evaluation) : false}
+                        lockMessage={evaluation?.unlockMessage ?? null}
+                        displayTitle={
+                          displayTitles.get(slide.id) ?? getSlideTitle(slide)
+                        }
+                        onClick={() =>
+                          onSlideSelect({
+                            subjectId,
+                            moduleId,
+                            chapterId: chapter.id,
+                            slideId: slide.id,
+                          })
+                        }
+                      />
+                    );
+                  })}
               </div>
             );
           })()}
           {isOpen && slides && slides.length === 0 && !isLoading && (
             <div
-              className="text-2xs text-gray-400 italic py-1.5"
+              className="text-caption text-gray-500 py-1.5"
               style={{ paddingLeft: `${(depth + 1) * 14 + 12}px` }}
             >
               No {slidesTerm}
@@ -663,6 +885,7 @@ export const CourseTreeSidebar = ({
       currentModuleId,
       currentChapterId,
       currentSlideId,
+      slideEvaluations,
       toggleChapter,
       loadChapterSlides,
       onSlideSelect,
@@ -712,19 +935,17 @@ export const CourseTreeSidebar = ({
             depth={depth}
             isOpen={isOpen}
             isOnCurrentPath={isOnPath}
-            subLabel={
-              chapters.length > 0
-                ? `${doneChapters}/${chapters.length}`
-                : undefined
-            }
-            subLabelTitle={`${doneChapters} of ${chapters.length} ${chaptersTerm} completed`}
+            done={doneChapters}
+            total={chapters.length}
+            unitLabel={chaptersTerm}
+            progressPct={modData.percentage_completed ?? 0}
             onToggle={() => toggleModule(subjectId, moduleId)}
           />
           {/* No indent guide at this level — one guide beside the slide list
               is orientation; nested guides at every level read as stray
               marks at sidebar width. */}
           {isOpen && chapters.length > 0 && (
-            <div>
+            <div role="group">
               {chapters.map((ch) =>
                 renderChapter(subjectId, moduleId, ch, depth + 1, childAncestors)
               )}
@@ -747,16 +968,17 @@ export const CourseTreeSidebar = ({
       const modules = subjectModulesMap[subject.id];
       const loading = loadingSubjects.has(subject.id);
 
-      // "Default" subject is a placeholder for "no subject level here" —
-      // hide the subject row and render its modules at this depth instead.
-      // Modules are auto-loaded by the effect above so the children appear
-      // without requiring a (now-hidden) toggle.
-      if (isDefaultName(subject.subject_name)) {
+      // "Default" subject is a placeholder for "no subject level here" — and
+      // a lone subject named after the course is the same thing by another
+      // name. Either way, hide the subject row and render its modules at
+      // this depth instead. Modules are auto-loaded by the effect above so
+      // the children appear without requiring a (now-hidden) toggle.
+      if (isDefaultName(subject.subject_name) || passThroughSubject) {
         if (!modules && loading) {
           return (
             <div
               key={subject.id}
-              className="text-2xs text-gray-400 italic py-1.5"
+              className="text-caption text-gray-500 py-1.5"
               style={{ paddingLeft: `${depth * 14 + 12}px` }}
             >
               Loading…
@@ -776,6 +998,12 @@ export const CourseTreeSidebar = ({
         ContentTerms.Modules,
         SystemTerms.Modules
       );
+      const doneModules = modules
+        ? modules.filter(
+            (m) =>
+              (m.percentage_completed ?? 0) >= getSlideCompletionThreshold()
+          ).length
+        : null;
       return (
         <div key={subject.id}>
           <ExpanderRow
@@ -785,16 +1013,26 @@ export const CourseTreeSidebar = ({
             isOpen={isOpen}
             isOnCurrentPath={isOnPath}
             loading={loading}
-            // Only while expanded — modules load lazily on expand, so a
-            // collapsed-subject chip appeared only for subjects the learner
-            // happened to have opened before, which read as inconsistent.
-            subLabel={
-              isOpen && modules ? `${modules.length} ${modulesTerm}` : undefined
+            // Only once the modules are known — they load lazily on expand,
+            // so a collapsed-subject chip appeared only for subjects the
+            // learner happened to have opened before, which read as
+            // inconsistent. (It also read "1 Modules": the old chip spelled
+            // out an unconditionally-plural noun.)
+            done={doneModules}
+            total={modules ? modules.length : 0}
+            unitLabel={modulesTerm}
+            progressPct={
+              modules && modules.length > 0
+                ? modules.reduce(
+                    (sum, m) => sum + Math.min(m.percentage_completed ?? 0, 100),
+                    0
+                  ) / modules.length
+                : 0
             }
             onToggle={() => toggleSubject(subject.id)}
           />
           {isOpen && modules && modules.length > 0 && (
-            <div>
+            <div role="group">
               {modules.map((m) =>
                 renderModule(subject.id, m, depth + 1, [subject.subject_name])
               )}
@@ -802,7 +1040,7 @@ export const CourseTreeSidebar = ({
           )}
           {isOpen && modules && modules.length === 0 && !loading && (
             <div
-              className="text-2xs text-gray-400 italic py-1.5"
+              className="text-caption text-gray-500 py-1.5"
               style={{ paddingLeft: `${(depth + 1) * 14 + 12}px` }}
             >
               No {modulesTerm}
@@ -816,6 +1054,7 @@ export const CourseTreeSidebar = ({
       subjectModulesMap,
       loadingSubjects,
       currentSubjectId,
+      passThroughSubject,
       renderModule,
       toggleSubject,
     ]
@@ -854,6 +1093,7 @@ const SkippedChapterSlides = ({
   ensureLoaded: () => void;
   onSlideSelect: Props["onSlideSelect"];
 }) => {
+  const slideEvaluations = useContentStore((state) => state.slideEvaluations);
   useEffect(() => {
     if (!slides && !isLoading) ensureLoaded();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -862,7 +1102,7 @@ const SkippedChapterSlides = ({
   if (isLoading) {
     return (
       <div
-        className="text-2xs text-gray-400 italic py-1.5"
+        className="text-caption text-gray-500 py-1.5"
         style={{ paddingLeft: `${depth * 14 + 12}px` }}
       >
         Loading…
@@ -872,7 +1112,7 @@ const SkippedChapterSlides = ({
   if (!slides || slides.length === 0) {
     return (
       <div
-        className="text-2xs text-gray-400 italic py-1.5"
+        className="text-caption text-gray-500 py-1.5"
         style={{ paddingLeft: `${depth * 14 + 12}px` }}
       >
         No slides
@@ -881,26 +1121,31 @@ const SkippedChapterSlides = ({
   }
   const displayTitles = computeDisplayTitles(slides, ancestorNames);
   return (
-    <div>
+    <div role="group">
       {slides
-        .filter((s) => s.id !== "feedback-slide")
-        .map((slide) => (
-          <SlideRow
-            key={slide.id}
-            slide={slide}
-            depth={depth}
-            isActive={slide.id === currentSlideId}
-            displayTitle={displayTitles.get(slide.id) ?? getSlideTitle(slide)}
-            onClick={() =>
-              onSlideSelect({
-                subjectId,
-                moduleId,
-                chapterId,
-                slideId: slide.id,
-              })
-            }
-          />
-        ))}
+        .filter((sl) => sl.id !== "feedback-slide")
+        .map((slide) => {
+          const evaluation = slideEvaluations[slide.id];
+          return (
+            <SlideRow
+              key={slide.id}
+              slide={slide}
+              depth={depth}
+              isActive={slide.id === currentSlideId}
+              isLocked={evaluation ? isItemLocked(evaluation) : false}
+              lockMessage={evaluation?.unlockMessage ?? null}
+              displayTitle={displayTitles.get(slide.id) ?? getSlideTitle(slide)}
+              onClick={() =>
+                onSlideSelect({
+                  subjectId,
+                  moduleId,
+                  chapterId,
+                  slideId: slide.id,
+                })
+              }
+            />
+          );
+        })}
     </div>
   );
 };

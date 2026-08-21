@@ -1311,7 +1311,7 @@ function Slides() {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-caption font-semibold text-gray-900 leading-tight truncate">
+            <h3 className="text-caption font-semibold text-gray-900 leading-tight line-clamp-2 break-words">
               {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
             </h3>
             {/* Batch names routinely embed the level ("Class 8 | MGP | B 3"
@@ -1324,7 +1324,7 @@ function Slides() {
                 .toLowerCase()
                 .includes(levelName.trim().toLowerCase())
             ) && (
-              <p className="text-caption text-gray-400 font-medium tracking-wide uppercase mt-0.5">
+              <p className="text-caption text-gray-500 font-medium tracking-wide uppercase mt-0.5">
                 {levelName && levelName.toLowerCase() !== "default"
                   ? toTitleCase(levelName)
                   : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
@@ -1525,6 +1525,7 @@ function Slides() {
           <div className="py-1">
             <CourseTreeSidebar
               courseId={courseId || ""}
+              courseName={courseName}
               sessionId={resolvedSessionId}
               subjects={courseSubjects}
               currentSubjectId={subjectId || ""}

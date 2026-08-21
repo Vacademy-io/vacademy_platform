@@ -88,6 +88,21 @@ class Settings(BaseSettings):
     # frame-regen path — bumping the default raises the floor without
     # changing the env override. Override via `LLM_DEFAULT_MODEL` if needed.
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "google/gemini-3.1-pro-preview")
+    # NOTE: for ai-service in production this default is DEAD — the Deployment
+    # spec sets LLM_DEFAULT_MODEL=google/gemini-2.5-flash as a literal env value,
+    # so that is what actually serves the learner chatbot. Change the model in the
+    # deployment (devops repo), not here.
+    #
+    # Suppress provider-side "reasoning" tokens on chat completions. Reasoning
+    # models otherwise spend hundreds of hidden output tokens before answering,
+    # which is wasted on this workload: the median learner message is 23
+    # characters and the bulk of traffic is greetings, "yes"/"idk" and quiz
+    # acknowledgements. Measured on one real student question with
+    # qwen/qwen3.7-flash: reasoning on = 6.9s and 1,358 completion tokens;
+    # reasoning off = 1.7s and 180 tokens, for the same quality of reply.
+    # Verified accepted (and NOT suppressing tool calls) on gemini-2.5-flash,
+    # qwen3.7-flash and gpt-5.6-luna, streaming and non-streaming.
+    llm_disable_reasoning: bool = os.getenv("LLM_DISABLE_REASONING", "true").lower() == "true"
     # Other models we've validated:
     # - google/gemini-2.5-pro
     # - openai/gpt-4o

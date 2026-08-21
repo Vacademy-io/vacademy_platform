@@ -3,7 +3,15 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { DoubtFilter, PaginatedDoubtResponse } from "../types/get-doubts-type";
 import { GET_DOUBTS } from "@/constants/urls";
 
-export const useGetDoubts = (filter: Omit<DoubtFilter, "page_no" | "page_size">) => {
+export const useGetDoubts = (
+    filter: Omit<DoubtFilter, "page_no" | "page_size">,
+    /**
+     * The panel stays mounted (fixed + slide-in) on every slide, so without this
+     * the doubts list was fetched on each slide even while closed — and its
+     * loading state leaked a spinner into the slide view.
+     */
+    enabled = true
+) => {
     return useInfiniteQuery({
         // Include filter in the queryKey so React Query treats each filter variation as its own
         // cached dataset — otherwise switching tabs (All / Resolved / Pending) or slide can serve
@@ -23,6 +31,6 @@ export const useGetDoubts = (filter: Omit<DoubtFilter, "page_no" | "page_size">)
             return lastPage.page_no + 1;
         },
         initialPageParam: 0,
-        enabled: (filter.source_ids?.length ?? 0) > 0,
+        enabled: enabled && (filter.source_ids?.length ?? 0) > 0,
     });
 };

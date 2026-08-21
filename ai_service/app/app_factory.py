@@ -60,6 +60,7 @@ from .routers.translation import router as translation_router
 from .db import db_session
 from .repositories.ai_task_repository import ensure_ai_task_schema
 from .models.file_conversion import ensure_file_conversion_schema
+from .models.chat_quiz_state import ensure_chat_quiz_state_schema
 from .services.ai_task_service import sweep_stale_tasks
 
 
@@ -83,6 +84,7 @@ async def _lifespan(app: FastAPI):
         with db_session() as db:
             ensure_ai_task_schema(db)
             ensure_file_conversion_schema(db)
+            ensure_chat_quiz_state_schema(db)
             from .repositories.ai_video_cast_repository import ensure_ai_video_cast_schema
             ensure_ai_video_cast_schema(db)
         sweep_stale_tasks()

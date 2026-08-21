@@ -103,11 +103,48 @@
     padding: 0.4rem;
 }
 
-/* Doubt Resolution Editor Specific Styles */
+/* Doubt Resolution Editor Specific Styles
+   The doubts composer lives in a narrow slide-over on a phone, so the editor
+   is compact: the wrapper div owns the border/radius, the toolbar is a single
+   hairline-separated strip, and the writing area is capped so the composer can
+   never grow past roughly a third of the screen. */
+.doubt-resolution-editor .ql-toolbar.ql-snow {
+    border: 0;
+    border-bottom: 1px solid #e5e7eb; /* neutral-200 */
+    padding: 3px 4px;
+    background: #f9fafb; /* neutral-50 */
+}
+
+.doubt-resolution-editor .ql-toolbar.ql-snow .ql-formats {
+    margin-inline-end: 6px;
+}
+
+.doubt-resolution-editor .ql-toolbar.ql-snow button {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+}
+
+.doubt-resolution-editor .ql-container.ql-snow {
+    border: 0;
+    font-family: inherit;
+}
+
 .doubt-resolution-editor .ql-editor {
-    max-height: 300px;
+    min-height: 72px;
+    max-height: 160px;
+    padding: 8px 10px;
+    font-size: 14px;
+    line-height: 22px;
     overflow-y: auto;
     overflow-x: hidden;
+}
+
+.doubt-resolution-editor .ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #9ca3af; /* neutral-400 */
+    inset-inline-start: 10px;
+    inset-inline-end: 10px;
 }
 
 .doubt-resolution-editor .ql-editor::-webkit-scrollbar {
@@ -134,6 +171,5 @@
     height: auto;
     display: block;
     margin: 0.5rem 0;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
 }

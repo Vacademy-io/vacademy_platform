@@ -1,14 +1,14 @@
-
 import { DoubtType, StudentDetailsType } from "../types/add-doubt-type"
 import { getFromStorage } from "@/components/common/auth/login/forms/page/login-form";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useAddDoubt } from "../services/AddDoubt";
-import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
+import { PaperPlaneRight, CircleNotch } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 import { useEffect, useState } from "react";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { MyButton } from "@/components/design-system/button";
 
 interface AddDoubtProps {
     doubtText: string;
@@ -17,6 +17,7 @@ interface AddDoubtProps {
     setShowInput: (showInput: boolean) => void;
     timestamp?: number;
     formattedTime?: string;
+    onPosted?: () => void;
 }
 
 // Quill emits "<p><br></p>" (and &nbsp; for spaces) for an "empty" editor, so a raw
@@ -31,6 +32,7 @@ export const AddDoubt = ({
     setDoubt,
     setShowInput,
     timestamp,
+    onPosted,
 }: AddDoubtProps) => {
 
     const { t } = useTranslation("studyContent");
@@ -114,6 +116,7 @@ export const AddDoubt = ({
                     setShowInput(false)
                     refetch()
                 }
+                onPosted?.()
             },
             onError: () => {
                 toast.error(t("doubts.errorAdding"))
@@ -124,19 +127,18 @@ export const AddDoubt = ({
     const isDisabled = addDoubt.isPending || isDoubtTextEmpty(doubtText);
 
     return (
-        <button
+        <MyButton
+            buttonType="primary"
+            scale="medium"
             onClick={handleAddDoubt}
-            disabled={isDisabled}
+            disable={isDisabled}
             aria-busy={addDoubt.isPending}
-            className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 ${
-                isDisabled
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95'
-            }`}
+            className="min-w-0 flex-1 gap-1.5 rounded-lg"
         >
             {addDoubt.isPending
-                ? <CircleNotch size={18} className="animate-spin" />
-                : <ArrowUp size={18} />}
-        </button>
+                ? <CircleNotch size={16} className="animate-spin" />
+                : <PaperPlaneRight size={16} className="rtl:-scale-x-100" />}
+            {addDoubt.isPending ? t("doubts.posting") : t("doubts.post")}
+        </MyButton>
     )
 }

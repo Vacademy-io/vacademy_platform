@@ -31,7 +31,9 @@ from ..services.learning_analytics_service import LearningAnalyticsService
 from ..services.api_key_resolver import ApiKeyResolver
 from ..services.embedding_service import EmbeddingService
 from ..services.rag_service import RAGService
+from ..config import get_settings
 from ..models.chat_message import ChatMessage
+from ..models.chat_quiz_state import ChatQuizStateRepository
 from ..services.mathpix_service import MathpixService
 from ..schemas.chat_agent import (
     MessageIntent,
@@ -100,8 +102,21 @@ class AiChatAgentService:
 
     @staticmethod
     def _make_llm_client(keys: tuple) -> ChatLLMClient:
-        """Create an LLM client with pre-resolved keys (no DB dependency)."""
-        return ChatLLMClient(_CachedKeyResolver(keys))
+        """Create an LLM client with pre-resolved keys (no DB dependency).
+
+        Reasoning is suppressed for the learner chatbot only (kill-switch:
+        LLM_DISABLE_REASONING=false). This is the one workload where hidden
+        reasoning tokens are not worth their cost: the median learner message is
+        23 characters and most turns are greetings, "yes"/"idk" and quiz
+        acknowledgements. Measured on qwen/qwen3.7-flash with a real student
+        question — reasoning on: 6.9s / 1,358 completion tokens; off: 1.7s / 180,
+        same answer quality. It is a no-op on gemini-2.5-flash, which already
+        emits none. Every OTHER consumer of ChatLLMClient keeps reasoning.
+        """
+        return ChatLLMClient(
+            _CachedKeyResolver(keys),
+            disable_reasoning=get_settings().llm_disable_reasoning,
+        )
 
     def _record_token_usage(
         self, response: Dict[str, Any], institute_id: str, user_id: str
@@ -948,6 +963,8 @@ class AiChatAgentService:
                             db,
                             rag_service=rag_service,
                             analytics_service=analytics_service,
+                            institute_id=institute_id,
+                            user_id=user_id,
                         )
                         tool_result = await tool_manager.execute_tool(
                             tool_name, tool_args
@@ -1152,8 +1169,17 @@ class AiChatAgentService:
                 yield {"event": "status", "data": {"ai_status": "idle"}}
                 return
 
-            # Store quiz for later evaluation
+            # Store quiz for later evaluation. The in-process dict stays as a
+            # fast path; the DB row is what survives a restart or deploy between
+            # generation and submission (previously 18.7% of submissions were
+            # lost that way, and the student was told the quiz did not exist).
             self._active_quizzes[session_id] = quiz_data
+            with self._get_db() as db:
+                ChatQuizStateRepository(db).save(
+                    session_id=session_id,
+                    quiz_id=quiz_data.quiz_id,
+                    quiz_payload=quiz_data.model_dump(),
+                )
 
             # Prepare quiz data for frontend (strip correct answers)
             frontend_quiz_data = quiz_service.get_quiz_for_frontend(quiz_data)
@@ -1206,6 +1232,27 @@ class AiChatAgentService:
             submission = QuizSubmission(**submission_data)
 
             quiz_data = self._active_quizzes.get(session_id)
+
+            # Fall back to the durable answer key when the in-process dict has
+            # lost it — a restart or deploy between generation and submission.
+            if not quiz_data or quiz_data.quiz_id != submission.quiz_id:
+                with self._get_db() as db:
+                    stored = ChatQuizStateRepository(db).load(
+                        session_id=session_id, quiz_id=submission.quiz_id
+                    )
+                if stored:
+                    try:
+                        quiz_data = QuizData(**stored)
+                        self._active_quizzes[session_id] = quiz_data
+                        logger.info(
+                            f"Recovered quiz {submission.quiz_id} for session "
+                            f"{session_id} from chat_quiz_state"
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            f"Stored quiz {submission.quiz_id} could not be "
+                            f"rehydrated: {exc}"
+                        )
 
             if not quiz_data or quiz_data.quiz_id != submission.quiz_id:
                 logger.warning(
@@ -1304,9 +1351,14 @@ class AiChatAgentService:
             yield {"event": "message", "data": feedback_data}
             yield {"event": "message", "data": followup_data}
 
-            # Clean up stored quiz
+            # Clean up stored quiz — the answer key is no longer needed once the
+            # quiz has been scored and feedback delivered.
             if session_id in self._active_quizzes:
                 del self._active_quizzes[session_id]
+            with self._get_db() as db:
+                ChatQuizStateRepository(db).delete(
+                    session_id=session_id, quiz_id=submission.quiz_id
+                )
 
             logger.info(
                 f"Quiz feedback sent for session {session_id}: "
@@ -1485,6 +1537,27 @@ Your responses will be rendered as Markdown in a React frontend. Follow these fo
    - Guide students through thinking rather than giving direct answers
    - Use tools when you need real-time information (grades, progress, resources, what's next)
    - Use a friendly, conversational tone
+
+TOOL RESULTS — WHAT YOU MAY AND MAY NOT CLAIM:
+Distinguish three different outcomes and never blur them together.
+1. The tool returned data → use it, and stay inside it.
+2. The tool ran and genuinely found nothing (the result says the search ran
+   successfully) → say plainly that this material does not appear to exist in
+   their course, and offer to help another way.
+3. The result begins with "LOOKUP FAILED" → the lookup DID NOT RUN. You know
+   nothing. Say you could not look it up right now and suggest they ask their
+   institute. NEVER fill the gap with a plausible-sounding answer.
+
+You must NOT invent, guess or generalise about any of the following, because you
+have no access to them and cannot verify them:
+- whether live classes are recorded, and when or where recordings appear
+- class timings, timetables, schedules, joining links, attendance
+- fees, payments, refunds, or any institute policy
+- what is on a slide you have not been given the content of
+If asked about these and no tool result gives you the answer, say you don't have
+that information and point them to their institute or teacher. A short honest
+"I can't see that from here" is always better than a confident guess. Do not
+promise to look something up that you have no tool for.
 
 ADAPTIVE TEACHING:
 - For topics in their weaknesses: Provide foundational explanations, check understanding frequently

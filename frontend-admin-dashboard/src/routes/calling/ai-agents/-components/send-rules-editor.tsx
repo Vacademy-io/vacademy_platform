@@ -11,6 +11,7 @@
  * questions, so there is nothing new to learn and nothing to spell correctly.
  */
 import { Plus, Trash, WhatsappLogo, EnvelopeSimple, CalendarCheck } from '@phosphor-icons/react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
@@ -87,6 +88,14 @@ export function SendRulesEditor({
     const templates = (templatesQuery.data ?? []).filter(
         (t) => (t.status || '').toUpperCase() === 'APPROVED'
     );
+    // Three distinct states, and the admin must be able to tell them apart. Falling back
+    // to a bare text box for all of them (the first cut) reads as "they forgot to build
+    // the dropdown" when the real cause is that this institute has never synced its
+    // templates — getMetaTemplates reads the STORED list, it does not call Meta.
+    const templatesLoading = templatesQuery.isLoading;
+    const templatesFailed = templatesQuery.isError;
+
+    const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
 
     const update = (i: number, patch: Partial<AiCallActionRule>) => {
         const next = rules.map((r, n) => (n === i ? { ...r, ...patch } : r));
@@ -149,7 +158,7 @@ export function SendRulesEditor({
                             />
                             <Input
                                 className="h-8 flex-1"
-                                placeholder="Name this rule, e.g. Scholarship quiz link"
+                                placeholder="Name this rule, e.g. Course brochure"
                                 value={rule.label || ''}
                                 onChange={(e) => {
                                     const label = e.target.value;
@@ -182,7 +191,7 @@ export function SendRulesEditor({
                             <Label className="text-caption">What the agent asks on the call</Label>
                             <Input
                                 className="h-8"
-                                placeholder="Kya main aapko WhatsApp par quiz ka link bhej doon?"
+                                placeholder="Kya main aapko WhatsApp par details bhej doon?"
                                 value={rule.askLine || ''}
                                 onChange={(e) => update(i, { askLine: e.target.value })}
                             />
@@ -330,6 +339,13 @@ export function SendRulesEditor({
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                ) : isWhatsApp && templatesLoading ? (
+                                    <Select disabled value="">
+                                        <SelectTrigger className="h-8">
+                                            <SelectValue placeholder="Loading templates..." />
+                                        </SelectTrigger>
+                                        <SelectContent />
+                                    </Select>
                                 ) : isWhatsApp && templates.length > 0 ? (
                                     <Select
                                         value={rule.template || ''}
@@ -354,19 +370,27 @@ export function SendRulesEditor({
                                         </SelectContent>
                                     </Select>
                                 ) : isWhatsApp ? (
-                                    <Input
-                                        className="h-8"
-                                        placeholder="Approved template name"
-                                        value={rule.template || ''}
-                                        onChange={(e) => update(i, { template: e.target.value })}
-                                    />
+                                    <>
+                                        <Input
+                                            className="h-8"
+                                            placeholder="Approved template name"
+                                            value={rule.template || ''}
+                                            onChange={(e) =>
+                                                update(i, { template: e.target.value })
+                                            }
+                                        />
+                                        <p className="text-caption text-warning-600">
+                                            {templatesFailed
+                                                ? 'Could not load your WhatsApp templates. Type the name exactly as Meta approved it.'
+                                                : 'No approved templates for this institute yet. Sync them under Settings, WhatsApp Templates, or type the name exactly as Meta approved it.'}
+                                        </p>
+                                    </>
                                 ) : (
                                     <Textarea
                                         rows={4}
-                                        placeholder={
-                                            'Aapka scholarship quiz link\n\n' +
-                                            'Namaste {{name}}, yeh raha aapka link: ...'
-                                        }
+                                        placeholder={`Subject line goes here
+
+Namaste {{name}}, ...`}
                                         value={rule.messageBody || ''}
                                         onChange={(e) => update(i, { messageBody: e.target.value })}
                                     />
@@ -403,17 +427,38 @@ export function SendRulesEditor({
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-caption">Key the AI uses</Label>
-                                <Input
-                                    className="h-8 font-mono text-caption"
-                                    placeholder="scholarship_quiz"
-                                    value={rule.artefact || ''}
-                                    onChange={(e) =>
-                                        update(i, { artefact: slugify(e.target.value) })
-                                    }
-                                />
-                            </div>
+                            <div />
+                        </div>
+
+                        <div>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                onClick={() =>
+                                    setAdvancedOpen((o) => ({ ...o, [i]: !o[i] }))
+                                }
+                            >
+                                {advancedOpen[i] ? 'Hide advanced' : 'Advanced'}
+                            </MyButton>
+                            {advancedOpen[i] && (
+                                <div className="mt-2 space-y-1.5">
+                                    <Label className="text-caption">Reference name</Label>
+                                    <Input
+                                        className="h-8 font-mono text-caption"
+                                        value={rule.artefact || ''}
+                                        onChange={(e) =>
+                                            update(i, { artefact: slugify(e.target.value) })
+                                        }
+                                    />
+                                    <p className="text-caption text-neutral-500">
+                                        The short name the AI uses for this item when it reports
+                                        what the caller agreed to. Filled in from the rule name.
+                                        You only need to change it if two rules would end up with
+                                        the same one.
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
                         {rule.timing === 'MID_CALL' && (
@@ -426,12 +471,6 @@ export function SendRulesEditor({
                 );
             })}
 
-            {templatesQuery.isError && (
-                <p className="text-caption text-warning-600">
-                    Could not load approved WhatsApp templates — type the template name instead.
-                    A name Meta has not approved will fail at send time.
-                </p>
-            )}
         </div>
     );
 }

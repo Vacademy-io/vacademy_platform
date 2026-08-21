@@ -55,7 +55,7 @@ public class ReportRunService {
     private final ReportRenderer renderer;
     private final NotificationService notificationService;
     private final AuthService authService;
-    private final ReportScopeResolver scopeResolver;
+    private final ReportingScopeResolver scopeResolver;
     private final ReportRecipientResolver recipientResolver;
 
     /**
@@ -72,9 +72,9 @@ public class ReportRunService {
         // Deliberately not caught here: the resolver fails loud by design, and the
         // scheduler's per-schedule catch is the right place to record it. Swallowing
         // it here would look identical to "nothing was due".
-        List<ReportScopeResolver.Scope> scopes = scopeResolver.resolve(instituteId, schedule);
+        List<ReportingScopeResolver.Scope> scopes = scopeResolver.resolve(instituteId, schedule);
 
-        for (ReportScopeResolver.Scope scope : scopes) {
+        for (ReportingScopeResolver.Scope scope : scopes) {
             try {
                 executeOne(instituteId, instituteName, schedule, window, scope);
             } catch (Exception e) {
@@ -87,7 +87,7 @@ public class ReportRunService {
                             String instituteName,
                             ReportScheduleConfig schedule,
                             ReportWindowResolver.Window window,
-                            ReportScopeResolver.Scope scope) {
+                            ReportingScopeResolver.Scope scope) {
 
         Timestamp windowStart = Timestamp.from(window.start());
 

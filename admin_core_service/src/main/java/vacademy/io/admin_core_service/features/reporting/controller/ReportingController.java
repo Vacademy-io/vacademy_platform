@@ -9,7 +9,7 @@ import vacademy.io.admin_core_service.features.reporting.entity.ReportRun;
 import vacademy.io.admin_core_service.features.reporting.entity.ReportRunRecipient;
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRecipientRepository;
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRepository;
-import vacademy.io.admin_core_service.features.reporting.service.ReportScopeResolver;
+import vacademy.io.admin_core_service.features.reporting.service.ReportingScopeResolver;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSectionRegistry;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
@@ -42,7 +42,7 @@ import java.util.Map;
 public class ReportingController {
 
     private final ReportSectionRegistry registry;
-    private final ReportScopeResolver scopeResolver;
+    private final ReportingScopeResolver scopeResolver;
     private final ReportRunRepository runRepository;
     private final ReportRunRecipientRepository recipientRepository;
     private final InstituteAccessValidator instituteAccessValidator;
@@ -90,7 +90,7 @@ public class ReportingController {
      * number before they commit to it, not discover it on the ledger.
      */
     @PostMapping("/scope-preview")
-    public ResponseEntity<ReportScopeResolver.Preview> previewScope(
+    public ResponseEntity<ReportingScopeResolver.Preview> previewScope(
             HttpServletRequest request,
             @RequestAttribute("user") CustomUserDetails user,
             @RequestBody ReportScheduleConfig schedule) {

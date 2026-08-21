@@ -15,6 +15,11 @@ import java.util.Map;
 /**
  * Expands a schedule into the documents it will actually produce.
  *
+ * Named ReportING-, not Report-: features/audience/service already has a
+ * ReportScopeResolver, and Spring derives bean names from the simple class name,
+ * so two of them is a ConflictingBeanDefinitionException at startup — the whole
+ * service refuses to boot. Do not shorten this name.
+ *
  * This is where the fan-out lives, and fan-out is the expensive dimension: a
  * subject-scoped schedule at a large institute is not one report, it is thirty —
  * thirty computations, thirty emails, and once Phase 2 wires billing, thirty
@@ -27,7 +32,7 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class ReportScopeResolver {
+public class ReportingScopeResolver {
 
     /**
      * Refuse to fan out beyond this in one schedule. A 200-batch institute selecting

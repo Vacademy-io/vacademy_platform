@@ -191,23 +191,29 @@ public class ReportRunService {
                 factsByGroup.put(g.getKey(), f);
             }
 
-            List<SectionFacts> facts = factsByGroup.values().iterator().next();
-
             // ── 3. Gate ─────────────────────────────────────────────────────
-            boolean everythingEmpty = facts.stream().allMatch(SectionFacts::isEmpty);
-            if (facts.isEmpty() || (everythingEmpty && schedule.isSkipIfNoData())) {
+            // Across ALL groups, not just one. Reading a single group would let a
+            // teacher with an empty cohort cancel the run for the admins who do
+            // have data — the groups exist precisely because they see different
+            // things, so "is there anything to say" is a question about all of them.
+            boolean anyGroupHasData = factsByGroup.values().stream()
+                    .flatMap(List::stream)
+                    .anyMatch(f -> !f.isEmpty());
+
+            if (factsByGroup.values().stream().allMatch(List::isEmpty)
+                    || (!anyGroupHasData && schedule.isSkipIfNoData())) {
                 run.setStatus("SKIPPED");
-                run.setSkipReason(facts.isEmpty() ? "no sections resolved" : "no data in window");
+                run.setSkipReason(anyGroupHasData ? "no sections resolved" : "no data in window");
                 runRepository.save(run);
-                log.info("[reporting] institute {} schedule {} skipped — {}",
-                        instituteId, schedule.getId(), run.getSkipReason());
+                log.info("[reporting] institute {} schedule {} scope {} skipped — {}",
+                        instituteId, schedule.getId(), scope.id(), run.getSkipReason());
                 return;
             }
 
             // ── 4. Deliver ──────────────────────────────────────────────────
-            int namedLearners = facts.stream().filter(SectionFacts::isIdentifying)
-                    .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum();
-            int delivered = deliver(instituteId, instituteName, window, run, selected, groups, factsByGroup);
+            Delivery delivery = deliver(instituteId, instituteName, window, run, selected, groups, factsByGroup);
+            int delivered = delivery.sent();
+            int namedLearners = delivery.namedLearners();
 
             if (delivered == 0) {
                 // Marking this SENT would burn the idempotency slot and lose the
@@ -220,7 +226,7 @@ public class ReportRunService {
             run.setStatus("SENT");
             run.setRecipientCount(delivered);
             run.setNamedLearners(namedLearners);
-            run.setSectionsIncluded(facts.stream().map(SectionFacts::getSectionKey).collect(Collectors.joining(",")));
+            run.setSectionsIncluded(selected.stream().map(ReportSection::key).collect(Collectors.joining(",")));
             runRepository.save(run);
             log.info("[reporting] institute {} schedule {} sent to {} recipient(s), {} learner(s) named",
                     instituteId, schedule.getId(), delivered, namedLearners);
@@ -239,7 +245,10 @@ public class ReportRunService {
         }
     }
 
-    private int deliver(String instituteId, String instituteName,
+    /** What a delivery pass actually did. */
+    private record Delivery(int sent, int namedLearners) {}
+
+    private Delivery deliver(String instituteId, String instituteName,
                         ReportWindowResolver.Window window, ReportRun run,
                         List<ReportSection> selected,
                         Map<String, List<ReportRecipientResolver.Recipient>> groups,
@@ -249,6 +258,7 @@ public class ReportRunService {
 
         String subject = (instituteName == null ? "Vacademy" : instituteName) + " — " + run.getScopeLabel();
         int sent = 0;
+        int namedTotal = 0;
 
         for (var g : groups.entrySet()) {
             List<SectionFacts> groupFacts = factsByGroup.getOrDefault(g.getKey(), List.of());
@@ -272,6 +282,9 @@ public class ReportRunService {
                     continue;
                 }
 
+                int namedForThisReader = forUser.stream().filter(SectionFacts::isIdentifying)
+                        .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum();
+
                 boolean ok = false;
                 String error = null;
                 try {
@@ -284,6 +297,10 @@ public class ReportRunService {
                                 instituteId, null, null, "UTILITY_EMAIL");
                         ok = true;
                         sent++;
+                        // Run-level count reflects what was RENDERED and delivered,
+                        // matching the per-recipient audit rows rather than the
+                        // wider slice the sections computed.
+                        namedTotal += namedForThisReader;
                     }
                 } catch (Exception e) {
                     error = truncate(e.getMessage());
@@ -298,14 +315,13 @@ public class ReportRunService {
                         // Audit what was RENDERED, not what was permitted.
                         .sectionsSent(forUser.stream().map(SectionFacts::getSectionKey)
                                 .collect(Collectors.joining(",")))
-                        .namedLearners(forUser.stream().filter(SectionFacts::isIdentifying)
-                                .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum())
+                        .namedLearners(namedForThisReader)
                         .delivered(ok)
                         .errorMessage(error)
                         .build());
             }
         }
-        return sent;
+        return new Delivery(sent, namedTotal);
     }
 
     /** Recipients with the same visibility get the same computed facts. */

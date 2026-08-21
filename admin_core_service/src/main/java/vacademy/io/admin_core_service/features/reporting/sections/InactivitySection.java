@@ -44,9 +44,24 @@ public class InactivitySection implements ReportSection {
 
     private static final int INACTIVE_DAYS = 7;
     private static final int LOOKBACK_DAYS = 90;
-    private static final int MAX_NAMED = 25;
+    /**
+     * How many named rows compute() returns. Deliberately larger than a report
+     * shows: the per-recipient cohort filter runs downstream, so truncating to the
+     * display size here would let a teacher whose learners are outside the
+     * institute-wide top slice be told they have none. Display truncation happens
+     * after filtering.
+     */
+    private static final int MAX_COMPUTED = 400;
 
     private final JdbcTemplate jdbcTemplate;
+
+    @Override
+    public Set<ReportContext.ScopeType> supportedScopes() {
+        // BATCH is a real filter here (package_session_id on the enrolment row).
+        // SUBJECT and FACULTY are not expressible against learner_operation, so they
+        // are excluded rather than silently producing duplicate institute reports.
+        return Set.of(ReportContext.ScopeType.INSTITUTE, ReportContext.ScopeType.BATCH);
+    }
 
     @Override
     public String key() {
@@ -93,8 +108,14 @@ public class InactivitySection implements ReportSection {
         // Deliberately NOT wrapped in try/catch. A failure here must propagate so
         // the run is marked failed and the section is reported as unavailable —
         // never rendered as "0 inactive learners", which reads as good news.
+        boolean batchScoped = ctx.getScopeType() == ReportContext.ScopeType.BATCH
+                && ctx.getScopeId() != null;
+        String batchId = batchScoped ? ctx.getScopeId() : null;
+
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(SQL,
-                ctx.getInstituteId(), ctx.getInstituteId(), LOOKBACK_DAYS);
+                ctx.getInstituteId(), batchScoped, batchId,
+                ctx.getInstituteId(), batchScoped, batchId,
+                LOOKBACK_DAYS);
 
         int activeLearners = 0;
         int inactive7 = 0, inactive14 = 0, inactive30 = 0;
@@ -119,7 +140,7 @@ public class InactivitySection implements ReportSection {
             // Teacher recipients only ever see their own cohorts. Enforced here,
             // server-side, so a mis-configured schedule cannot widen it.
             if (ctx.namingRestricted() && !ctx.getVisibleLearnerIds().contains(userId)) continue;
-            if (detail.size() >= MAX_NAMED) continue;
+            if (detail.size() >= MAX_COMPUTED) continue;
 
             detail.add(SectionFacts.Row.builder()
                     .subjectId(userId)
@@ -161,6 +182,7 @@ public class InactivitySection implements ReportSection {
                 SELECT m.user_id
                 FROM student_session_institute_group_mapping m
                 WHERE m.institute_id = ? AND m.status = 'ACTIVE'
+                  AND (NOT CAST(? AS boolean) OR m.package_session_id = ?)
                 GROUP BY m.user_id
             ),
             seen AS (
@@ -170,7 +192,8 @@ public class InactivitySection implements ReportSection {
                 FROM learner_operation lo
                 WHERE lo.user_id IN (
                         SELECT m.user_id FROM student_session_institute_group_mapping m
-                        WHERE m.institute_id = ? AND m.status = 'ACTIVE')
+                        WHERE m.institute_id = ? AND m.status = 'ACTIVE'
+                          AND (NOT CAST(? AS boolean) OR m.package_session_id = ?))
                   AND lo.created_at > now() - make_interval(days => ?)
                 GROUP BY lo.user_id
             )

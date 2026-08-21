@@ -38,6 +38,26 @@ public interface UserRepository extends CrudRepository<User, String> {
                           AND ur.status IN (:roleStatus)
                           AND UPPER(r.role_name) IN (:roleNames)
                         """, nativeQuery = true)
+        /**
+         * (user_id, role_name) for these users AT THIS INSTITUTE only.
+         *
+         * Necessary because User.roles is a plain @OneToMany with no institute
+         * predicate, so UserDTO.roles is every role the person holds ANYWHERE —
+         * and it includes INVITED. Deciding "is this person an admin here" from
+         * that field lets an admin at institute B read institute A's data.
+         */
+        @Query(value = """
+                        SELECT ur.user_id AS userId, UPPER(r.role_name) AS roleName
+                        FROM user_role ur
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status = 'ACTIVE'
+                          AND ur.user_id IN (:userIds)
+                        """, nativeQuery = true)
+        List<Object[]> findInstituteRoleRows(
+                        @Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
+
         List<User> findByInstituteAndRoleNames(
                         @Param("instituteId") String instituteId,
                         @Param("roleNames") List<String> upperCaseRoleNames,

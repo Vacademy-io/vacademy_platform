@@ -54,10 +54,15 @@ public class ReportScopeResolver {
         };
 
         if (scopes.size() > MAX_DOCUMENTS_PER_RUN) {
-            log.warn("[reporting] schedule {} for institute {} resolved to {} documents — capping at {}. "
-                            + "The configuration screen should have refused this.",
-                    schedule.getId(), instituteId, scopes.size(), MAX_DOCUMENTS_PER_RUN);
-            return scopes.subList(0, MAX_DOCUMENTS_PER_RUN);
+            // Refuse rather than truncate. Truncation is ordered by label, so the
+            // same tail of batches would be silently excluded from every run
+            // forever — those cohorts would simply never be reported on and nobody
+            // would notice. Failing the schedule is visible, and /scope-preview
+            // exists so an admin never reaches this in the first place.
+            throw new IllegalStateException(String.format(
+                    "Schedule %s resolves to %d documents, above the %d limit. "
+                            + "Narrow the scope — check /reporting/v1/scope-preview before saving.",
+                    schedule.getId(), scopes.size(), MAX_DOCUMENTS_PER_RUN));
         }
         return scopes;
     }

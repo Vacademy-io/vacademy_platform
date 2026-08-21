@@ -132,6 +132,26 @@ public class UserService {
      * Role names are upper-cased before the lookup because production holds both
      * 'ADMIN' and 'Admin'; matching exactly drops the second group silently.
      */
+    /**
+     * userId -> roles held AT THIS INSTITUTE (ACTIVE only, upper-cased).
+     *
+     * Callers making an authorisation decision must use this, never UserDTO.roles,
+     * which is cross-institute and includes INVITED memberships.
+     */
+    public Map<String, List<String>> getInstituteRoles(String instituteId, List<String> userIds) {
+        if (instituteId == null || instituteId.isBlank() || userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new HashMap<>();
+        for (Object[] row : userRepository.findInstituteRoleRows(instituteId, userIds)) {
+            String userId = String.valueOf(row[0]);
+            String role = row[1] == null ? null : String.valueOf(row[1]);
+            if (role == null) continue;
+            out.computeIfAbsent(userId, k -> new ArrayList<>()).add(role);
+        }
+        return out;
+    }
+
     public List<UserDTO> getUsersByInstituteAndRoles(String instituteId, List<String> roles) {
         if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();

@@ -12,6 +12,8 @@ import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRep
 import vacademy.io.admin_core_service.features.reporting.service.ReportScopeResolver;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSectionRegistry;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ public class ReportingController {
     private final ReportScopeResolver scopeResolver;
     private final ReportRunRepository runRepository;
     private final ReportRunRecipientRepository recipientRepository;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     /**
      * Sections offered to this institute, each flagged with whether it has data.
@@ -54,8 +57,9 @@ public class ReportingController {
      * what is live. Configuration becomes confirmation.
      */
     @GetMapping("/sections")
-    public ResponseEntity<List<Map<String, Object>>> listSections(HttpServletRequest request) {
-        String instituteId = requireInstituteId(request);
+    public ResponseEntity<List<Map<String, Object>>> listSections(HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String instituteId = requireInstituteId(request, user);
         List<Map<String, Object>> out = new ArrayList<>();
         for (ReportSection s : registry.all()) {
             boolean available;
@@ -88,8 +92,9 @@ public class ReportingController {
     @PostMapping("/scope-preview")
     public ResponseEntity<ReportScopeResolver.Preview> previewScope(
             HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestBody ReportScheduleConfig schedule) {
-        String instituteId = requireInstituteId(request);
+        String instituteId = requireInstituteId(request, user);
         return ResponseEntity.ok(scopeResolver.preview(instituteId, schedule));
     }
 
@@ -99,16 +104,19 @@ public class ReportingController {
      * to whom without asking us.
      */
     @GetMapping("/runs")
-    public ResponseEntity<List<ReportRun>> listRuns(HttpServletRequest request) {
-        String instituteId = requireInstituteId(request);
+    public ResponseEntity<List<ReportRun>> listRuns(HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String instituteId = requireInstituteId(request, user);
         return ResponseEntity.ok(runRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId));
     }
 
     /** Who received one report, and what was in their copy. */
     @GetMapping("/runs/{runId}/recipients")
     public ResponseEntity<List<ReportRunRecipient>> listRecipients(
-            HttpServletRequest request, @PathVariable String runId) {
-        String instituteId = requireInstituteId(request);
+            HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String runId) {
+        String instituteId = requireInstituteId(request, user);
         // Scope check: a run id from another tenant must not be readable.
         ReportRun run = runRepository.findById(runId)
                 .orElseThrow(() -> new VacademyException("Report run not found"));
@@ -118,11 +126,21 @@ public class ReportingController {
         return ResponseEntity.ok(recipientRepository.findByRunId(runId));
     }
 
-    private String requireInstituteId(HttpServletRequest request) {
+    /**
+     * The clientId header names the institute, but it is caller-supplied — on its
+     * own it is a request, not a claim. These endpoints expose recipient email
+     * addresses and named-learner counts, so membership AND admin role are checked
+     * against the authenticated principal before the header is trusted.
+     * InstituteAccessValidator is already the platform pattern (49 call sites); the
+     * handful of controllers that read the header bare are the exception, not the
+     * standard to copy.
+     */
+    private String requireInstituteId(HttpServletRequest request, CustomUserDetails user) {
         String instituteId = request.getHeader("clientId");
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("Missing clientId header");
         }
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
         return instituteId;
     }
 }

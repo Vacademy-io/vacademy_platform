@@ -92,9 +92,12 @@ public class AuthService {
         }
         try {
             ObjectMapper objectMapper = new ObjectMapper();
+            // Role names contain spaces in production ("CONTENT CREATOR"), so the
+            // query string must be encoded or the call 400s and the caller silently
+            // resolves zero recipients.
             String path = AuthServiceRoutes.GET_USERS_BY_INSTITUTE_ROLE
-                    + "?instituteId=" + instituteId
-                    + "&roles=" + String.join(",", roles);
+                    + "?instituteId=" + enc(instituteId)
+                    + "&roles=" + enc(String.join(",", roles));
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName,
                     HttpMethod.GET.name(),
@@ -773,5 +776,36 @@ public class AuthService {
         } catch (Exception e) {
             throw new VacademyException("Failed to backfill parents: " + e.getMessage());
         }
+    }
+
+    /**
+     * userId -> roles at THIS institute. Authorisation must not be decided from
+     * UserDTO.roles, which spans every institute and includes INVITED memberships.
+     *
+     * Returns an empty map on failure; callers must treat "no roles" as "no
+     * privileges", never as "unrestricted".
+     */
+    public Map<String, List<String>> getInstituteRoles(String instituteId, List<String> userIds) {
+        if (instituteId == null || instituteId.isBlank() || userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            String path = AuthServiceRoutes.GET_INSTITUTE_ROLES
+                    + "?instituteId=" + enc(instituteId)
+                    + "&userIds=" + enc(String.join(",", userIds));
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.GET.name(), authServerBaseUrl, path, null);
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<Map<String, List<String>>>() {
+                    });
+        } catch (Exception e) {
+            log.warn("[reporting] institute-role lookup failed for institute {}", instituteId, e);
+            return Map.of();
+        }
+    }
+
+    private static String enc(String v) {
+        return java.net.URLEncoder.encode(v, java.nio.charset.StandardCharsets.UTF_8);
     }
 }

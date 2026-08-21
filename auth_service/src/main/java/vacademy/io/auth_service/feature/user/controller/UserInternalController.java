@@ -16,6 +16,7 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth-service/internal/user")
@@ -68,6 +69,17 @@ public class UserInternalController {
      * Only ACTIVE memberships are returned — an INVITED or DISABLED user must never
      * be mailed institute data, and reports can name learners.
      */
+    /**
+     * userId -> roles held AT THIS INSTITUTE. Authorisation decisions must use this
+     * rather than UserDTO.roles, which spans every institute and includes INVITED.
+     */
+    @GetMapping("/v1/institute-roles")
+    public ResponseEntity<Map<String, List<String>>> getInstituteRoles(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("userIds") List<String> userIds) {
+        return ResponseEntity.ok(userService.getInstituteRoles(instituteId, userIds));
+    }
+
     @GetMapping("/v1/users-by-institute-role")
     public ResponseEntity<List<UserDTO>> getUsersByInstituteAndRoles(
             @RequestParam("instituteId") String instituteId,

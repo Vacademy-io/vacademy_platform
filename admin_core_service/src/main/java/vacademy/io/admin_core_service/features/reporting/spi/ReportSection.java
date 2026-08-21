@@ -69,6 +69,18 @@ public interface ReportSection {
     SectionFacts compute(ReportContext ctx);
 
     /**
+     * Scopes this section can genuinely differentiate.
+     *
+     * Declaring a scope it cannot honour is worse than not supporting it: the
+     * runner would fan out to 50 batches and send 50 byte-identical institute-wide
+     * documents — and, once billing lands, charge for all 50. The runner skips
+     * combinations a section does not support rather than duplicating.
+     */
+    default Set<ReportContext.ScopeType> supportedScopes() {
+        return Set.of(ReportContext.ScopeType.INSTITUTE);
+    }
+
+    /**
      * Relative credit weight, added to the base charge when this section is
      * included. Phase 0 does not bill; the value exists so the estimator has
      * something to sum once cost attribution is fixed.

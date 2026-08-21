@@ -78,11 +78,31 @@ public class ReportRecipientResolver {
             }
         }
 
+        if (byId.isEmpty()) return List.of();
+
+        // Roles must be read PER INSTITUTE. UserDTO.roles is every role the person
+        // holds anywhere (User.roles is a plain @OneToMany filtered only on
+        // status IN ('ACTIVE','INVITED')), so deciding "is this an admin here" from
+        // it lets a teacher at this institute who is an admin at ANY other one
+        // bypass the cohort restriction and be emailed every learner by name.
+        Map<String, List<String>> instituteRoles =
+                authService.getInstituteRoles(instituteId, new ArrayList<>(byId.keySet()));
+
         List<Recipient> out = new ArrayList<>();
         for (UserDTO u : byId.values()) {
-            Set<String> roles = u.getRoles() == null ? Set.of()
-                    : u.getRoles().stream().filter(java.util.Objects::nonNull)
-                        .map(r -> r.trim().toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
+            Set<String> roles = instituteRoles.getOrDefault(u.getId(), List.of()).stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(r -> r.trim().toUpperCase(Locale.ROOT))
+                    .collect(Collectors.toSet());
+
+            if (roles.isEmpty()) {
+                // No ACTIVE role at this institute — could be a stale explicit
+                // recipient id, or the lookup failed. Either way, send nothing
+                // rather than defaulting to unrestricted.
+                log.warn("[reporting] recipient {} has no active role at institute {} — skipped",
+                        u.getId(), instituteId);
+                continue;
+            }
 
             out.add(Recipient.builder()
                     .userId(u.getId())

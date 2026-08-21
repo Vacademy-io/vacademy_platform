@@ -76,7 +76,8 @@ public class ReportingScopeResolver {
      * How many documents this schedule produces per run, and per month. Drives the
      * pre-save warning and, from Phase 2, the credit projection.
      */
-    public Preview preview(String instituteId, ReportScheduleConfig schedule) {
+    public Preview preview(String instituteId, ReportScheduleConfig schedule,
+                           double perDocumentCredits) {
         List<Scope> scopes = resolveUncapped(instituteId, schedule);
         int perRun = scopes.size();
         int runsPerMonth = switch (nullSafe(schedule.getFrequency())) {
@@ -84,13 +85,66 @@ public class ReportingScopeResolver {
             case "monthly" -> 1;
             default -> 4;
         };
+        // Cost is quoted per DOCUMENT and then multiplied out, because that is how it
+        // is actually charged — the surprise this preview exists to prevent is scope,
+        // not price: "every subject, daily" is 1,042 documents a run.
+        double perDoc = perDocumentCredits;
         return new Preview(perRun, runsPerMonth, perRun * runsPerMonth,
                 perRun > MAX_DOCUMENTS_PER_RUN,
-                scopes.stream().limit(10).map(Scope::label).toList());
+                scopes.stream().limit(10).map(Scope::label).toList(),
+                perDoc, perDoc * perRun, perDoc * perRun * runsPerMonth);
     }
 
     public record Preview(int documentsPerRun, int runsPerMonth, int documentsPerMonth,
-                          boolean exceedsCap, List<String> sampleLabels) {}
+                          boolean exceedsCap, List<String> sampleLabels,
+                          double creditsPerDocument, double creditsPerRun,
+                          double creditsPerMonth) {}
+
+    public record Option(String id, String label) {}
+
+    /** {@code total} is the full match count; {@code options} may be capped. */
+    public record Options(int total, boolean truncated, List<Option> options) {}
+
+    /**
+     * The pickable scopes for a type, so a schedule can name the batches it wants
+     * instead of meaning "all of them".
+     *
+     * This exists because an empty {@code scopeIds} is interpreted as "every one",
+     * and at a real institute every batch is 661 documents — over the per-run cap,
+     * so the schedule throws rather than sends. Without a picker, any scope other
+     * than INSTITUTE is unusable, which made the whole scoping feature theoretical.
+     *
+     * Filtering happens in Java rather than SQL: the candidate list is already
+     * institute-scoped and at most a few thousand rows, and reusing the same
+     * queries as the real fan-out guarantees the picker offers exactly what a run
+     * would resolve. A picker that could offer a scope the runner then rejects
+     * would be worse than no picker.
+     */
+    public Options options(String instituteId, String scopeType, String query, int limit) {
+        ReportContext.ScopeType type = parseType(scopeType);
+        if (type == ReportContext.ScopeType.INSTITUTE) {
+            return new Options(0, false, List.of());
+        }
+        List<Scope> all = lookup(sqlFor(type), instituteId, List.of(), type);
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        List<Option> matched = all.stream()
+                .filter(sc -> q.isEmpty()
+                        || (sc.label() != null && sc.label().toLowerCase(Locale.ROOT).contains(q)))
+                .map(sc -> new Option(sc.id(), sc.label()))
+                .toList();
+        int cap = Math.max(1, Math.min(limit, 200));
+        return new Options(matched.size(), matched.size() > cap,
+                matched.stream().limit(cap).toList());
+    }
+
+    private String sqlFor(ReportContext.ScopeType type) {
+        return switch (type) {
+            case BATCH -> BATCH_SQL;
+            case SUBJECT -> SUBJECT_SQL;
+            case FACULTY -> FACULTY_SQL;
+            case INSTITUTE -> throw new IllegalArgumentException("institute scope has no options");
+        };
+    }
 
     private List<Scope> resolveUncapped(String instituteId, ReportScheduleConfig schedule) {
         ReportContext.ScopeType type = parseType(schedule.getScopeType());

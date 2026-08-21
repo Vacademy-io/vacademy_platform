@@ -60,6 +60,7 @@ public class ReportRunService {
     private final ReportWindowResolver windowResolver;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final vacademy.io.admin_core_service.features.media_service.service.MediaService mediaService;
+    private final ReportBillingService billing;
 
     /**
      * Fan out one schedule into its documents and run each independently.
@@ -76,6 +77,25 @@ public class ReportRunService {
         // scheduler's per-schedule catch is the right place to record it. Swallowing
         // it here would look identical to "nothing was due".
         List<ReportingScopeResolver.Scope> scopes = scopeResolver.resolve(instituteId, schedule);
+
+        // The cap is per RUN, so it has to see the whole fan-out. Checked per
+        // document instead, thirty documents at ten credits each would every one
+        // pass a cap of fifty and the run would still spend three hundred.
+        Integer cap = schedule.getCreditCapPerRun();
+        if (cap != null && !scopes.isEmpty()) {
+            java.math.BigDecimal perDoc = billing.costOf(
+                    registry.resolve(schedule.getSections(), null).stream()
+                            .filter(sec -> sec.supportedScopes().contains(scopes.get(0).type()))
+                            .toList());
+            java.math.BigDecimal runCost = perDoc.multiply(
+                    java.math.BigDecimal.valueOf(scopes.size()));
+            if (runCost.compareTo(java.math.BigDecimal.valueOf(cap)) > 0) {
+                log.warn("[reporting] schedule {} at institute {} not run — {} documents × {} "
+                                + "credits = {}, above the {} cap set on the schedule",
+                        schedule.getId(), instituteId, scopes.size(), perDoc, runCost, cap);
+                return;
+            }
+        }
 
         for (ReportingScopeResolver.Scope scope : scopes) {
             try {
@@ -214,6 +234,10 @@ public class ReportRunService {
                 return;
             }
 
+            // Priced from the sections this document actually computed. The
+            // per-run cap was already enforced in execute(), before any of this ran.
+            java.math.BigDecimal cost = billing.costOf(selected);
+
             // ── 4. Deliver ──────────────────────────────────────────────────
             Delivery delivery = deliver(instituteId, instituteName, schedule.getFrequency(),
                     window, run, selected, groups, factsByGroup);
@@ -228,13 +252,21 @@ public class ReportRunService {
                         "no recipients could be delivered to (resolution or send failed)");
             }
 
+            // ── 5. Charge ───────────────────────────────────────────────────
+            // Only now: the document exists and reached someone. Skipped, empty and
+            // undelivered runs never reach this line and so never cost anything.
+            java.math.BigDecimal charged = billing.chargeForRun(instituteId, run, cost,
+                    "Scheduled report — " + run.getScopeLabel() + " (" + window.label() + ")");
+
             run.setStatus("SENT");
             run.setRecipientCount(delivered);
             run.setNamedLearners(namedLearners);
+            run.setCreditsCharged(charged.doubleValue());
             run.setSectionsIncluded(selected.stream().map(ReportSection::key).collect(Collectors.joining(",")));
             runRepository.save(run);
-            log.info("[reporting] institute {} schedule {} sent to {} recipient(s), {} learner(s) named",
-                    instituteId, schedule.getId(), delivered, namedLearners);
+            log.info("[reporting] institute {} schedule {} sent to {} recipient(s), "
+                            + "{} learner(s) named, {} credit(s) charged",
+                    instituteId, schedule.getId(), delivered, namedLearners, charged);
 
         } catch (Exception e) {
             // The run row survives as FAILED so the failure is visible in the audit

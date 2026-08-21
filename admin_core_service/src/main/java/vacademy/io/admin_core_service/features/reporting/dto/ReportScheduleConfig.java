@@ -51,6 +51,13 @@ public class ReportScheduleConfig {
     private boolean skipIfNoData = true;
 
     /** Phase 2. Present now so saved config survives the upgrade. */
+    /**
+     * INERT until the Phase 2 narrator exists. Nothing reads this — no code path
+     * turns it into prose — so the config screen deliberately stops offering it
+     * rather than persisting a setting that quietly does nothing. Kept (with a
+     * default, so an absent JSON key cannot NPE) because schedules saved earlier
+     * still carry it and the field returns when there is a narrator to honour it.
+     */
     private Ai ai = new Ai();
 
     private Integer creditCapPerRun;

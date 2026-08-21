@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.reporting.entity.ReportRunRecipie
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRecipientRepository;
 import vacademy.io.admin_core_service.features.reporting.repository.ReportRunRepository;
 import vacademy.io.admin_core_service.features.reporting.service.ReportRunService;
+import vacademy.io.admin_core_service.features.reporting.service.ReportBillingService;
+import vacademy.io.admin_core_service.features.reporting.service.ReportRecipientResolver;
 import vacademy.io.admin_core_service.features.reporting.service.ReportingScopeResolver;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSectionRegistry;
@@ -48,6 +50,8 @@ public class ReportingController {
     private final ReportRunRecipientRepository recipientRepository;
     private final ReportRunService runService;
     private final InstituteAccessValidator instituteAccessValidator;
+    private final ReportRecipientResolver recipientResolver;
+    private final ReportBillingService billing;
 
     /**
      * Sections offered to this institute, each flagged with whether it has data.
@@ -83,6 +87,40 @@ public class ReportingController {
     }
 
     /**
+     * The batches / subjects / faculty a schedule can name.
+     *
+     * An empty scopeIds means "all of them", which at a real institute is 661
+     * documents — past the per-run cap, so such a schedule throws instead of
+     * sending. This endpoint is what lets an admin pick a handful instead, which is
+     * the difference between scoped reports working and being theoretical.
+     */
+    @GetMapping("/scope-options")
+    public ResponseEntity<ReportingScopeResolver.Options> scopeOptions(HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String scopeType,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "50") int limit) {
+        String instituteId = requireInstituteId(request, user);
+        return ResponseEntity.ok(scopeResolver.options(instituteId, scopeType, q, limit));
+    }
+
+    /**
+     * People who can be named as recipients — platform users of this institute only.
+     *
+     * Role-only targeting made a careful first send impossible: there was no way to
+     * address a report to one person and check it before it reached eleven admins.
+     */
+    @GetMapping("/recipient-options")
+    public ResponseEntity<List<ReportRecipientResolver.Candidate>> recipientOptions(
+            HttpServletRequest request,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "50") int limit) {
+        String instituteId = requireInstituteId(request, user);
+        return ResponseEntity.ok(recipientResolver.candidates(instituteId, q, limit));
+    }
+
+    /**
      * How many documents a schedule would actually generate — the fan-out guard.
      *
      * Call this before saving. Scope multiplies everything: at one production
@@ -97,7 +135,12 @@ public class ReportingController {
             @RequestAttribute("user") CustomUserDetails user,
             @RequestBody ReportScheduleConfig schedule) {
         String instituteId = requireInstituteId(request, user);
-        return ResponseEntity.ok(scopeResolver.preview(instituteId, schedule));
+        // Price the sections the schedule actually selected, resolved through the
+        // registry so a withdrawn or renamed key cannot inflate the quote.
+        double perDocument = billing
+                .costOf(registry.resolve(schedule.getSections(), null))
+                .doubleValue();
+        return ResponseEntity.ok(scopeResolver.preview(instituteId, schedule, perDocument));
     }
 
     /**

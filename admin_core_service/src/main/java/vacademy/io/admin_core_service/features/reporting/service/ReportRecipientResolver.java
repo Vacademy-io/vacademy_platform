@@ -125,6 +125,58 @@ public class ReportRecipientResolver {
         return out;
     }
 
+    /** Roles that can receive a report — mirrors the ROLES list on the config screen. */
+    private static final List<String> CANDIDATE_ROLES = List.of("ADMIN", "TEACHER", "EVALUATOR");
+
+    public record Candidate(String userId, String name, String email, List<String> roles) {}
+
+    /**
+     * People at this institute who could be named as recipients.
+     *
+     * Needed because a schedule could previously only target ROLES — "every ADMIN"
+     * — which makes a careful first send impossible: there was no way to address a
+     * report to one person. It also keeps the platform-users-only rule intact,
+     * since the picker can only ever offer real users of this institute and never
+     * a typed-in address.
+     *
+     * Users are collected per role so the roles reported back are the ones that
+     * actually matched at THIS institute, rather than {@code UserDTO.roles}, which
+     * carries no institute predicate and would leak an elsewhere-ADMIN into the
+     * list as though they were an admin here.
+     */
+    public List<Candidate> candidates(String instituteId, String query, int limit) {
+        Map<String, Candidate> byId = new LinkedHashMap<>();
+        for (String role : CANDIDATE_ROLES) {
+            List<UserDTO> users;
+            try {
+                users = authService.getUsersByInstituteAndRoles(instituteId, List.of(role));
+            } catch (Exception e) {
+                log.warn("[reporting] candidate lookup failed for role {} at institute {}",
+                        role, instituteId, e);
+                continue;
+            }
+            if (users == null) continue;
+            for (UserDTO u : users) {
+                if (u == null || u.getId() == null) continue;
+                Candidate existing = byId.get(u.getId());
+                List<String> roles = existing == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(existing.roles());
+                if (!roles.contains(role)) roles.add(role);
+                byId.put(u.getId(), new Candidate(u.getId(), u.getFullName(), u.getEmail(), roles));
+            }
+        }
+
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        int cap = Math.max(1, Math.min(limit, 200));
+        return byId.values().stream()
+                .filter(c -> q.isEmpty()
+                        || (c.name() != null && c.name().toLowerCase(Locale.ROOT).contains(q))
+                        || (c.email() != null && c.email().toLowerCase(Locale.ROOT).contains(q)))
+                .limit(cap)
+                .toList();
+    }
+
     /**
      * @return null when the reader may see everyone, or the explicit set of learner
      *         ids they may see. An empty list means "may see nobody", which is

@@ -17,9 +17,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { ScopePicker, RecipientPicker } from './ReportPickers';
 import {
     EMPTY_REPORT_SETTING,
     fetchReportSetting,
+    fetchRunRecipients,
     fetchRuns,
     fetchSections,
     newSchedule,
@@ -31,6 +33,7 @@ import {
     type ReportSettingConfig,
     type PreviewResult,
     type ReportRun,
+    type ReportRunRecipient,
     type ScopePreview,
 } from '../-services/scheduled-reports-service';
 
@@ -104,8 +107,14 @@ const SCOPES = [
 ];
 const ROLES = ['ADMIN', 'TEACHER', 'EVALUATOR'];
 
-/** Delivery history columns. Read-only — the audit view, not an editing surface. */
-const runColumns: ColumnDef<ReportRun>[] = [
+/**
+ * Delivery history columns. Read-only — the audit view, not an editing surface.
+ *
+ * A factory rather than a const because the last column opens the per-recipient
+ * detail, and "who actually received this, and did it land" is the half of the
+ * audit that matters when someone asks why they did not get their report.
+ */
+const makeRunColumns = (onInspect: (run: ReportRun) => void): ColumnDef<ReportRun>[] => [
     {
         accessorKey: 'createdAt',
         header: 'When',
@@ -122,6 +131,15 @@ const runColumns: ColumnDef<ReportRun>[] = [
     },
     { accessorKey: 'recipientCount', header: 'Recipients' },
     { accessorKey: 'namedLearners', header: 'Learners named' },
+    {
+        id: 'detail',
+        header: '',
+        cell: ({ row }) => (
+            <MyButton buttonType="text" onClick={() => onInspect(row.original)}>
+                Who received it
+            </MyButton>
+        ),
+    },
 ];
 /** Mirrors ReportingScopeResolver.MAX_DOCUMENTS_PER_RUN — the server refuses above this. */
 const MAX_DOCS_PER_RUN = 50;
@@ -130,6 +148,22 @@ export default function ScheduledReportsSettings() {
     const [config, setConfig] = useState<ReportSettingConfig>(EMPTY_REPORT_SETTING);
     const [saving, setSaving] = useState(false);
     const [preview, setPreview] = useState<Record<string, ScopePreview | null>>({});
+    const [inspecting, setInspecting] = useState<ReportRun | null>(null);
+    const [recipients, setRecipients] = useState<ReportRunRecipient[] | null>(null);
+    const [recipientsError, setRecipientsError] = useState<string | null>(null);
+
+    const inspectRun = async (run: ReportRun) => {
+        setInspecting(run);
+        setRecipients(null);
+        setRecipientsError(null);
+        try {
+            setRecipients(await fetchRunRecipients(run.id));
+        } catch {
+            // Distinguish "failed to load" from "nobody received it" — a run that
+            // legitimately reached zero people looks identical otherwise.
+            setRecipientsError('Could not load the recipient list for this run.');
+        }
+    };
     const [rendered, setRendered] = useState<PreviewResult | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -199,7 +233,9 @@ export default function ScheduledReportsSettings() {
                 : `${schedule.recipients.userIds.length} selected recipient(s)`;
         if (
             !window.confirm(
-                `Send "${schedule.name}" now to ${who}?\n\nThis sends real email and cannot be recalled. Use Preview if you only want to see it.`
+                `Send "${schedule.name}" now to ${who}?\n\n` +
+                    `This sends real email, charges credits, and cannot be recalled. ` +
+                    `Use Preview if you only want to see it.`
             )
         ) {
             return;
@@ -348,6 +384,12 @@ export default function ScheduledReportsSettings() {
                                                     names learners
                                                 </Badge>
                                             )}
+                                            {sec.creditWeight > 0 && (
+                                                <Badge className="ml-2" variant="secondary">
+                                                    +{sec.creditWeight} credit
+                                                    {sec.creditWeight === 1 ? '' : 's'}
+                                                </Badge>
+                                            )}
                                             {!sec.available && (
                                                 <span className="ml-2 text-caption text-neutral-500">
                                                     no data in the last 30 days
@@ -487,6 +529,12 @@ export default function ScheduledReportsSettings() {
                                 </MyButton>
                             </div>
 
+                            <ScopePicker
+                                scopeType={s.scopeType}
+                                selected={s.scopeIds}
+                                onChange={(ids) => patchSchedule(s.id, { scopeIds: ids })}
+                            />
+
                             {p && (
                                 <div
                                     className={`mb-4 rounded-md border p-3 text-body ${
@@ -505,6 +553,13 @@ export default function ScheduledReportsSettings() {
                                             will not run. Narrow the scope.
                                         </span>
                                     )}
+                                    <span className="block">
+                                        <b>{p.creditsPerDocument}</b> credits per report
+                                        {' → '}
+                                        <b>{p.creditsPerRun}</b> per run,{' '}
+                                        <b>{p.creditsPerMonth}</b> a month. Recipients are
+                                        free; scope and sections are what cost.
+                                    </span>
                                     {p.sampleLabels?.length > 1 && (
                                         <span className="block text-caption text-neutral-500">
                                             e.g. {p.sampleLabels.slice(0, 3).join(', ')}…
@@ -539,6 +594,44 @@ export default function ScheduledReportsSettings() {
                                     </label>
                                 ))}
                             </div>
+                            {/* The server refuses a run above this, BEFORE sending —
+                                the only point at which refusing is still free. */}
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <span className="text-caption text-neutral-600">
+                                    Refuse a run costing more than
+                                </span>
+                                <MyInput
+                                    inputType="number"
+                                    input={
+                                        s.creditCapPerRun === null ||
+                                        s.creditCapPerRun === undefined
+                                            ? ''
+                                            : String(s.creditCapPerRun)
+                                    }
+                                    onChangeFunction={(e) => {
+                                        const raw = e.target.value.trim();
+                                        const n = Number(raw);
+                                        patchSchedule(s.id, {
+                                            creditCapPerRun:
+                                                raw === '' || Number.isNaN(n) || n <= 0
+                                                    ? null
+                                                    : Math.floor(n),
+                                        });
+                                    }}
+                                    inputPlaceholder="no cap"
+                                    className="w-28"
+                                />
+                                <span className="text-caption text-neutral-600">credits</span>
+                            </div>
+
+                            <RecipientPicker
+                                selected={s.recipients.userIds}
+                                onChange={(ids) =>
+                                    patchSchedule(s.id, {
+                                        recipients: { ...s.recipients, userIds: ids },
+                                    })
+                                }
+                            />
                             <p className="mb-4 text-caption text-neutral-500">
                                 Only people with an account can receive these — reports can name
                                 learners, so there is no free-text email option. Teachers are
@@ -591,7 +684,7 @@ export default function ScheduledReportsSettings() {
                                 total_elements: runs.length,
                                 last: true,
                             }}
-                            columns={runColumns}
+                            columns={makeRunColumns(inspectRun)}
                             isLoading={runsLoading}
                             error={runsError}
                             currentPage={0}
@@ -599,6 +692,70 @@ export default function ScheduledReportsSettings() {
                     )}
                 </div>
             </div>
+
+            {inspecting && (
+                <MyDialog
+                    heading="Who received it"
+                    open={true}
+                    onOpenChange={() => setInspecting(null)}
+                    dialogWidth="max-w-3xl"
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="text-caption text-neutral-500">
+                            {inspecting.scopeLabel || 'Institute report'} ·{' '}
+                            {new Date(inspecting.createdAt).toLocaleString()}
+                            {inspecting.skipReason ? ` · ${inspecting.skipReason}` : ''}
+                        </p>
+                        {recipientsError && (
+                            <p className="text-caption text-danger-600">{recipientsError}</p>
+                        )}
+                        {!recipientsError && recipients === null && (
+                            <p className="text-caption text-neutral-500">Loading…</p>
+                        )}
+                        {recipients?.length === 0 && (
+                            <p className="text-body">
+                                Nobody received this run. If it was skipped, the reason is above.
+                            </p>
+                        )}
+                        {recipients && recipients.length > 0 && (
+                            <div className="max-h-96 overflow-y-auto">
+                                {recipients.map((r) => (
+                                    <div
+                                        key={r.id}
+                                        className="flex flex-wrap items-center gap-2 border-b border-border py-2 text-body"
+                                    >
+                                        <span className="min-w-48 truncate">
+                                            {r.email || '(no email on file)'}
+                                        </span>
+                                        <Badge variant="secondary">{r.role || 'unknown role'}</Badge>
+                                        <Badge
+                                            variant={r.delivered ? 'secondary' : 'destructive'}
+                                        >
+                                            {r.delivered ? 'delivered' : 'not delivered'}
+                                        </Badge>
+                                        {r.namedLearners ? (
+                                            <span className="text-caption text-neutral-500">
+                                                {r.namedLearners} learner
+                                                {r.namedLearners === 1 ? '' : 's'} named
+                                            </span>
+                                        ) : null}
+                                        {r.sectionsSent && (
+                                            <span className="text-caption text-neutral-500">
+                                                {r.sectionsSent}
+                                            </span>
+                                        )}
+                                        {r.errorMessage && (
+                                            <span className="text-caption text-danger-600">
+                                                {r.errorMessage}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </MyDialog>
+            )}
 
             {rendered && (
                 <MyDialog

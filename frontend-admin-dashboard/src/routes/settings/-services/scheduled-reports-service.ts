@@ -54,7 +54,11 @@ export interface ReportSchedule {
         // address outside the platform has no answer to "who received this".
     };
     skipIfNoData: boolean;
-    ai: { enabled: boolean; depth: string };
+    /** Refuse a run costing more than this many credits. Null = no cap. */
+    creditCapPerRun: number | null;
+    // No `ai` field on purpose. The narration layer (Phase 2) does not exist yet,
+    // and a persisted { enabled, depth } that nothing reads is a setting that lies
+    // to whoever ticks it. It comes back when there is a narrator to honour it.
 }
 
 export interface ReportSettingConfig {
@@ -69,6 +73,10 @@ export interface ScopePreview {
     documentsPerMonth: number;
     exceedsCap: boolean;
     sampleLabels: string[];
+    /** Base charge plus the weight of each selected section. */
+    creditsPerDocument: number;
+    creditsPerRun: number;
+    creditsPerMonth: number;
 }
 
 export interface ReportRun {
@@ -124,7 +132,7 @@ export function newSchedule(): ReportSchedule {
         scopeIds: [],
         recipients: { roles: ['ADMIN'], userIds: [] },
         skipIfNoData: true,
-        ai: { enabled: false, depth: 'summary' },
+        creditCapPerRun: null,
     };
 }
 
@@ -199,6 +207,50 @@ export async function previewReport(schedule: ReportSchedule): Promise<PreviewRe
 export async function runReportNow(schedule: ReportSchedule): Promise<string> {
     const res = await authenticatedAxiosInstance.post(`${REPORTING_BASE}/run-now`, schedule);
     return typeof res.data === 'string' ? res.data : 'Report sent.';
+}
+
+export interface ScopeOption {
+    id: string;
+    label: string;
+}
+
+export interface ScopeOptions {
+    total: number;
+    /** True when `options` is a capped slice of `total` — narrow with a query. */
+    truncated: boolean;
+    options: ScopeOption[];
+}
+
+export interface RecipientCandidate {
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string[];
+}
+
+/**
+ * Batches / subjects / faculty this schedule can name.
+ *
+ * Backed by the same queries the real fan-out uses, so the picker can never offer
+ * a scope the runner would then refuse.
+ */
+export async function fetchScopeOptions(
+    scopeType: ReportScopeType,
+    q?: string
+): Promise<ScopeOptions> {
+    if (scopeType === 'INSTITUTE') return { total: 0, truncated: false, options: [] };
+    const res = await authenticatedAxiosInstance.get(`${REPORTING_BASE}/scope-options`, {
+        params: { scopeType, q: q || undefined, limit: 50 },
+    });
+    return res.data;
+}
+
+/** Platform users of this institute who can be named as recipients. */
+export async function fetchRecipientOptions(q?: string): Promise<RecipientCandidate[]> {
+    const res = await authenticatedAxiosInstance.get(`${REPORTING_BASE}/recipient-options`, {
+        params: { q: q || undefined, limit: 50 },
+    });
+    return Array.isArray(res.data) ? res.data : [];
 }
 
 export async function fetchRuns(): Promise<ReportRun[]> {

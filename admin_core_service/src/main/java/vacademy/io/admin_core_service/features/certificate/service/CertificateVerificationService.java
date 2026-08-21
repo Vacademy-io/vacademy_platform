@@ -254,7 +254,11 @@ public class CertificateVerificationService {
                 .instituteLogoFileId(institute != null ? institute.getLogoFileId() : null)
                 .instituteThemeCode(institute != null ? institute.getInstituteThemeCode() : null)
                 .instituteWebsite(institute != null ? institute.getWebsiteUrl() : null)
-                .instituteNote(readVerificationNote(institute))
+                .instituteNote(readVerificationSetting(institute, "verificationNote"))
+                .headline(readVerificationSetting(institute, "verificationHeadline"))
+                .showCourse(readVerificationFlag(institute, "verificationShowCourse"))
+                .showIssueDate(readVerificationFlag(institute, "verificationShowIssueDate"))
+                .showCompletion(readVerificationFlag(institute, "verificationShowCompletion"))
                 .courseName(certificate.getCourseName())
                 .issuedAt(certificate.getIssuedAt())
                 .completionPercentage(certificate.getCompletionPercentage())
@@ -270,7 +274,29 @@ public class CertificateVerificationService {
      * blob means no note, never a failed verification — this is decoration on a
      * page whose job is to answer a yes/no question.
      */
-    private String readVerificationNote(Institute institute) {
+    private String readVerificationSetting(Institute institute, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = readVerificationNode(institute, field);
+        if (value == null) {
+            return null;
+        }
+        String text = value.asText(null);
+        return StringUtils.hasText(text) ? text.trim() : null;
+    }
+
+    /** Null when unset, so the page can tell "off" from "never configured". */
+    private Boolean readVerificationFlag(Institute institute, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = readVerificationNode(institute, field);
+        return value != null && value.isBoolean() ? value.asBoolean() : null;
+    }
+
+    /**
+     * One field off the institute's certificate settings.
+     *
+     * <p>A malformed settings blob means the page falls back to its defaults,
+     * never a failed verification: this is presentation on a page whose job is
+     * to answer a yes/no question about a document someone is holding.
+     */
+    private com.fasterxml.jackson.databind.JsonNode readVerificationNode(Institute institute, String field) {
         String settingJson = institute != null ? institute.getSetting() : null;
         if (!StringUtils.hasText(settingJson)) {
             return null;
@@ -282,13 +308,14 @@ public class CertificateVerificationService {
             if (entries.isArray()) {
                 for (com.fasterxml.jackson.databind.JsonNode config : entries) {
                     if ("COURSE_COMPLETION".equals(config.path("key").asText(null))) {
-                        String note = config.path("verificationNote").asText(null);
-                        return StringUtils.hasText(note) ? note.trim() : null;
+                        com.fasterxml.jackson.databind.JsonNode value = config.path(field);
+                        return value.isMissingNode() || value.isNull() ? null : value;
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not read the verification note for institute {}", institute.getId(), e);
+            log.warn("Could not read verification setting '{}' for institute {}",
+                    field, institute.getId(), e);
         }
         return null;
     }

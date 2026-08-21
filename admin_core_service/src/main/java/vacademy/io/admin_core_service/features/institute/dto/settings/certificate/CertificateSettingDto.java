@@ -102,11 +102,30 @@ public class CertificateSettingDto {
     private Boolean autoStampCode;
     private Boolean autoStampNumber;
 
-    // A line of the institute's own on the public verification page — a
-    // registrar's contact, a note about what the certificate attests to.
-    // Shown to whoever scans a certificate, so it is public by definition.
-    // Null/blank prints nothing rather than an empty panel.
+    // The public verification page — what someone scanning a certificate sees.
+    //
+    // Editable because the page speaks for the institute to an outsider, and
+    // institutes do not all say the same thing: a university confirming a degree
+    // and a training provider confirming attendance want different words and
+    // disclose different amounts. Everything here is public by definition,
+    // since anyone holding the link reads it.
+    //
+    // Null on every field means the shipped default, so a page that was never
+    // configured reads exactly as it does today.
+
+    // Replaces "This certificate is genuine" when set.
+    private String verificationHeadline;
+
+    // A line of the institute's own — a registrar's contact, a note about what
+    // the certificate attests to. Blank prints nothing rather than an empty panel.
     private String verificationNote;
+
+    // Which particulars the page lists. The learner's (masked) name and the
+    // certificate number are always shown: without them the page confirms that
+    // *a* certificate exists rather than the one in the reader's hand.
+    private Boolean verificationShowCourse;
+    private Boolean verificationShowIssueDate;
+    private Boolean verificationShowCompletion;
 
     // Admin-defined fields, so an institute can put values on its certificates
     // that the platform has no built-in token for — a grade, a director's name,

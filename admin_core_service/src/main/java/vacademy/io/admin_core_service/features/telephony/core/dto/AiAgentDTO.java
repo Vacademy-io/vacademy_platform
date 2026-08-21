@@ -40,4 +40,9 @@ public class AiAgentDTO {
      *  silently reprice an agent. */
     private String ttsModel;
     private String bookingPageId;
+    /**
+     * Post-call and mid-call action rules. Absent on update = keep what is stored, so an
+     * older client that does not know about rules cannot wipe them.
+     */
+    private List<AiCallActionRule> sendRules;
 }

@@ -24,6 +24,7 @@ import {
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
 import { AiAgentPromptAssistant } from '@/routes/settings/-components/AiAgentPromptAssistant';
+import { SendRulesEditor } from './send-rules-editor';
 import type { AssistDerived } from '@/routes/settings/-services/ai-agent-assist';
 import {
     DEFAULT_SAMPLE_TEXT,
@@ -461,6 +462,16 @@ export function AiAgentEditorDialog({
                         {bookingPages.length === 0 &&
                             ' Create a booking page first in CRM → Meetings → Share Booking Link.'}
                     </p>
+                </div>
+
+                <div className="border-t border-neutral-200 pt-4">
+                    <SendRulesEditor
+                        rules={draft.sendRules ?? []}
+                        dispositions={draft.dispositions ?? []}
+                        extractionQuestions={draft.extractionQuestions ?? []}
+                        bookingPages={bookingPages}
+                        onChange={(sendRules) => patch({ sendRules })}
+                    />
                 </div>
             </div>
         </MyDialog>

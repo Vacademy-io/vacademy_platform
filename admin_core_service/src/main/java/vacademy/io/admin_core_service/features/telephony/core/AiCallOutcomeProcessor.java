@@ -116,6 +116,13 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
 
+    // @Lazy, matching every other field here. Creates the WhatsApp/email/meeting actions the
+    // agent promised on the call; see AiCallActionService and docs/crm/AI_CALL_ACTIONS.md.
+    // Runs POST-COMMIT alongside the auto-book, never inline (see the note there).
+    @Autowired
+    @Lazy
+    private AiCallActionService aiCallActionService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
@@ -445,7 +452,17 @@ public class AiCallOutcomeProcessor {
             try {
                 maybeAutoBookMeeting(rRef, leadRef, instRef);
             } catch (Exception ex) {
-                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", rRef.getId(), ex.getMessage());
+                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}",
+                        rRef.getId(), ex.getMessage());
+            }
+            // Separate try: a booking failure must not cost the caller the brochure they
+            // were promised, and vice versa. Two independent promises, two independent
+            // failure domains.
+            try {
+                maybeRunSendRules(rRef, leadRef, instRef);
+            } catch (Exception ex) {
+                log.warn("ai-call: send rules failed for result {} (non-fatal): {}",
+                        rRef.getId(), ex.getMessage());
             }
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -894,6 +911,24 @@ public class AiCallOutcomeProcessor {
             return;
         }
 
+        // A BOOK_MEETING rule can route this call to a different page than the agent's
+        // default (different meeting types, different hosts). Rules never CREATE the
+        // booking — this method already validates the resolved time and runs post-commit,
+        // and a second copy of that would drift. They only choose the page.
+        try {
+            var ruleAgent = aiAgentService.find(r.getCampaignId(), instituteId).orElse(null);
+            if (ruleAgent != null) {
+                var reportRoot = objectMapper.readTree(
+                        r.getRawPayload() == null ? "{}" : r.getRawPayload());
+                String override = aiCallActionService.bookingPageOverride(
+                        ruleAgent, reportRoot, r.getDisposition());
+                if (override != null && !override.isBlank()) bookingPageId = override;
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: booking-page rule lookup failed for result {} — using the "
+                    + "agent default: {}", r.getId(), ex.getMessage());
+        }
+
         // Validate the page belongs to this institute + resolve its host for the principal.
         var page = bookingPageService.getOrThrow(bookingPageId);
         if (page == null || !instituteId.equals(page.getInstituteId())) {
@@ -918,6 +953,34 @@ public class AiCallOutcomeProcessor {
         var created = meetingBookingService.createBooking(req, principal);
         log.info("ai-call: auto-booked meeting {} on page {} for lead {} at {}",
                 created != null ? created.getId() : "?", bookingPageId, lead.responseId(), rawIso);
+    }
+
+    /**
+     * Create the WhatsApp / email actions this agent's rules call for.
+     *
+     * <p>Post-commit and fully isolated, for the same reason the auto-book is: the
+     * disposition, the counsellor assignment and the lead status are what matter, and a
+     * brochure must never be able to roll them back. Every failure inside is swallowed and
+     * logged; the method cannot throw.
+     */
+    private void maybeRunSendRules(AiCallResult r, Lead lead, String instituteId) {
+        var agent = aiAgentService.find(r.getCampaignId(), instituteId).orElse(null);
+        if (agent == null) return;
+        com.fasterxml.jackson.databind.JsonNode root;
+        try {
+            root = objectMapper.readTree(r.getRawPayload() == null ? "{}" : r.getRawPayload());
+        } catch (Exception ex) {
+            log.warn("ai-call: unreadable report payload for send rules (result {}): {}",
+                    r.getId(), ex.getMessage());
+            return;
+        }
+        // callLogId is half the idempotency key. It is the same value as correlationId for
+        // an outbound VACADEMY_AI call (telephony_call_log.id == corr); the fallback covers
+        // a report that could not be bound to a log row.
+        String callKey = (r.getCallLogId() != null && !r.getCallLogId().isBlank())
+                ? r.getCallLogId() : r.getCorrelationId();
+        aiCallActionService.applyPostCall(agent, instituteId, callKey,
+                lead.userId(), lead.responseId(), root, r.getDisposition(), r.getCustomerName());
     }
 
     private vacademy.io.common.auth.dto.UserServiceDTO buildHostPrincipal(String hostUserId) {

@@ -60,6 +60,50 @@ export interface AiAgent {
      * client cannot reprice an agent by not sending the field.
      */
     ttsModel?: string;
+    /**
+     * What to send / book when a call ends in a given state. Like ttsModel, OMITTING
+     * this on save keeps whatever is stored — only an explicit array replaces it.
+     */
+    sendRules?: AiCallActionRule[];
+}
+
+/** One "when X, do Y" rule — mirrors backend AiCallActionRule. */
+export interface AiCallActionRule {
+    /**
+     * Stable id, minted by the backend on first save. NEVER regenerate it on edit:
+     * it is half the send-idempotency key (callLogId:ruleId), so a new id would make
+     * an edited rule re-fire for every lead whose call is later reprocessed.
+     */
+    id?: string;
+    label?: string;
+    enabled?: boolean;
+    /**
+     * The offer the agent makes out loud ("kya main aapko WhatsApp par bhej doon?").
+     * Injected into the call prompt, so the rule is self-contained — no need to also
+     * hand-write the same line into the system prompt and keep the two in sync.
+     */
+    askLine?: string;
+    /** POST_CALL (default) — after the call is analysed; MID_CALL — the agent fires it live. */
+    timing?: 'POST_CALL' | 'MID_CALL';
+    /** Stable key the AI uses to name this artefact. */
+    artefact?: string;
+    actionType?: 'SHARE_LINK' | 'SEND_MESSAGE' | 'BOOK_MEETING';
+    channel?: 'WHATSAPP' | 'EMAIL';
+    template?: string;
+    templateLanguage?: string;
+    /**
+     * EMAIL only: the message the person receives. Email has no template layer — it is
+     * sent verbatim and its FIRST LINE becomes the subject. Supports {{name}}.
+     */
+    messageBody?: string;
+    to?: 'phone' | 'email';
+    bookingPageId?: string;
+    when?: {
+        disposition?: string;
+        promised?: string;
+        meetingRequested?: boolean;
+        extracted?: Record<string, string>;
+    };
 }
 
 

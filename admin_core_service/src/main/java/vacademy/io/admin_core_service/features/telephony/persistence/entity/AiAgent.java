@@ -100,6 +100,14 @@ public class AiAgent {
     @Column(name = "booking_page_id", length = 36)
     private String bookingPageId;
 
+    /**
+     * JSON array of AiCallActionRule: what to send (WhatsApp/email) or book when a call
+     * ends in a given state. NULL/blank = this agent sends nothing, which is every agent
+     * that existed before V462. See AiCallActionService and docs/crm/AI_CALL_ACTIONS.md.
+     */
+    @Column(name = "send_rules", columnDefinition = "TEXT")
+    private String sendRules;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiAgentDTO;
+import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallActionRule;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository;
@@ -87,6 +88,13 @@ public class AiAgentService {
         agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
         agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
         agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
+        // Rules are OMITTED, not empty, by an older client that predates them. Writing null
+        // on omission would silently wipe an institute's whole send configuration on the next
+        // save from any such client — the same trap ttsModel documents above. An explicit
+        // empty list still clears them, because that is a deliberate act.
+        if (dto.getSendRules() != null) {
+            agent.setSendRules(writeRules(dto.getSendRules()));
+        }
         AiAgent saved = repo.save(agent);
 
         bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
@@ -253,7 +261,46 @@ public class AiAgentService {
                 .temperature(a.getTemperature())
                 .ttsModel(a.getTtsModel())
                 .bookingPageId(a.getBookingPageId())
+                .sendRules(readRules(a.getSendRules()))
                 .build();
+    }
+
+    /**
+     * Serialise the rules, stamping an id on any that arrives without one.
+     *
+     * <p>The id is HALF THE IDEMPOTENCY KEY (callLogId:ruleId), so it must be stable across
+     * edits — a UI that regenerated it on every save would make an edited rule re-fire for
+     * every lead whose call was later reprocessed. Minted here rather than trusted from the
+     * client so a rule can never reach the ledger without one.
+     */
+    private String writeRules(List<AiCallActionRule> rules) {
+        List<AiCallActionRule> cleaned = new java.util.ArrayList<>();
+        for (AiCallActionRule r : rules) {
+            if (r == null) continue;
+            if (r.getId() == null || r.getId().isBlank()) {
+                r.setId(java.util.UUID.randomUUID().toString());
+            }
+            if (r.getArtefact() != null) r.setArtefact(r.getArtefact().trim());
+            cleaned.add(r);
+        }
+        if (cleaned.isEmpty()) return null;
+        try {
+            return mapper.writeValueAsString(cleaned);
+        } catch (Exception e) {
+            throw new VacademyException("Could not save the action rules: " + e.getMessage());
+        }
+    }
+
+    /** Total: a corrupt blob reads as no rules rather than failing the whole agent list. */
+    private List<AiCallActionRule> readRules(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return mapper.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<AiCallActionRule>>() {});
+        } catch (Exception e) {
+            log.warn("ai-agent: unreadable send_rules — returning none: {}", e.getMessage());
+            return null;
+        }
     }
 
     private String writeJson(List<String> list) {

@@ -82,11 +82,15 @@ export const useCreateNote = () => {
     });
 };
 
-export const useMentorDashboard = (instituteId: string | undefined) =>
+/**
+ * @param enabled Pass false where the answer isn't needed — the dashboard KPI card uses this so an
+ * institute that has Mentorship switched off never calls mentorship from its home page.
+ */
+export const useMentorDashboard = (instituteId: string | undefined, enabled = true) =>
     useQuery({
         queryKey: [MENTORSHIP_KEYS.dashboard, instituteId],
         queryFn: () => fetchDashboard(instituteId ?? ''),
-        enabled: !!instituteId,
+        enabled: !!instituteId && enabled,
         staleTime: 30 * 1000,
     });
 

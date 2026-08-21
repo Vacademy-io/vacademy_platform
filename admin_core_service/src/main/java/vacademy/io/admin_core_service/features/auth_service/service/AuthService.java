@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.auth_service.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
+@Slf4j
 public class AuthService {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AuthService.class);
@@ -73,6 +75,38 @@ public class AuthService {
             });
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
+        }
+    }
+
+    /**
+     * Expand a recipient rule like "all ADMINs" into real users for one institute.
+     *
+     * Used by scheduled reporting. Returns an empty list rather than throwing when
+     * auth_service is unreachable: a report with no resolvable recipients is
+     * skipped and recorded, which is a better failure than a scheduled job that
+     * dies partway and leaves a half-charged run behind.
+     */
+    public List<UserDTO> getUsersByInstituteAndRoles(String instituteId, List<String> roles) {
+        if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
+            return List.of();
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            String path = AuthServiceRoutes.GET_USERS_BY_INSTITUTE_ROLE
+                    + "?instituteId=" + instituteId
+                    + "&roles=" + String.join(",", roles);
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    path,
+                    null);
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
+        } catch (Exception e) {
+            log.warn("[reporting] could not expand roles {} for institute {} — no recipients resolved",
+                    roles, instituteId, e);
+            return List.of();
         }
     }
 

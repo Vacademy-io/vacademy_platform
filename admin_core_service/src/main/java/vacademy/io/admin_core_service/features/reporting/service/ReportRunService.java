@@ -15,7 +15,6 @@ import vacademy.io.admin_core_service.features.reporting.spi.ReportContext;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 import vacademy.io.admin_core_service.features.reporting.spi.ReportSectionRegistry;
 import vacademy.io.admin_core_service.features.reporting.spi.SectionFacts;
-import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -54,17 +53,50 @@ public class ReportRunService {
     private final ReportRenderer renderer;
     private final NotificationService notificationService;
     private final AuthService authService;
+    private final ReportScopeResolver scopeResolver;
+    private final ReportRecipientResolver recipientResolver;
 
+    /**
+     * Fan out one schedule into its documents and run each independently.
+     *
+     * Each scope gets its own claim, its own run row and its own failure: a batch
+     * whose data is broken must not stop the other 40 batches from being reported.
+     */
     public void execute(String instituteId,
                         String instituteName,
                         ReportScheduleConfig schedule,
                         ReportWindowResolver.Window window) {
 
+        List<ReportScopeResolver.Scope> scopes;
+        try {
+            scopes = scopeResolver.resolve(instituteId, schedule);
+        } catch (Exception e) {
+            log.error("[reporting] could not resolve scope for schedule {} institute {}",
+                    schedule.getId(), instituteId, e);
+            return;
+        }
+
+        for (ReportScopeResolver.Scope scope : scopes) {
+            try {
+                executeOne(instituteId, instituteName, schedule, window, scope);
+            } catch (Exception e) {
+                log.error("[reporting] scope {} of schedule {} failed", scope.id(), schedule.getId(), e);
+            }
+        }
+    }
+
+    private void executeOne(String instituteId,
+                            String instituteName,
+                            ReportScheduleConfig schedule,
+                            ReportWindowResolver.Window window,
+                            ReportScopeResolver.Scope scope) {
+
         Timestamp windowStart = Timestamp.from(window.start());
 
         // ── 1. Claim ────────────────────────────────────────────────────────
-        if (runRepository.findExisting(schedule.getId(), windowStart, null).isPresent()) {
-            log.debug("[reporting] schedule {} already ran for window {} — skipping", schedule.getId(), windowStart);
+        if (runRepository.findExisting(schedule.getId(), windowStart, scope.id()).isPresent()) {
+            log.debug("[reporting] schedule {} scope {} already ran for window {} — skipping",
+                    schedule.getId(), scope.id(), windowStart);
             return;
         }
 
@@ -73,8 +105,9 @@ public class ReportRunService {
                 .scheduleId(schedule.getId())
                 .windowStart(windowStart)
                 .windowEnd(Timestamp.from(window.end()))
-                .scopeType(ReportContext.ScopeType.INSTITUTE.name())
-                .scopeLabel(schedule.getName() == null ? "Institute report" : schedule.getName())
+                .scopeType(scope.type().name())
+                .scopeId(scope.id())
+                .scopeLabel(scope.label())
                 .status("PENDING")
                 .build();
         try {
@@ -93,9 +126,12 @@ public class ReportRunService {
                     .zone(window.zone())
                     .windowStart(window.start())
                     .windowEnd(window.end())
-                    .scopeType(ReportContext.ScopeType.INSTITUTE)
+                    .scopeType(scope.type())
+                    .scopeId(scope.id())
                     .scopeLabel(run.getScopeLabel())
-                    .visibleLearnerIds(null) // institute scope: no naming restriction
+                    // Naming limits are a RECIPIENT property, not a scope property —
+                    // the facts are computed once and filtered per reader below.
+                    .visibleLearnerIds(null)
                     .build();
 
             List<ReportSection> selected = registry.resolve(schedule.getSections(), null);
@@ -145,62 +181,60 @@ public class ReportRunService {
     private int deliver(String instituteId, String instituteName, ReportScheduleConfig schedule,
                         ReportWindowResolver.Window window, ReportRun run, List<SectionFacts> allFacts) {
 
-        List<String> userIds = schedule.getRecipients() == null
-                ? List.of() : schedule.getRecipients().getUserIds();
-        if (userIds == null || userIds.isEmpty()) {
-            log.warn("[reporting] schedule {} has no resolvable recipients — nothing sent", schedule.getId());
+        List<ReportRecipientResolver.Recipient> recipients =
+                recipientResolver.resolve(instituteId, schedule);
+        if (recipients.isEmpty()) {
+            log.warn("[reporting] schedule {} resolved to no recipients — nothing sent", schedule.getId());
             return 0;
         }
 
-        List<UserDTO> users;
-        try {
-            users = authService.getUsersFromAuthServiceByUserIds(userIds);
-        } catch (Exception e) {
-            throw new RuntimeException("Could not resolve report recipients", e);
-        }
-
-        String subject = (instituteName == null ? "Vacademy" : instituteName)
-                + " — " + run.getScopeLabel();
+        String subject = (instituteName == null ? "Vacademy" : instituteName) + " — " + run.getScopeLabel();
         int sent = 0;
 
-        for (UserDTO user : users) {
-            // Per-recipient role filter: two people on the same schedule can receive
-            // materially different documents, and the audit records the copy sent.
-            Set<String> roles = user.getRoles() == null ? Set.of() : Set.copyOf(user.getRoles());
-            List<ReportSection> visible = registry.resolve(schedule.getSections(), roles.isEmpty() ? null : roles);
+        for (ReportRecipientResolver.Recipient r : recipients) {
+            // Two filters, both server-side and neither overridable by config:
+            //   1. sections this role may see at all
+            //   2. learners this reader may be shown by name
+            List<ReportSection> visible = registry.resolve(schedule.getSections(),
+                    r.getRoles() == null || r.getRoles().isEmpty() ? null : r.getRoles());
             Set<String> visibleKeys = visible.stream().map(ReportSection::key).collect(Collectors.toSet());
+
             List<SectionFacts> forUser = allFacts.stream()
-                    .filter(f -> visibleKeys.contains(f.getSectionKey())).toList();
+                    .filter(f -> visibleKeys.contains(f.getSectionKey()))
+                    .map(f -> restrictNaming(f, r.getVisibleLearnerIds()))
+                    .filter(f -> !(f.isEmpty() && f.isIdentifying()))
+                    .toList();
 
             if (forUser.isEmpty()) {
-                log.debug("[reporting] recipient {} sees no sections of schedule {} — not sent",
-                        user.getId(), schedule.getId());
+                log.debug("[reporting] recipient {} sees nothing in schedule {} — not sent",
+                        r.getUserId(), schedule.getId());
                 continue;
             }
 
-            String body = renderer.render(instituteName, run.getScopeLabel(), window.label(), forUser);
             boolean ok = false;
             String error = null;
             try {
-                if (user.getEmail() == null || user.getEmail().isBlank()) {
+                if (r.getEmail() == null || r.getEmail().isBlank()) {
                     error = "no email on file";
                 } else {
                     notificationService.sendHtmlEmailViaUnified(
-                            user.getEmail(), subject, body, instituteId, null, null, "UTILITY_EMAIL");
+                            r.getEmail(), subject,
+                            renderer.render(instituteName, run.getScopeLabel(), window.label(), forUser),
+                            instituteId, null, null, "UTILITY_EMAIL");
                     ok = true;
                     sent++;
                 }
             } catch (Exception e) {
                 error = truncate(e.getMessage());
                 log.warn("[reporting] delivery failed for recipient {} on schedule {}",
-                        user.getId(), schedule.getId(), e);
+                        r.getUserId(), schedule.getId(), e);
             }
 
             recipientRepository.save(ReportRunRecipient.builder()
                     .runId(run.getId())
-                    .userId(user.getId())
-                    .email(user.getEmail())
-                    .role(roles.isEmpty() ? null : String.join(",", roles))
+                    .userId(r.getUserId())
+                    .email(r.getEmail())
+                    .role(r.getRoles() == null ? null : String.join(",", r.getRoles()))
                     .sectionsSent(String.join(",", visibleKeys))
                     .namedLearners(forUser.stream().filter(SectionFacts::isIdentifying)
                             .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum())
@@ -209,6 +243,40 @@ public class ReportRunService {
                     .build());
         }
         return sent;
+    }
+
+    /**
+     * Drop rows naming learners this reader may not see.
+     *
+     * This is the teacher hard-scope, applied at the last possible moment so the
+     * expensive computation happens once per document rather than once per reader.
+     * A null allow-list means no restriction; an EMPTY list means "may name nobody"
+     * and must not be confused with it.
+     */
+    private SectionFacts restrictNaming(SectionFacts f, List<String> allowedLearnerIds) {
+        if (allowedLearnerIds == null || !f.isIdentifying()) return f;
+
+        Set<String> allowed = Set.copyOf(allowedLearnerIds);
+        List<SectionFacts.Row> kept = (f.getRows() == null ? List.<SectionFacts.Row>of() : f.getRows())
+                .stream()
+                .filter(row -> row.getSubjectId() != null && allowed.contains(row.getSubjectId()))
+                .toList();
+
+        // Headlines are INSTITUTE-WIDE aggregates. Keeping them next to a filtered
+        // list produces a document that contradicts itself — "808 learners quiet"
+        // above a table of 37 — and the reader cannot tell which number applies to
+        // them. Replace them with one figure that is true for this reader, and say
+        // so in the title. Recomputing the aggregate per recipient would be correct
+        // too, but costs a query per reader per section.
+        return SectionFacts.builder()
+                .sectionKey(f.getSectionKey())
+                .title(f.getTitle() + " — your cohorts")
+                .identifying(true)
+                .headline("In your cohorts", String.valueOf(kept.size()))
+                .columns(f.getColumns())
+                .rows(kept)
+                .empty(kept.isEmpty())
+                .build();
     }
 
     private static String truncate(String s) {

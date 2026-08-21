@@ -125,6 +125,31 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Every ACTIVE holder of the given roles at an institute, for recipient
+     * expansion in scheduled reporting.
+     *
+     * Role names are upper-cased before the lookup because production holds both
+     * 'ADMIN' and 'Admin'; matching exactly drops the second group silently.
+     */
+    public List<UserDTO> getUsersByInstituteAndRoles(String instituteId, List<String> roles) {
+        if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
+            return List.of();
+        }
+        List<String> upper = roles.stream()
+                .filter(r -> r != null && !r.isBlank())
+                .map(r -> r.trim().toUpperCase())
+                .distinct()
+                .collect(Collectors.toList());
+        if (upper.isEmpty()) return List.of();
+
+        return userRepository
+                .findByInstituteAndRoleNames(instituteId, upper, List.of(UserRoleStatus.ACTIVE.name()))
+                .stream()
+                .map(UserDTO::new)
+                .collect(Collectors.toList());
+    }
+
     public User getUserDetailsByUsername(String username) {
 
         List<User> results = userRepository.findUserDetailsByUsername(username);

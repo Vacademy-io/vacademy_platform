@@ -18,6 +18,31 @@ public interface UserRepository extends CrudRepository<User, String> {
         @EntityGraph(attributePaths = { "roles", "roles.role", "roles.role.authorities" })
         Optional<User> findByUsername(String username);
 
+        /**
+         * Every user holding one of these roles at this institute.
+         *
+         * Added for scheduled reporting, which needs to expand a recipient rule like
+         * "all ADMINs" into actual addresses. Unlike the single-user lookups below
+         * there is no LIMIT — the caller wants the whole set.
+         *
+         * role_name is compared case-insensitively on purpose: production holds both
+         * 'ADMIN' (807 rows) and 'Admin' (49), and an exact match silently drops the
+         * second group. Status is filtered by the caller so an INVITED or DISABLED
+         * membership never receives institute data.
+         */
+        @Query(value = """
+                        SELECT DISTINCT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status IN (:roleStatus)
+                          AND UPPER(r.role_name) IN (:roleNames)
+                        """, nativeQuery = true)
+        List<User> findByInstituteAndRoleNames(
+                        @Param("instituteId") String instituteId,
+                        @Param("roleNames") List<String> upperCaseRoleNames,
+                        @Param("roleStatus") List<String> roleStatus);
+
         @Query(value = """
                         SELECT u.* FROM users u
                         JOIN user_role ur ON u.id = ur.user_id

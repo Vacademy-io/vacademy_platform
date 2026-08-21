@@ -58,6 +58,23 @@ public class UserInternalController {
         return ResponseEntity.ok(users);
     }
 
+    /**
+     * Every ACTIVE holder of the given roles at an institute.
+     *
+     * Added for scheduled reporting: a schedule says "send to ADMINs" and the
+     * reporting tick has to turn that into real addresses. Roles live in this
+     * service's database, so admin_core cannot resolve them itself.
+     *
+     * Only ACTIVE memberships are returned — an INVITED or DISABLED user must never
+     * be mailed institute data, and reports can name learners.
+     */
+    @GetMapping("/v1/users-by-institute-role")
+    public ResponseEntity<List<UserDTO>> getUsersByInstituteAndRoles(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("roles") List<String> roles) {
+        return ResponseEntity.ok(userService.getUsersByInstituteAndRoles(instituteId, roles));
+    }
+
     @GetMapping("/user-by-id-with-password")
     public ResponseEntity<UserDTO> getUserByIdWithPassword(String userId) {
         return ResponseEntity.ok(userDetailService.getUserByIdWithPassword(userId));

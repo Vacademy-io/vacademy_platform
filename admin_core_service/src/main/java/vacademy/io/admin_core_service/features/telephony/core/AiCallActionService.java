@@ -64,6 +64,13 @@ public class AiCallActionService {
     private static final Set<String> SEND_ACTION_TYPES = Set.of("SHARE_LINK", "SEND_MESSAGE");
     private static final Set<String> CHANNELS = Set.of("WHATSAPP", "EMAIL");
 
+    // @Lazy, matching every other consumer of this service (VoiceBotInternalController,
+    // AiCallOutcomeProcessor): AudienceService is large and transitively reaches back into
+    // the lead/workflow graph, so a constructor dependency risks an eager bean cycle.
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
+
     private final EngagementActionRepository actionRepository;
     private final AiCallEngagementProvisioner provisioner;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -259,12 +266,13 @@ public class AiCallActionService {
      */
     public int applyPostCall(AiAgent agent, String instituteId, String callLogId,
                              String userId, String responseId, JsonNode report,
-                             String disposition, String leadName) {
+                             String disposition, String leadName, String phone, String email) {
         if (!actionsEnabled || agent == null || callLogId == null) return 0;
         try {
             List<AiCallActionRule> rules = rulesOf(agent);
             if (rules.isEmpty()) return 0;
             View v = viewOf(report, disposition);
+            Map<String, String> vars = variablesFor(responseId, leadName, phone, email, report);
             int made = 0;
             for (AiCallActionRule rule : rules) {
                 if (!TIMING_POST_CALL.equalsIgnoreCase(timingOf(rule))) continue;
@@ -272,7 +280,7 @@ public class AiCallActionService {
                 if (!matches(rule, v)) continue;
                 try {
                     if (create(rule, instituteId, callLogId, userId, responseId, leadName,
-                               "Promised on the AI call and accepted by the caller")) {
+                               vars, "Promised on the AI call and accepted by the caller")) {
                         made++;
                     }
                 } catch (Exception one) {
@@ -304,18 +312,20 @@ public class AiCallActionService {
      */
     public int applyMidCall(AiAgent agent, String instituteId, String callLogId,
                             String userId, String responseId, String artefactKey,
-                            String leadName) {
+                            String leadName, String phone, String email) {
         if (!actionsEnabled || agent == null || callLogId == null || !notBlank(artefactKey)) {
             return 0;
         }
         String key = artefactKey.trim();
+        // No report exists yet mid-call, so the variables come from the lead record alone.
+        Map<String, String> vars = variablesFor(responseId, leadName, phone, email, null);
         int made = 0;
         for (AiCallActionRule rule : rulesOf(agent)) {
             if (!TIMING_MID_CALL.equalsIgnoreCase(timingOf(rule))) continue;
             if (!key.equalsIgnoreCase(rule.getArtefact())) continue;
             try {
                 if (create(rule, instituteId, callLogId, userId, responseId, leadName,
-                           "Requested by the AI agent during the call")) {
+                           vars, "Requested by the AI agent during the call")) {
                     made++;
                 }
             } catch (Exception one) {
@@ -332,7 +342,8 @@ public class AiCallActionService {
      * check-then-insert races with itself across replicas.
      */
     private boolean create(AiCallActionRule rule, String instituteId, String callLogId,
-                           String userId, String responseId, String leadName, String rationale) {
+                           String userId, String responseId, String leadName,
+                           Map<String, String> vars, String rationale) {
         String actionType = rule.getActionType().trim().toUpperCase(Locale.ROOT);
         String channel = rule.getChannel() == null ? null
                 : rule.getChannel().trim().toUpperCase(Locale.ROOT);
@@ -386,8 +397,8 @@ public class AiCallActionService {
         a.setStatus("OPEN");
         a.setTemplateName(blankToNull(rule.getTemplate()));
         a.setTemplateLanguage(blankToNull(rule.getTemplateLanguage()));
-        a.setVariablesJson(variablesJson(leadName));
-        a.setDraftBody(draftBody(rule, channel, leadName));
+        a.setVariablesJson(variablesJson(vars));
+        a.setDraftBody(draftBody(rule, channel, leadName, vars));
         a.setRationale(rationale + " — rule "
                 + (notBlank(rule.getLabel()) ? rule.getLabel() : rule.getId()) + ".");
         a.setExpiresAt(Instant.now().plus(Math.max(1, expiryHours), ChronoUnit.HOURS));
@@ -405,11 +416,87 @@ public class AiCallActionService {
         }
     }
 
-    private String variablesJson(String leadName) {
+    /**
+     * Everything a template on this path can fill, drawn from the lead's own record.
+     *
+     * <p>Unified send substitutes ONLY the keys we pass and ships any other {@code (x)}
+     * to the inbox literally, so the size of this map is exactly the size of the
+     * template vocabulary. Three sources, later ones winning:
+     *
+     * <ol>
+     *   <li>the lead's captured custom fields - the same map the agent is given at
+     *       call time so it can avoid re-asking, so an institute that collects
+     *       "Course Interested" on its form can use it in a template;
+     *   <li>what the AI extracted on THIS call (extractedQa);
+     *   <li>the canonical identity keys, which are the most authoritative.
+     * </ol>
+     *
+     * <p>Each key is emitted in three spellings - as authored, snake_case and camelCase -
+     * because a form label is "Course Interested" and a template author writes
+     * {@code course_interested} or {@code courseInterested}. Guessing wrong costs a raw
+     * placeholder in a parent's inbox; emitting all three costs a few map entries.
+     *
+     * <p>Anything we cannot supply stays literal, by design: the admin chooses a template
+     * that fits the data, and that judgement is not ours to override silently.
+     */
+    Map<String, String> variablesFor(String responseId, String leadName, String phone,
+                                     String email, JsonNode report) {
+        Map<String, String> vars = new HashMap<>();
         try {
-            Map<String, String> vars = new HashMap<>();
-            vars.put("name", leadName == null || leadName.isBlank() ? "" : leadName.trim());
-            return mapper.writeValueAsString(vars);
+            if (notBlank(responseId)) {
+                Map<String, String> fields = audienceService.getLeadCustomFields(responseId);
+                if (fields != null) {
+                    fields.forEach((k, v) -> putSpellings(vars, k, v));
+                }
+            }
+        } catch (Exception e) {
+            // A lead whose fields cannot be read still gets the identity keys below.
+            log.warn("ai-call-actions: could not read lead fields for {}: {}",
+                    responseId, e.getMessage());
+        }
+        if (report != null) {
+            JsonNode qa = report.path("extractedQa");
+            if (qa.isObject()) {
+                qa.fields().forEachRemaining(e -> putSpellings(vars, e.getKey(),
+                        e.getValue() == null || e.getValue().isNull() ? "" : e.getValue().asText("")));
+            }
+        }
+        // Canonical last: these are what UnifiedVariableAliases fans out across the
+        // {{name}} / {{fullName}} / {{student_name}} family, and they must not be
+        // shadowed by a form field that happens to share a label.
+        if (notBlank(leadName)) vars.put("name", leadName.trim());
+        if (notBlank(phone)) vars.put("phone", phone.trim());
+        if (notBlank(email)) vars.put("email", email.trim());
+        return vars;
+    }
+
+    /** As authored, snake_case and camelCase - never overwriting a value already set. */
+    private static void putSpellings(Map<String, String> vars, String key, String value) {
+        if (key == null || key.isBlank() || value == null || value.isBlank()) return;
+        String raw = key.trim();
+        StringBuilder snake = new StringBuilder();
+        for (char c : raw.toCharArray()) {
+            if (Character.isLetterOrDigit(c)) snake.append(Character.toLowerCase(c));
+            else if (snake.length() > 0 && snake.charAt(snake.length() - 1) != '_') snake.append('_');
+        }
+        String sn = snake.toString();
+        while (sn.endsWith("_")) sn = sn.substring(0, sn.length() - 1);
+        if (sn.isEmpty()) return;
+        StringBuilder camel = new StringBuilder();
+        boolean up = false;
+        for (char c : sn.toCharArray()) {
+            if (c == '_') { up = true; continue; }
+            camel.append(up ? Character.toUpperCase(c) : c);
+            up = false;
+        }
+        vars.putIfAbsent(raw, value.trim());
+        vars.putIfAbsent(sn, value.trim());
+        vars.putIfAbsent(camel.toString(), value.trim());
+    }
+
+    private String variablesJson(Map<String, String> vars) {
+        try {
+            return mapper.writeValueAsString(vars == null ? Map.of() : vars);
         } catch (Exception e) {
             return "{}";
         }
@@ -421,10 +508,20 @@ public class AiCallActionService {
      * what a human sees in the copilot inbox — a proactive WhatsApp send ignores the body
      * entirely and renders the Meta template from templateName + variables.
      */
-    private String draftBody(AiCallActionRule rule, String channel, String leadName) {
+    private String draftBody(AiCallActionRule rule, String channel, String leadName,
+                            Map<String, String> vars) {
         String who = (leadName == null || leadName.isBlank()) ? "" : leadName.trim();
         if ("EMAIL".equals(channel) && notBlank(rule.getMessageBody())) {
-            return rule.getMessageBody().replace("{{name}}", who).trim();
+            // Email has no template layer - the dispatcher mails this text verbatim - so the
+            // substitution has to happen HERE, unlike WhatsApp where variablesJson travels to
+            // Meta. Unmatched placeholders are left alone on purpose (see variablesFor).
+            String body = rule.getMessageBody();
+            if (vars != null) {
+                for (Map.Entry<String, String> e : vars.entrySet()) {
+                    body = body.replace("{{" + e.getKey() + "}}", e.getValue());
+                }
+            }
+            return body.trim();
         }
         String what = notBlank(rule.getLabel()) ? rule.getLabel()
                 : (notBlank(rule.getArtefact()) ? rule.getArtefact() : rule.getActionType());

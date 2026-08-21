@@ -106,6 +106,35 @@ export const deleteAgent = async (agentId: string, instituteId: string): Promise
     });
 };
 
+/** One row of the institute's `templates` table (type=EMAIL). */
+export interface InstituteEmailTemplate {
+    id: string;
+    name: string;
+    subject?: string;
+    content?: string;
+    contentType?: string;
+    status?: string;
+}
+
+/**
+ * The institute's saved EMAIL templates, for the send-rule picker.
+ *
+ * Note this is only a SOURCE to copy from, not a live reference: the engagement
+ * dispatcher emails `draft_body` verbatim (there is no template layer on the email
+ * path), so the rule stores the text, not the template id. Editing the template
+ * later does not change rules already written from it.
+ */
+export const fetchEmailTemplates = async (
+    instituteId: string
+): Promise<InstituteEmailTemplate[]> => {
+    const { data } = await authenticatedAxiosInstance.get<InstituteEmailTemplate[]>(
+        `${BASE_URL}/admin-core-service/institute/template/v1/institute/${encodeURIComponent(
+            instituteId
+        )}/type/EMAIL`
+    );
+    return Array.isArray(data) ? data : [];
+};
+
 export const fetchVoices = async (): Promise<VoiceOption[]> => {
     const { data } = await authenticatedAxiosInstance.get<VoiceOption[]>(`${AI_AGENTS_URL}/voices`);
     return data?.length ? data : FALLBACK_VOICES;

@@ -148,6 +148,19 @@ export type SlidesSidebarNavigation = "breadcrumb" | "ancestors" | "hidden";
 export type EnrolledCourseLayout = "full" | "contentOnly";
 
 /**
+ * How a Content Structure card fits its thumbnail.
+ *
+ * - `cover`   fills the 16:9 frame and crops whatever overflows (today's
+ *             behaviour, and what the admin dashboard does)
+ * - `contain` shows the whole image, letterboxed inside the frame
+ *
+ * Worth a setting because it depends entirely on the artwork: a photo wants
+ * `cover`, a designed thumbnail with a title baked into it gets its wording
+ * sliced off and wants `contain`.
+ */
+export type ContentCardImageFit = "cover" | "contain";
+
+/**
  * How far the learner must get before the "Give Feedback" slide is offered.
  *
  * - "CHAPTER" (default): at the end of every chapter — today's behaviour.
@@ -253,6 +266,8 @@ export interface StudentCourseDetailsSettings {
    * can be opened, since that screen is what explains why.
    */
   chapterOpensFirstSlide?: boolean;
+  /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
+  contentCardImageFit?: ContentCardImageFit;
 }
 
 // All Courses page

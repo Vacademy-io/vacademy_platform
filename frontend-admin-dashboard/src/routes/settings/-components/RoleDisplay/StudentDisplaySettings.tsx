@@ -47,6 +47,7 @@ import {
     type StudentAuthPresentation,
     type StudentUiType,
     type SlidesSidebarNavigation,
+    type ContentCardImageFit,
     type EnrolledCourseLayout,
     type FeedbackTrigger,
     type StudentDashboardWidgetConfig,
@@ -825,6 +826,40 @@ export default function StudentDisplaySettings(): JSX.Element {
                             })
                         }
                     />
+
+                    {/* Card artwork fit. Sits with the layout because it only
+                        affects the Content Structure cards that layout shows. */}
+                    <div className="space-y-1 pb-4 border-b">
+                        <Label className="text-sm font-semibold">
+                            Content Card Artwork
+                        </Label>
+                        <p className="max-w-prose text-xs text-muted-foreground">
+                            How subject, module and chapter thumbnails fit their card.
+                            Choose Fill for photos; choose Fit Whole Image when your
+                            artwork has a title designed into it, which Fill crops off.
+                        </p>
+                        <Select
+                            value={settings.courseDetails.contentCardImageFit ?? 'cover'}
+                            onValueChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    contentCardImageFit: v as ContentCardImageFit,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="mt-1 w-full max-w-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="cover">
+                                    Fill the card (crops to fit) — default
+                                </SelectItem>
+                                <SelectItem value="contain">
+                                    Fit whole image (no cropping)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
 
                     {/* Tri-state in storage (unset = follow the page layout).
                         The switch shows the value in effect, so saving pins

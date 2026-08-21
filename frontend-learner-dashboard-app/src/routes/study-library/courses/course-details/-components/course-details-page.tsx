@@ -398,6 +398,7 @@ export const CourseDetailsPage = () => {
     showInstructors,
     enrolledLayout,
     chapterOpensFirstSlide: chapterOpensFirstSlideSetting,
+    contentCardImageFit,
   } = useCourseDisplaySettings();
 
   const {
@@ -601,6 +602,7 @@ export const CourseDetailsPage = () => {
                       isEnrolledInCourse={isEnrolledInCourse}
                       contentOnly={contentOnly}
                       chapterOpensFirstSlide={chapterOpensFirstSlide}
+                      contentCardImageFit={contentCardImageFit}
                       onLoadingChange={handleModulesLoadingChange}
                       courseInitSubjects={courseInitSubjectsFromCourseInit}
                       {...(paymentType && { paymentType })}

@@ -273,6 +273,59 @@ public class AiAgentService {
      * every lead whose call was later reprocessed. Minted here rather than trusted from the
      * client so a rule can never reach the ledger without one.
      */
+    /** A human label for error messages: the admin's name for the rule, else its key. */
+    private static String ruleName(AiCallActionRule r) {
+        if (r.getLabel() != null && !r.getLabel().isBlank()) return r.getLabel().trim();
+        if (r.getArtefact() != null && !r.getArtefact().isBlank()) return r.getArtefact().trim();
+        return "untitled";
+    }
+
+    /**
+     * Why this rule could never run, phrased for the admin, or null when it is fine.
+     *
+     * <p>Deliberately mirrors AiCallActionService.isUsable plus the per-channel needs that
+     * service checks at execution time. Both layers keep their checks: this one exists so a
+     * person is told, that one because a rule can also be broken by an edit made elsewhere.
+     */
+    private static String ruleProblem(AiCallActionRule r) {
+        if (r.getActionType() == null || r.getActionType().isBlank()) {
+            return "choose what to do (send a message or book a meeting).";
+        }
+        boolean booking = "BOOK_MEETING".equalsIgnoreCase(r.getActionType());
+        AiCallActionRule.When w = r.getWhen();
+        boolean promised = w != null && w.getPromised() != null && !w.getPromised().isBlank();
+        boolean hasPredicate = w != null && (promised
+                || (w.getDisposition() != null && !w.getDisposition().isBlank())
+                || Boolean.TRUE.equals(w.getMeetingRequested())
+                || (w.getExtracted() != null && !w.getExtracted().isEmpty()));
+        if (!hasPredicate) {
+            return "give it a name, so the AI has a key to refer to it by, and choose when it runs.";
+        }
+        if (promised && (r.getAskLine() == null || r.getAskLine().isBlank())) {
+            return "write what the agent asks on the call - this rule fires when the caller "
+                    + "agrees to that question, so without one it can never run.";
+        }
+        if (booking) {
+            if (r.getBookingPageId() == null || r.getBookingPageId().isBlank()) {
+                return "choose a booking page.";
+            }
+            return null;
+        }
+        String channel = r.getChannel() == null ? "" : r.getChannel().trim().toUpperCase();
+        if ("WHATSAPP".equals(channel)) {
+            if (r.getTemplate() == null || r.getTemplate().isBlank()) {
+                return "choose an approved WhatsApp template - proactive WhatsApp cannot be free text.";
+            }
+        } else if ("EMAIL".equals(channel)) {
+            if (r.getMessageBody() == null || r.getMessageBody().isBlank()) {
+                return "write the email message - it is sent exactly as written.";
+            }
+        } else {
+            return "choose a channel (WhatsApp or email).";
+        }
+        return null;
+    }
+
     private String writeRules(List<AiCallActionRule> rules) {
         List<AiCallActionRule> cleaned = new java.util.ArrayList<>();
         for (AiCallActionRule r : rules) {
@@ -281,6 +334,15 @@ public class AiAgentService {
                 r.setId(java.util.UUID.randomUUID().toString());
             }
             if (r.getArtefact() != null) r.setArtefact(r.getArtefact().trim());
+            String problem = ruleProblem(r);
+            if (problem != null) {
+                // Reject rather than store. A rule the engine can never execute used to be
+                // accepted here and then dropped silently by AiCallActionService.rulesOf, so
+                // the admin saw a saved rule, the agent offered the thing on a live call, and
+                // nothing was ever sent. Failing the save is the only point where a person is
+                // still looking at the screen.
+                throw new VacademyException("Action rule \"" + ruleName(r) + "\": " + problem);
+            }
             cleaned.add(r);
         }
         if (cleaned.isEmpty()) return null;

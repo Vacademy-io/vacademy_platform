@@ -62,6 +62,48 @@ function triggerKindOf(rule: AiCallActionRule): TriggerKind {
     return 'promised';
 }
 
+/**
+ * Why a rule would never fire, in the admin's words.
+ *
+ * This exists because the editor used to lie: triggerKindOf() falls back to
+ * 'promised' for DISPLAY when nothing is set, so the When dropdown showed a real
+ * selection while `when` was still {}. AiCallActionService.isUsable then rejected
+ * the rule (an empty predicate would fire on every call) and skipped it silently -
+ * the admin saw a configured rule, the agent offered the link on a live call, and
+ * nothing was ever sent.
+ */
+function ruleProblems(rule: AiCallActionRule): string[] {
+    const problems: string[] = [];
+    if (!rule.artefact || !rule.artefact.trim()) {
+        problems.push('Give this rule a name — the AI needs one to refer to it.');
+    }
+    const w = rule.when || {};
+    // A "caller says yes" rule derives its predicate from the key, so a missing key is
+    // already reported above and there is nothing separate to choose. The other kinds
+    // carry a value the admin has to pick.
+    if (w.disposition !== undefined && !w.disposition) {
+        problems.push('Choose which disposition triggers this.');
+    }
+    if (w.extracted && Object.keys(w.extracted).some((k) => !k)) {
+        problems.push('Choose which captured answer triggers this.');
+    }
+    if (rule.actionType === 'BOOK_MEETING') {
+        if (!rule.bookingPageId) problems.push('Choose a booking page.');
+    } else if (rule.channel === 'WHATSAPP' && !rule.template) {
+        problems.push('Choose an approved WhatsApp template.');
+    } else if (rule.channel === 'EMAIL' && !rule.messageBody) {
+        problems.push('Write the email message.');
+    }
+    // The question IS the trigger for a "caller says yes" rule: with no question the
+    // agent never offers it, so nothing can be agreed to and the rule sits idle.
+    if (!rule.askLine && (triggerKindOf(rule) === 'promised' || rule.timing === 'MID_CALL')) {
+        problems.push(
+            'Write what the agent asks — this rule fires when the agent offers it and the caller agrees, so without a question it never runs.'
+        );
+    }
+    return problems;
+}
+
 const BLANK: AiCallActionRule = {
     enabled: true,
     timing: 'POST_CALL',
@@ -110,7 +152,18 @@ export function SendRulesEditor({
     const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
 
     const update = (i: number, patch: Partial<AiCallActionRule>) => {
-        const next = rules.map((r, n) => (n === i ? { ...r, ...patch } : r));
+        const next = rules.map((r, n) => {
+            if (n !== i) return r;
+            const merged = { ...r, ...patch };
+            // For the common rule - "the agent offers it, the caller says yes" - the
+            // QUESTION is the trigger, so the predicate is derived from the rule's key
+            // instead of being maintained separately. Hand-syncing the two is what let a
+            // rule show a When it did not actually have, look configured, and never fire.
+            if (triggerKindOf(merged) === 'promised') {
+                return { ...merged, when: { promised: (merged.artefact || '').trim() } };
+            }
+            return merged;
+        });
         onChange(next);
     };
 
@@ -130,7 +183,10 @@ export function SendRulesEditor({
         update(i, { when });
     };
 
-    const add = () => onChange([...rules, { ...BLANK, when: {} }]);
+    // Seed the predicate the UI is already showing. Adding a rule with when:{} made
+    // the dropdown display "The caller accepted this on the call" over an empty
+    // object, so a rule looked configured and could never run.
+    const add = () => onChange([...rules, { ...BLANK, when: { promised: '' } }]);
     const remove = (i: number) => onChange(rules.filter((_, n) => n !== i));
 
     return (
@@ -177,14 +233,9 @@ export function SendRulesEditor({
                                     // The key follows the label only until the rule is saved.
                                     // After that the backend owns the id and the key is part
                                     // of what the AI was told, so renaming must not move it.
+                                    // `when` is not touched here - update() derives it.
                                     const patch: Partial<AiCallActionRule> = { label };
-                                    if (!rule.id) {
-                                        const key = slugify(label);
-                                        patch.artefact = key;
-                                        if (triggerKindOf(rule) === 'promised') {
-                                            patch.when = { promised: key };
-                                        }
-                                    }
+                                    if (!rule.id) patch.artefact = slugify(label);
                                     update(i, patch);
                                 }}
                             />
@@ -216,14 +267,14 @@ export function SendRulesEditor({
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label className="text-caption">When</Label>
+                                <Label className="text-caption">When to do it</Label>
                                 <Select value={kind} onValueChange={(v) => setTrigger(i, v as TriggerKind)}>
                                     <SelectTrigger className="h-8">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="promised">
-                                            The caller accepted this on the call
+                                            The caller says yes to your question
                                         </SelectItem>
                                         <SelectItem value="disposition">
                                             The call ended with a disposition
@@ -480,6 +531,16 @@ Namaste {{name}}, ...`}
                             </div>
                             <div />
                         </div>
+
+                        {ruleProblems(rule).length > 0 && (
+                            <div className="rounded-md bg-warning-50 p-2">
+                                {ruleProblems(rule).map((problem) => (
+                                    <p key={problem} className="text-caption text-warning-600">
+                                        {problem}
+                                    </p>
+                                ))}
+                            </div>
+                        )}
 
                         <div>
                             <MyButton

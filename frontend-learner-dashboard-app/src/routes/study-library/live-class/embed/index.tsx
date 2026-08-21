@@ -622,9 +622,25 @@ function EmbedComponent() {
           <h1 className="min-w-0 text-subtitle font-bold leading-tight xs:text-h3 md-tablets:text-h2">
             {sessionDetails?.title || getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </h1>
-          <span className={`rounded px-3 py-1 text-sm font-semibold uppercase text-white shadow ${sessionId ? "bg-red-600" : "bg-primary-300"}`}>
-            {sessionId ? "Live" : "SESSION"}
-          </span>
+          {/* A recording dot rather than the word "Live". These classes are a
+              scheduled playback, not a broadcast, and "LIVE" alongside YouTube's
+              own chrome read as a claim the class could not keep. The dot is
+              shrink-0 so the title truncates against it instead of squashing it. */}
+          {sessionId ? (
+            <span
+              className="flex shrink-0 items-center gap-2 rounded px-3 py-1 text-sm font-semibold uppercase text-neutral-600 shadow"
+              role="status"
+              aria-label="Recording"
+              title="Recording"
+            >
+              <span className="size-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
+              Rec
+            </span>
+          ) : (
+            <span className="shrink-0 rounded bg-primary-300 px-3 py-1 text-sm font-semibold uppercase text-white shadow">
+              SESSION
+            </span>
+          )}
         </div>
         <div className="flex-grow relative flex items-center justify-center p-2">
           {renderEmbeddedSession()}

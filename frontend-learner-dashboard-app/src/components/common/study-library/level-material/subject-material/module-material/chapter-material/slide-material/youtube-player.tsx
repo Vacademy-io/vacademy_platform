@@ -1552,14 +1552,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
 
     try {
-      const videoDuration = await safeGetNumber(player.getDuration());
+      // A player that has not finished loading metadata reports a duration of 0,
+      // and briefly does so right after onReady. Clamping against that turned
+      // EVERY seek into a seek to 0 — which is how a live class that had already
+      // run its course appeared to start itself over. Wait for a real duration
+      // instead of trusting the first answer.
+      let videoDuration = await safeGetNumber(player.getDuration());
+      for (let i = 0; i < 10 && !(videoDuration > 0); i++) {
+        await new Promise((r) => setTimeout(r, 300));
+        if (!isMountedRef.current) return false;
+        videoDuration = await safeGetNumber(player.getDuration());
+      }
+      if (!(videoDuration > 0)) {
+        // Still unknown. There is nothing safe to clamp against, and seeking to 0
+        // would restart the class, so leave the player where it is.
+        console.warn("Seek skipped: video duration unavailable");
+        return false;
+      }
 
       let finalSeekTime = totalSecondsToSeek;
       // Ensure timestamp is within valid range
       if (finalSeekTime <= 0) {
         finalSeekTime = 0;
       } else if (finalSeekTime >= videoDuration) {
-        finalSeekTime = videoDuration;
+        // Land just short of the end rather than exactly on it: seeking to the
+        // duration itself fires ENDED, and the replay that follows is the same
+        // restart under a different name.
+        finalSeekTime = Math.max(0, videoDuration - 1);
       }
 
       const success = await safePlayerOperation(
@@ -1688,7 +1707,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             // zero, so the class appears to restart itself just as it finishes.
             // Past the end there is nothing left to sync to, so leave the player
             // where it is and let it finish.
-            const duration = await safeGetNumber(playerRef.current?.getDuration());
+            // Same trap as in seekToTimestamp: a duration of 0 means "not loaded
+            // yet", not "zero-length". Waiting for it is what makes the check below
+            // meaningful — reading it once let the guard skip itself and hand an
+            // out-of-range target to the seek.
+            let duration = await safeGetNumber(playerRef.current?.getDuration());
+            for (let i = 0; i < 10 && !(duration > 0); i++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (!isMountedRef.current) return;
+              duration = await safeGetNumber(playerRef.current?.getDuration());
+            }
             if (duration > 0 && elapsedSeconds >= duration - 1) {
               console.log(
                 `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`

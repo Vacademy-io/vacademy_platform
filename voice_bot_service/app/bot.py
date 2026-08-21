@@ -1120,7 +1120,6 @@ class SentinelGate(FrameProcessor):
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
                  on_reply_start=None, on_send=None,
-                 on_reply_start=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
                  transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "

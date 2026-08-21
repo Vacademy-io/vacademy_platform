@@ -193,7 +193,9 @@ function makeChannelSendNodes(
 //   1. `on` must evaluate to a List of Maps (not Strings)
 //   2. Each Map must have an `email` (or `to`, `parentsEmail` etc.) field
 //   3. `forEach.eval` must evaluate to a Map (the same item)
-//   4. DELAY nodes >60s require the Quartz resume job (currently disabled)
+//   4. DELAY nodes >60s pause and resume via the Quartz resume job, which runs
+//      every 2 min (QuartzConfig.workflowResumeTrigger) — it is ENABLED. The same
+//      job drives the CALL_AI retry loop.
 // ═══════════════════════════════════════════════════
 
 export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
@@ -287,6 +289,149 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 workflowName: 'AI-call new leads',
                 workflowDescription:
                     'Place an AI call when a lead is submitted, then route on the call disposition: callOutcome == ASSIGN sets the interested status, otherwise the follow-up status.',
+            };
+        },
+    },
+
+    // ─── 0b. AI re-call a lead after a manual status change ───
+    // The counsellor calls a lead, dispositions it (DNP / not reachable / call back),
+    // and the bot picks it up from there. Two things make this work that are easy to
+    // miss, so they are baked into the generated graph rather than left to the admin:
+    //   * ignoreAssignedGuard — the lead is assigned to the counsellor who just called
+    //     it, and CALL_AI refuses assigned leads by default (CallTrigger.AUTOMATION).
+    //     Without the flag the node stops with reason="assigned" and never dials.
+    //   * the source guard — LEAD_STATUS_CHANGED has no idempotency dedup (strategy
+    //     UUID), and the AI's own outcome writes a status back through the same path.
+    //     Matching on the status alone re-enters the graph off its own write.
+    {
+        id: 'ai_recall_on_status',
+        name: 'AI re-calls leads on a status',
+        description:
+            'When a lead is moved to a chosen status (e.g. DNP) by a person — from the leads list or a post-call disposition — the AI voice agent calls them back after a delay. Retries, calling hours and the counsellor handoff all follow Settings → AI Calling.',
+        icon: '🔁',
+        triggerEvents: ['LEAD_STATUS_CHANGED'],
+        workflowType: 'EVENT_DRIVEN',
+        questions: [
+            {
+                id: 'statusKey',
+                label: 'Which lead status should start the AI call?',
+                helpText:
+                    'The status KEY exactly as it appears in Settings → Lead Statuses (e.g. DNP, NOT_REACHABLE, CALL_BACK). The status must already exist for this institute — the workflow can only fire on a status a person can actually set.',
+                type: 'text',
+                required: true,
+                defaultValue: 'DNP',
+            },
+            {
+                id: 'campaignName',
+                label: 'AI agent (optional)',
+                helpText:
+                    'Name of the AI agent/campaign from Settings → AI Calling → Campaigns. Leave blank to use the institute default.',
+                type: 'text',
+                required: false,
+            },
+            {
+                id: 'delayMinutes',
+                label: 'Wait how long before the bot calls?',
+                helpText:
+                    'Minutes between the status change and the AI call, so the bot never rings seconds after the counsellor hung up. The call still only goes out inside the calling hours set in Settings → AI Calling.',
+                type: 'number',
+                required: false,
+                defaultValue: 30,
+            },
+        ],
+        generateWorkflow: (answers) => {
+            const statusKey = ((answers.statusKey as string) || 'DNP').trim().toUpperCase();
+            const campaignName = ((answers.campaignName as string) || '').trim();
+            const delayMinutes = Number(answers.delayMinutes ?? 30) || 0;
+
+            // CONDITION — fire only on the chosen status AND only when a PERSON set it.
+            // statusChangeSource carries the same token as lead_status_history.source:
+            // MANUAL (leads list) / MANUAL_DISPOSITION (post-call outcome) are human;
+            // AI_CALLING / AI_WORKFLOW are this system writing back, and must not
+            // re-enter the graph. Written as an explicit allow-list so an unknown future
+            // source defaults to NOT calling.
+            const gateNode = makeNode(
+                'CONDITION',
+                `Manually set to ${statusKey}?`,
+                {
+                    condition:
+                        `#ctx['newStatus'] == '${statusKey}' and ` +
+                        "(#ctx['statusChangeSource'] == 'MANUAL' or #ctx['statusChangeSource'] == 'MANUAL_DISPOSITION')",
+                    trueLabel: 'Yes — hand to the bot',
+                    falseLabel: 'No — ignore',
+                },
+                250,
+                80,
+                true
+            );
+
+            const delayNode = makeNode(
+                'DELAY',
+                `Wait ${delayMinutes} min`,
+                // The engine reads { delay: { value, unit } } (DelayNodeHandler) — a flat
+                // delayMinutes key parses to 0 and silently skips the wait.
+                { delay: { value: delayMinutes, unit: 'MINUTES' } },
+                250,
+                220
+            );
+
+            // CALL_AI — ignoreAssignedGuard is the whole point of this template.
+            const callNode = makeNode(
+                'CALL_AI',
+                'AI Call',
+                campaignName
+                    ? { campaignName, ignoreAssignedGuard: true }
+                    : { ignoreAssignedGuard: true },
+                250,
+                360
+            );
+
+            // Branch on the AI's verdict. The true branch is left with a blank statusKey
+            // on purpose so the builder's validation makes the admin pick their own
+            // status — the same convention as the 'AI-call new leads' template.
+            const outcomeNode = makeNode(
+                'CONDITION',
+                'Interested?',
+                {
+                    condition: "#ctx['callOutcome'] == 'ASSIGN'",
+                    trueLabel: 'Interested / assign',
+                    falseLabel: 'Still no luck',
+                },
+                250,
+                500
+            );
+
+            const interestedNode = makeNode(
+                'SET_LEAD_STATUS',
+                'Set status: interested',
+                { statusKey: '' },
+                80,
+                640
+            );
+
+            const nodes = [gateNode, delayNode, callNode, outcomeNode, interestedNode];
+            const edges = [
+                makeEdge(gateNode.id, delayNode.id, 'true'),
+                makeEdge(delayNode.id, callNode.id),
+                makeEdge(callNode.id, outcomeNode.id),
+                makeEdge(outcomeNode.id, interestedNode.id, 'true'),
+            ];
+
+            // A zero-minute wait means "call immediately" — drop the DELAY node rather
+            // than persisting a no-op pause the resume job still has to service.
+            if (delayMinutes <= 0) {
+                nodes.splice(nodes.indexOf(delayNode), 1);
+                edges.splice(0, 2, makeEdge(gateNode.id, callNode.id, 'true'));
+                callNode.position = { x: 250, y: 220 };
+            }
+
+            return {
+                nodes,
+                edges,
+                workflowName: `AI re-calls ${statusKey} leads`,
+                workflowDescription:
+                    `When a person moves a lead to ${statusKey} — from the leads list or a post-call disposition — ` +
+                    `wait ${delayMinutes} minutes, then have the AI agent call them. Statuses set by the AI itself are ignored, so the workflow cannot re-trigger off its own writes.`,
             };
         },
     },

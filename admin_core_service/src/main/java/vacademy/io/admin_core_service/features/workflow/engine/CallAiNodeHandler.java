@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProce
 import vacademy.io.admin_core_service.features.telephony.core.AiCallingSettingsService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
@@ -116,6 +117,13 @@ public class CallAiNodeHandler implements NodeHandler {
         // falls back to the institute's AI_CALLING_SETTING default). Lets one builder pick
         // the provider for this node without touching global settings.
         String provider = firstNonBlank(readConfig(nodeConfigJson, "provider"), str(context.get("provider")));
+        // Opt-in escape from the already-assigned guard. OFF by default: automation that
+        // re-dials leads a counsellor already owns is exactly what the guard exists to stop.
+        // Turned ON only for graphs deliberately built to target owned leads — the canonical
+        // case being "a counsellor manually called and dispositioned this lead DNP, now let
+        // the bot try again", where the lead is assigned BY DEFINITION and the guard would
+        // silently stop every dial. The daily cap and duplicate window still apply.
+        boolean ignoreAssignedGuard = readConfigBool(nodeConfigJson, "ignoreAssignedGuard");
         // Arbitrary call metadata handed to the AI agent (e.g. studentName, sessionName,
         // courseName — whatever the conversation needs). Static keys come from the node
         // config's "metadata" object; dynamic per-run values from the context's
@@ -152,7 +160,7 @@ public class CallAiNodeHandler implements NodeHandler {
             return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
         }
 
-        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider);
+        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider, ignoreAssignedGuard);
 
         switch (plan.action()) {
             case STOP -> {
@@ -184,7 +192,11 @@ public class CallAiNodeHandler implements NodeHandler {
                 req.setSubjectId(subjectId);
                 if (!callMetadata.isEmpty()) req.setMetadata(callMetadata);
 
-                aiCallDispatcher.enqueue(req); // paced; placeCall guards already-assigned leads
+                // paced; placeCall re-applies the same guards server-side. The trigger must
+                // match the decision plan() just made, or placeCall would refuse a dial the
+                // node already counted as an attempt.
+                aiCallDispatcher.enqueue(req, ignoreAssignedGuard
+                        ? CallTrigger.WORKFLOW_EXPLICIT : CallTrigger.AUTOMATION);
 
                 int newAttempts = attempts + 1;
                 String today = LocalDate.now(IST).toString();
@@ -245,6 +257,19 @@ public class CallAiNodeHandler implements NodeHandler {
             return v == null || v.isNull() ? null : v.asText();
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** Read a boolean flag from the node config; absent / unparseable ⇒ false. */
+    private boolean readConfigBool(String json, String key) {
+        if (json == null || json.isBlank()) return false;
+        try {
+            JsonNode v = mapper.readTree(json).get(key);
+            // asBoolean() also accepts the string "true", which is what the builder's
+            // config panel writes for a checkbox.
+            return v != null && !v.isNull() && v.asBoolean(false);
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -392,10 +417,12 @@ public class CallAiNodeHandler implements NodeHandler {
     private record Plan(Action action, Instant resumeAt, String reason) {}
 
     private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay,
-                      String provider) {
+                      String provider, boolean ignoreAssignedGuard) {
         AiCallingSettingsPojo s = settingsService.get(instituteId);
         if (s == null || !s.isEnabled()) return new Plan(Action.STOP, null, "ai_calling_disabled");
-        if (leadAlreadyAssigned(userId, instituteId)) return new Plan(Action.STOP, null, "assigned");
+        if (!ignoreAssignedGuard && leadAlreadyAssigned(userId, instituteId)) {
+            return new Plan(Action.STOP, null, "assigned");
+        }
         if (attempts >= Math.max(1, s.getMaxRetries())) return new Plan(Action.STOP, null, "exhausted");
 
         ZoneId tz = resolveZone(s.getTimezone());

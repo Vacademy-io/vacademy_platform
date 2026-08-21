@@ -7,6 +7,7 @@ import { useDripConditions } from "@/hooks/use-drip-conditions";
 import { LockedBadge, LockNotice } from "@/components/drip-conditions";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
 import { useCourseDripSchedule } from "@/hooks/use-course-drip-schedule";
+import type { ContentCardImageFit } from "@/types/student-display-settings";
 import { evaluateDripCondition } from "@/utils/drip-conditions";
 import type {
   LearnerProgressData,
@@ -147,6 +148,61 @@ export type CourseInitSubject = {
 export const CONTENT_ONLY_CARD_GRID =
   "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 
+/**
+ * Content Structure card chrome, matched to the admin dashboard.
+ *
+ * The admin card is a padded shell with the thumbnail inset and rounded on all
+ * four sides; the learner grid used a full-bleed image running to the card
+ * edge. Same content, two different-looking screens — so this follows the
+ * admin, which is the one authors design against.
+ */
+const CONTENT_CARD_SHELL =
+  "group h-full rounded-lg border-neutral-200 bg-card p-2 transition-shadow duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2";
+
+/**
+ * Inset thumbnail for a Content Structure card.
+ *
+ * A locked item gets the padlock centred ON the artwork behind a scrim, not a
+ * small glyph tucked under the title: on a card whose image is the whole
+ * visual, that is the only place the lock actually reads as "this is shut".
+ */
+const ContentCardThumb = ({
+  url,
+  fallback,
+  locked,
+  fit = "cover",
+}: {
+  url?: string;
+  fallback: React.ReactNode;
+  locked?: boolean;
+  fit?: ContentCardImageFit;
+}) => (
+  <div className="relative mb-2 flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-50">
+    {url ? (
+      <img
+        src={url}
+        alt=""
+        className={cn(
+          "size-full",
+          fit === "contain" ? "object-contain" : "object-cover",
+        )}
+        crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
+        loading="eager"
+      />
+    ) : (
+      fallback
+    )}
+    {locked && (
+      <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/45">
+        <span className="flex size-11 items-center justify-center rounded-full bg-white/95 shadow-sm">
+          <Lock size={22} weight="fill" className="text-neutral-700" />
+        </span>
+      </div>
+    )}
+  </div>
+);
+
 export const CourseStructureDetails = ({
   selectedSession,
   selectedLevel,
@@ -157,6 +213,7 @@ export const CourseStructureDetails = ({
   isEnrolledInCourse,
   contentOnly,
   chapterOpensFirstSlide,
+  contentCardImageFit = "cover",
   onLoadingChange,
   updateModuleStats,
   paymentType,
@@ -178,6 +235,9 @@ export const CourseStructureDetails = ({
    *  instead of listing the chapter's slides. Resolved by the page from
    *  courseDetails.chapterOpensFirstSlide. */
   chapterOpensFirstSlide?: boolean;
+  /** How Content Structure card thumbnails fit their frame. Default "cover",
+   *  which crops to fill and matches the admin dashboard. */
+  contentCardImageFit?: ContentCardImageFit;
   onLoadingChange?: (loading: boolean) => void;
   updateModuleStats?: (
     modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
@@ -3012,11 +3072,11 @@ export const CourseStructureDetails = ({
             {Array.from({ length: 6 }).map((_, i) => (
               <Card
                 key={i}
-                className="h-full overflow-hidden border-neutral-200 bg-card rounded-xl"
+                className="h-full rounded-lg border-neutral-200 bg-card p-2"
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <Skeleton className="aspect-video w-full rounded-none" />
-                  <div className="flex flex-col gap-2 p-3 flex-1">
+                  <Skeleton className="mb-2 aspect-video w-full rounded-lg" />
+                  <div className="flex flex-1 flex-col gap-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/3" />
                   </div>
@@ -3049,10 +3109,10 @@ export const CourseStructureDetails = ({
                 }
                 aria-disabled={isSubjectLocked}
                 className={cn(
-                  "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                  CONTENT_CARD_SHELL,
                   isSubjectLocked
-                    ? "opacity-70 cursor-not-allowed"
-                    : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-md",
                 )}
                 onClick={() => {
                   if (isSubjectLocked) return;
@@ -3069,32 +3129,21 @@ export const CourseStructureDetails = ({
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                    {thumbUrlById[`subject:${subject.id}`] ? (
-                      <img
-                        src={thumbUrlById[`subject:${subject.id}`]}
-                        alt=""
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        onError={(e) => {
-                          e.currentTarget.classList.add("border-red-400");
-                        }}
+                  <ContentCardThumb
+                    url={thumbUrlById[`subject:${subject.id}`]}
+                    locked={isSubjectLocked}
+                    fit={contentCardImageFit}
+                    fallback={
+                      <Folder
+                        size={40}
+                        weight="duotone"
+                        className="text-primary-500"
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Folder
-                          size={40}
-                          weight="duotone"
-                          className="text-primary-500"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1 p-3 flex-1">
+                    }
+                  />
+                  <div className="flex flex-1 flex-col gap-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                      className="truncate text-sm font-medium text-neutral-800"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -3151,10 +3200,10 @@ export const CourseStructureDetails = ({
                 }
                 aria-disabled={isModuleLocked}
                 className={cn(
-                  "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                  CONTENT_CARD_SHELL,
                   isModuleLocked
-                    ? "opacity-70 cursor-not-allowed"
-                    : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-md",
                 )}
                 onClick={() => {
                   if (isModuleLocked) return;
@@ -3168,32 +3217,21 @@ export const CourseStructureDetails = ({
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                    {thumbUrlById[`module:${m.module.id}`] ? (
-                      <img
-                        src={thumbUrlById[`module:${m.module.id}`]}
-                        alt=""
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        onError={(e) => {
-                          e.currentTarget.classList.add("border-red-400");
-                        }}
+                  <ContentCardThumb
+                    url={thumbUrlById[`module:${m.module.id}`]}
+                    locked={isModuleLocked}
+                    fit={contentCardImageFit}
+                    fallback={
+                      <Folder
+                        size={40}
+                        weight="duotone"
+                        className="text-primary-500"
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Folder
-                          size={40}
-                          weight="duotone"
-                          className="text-primary-500"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1 p-3 flex-1">
+                    }
+                  />
+                  <div className="flex flex-1 flex-col gap-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                      className="truncate text-sm font-medium text-neutral-800"
                       title={toTitleCase(m.module.module_name)}
                     >
                       {toTitleCase(m.module.module_name)}
@@ -3274,10 +3312,10 @@ export const CourseStructureDetails = ({
                       }
                       aria-disabled={isChapterLocked}
                       className={cn(
-                        "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                        CONTENT_CARD_SHELL,
                         isChapterLocked
-                          ? "opacity-70 cursor-not-allowed"
-                          : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                          ? "cursor-not-allowed"
+                          : "cursor-pointer hover:shadow-md",
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;
@@ -3294,32 +3332,21 @@ export const CourseStructureDetails = ({
                       }}
                     >
                       <CardContent className="p-0 flex flex-col h-full">
-                        <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                          {thumbUrlById[`chapter:${ch.id}`] ? (
-                            <img
-                              src={thumbUrlById[`chapter:${ch.id}`]}
-                              alt=""
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              crossOrigin="anonymous"
-                              referrerPolicy="no-referrer"
-                              loading="eager"
-                              onError={(e) => {
-                                e.currentTarget.classList.add("border-red-400");
-                              }}
+                        <ContentCardThumb
+                          url={thumbUrlById[`chapter:${ch.id}`]}
+                          locked={isChapterLocked}
+                          fit={contentCardImageFit}
+                          fallback={
+                            <PresentationChart
+                              size={40}
+                              weight="duotone"
+                              className="text-primary-500"
                             />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <PresentationChart
-                                size={40}
-                                weight="duotone"
-                                className="text-primary-500"
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1 p-3 flex-1">
+                          }
+                        />
+                        <div className="flex flex-1 flex-col gap-1">
                           <h3
-                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                            className="truncate text-sm font-medium text-neutral-800"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}

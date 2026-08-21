@@ -255,6 +255,9 @@ function mergeWithDefaults(
       enrolledLayout:
         incoming?.courseDetails?.enrolledLayout ??
         d.courseDetails.enrolledLayout,
+      contentCardImageFit:
+        incoming?.courseDetails?.contentCardImageFit ??
+        d.courseDetails.contentCardImageFit,
       // Tri-state — undefined means "follow enrolledLayout".
       chapterOpensFirstSlide: incoming?.courseDetails?.chapterOpensFirstSlide,
     },

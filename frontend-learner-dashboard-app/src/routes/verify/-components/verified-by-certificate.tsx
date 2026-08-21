@@ -75,7 +75,7 @@ export function VerifiedByCertificate({
       <div className="flex flex-col items-center gap-2 border-y border-neutral-100 bg-success-50 px-6 py-5 text-center dark:border-neutral-700">
         <SealCheck weight="fill" className="size-9 text-success-500" />
         <p className="text-body font-medium text-neutral-700">
-          This certificate is genuine
+          {data.headline?.trim() || "This certificate is genuine"}
         </p>
         <p className="text-caption text-neutral-500">
           {instituteName} confirms it issued the certificate below.
@@ -83,21 +83,30 @@ export function VerifiedByCertificate({
         </p>
       </div>
 
+      {/* The masked name and the number are not optional: without them the
+          page confirms that *a* certificate exists rather than the one in the
+          reader's hand. What else is listed is the institute's to decide, and
+          `undefined` means they never decided — so it shows. */}
       <dl className="flex flex-col gap-3 px-6 py-6">
         <Row label="Issued to" value={data.learner_name || "—"} />
-        <Row label="Course" value={data.course_name || "—"} />
-        <Row label="Certificate number" value={data.certificate_id} mono />
-        <Row
-          label="Issued on"
-          value={
-            issued
-              ? issued.toLocaleDateString(undefined, { dateStyle: "long" })
-              : "—"
-          }
-        />
-        {typeof data.completion_percentage === "number" && (
-          <Row label="Completion" value={`${data.completion_percentage}%`} />
+        {data.show_course !== false && (
+          <Row label="Course" value={data.course_name || "—"} />
         )}
+        <Row label="Certificate number" value={data.certificate_id} mono />
+        {data.show_issue_date !== false && (
+          <Row
+            label="Issued on"
+            value={
+              issued
+                ? issued.toLocaleDateString(undefined, { dateStyle: "long" })
+                : "—"
+            }
+          />
+        )}
+        {data.show_completion !== false &&
+          typeof data.completion_percentage === "number" && (
+            <Row label="Completion" value={`${data.completion_percentage}%`} />
+          )}
       </dl>
 
       {data.institute_note && (

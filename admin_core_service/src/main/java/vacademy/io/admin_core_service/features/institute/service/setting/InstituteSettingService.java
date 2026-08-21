@@ -871,13 +871,17 @@ public class InstituteSettingService {
                 ? "<img src=\"" + codeDataUri + "\" alt=\"\" style=\"" + codeStyle + "\" />"
                 : "";
         String idSpan = StringUtils.hasText(certificateId)
-                ? "<span style=\"display:block;margin-top:2px;\">" + certificateId + "</span>"
+                ? "<span style=\"display:block;margin-top:3px;\">" + certificateId + "</span>"
                 : "";
+        // Plain: the code, the number under it, nothing else. It used to be
+        // drawn as a bordered, translucent-white chip, which read as a sticker
+        // applied to the certificate rather than part of it — and on a design
+        // with its own artwork behind, a grey box is exactly what you notice
+        // first. The QR carries its own white quiet zone (CertificateCodeService),
+        // so it stays scannable without a panel drawn behind it.
         String badge = "<div style=\"position:fixed;bottom:8mm;right:10mm;"
-                + "font-family:Arial,sans-serif;font-size:10px;color:#444;"
-                + "background:rgba(255,255,255,0.85);padding:3px 8px;"
-                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;"
-                + "text-align:center;\">"
+                + "font-family:Arial,sans-serif;font-size:8px;color:#6b7280;"
+                + "letter-spacing:0.4px;text-align:center;\">"
                 + codeImg
                 + idSpan
                 + "</div>";

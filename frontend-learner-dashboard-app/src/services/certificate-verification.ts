@@ -29,6 +29,15 @@ export interface CertificateVerification {
   institute_website?: string | null;
   /** A line the institute chose to show here, or nothing. */
   institute_note?: string | null;
+  /**
+   * How the institute set this page up. Null on any field means the shipped
+   * default — the page must read the same for an institute that never
+   * configured it as it did before any of this existed.
+   */
+  headline?: string | null;
+  show_course?: boolean | null;
+  show_issue_date?: boolean | null;
+  show_completion?: boolean | null;
 }
 
 export type VerificationResult =

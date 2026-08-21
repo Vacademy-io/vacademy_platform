@@ -69,8 +69,15 @@ export interface CertificateSavePayload {
      */
     autoStampCode?: boolean;
     autoStampNumber?: boolean;
-    /** A line the institute shows on the public verification page. '' clears it. */
+    /**
+     * The public verification page's own settings. '' clears a text field;
+     * undefined leaves whatever the server holds.
+     */
     verificationNote?: string;
+    verificationHeadline?: string;
+    verificationShowCourse?: boolean;
+    verificationShowIssueDate?: boolean;
+    verificationShowCompletion?: boolean;
     /**
      * Admin-defined fields, for values the platform has no built-in token for.
      * Each becomes a draggable chip and a {{CF_<KEY>}} token on the template.
@@ -150,6 +157,10 @@ export const handleConfigureCertificateSettings = async (
                           autoStampCode: payload.autoStampCode,
                           autoStampNumber: payload.autoStampNumber,
                           verificationNote: payload.verificationNote,
+                          verificationHeadline: payload.verificationHeadline,
+                          verificationShowCourse: payload.verificationShowCourse,
+                          verificationShowIssueDate: payload.verificationShowIssueDate,
+                          verificationShowCompletion: payload.verificationShowCompletion,
                           customFields: payload.customFields,
                       },
                   },

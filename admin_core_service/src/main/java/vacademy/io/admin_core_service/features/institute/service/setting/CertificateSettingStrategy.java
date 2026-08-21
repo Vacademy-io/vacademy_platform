@@ -116,6 +116,10 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setAutoStampCode(incoming.getAutoStampCode() != null ? incoming.getAutoStampCode() : existing.getAutoStampCode());
                     dto.setAutoStampNumber(incoming.getAutoStampNumber() != null ? incoming.getAutoStampNumber() : existing.getAutoStampNumber());
                     dto.setVerificationNote(incoming.getVerificationNote() != null ? incoming.getVerificationNote() : existing.getVerificationNote());
+                    dto.setVerificationHeadline(incoming.getVerificationHeadline() != null ? incoming.getVerificationHeadline() : existing.getVerificationHeadline());
+                    dto.setVerificationShowCourse(incoming.getVerificationShowCourse() != null ? incoming.getVerificationShowCourse() : existing.getVerificationShowCourse());
+                    dto.setVerificationShowIssueDate(incoming.getVerificationShowIssueDate() != null ? incoming.getVerificationShowIssueDate() : existing.getVerificationShowIssueDate());
+                    dto.setVerificationShowCompletion(incoming.getVerificationShowCompletion() != null ? incoming.getVerificationShowCompletion() : existing.getVerificationShowCompletion());
                     // Preserve-on-null like the rest, so a save from an older
                     // client can't wipe the institute's field definitions.
                     // Clearing every field is still possible — that sends an

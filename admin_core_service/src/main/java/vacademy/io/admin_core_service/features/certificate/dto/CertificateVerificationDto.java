@@ -70,4 +70,19 @@ public class CertificateVerificationDto {
      * the link reads it. Blank prints nothing rather than an empty panel.
      */
     private String instituteNote;
+
+    /**
+     * How the institute has set this page up, sent with the result rather than
+     * looked up by the page: whoever scans a certificate is not logged in and
+     * has no institute context to resolve settings from.
+     *
+     * <p>Null means the shipped default. The course, date and completion flags
+     * are what the institute chose to disclose — the masked name and the number
+     * are not optional, because without them the page confirms that <em>a</em>
+     * certificate exists rather than the one in the reader's hand.
+     */
+    private String headline;
+    private Boolean showCourse;
+    private Boolean showIssueDate;
+    private Boolean showCompletion;
 }

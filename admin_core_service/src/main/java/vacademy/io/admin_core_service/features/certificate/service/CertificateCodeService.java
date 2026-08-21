@@ -44,6 +44,18 @@ public class CertificateCodeService {
     private static final int BARCODE_SCALE = 3;
 
     /**
+     * The white border every QR is required to have around it, in modules.
+     *
+     * <p>Four is what the QR specification calls for, and it is not decorative:
+     * a scanner finds the symbol by its three corner patterns against blank
+     * space. iText renders the bare matrix with no border at all, so a QR placed
+     * on certificate artwork sat directly against the design and phones had to
+     * be held just so. Printing it inside its quiet zone is the difference
+     * between a code that scans and one that mostly scans.
+     */
+    private static final int QR_QUIET_ZONE_MODULES = 4;
+
+    /**
      * QR encoding the given payload, as a PNG data URI.
      *
      * @param payload usually the certificate number, or a public verification URL
@@ -56,7 +68,7 @@ public class CertificateCodeService {
         try {
             BarcodeQRCode qrCode = new BarcodeQRCode(payload.trim());
             Image awtImage = qrCode.createAwtImage(Color.BLACK, Color.WHITE);
-            return toPngDataUri(awtImage, QR_SCALE);
+            return toPngDataUri(awtImage, QR_SCALE, quietZonePixels(qrCode, awtImage));
         } catch (Exception e) {
             log.warn("Could not generate certificate QR code for payload of length {}",
                     payload.length(), e);
@@ -85,7 +97,9 @@ public class CertificateCodeService {
             Barcode128 barcode = new Barcode128(throwaway);
             barcode.setCode(payload.trim());
             Image awtImage = barcode.createAwtImage(Color.BLACK, Color.WHITE);
-            return toPngDataUri(awtImage, BARCODE_SCALE);
+            // Code 128 carries its own start/stop patterns and iText leaves a
+            // margin around them, so no extra quiet zone is added here.
+            return toPngDataUri(awtImage, BARCODE_SCALE, 0);
         } catch (Exception e) {
             log.warn("Could not generate certificate barcode for payload of length {}",
                     payload.length(), e);
@@ -100,16 +114,19 @@ public class CertificateCodeService {
      * dark-on-dark block on a coloured certificate and stops scanning. Scaling
      * up keeps the modules sharp once the PDF is printed.
      */
-    private String toPngDataUri(Image awtImage, int scale) throws Exception {
-        int width = Math.max(1, awtImage.getWidth(null)) * scale;
-        int height = Math.max(1, awtImage.getHeight(null)) * scale;
+    private String toPngDataUri(Image awtImage, int scale, int quietZone) throws Exception {
+        int codeWidth = Math.max(1, awtImage.getWidth(null)) * scale;
+        int codeHeight = Math.max(1, awtImage.getHeight(null)) * scale;
+        int margin = Math.max(0, quietZone) * scale;
+        int width = codeWidth + margin * 2;
+        int height = codeHeight + margin * 2;
 
         BufferedImage buffered = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         var graphics = buffered.createGraphics();
         try {
             graphics.setColor(Color.WHITE);
             graphics.fillRect(0, 0, width, height);
-            graphics.drawImage(awtImage, 0, 0, width, height, null);
+            graphics.drawImage(awtImage, margin, margin, codeWidth, codeHeight, null);
         } finally {
             graphics.dispose();
         }
@@ -119,6 +136,29 @@ public class CertificateCodeService {
                 throw new IllegalStateException("No PNG writer available");
             }
             return "data:image/png;base64," + Base64.getEncoder().encodeToString(out.toByteArray());
+        }
+    }
+
+    /**
+     * The quiet zone in source-image pixels: four modules, measured from the
+     * symbol itself rather than guessed as a percentage — the module count
+     * changes with the payload, and a fixed percentage would be too thin for a
+     * long verification URL and needlessly fat for a short number.
+     *
+     * @return 0 when the size cannot be read, which leaves the code exactly as
+     *         it renders today rather than adding a margin of the wrong width
+     */
+    static int quietZonePixels(BarcodeQRCode qrCode, Image awtImage) {
+        try {
+            int modules = (int) Math.round(qrCode.getBarcodeSize().getWidth());
+            int pixels = Math.max(1, awtImage.getWidth(null));
+            if (modules <= 0 || pixels <= 0) {
+                return 0;
+            }
+            return Math.max(1, Math.round((float) pixels / modules) * QR_QUIET_ZONE_MODULES);
+        } catch (Exception e) {
+            log.warn("Could not measure the QR symbol; rendering it without a quiet zone", e);
+            return 0;
         }
     }
 }

@@ -35,7 +35,7 @@ import { CertificateVisualEditor, type CustomImage } from './CertificateVisualEd
 import { CertificateTemplateGallery } from './CertificateTemplateGallery';
 import { CertificateTemplateLibrary } from './CertificateTemplateLibrary';
 import { CertificateNumberingBuilder } from './CertificateNumberingBuilder';
-import { VerificationPageSection } from './VerificationPageSection';
+import { VerificationPageSection, type VerificationPageConfig } from './VerificationPageSection';
 import {
     newTemplateId,
     readTemplateLibrary,
@@ -408,6 +408,10 @@ type CertificateConfig = {
     autoStampCode?: boolean;
     autoStampNumber?: boolean;
     verificationNote?: string;
+    verificationHeadline?: string;
+    verificationShowCourse?: boolean;
+    verificationShowIssueDate?: boolean;
+    verificationShowCompletion?: boolean;
     customFields?: CertificateCustomField[];
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
@@ -550,8 +554,15 @@ const CertificatesSettings = () => {
     // design that does not place them itself. Both start on, which is what the
     // badge always did — until these existed, deleting the QR or the number
     // from a design just brought the stamped one back on the issued PDF.
-    // A line of the institute's own on the public verification page.
-    const [verificationNote, setVerificationNote] = useState<string>('');
+    // How the public verification page presents itself. Defaults match what the
+    // page shipped with, so an institute that never opens this sees no change.
+    const [verificationPage, setVerificationPage] = useState<VerificationPageConfig>({
+        headline: '',
+        note: '',
+        showCourse: true,
+        showIssueDate: true,
+        showCompletion: true,
+    });
     const [autoStampCode, setAutoStampCode] = useState<boolean>(true);
     const [autoStampNumber, setAutoStampNumber] = useState<boolean>(true);
 
@@ -733,7 +744,15 @@ const CertificatesSettings = () => {
         setCustomFields(Array.isArray(ex.customFields) ? ex.customFields : []);
         // Absent means on, matching the backend: every institute that saved
         // before these existed had the stamp, unconditionally.
-        setVerificationNote(ex.verificationNote ?? '');
+        setVerificationPage({
+            headline: ex.verificationHeadline ?? '',
+            note: ex.verificationNote ?? '',
+            // Absent means shown: these were not optional before the page could
+            // be configured, so unset has to keep reading that way.
+            showCourse: ex.verificationShowCourse !== false,
+            showIssueDate: ex.verificationShowIssueDate !== false,
+            showCompletion: ex.verificationShowCompletion !== false,
+        });
         setAutoStampCode(ex.autoStampCode !== false);
         setAutoStampNumber(ex.autoStampNumber !== false);
         const parsed = parseImageTemplateJson(ex.imageTemplateJson);
@@ -1448,7 +1467,11 @@ const CertificatesSettings = () => {
                 barcodeContent,
                 autoStampCode,
                 autoStampNumber,
-                verificationNote: verificationNote.trim(),
+                verificationNote: verificationPage.note.trim(),
+                verificationHeadline: verificationPage.headline.trim(),
+                verificationShowCourse: verificationPage.showCourse,
+                verificationShowIssueDate: verificationPage.showIssueDate,
+                verificationShowCompletion: verificationPage.showCompletion,
                 // Always sent, including as `[]`, so deleting the last custom
                 // field actually clears it. `undefined` would hit the backend's
                 // preserve-on-null merge and silently keep the old list.
@@ -1504,7 +1527,11 @@ const CertificatesSettings = () => {
                     barcodeContent,
                     autoStampCode,
                     autoStampNumber,
-                    verificationNote: verificationNote.trim(),
+                    verificationNote: verificationPage.note.trim(),
+                    verificationHeadline: verificationPage.headline.trim(),
+                    verificationShowCourse: verificationPage.showCourse,
+                    verificationShowIssueDate: verificationPage.showIssueDate,
+                    verificationShowCompletion: verificationPage.showCompletion,
                     customFields: sanitizedCustomFields,
                 };
                 const nextSettings = {
@@ -1868,8 +1895,8 @@ const CertificatesSettings = () => {
                 instituteName={effectiveInstituteName}
                 logoUrl={logoUrl}
                 themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
-                note={verificationNote}
-                onNoteChange={setVerificationNote}
+                config={verificationPage}
+                onConfigChange={(patch) => setVerificationPage((prev) => ({ ...prev, ...patch }))}
                 customUrl={qrVerificationUrlTemplate}
                 onClearCustomUrl={() => setQrVerificationUrlTemplate('')}
                 sampleCertificateId={sampleCertificateNumber}

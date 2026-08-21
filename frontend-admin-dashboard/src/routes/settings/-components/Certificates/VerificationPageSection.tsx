@@ -1,6 +1,7 @@
 import { SealCheck } from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { MyButton } from '@/components/design-system/button';
 
 /**
@@ -14,14 +15,25 @@ import { MyButton } from '@/components/design-system/button';
  * a preview: this page is only ever seen by strangers holding a certificate, so
  * the institute would otherwise never lay eyes on it.
  */
+/** What the institute has decided about the page it never sees. */
+export interface VerificationPageConfig {
+    headline: string;
+    note: string;
+    showCourse: boolean;
+    showIssueDate: boolean;
+    showCompletion: boolean;
+}
+
+export const DEFAULT_VERIFICATION_HEADLINE = 'This certificate is genuine';
+
 interface Props {
     /** Where a scan lands, already resolved. Empty when no portal is configured. */
     verificationPageUrl: string;
     instituteName: string;
     logoUrl: string;
     themeColor: string;
-    note: string;
-    onNoteChange: (note: string) => void;
+    config: VerificationPageConfig;
+    onConfigChange: (patch: Partial<VerificationPageConfig>) => void;
     /** A link the institute set before this section existed, if any. */
     customUrl: string;
     onClearCustomUrl: () => void;
@@ -34,14 +46,15 @@ export const VerificationPageSection = ({
     instituteName,
     logoUrl,
     themeColor,
-    note,
-    onNoteChange,
+    config,
+    onConfigChange,
     customUrl,
     onClearCustomUrl,
     sampleCertificateId,
     disabled,
 }: Props) => {
     const displayName = instituteName || 'Your institute';
+    const headline = config.headline.trim() || DEFAULT_VERIFICATION_HEADLINE;
 
     return (
         <div className="space-y-5 rounded-lg border bg-card p-6">
@@ -90,19 +103,66 @@ export const VerificationPageSection = ({
                     )}
 
                     <div>
+                        <Label htmlFor="verification-headline">Headline</Label>
+                        <Input
+                            id="verification-headline"
+                            value={config.headline}
+                            disabled={disabled}
+                            maxLength={80}
+                            placeholder={DEFAULT_VERIFICATION_HEADLINE}
+                            onChange={(e) => onConfigChange({ headline: e.target.value })}
+                            className="mt-1"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            The line under the seal. Blank uses &ldquo;
+                            {DEFAULT_VERIFICATION_HEADLINE}&rdquo;.
+                        </p>
+                    </div>
+
+                    <div>
                         <Label htmlFor="verification-note">Your message (optional)</Label>
                         <Input
                             id="verification-note"
-                            value={note}
+                            value={config.note}
                             disabled={disabled}
                             maxLength={200}
                             placeholder="e.g. Questions about this certificate? registrar@example.com"
-                            onChange={(e) => onNoteChange(e.target.value)}
+                            onChange={(e) => onConfigChange({ note: e.target.value })}
                             className="mt-1"
                         />
                         <p className="mt-1 text-xs text-muted-foreground">
                             Shown on the page below. Anyone with the link can read it, so keep it to
                             something public.
+                        </p>
+                    </div>
+
+                    {/* The recipient's masked name and the certificate number are
+                        not on this list: without them the page confirms that a
+                        certificate exists rather than the one being held. */}
+                    <div className="flex flex-col gap-2">
+                        <Label>What the page lists</Label>
+                        <DetailToggle
+                            label="Course name"
+                            checked={config.showCourse}
+                            disabled={disabled}
+                            onChange={(showCourse) => onConfigChange({ showCourse })}
+                        />
+                        <DetailToggle
+                            label="Issue date"
+                            checked={config.showIssueDate}
+                            disabled={disabled}
+                            onChange={(showIssueDate) => onConfigChange({ showIssueDate })}
+                        />
+                        <DetailToggle
+                            label="Completion percentage"
+                            checked={config.showCompletion}
+                            disabled={disabled}
+                            onChange={(showCompletion) => onConfigChange({ showCompletion })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            The recipient&apos;s name (partially masked) and the certificate number
+                            are always shown &mdash; they are what tie the page to the certificate
+                            in someone&apos;s hand.
                         </p>
                     </div>
                 </div>
@@ -144,18 +204,22 @@ export const VerificationPageSection = ({
                         </div>
                         <div className="flex flex-col items-center gap-1 border-y bg-success-50 px-5 py-3 text-center">
                             <SealCheck weight="fill" className="size-6 text-success-500" />
-                            <div className="text-xs font-medium text-neutral-700">
-                                This certificate is genuine
-                            </div>
+                            <div className="text-xs font-medium text-neutral-700">{headline}</div>
                         </div>
                         <dl className="flex flex-col gap-1.5 px-5 py-4 text-xs">
                             <PreviewRow label="Issued to" value="A··· S·····" />
-                            <PreviewRow label="Course" value="Intro to Sample Course" />
+                            {config.showCourse && (
+                                <PreviewRow label="Course" value="Intro to Sample Course" />
+                            )}
                             <PreviewRow label="Certificate number" value={sampleCertificateId} />
+                            {config.showIssueDate && (
+                                <PreviewRow label="Issued on" value="14 August 2026" />
+                            )}
+                            {config.showCompletion && <PreviewRow label="Completion" value="92%" />}
                         </dl>
-                        {note.trim() && (
+                        {config.note.trim() && (
                             <p className="border-t px-5 py-3 text-xs text-neutral-600">
-                                {note.trim()}
+                                {config.note.trim()}
                             </p>
                         )}
                     </div>
@@ -164,6 +228,23 @@ export const VerificationPageSection = ({
         </div>
     );
 };
+
+const DetailToggle = ({
+    label,
+    checked,
+    disabled,
+    onChange,
+}: {
+    label: string;
+    checked: boolean;
+    disabled?: boolean;
+    onChange: (checked: boolean) => void;
+}) => (
+    <label className="flex items-center gap-3 text-sm">
+        <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
+        {label}
+    </label>
+);
 
 const PreviewRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex items-baseline justify-between gap-3">

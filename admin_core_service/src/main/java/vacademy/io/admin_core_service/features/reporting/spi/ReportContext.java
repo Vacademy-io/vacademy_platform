@@ -21,7 +21,7 @@ import java.util.List;
  * hours for an Indian institute.
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class ReportContext {
 
     private final String instituteId;

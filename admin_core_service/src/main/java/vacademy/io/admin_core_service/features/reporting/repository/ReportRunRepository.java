@@ -17,6 +17,11 @@ public interface ReportRunRepository extends JpaRepository<ReportRun, String> {
      * The idempotency lookup. Checked before generating so a retry after a crash
      * resumes rather than repeats; the DB unique index is the actual guarantee,
      * this only avoids doing the work twice.
+     *
+     * Returns the row whatever its status — the caller decides. A FAILED row must
+     * be REUSED rather than skipped or re-inserted: the unique index carries no
+     * status column, so inserting again would collide, and skipping would let a
+     * transient auth_service or SMTP blip claim the window permanently.
      */
     @Query("SELECT r FROM ReportRun r WHERE r.scheduleId = :scheduleId "
             + "AND r.windowStart = :windowStart "

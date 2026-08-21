@@ -27,8 +27,7 @@ public interface UserRepository extends CrudRepository<User, String> {
          *
          * role_name is compared case-insensitively on purpose: production holds both
          * 'ADMIN' (807 rows) and 'Admin' (49), and an exact match silently drops the
-         * second group. Status is filtered by the caller so an INVITED or DISABLED
-         * membership never receives institute data.
+         * second group.
          */
         @Query(value = """
                         SELECT DISTINCT u.* FROM users u
@@ -38,6 +37,11 @@ public interface UserRepository extends CrudRepository<User, String> {
                           AND ur.status IN (:roleStatus)
                           AND UPPER(r.role_name) IN (:roleNames)
                         """, nativeQuery = true)
+        List<User> findByInstituteAndRoleNames(
+                        @Param("instituteId") String instituteId,
+                        @Param("roleNames") List<String> upperCaseRoleNames,
+                        @Param("roleStatus") List<String> roleStatus);
+
         /**
          * (user_id, role_name) for these users AT THIS INSTITUTE only.
          *
@@ -57,11 +61,6 @@ public interface UserRepository extends CrudRepository<User, String> {
         List<Object[]> findInstituteRoleRows(
                         @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds);
-
-        List<User> findByInstituteAndRoleNames(
-                        @Param("instituteId") String instituteId,
-                        @Param("roleNames") List<String> upperCaseRoleNames,
-                        @Param("roleStatus") List<String> roleStatus);
 
         @Query(value = """
                         SELECT u.* FROM users u

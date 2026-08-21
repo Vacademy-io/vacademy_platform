@@ -18,7 +18,9 @@ import vacademy.io.admin_core_service.features.reporting.spi.SectionFacts;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -90,29 +92,44 @@ public class ReportRunService {
         Timestamp windowStart = Timestamp.from(window.start());
 
         // ── 1. Claim ────────────────────────────────────────────────────────
-        if (runRepository.findExisting(schedule.getId(), windowStart, scope.id()).isPresent()) {
-            log.debug("[reporting] schedule {} scope {} already ran for window {} — skipping",
-                    schedule.getId(), scope.id(), windowStart);
-            return;
-        }
-
-        ReportRun run = ReportRun.builder()
-                .instituteId(instituteId)
-                .scheduleId(schedule.getId())
-                .windowStart(windowStart)
-                .windowEnd(Timestamp.from(window.end()))
-                .scopeType(scope.type().name())
-                .scopeId(scope.id())
-                .scopeLabel(scope.label())
-                .status("PENDING")
-                .build();
-        try {
+        // A prior row for this (schedule, window, scope) means one of three things:
+        // it succeeded or was skipped — nothing to do; or it FAILED — reuse the row
+        // and try again. Re-inserting is not an option: the unique index has no
+        // status column, so a retry would collide with its own earlier attempt.
+        ReportRun run;
+        var prior = runRepository.findExisting(schedule.getId(), windowStart, scope.id());
+        if (prior.isPresent()) {
+            run = prior.get();
+            if (!"FAILED".equals(run.getStatus())) {
+                log.debug("[reporting] schedule {} scope {} already {} for window {} — skipping",
+                        schedule.getId(), scope.id(), run.getStatus(), windowStart);
+                return;
+            }
+            log.info("[reporting] retrying failed run {} (schedule {} scope {})",
+                    run.getId(), schedule.getId(), scope.id());
+            run.setStatus("PENDING");
+            run.setErrorMessage(null);
             run = runRepository.saveAndFlush(run);
-        } catch (DataIntegrityViolationException dup) {
-            // Another replica claimed it between our check and our insert. Correct
-            // outcome — the index did its job.
-            log.debug("[reporting] concurrent claim for schedule {} window {} — yielding", schedule.getId(), windowStart);
-            return;
+        } else {
+            run = ReportRun.builder()
+                    .instituteId(instituteId)
+                    .scheduleId(schedule.getId())
+                    .windowStart(windowStart)
+                    .windowEnd(Timestamp.from(window.end()))
+                    .scopeType(scope.type().name())
+                    .scopeId(scope.id())
+                    .scopeLabel(scope.label())
+                    .status("PENDING")
+                    .build();
+            try {
+                run = runRepository.saveAndFlush(run);
+            } catch (DataIntegrityViolationException dup) {
+                // Another replica claimed it between our check and our insert.
+                // Correct outcome — the index did its job.
+                log.debug("[reporting] concurrent claim for schedule {} window {} — yielding",
+                        schedule.getId(), windowStart);
+                return;
+            }
         }
 
         try {
@@ -146,10 +163,35 @@ public class ReportRunService {
                 return;
             }
 
-            List<SectionFacts> facts = new ArrayList<>();
-            for (ReportSection sec : selected) {
-                facts.add(sec.compute(ctx)); // a failure propagates — see the SPI contract
+            // Recipients are grouped by what they may SEE, and the sections are
+            // computed once per group. Computing institute-wide and filtering
+            // afterwards cannot work for a capped list: the cap is applied to the
+            // institute ordering, so a teacher whose learners fall outside it is
+            // told they have none. Grouping keeps the cost bounded — typically one
+            // group for every admin plus one per teacher.
+            List<ReportRecipientResolver.Recipient> recipients =
+                    recipientResolver.resolve(instituteId, schedule);
+            if (recipients.isEmpty()) {
+                throw new IllegalStateException("no recipients resolved for schedule " + schedule.getId());
             }
+
+            Map<String, List<ReportRecipientResolver.Recipient>> groups = recipients.stream()
+                    .collect(Collectors.groupingBy(ReportRunService::visibilityKey,
+                            LinkedHashMap::new, Collectors.toList()));
+
+            Map<String, List<SectionFacts>> factsByGroup = new LinkedHashMap<>();
+            for (var g : groups.entrySet()) {
+                ReportContext groupCtx = ctx.toBuilder()
+                        .visibleLearnerIds(g.getValue().get(0).getVisibleLearnerIds())
+                        .build();
+                List<SectionFacts> f = new ArrayList<>();
+                for (ReportSection sec : selected) {
+                    f.add(sec.compute(groupCtx)); // a failure propagates — see the SPI contract
+                }
+                factsByGroup.put(g.getKey(), f);
+            }
+
+            List<SectionFacts> facts = factsByGroup.values().iterator().next();
 
             // ── 3. Gate ─────────────────────────────────────────────────────
             boolean everythingEmpty = facts.stream().allMatch(SectionFacts::isEmpty);
@@ -165,7 +207,7 @@ public class ReportRunService {
             // ── 4. Deliver ──────────────────────────────────────────────────
             int namedLearners = facts.stream().filter(SectionFacts::isIdentifying)
                     .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum();
-            int delivered = deliver(instituteId, instituteName, schedule, window, run, facts);
+            int delivered = deliver(instituteId, instituteName, window, run, selected, groups, factsByGroup);
 
             if (delivered == 0) {
                 // Marking this SENT would burn the idempotency slot and lose the
@@ -197,121 +239,86 @@ public class ReportRunService {
         }
     }
 
-    private int deliver(String instituteId, String instituteName, ReportScheduleConfig schedule,
-                        ReportWindowResolver.Window window, ReportRun run, List<SectionFacts> allFacts) {
+    private int deliver(String instituteId, String instituteName,
+                        ReportWindowResolver.Window window, ReportRun run,
+                        List<ReportSection> selected,
+                        Map<String, List<ReportRecipientResolver.Recipient>> groups,
+                        Map<String, List<SectionFacts>> factsByGroup) {
 
-        List<ReportRecipientResolver.Recipient> recipients =
-                recipientResolver.resolve(instituteId, schedule);
-        if (recipients.isEmpty()) {
-            log.warn("[reporting] schedule {} resolved to no recipients — nothing sent", schedule.getId());
-            return 0;
-        }
+        List<String> selectedKeys = selected.stream().map(ReportSection::key).toList();
 
         String subject = (instituteName == null ? "Vacademy" : instituteName) + " — " + run.getScopeLabel();
         int sent = 0;
 
-        for (ReportRecipientResolver.Recipient r : recipients) {
-            // Two filters, both server-side and neither overridable by config:
-            //   1. sections this role may see at all
-            //   2. learners this reader may be shown by name
-            // Pass the role set through verbatim. Substituting null for "empty"
-            // would disable the role filter entirely and hand a roleless recipient
-            // the ADMIN-only sections.
-            List<ReportSection> visible = registry.resolve(schedule.getSections(),
-                    r.getRoles() == null ? Set.<String>of() : r.getRoles());
-            Set<String> visibleKeys = visible.stream().map(ReportSection::key).collect(Collectors.toSet());
+        for (var g : groups.entrySet()) {
+            List<SectionFacts> groupFacts = factsByGroup.getOrDefault(g.getKey(), List.of());
 
-            List<SectionFacts> forUser = allFacts.stream()
-                    .filter(f -> visibleKeys.contains(f.getSectionKey()))
-                    .map(f -> restrictNaming(f, r.getVisibleLearnerIds()))
-                    .map(this::truncateForDisplay)
-                    .filter(f -> !(f.isEmpty() && f.isIdentifying()))
-                    .toList();
+            for (ReportRecipientResolver.Recipient r : g.getValue()) {
+                // Sections this role may see at all. An empty role set is passed
+                // through verbatim — substituting null would disable the filter and
+                // hand a roleless recipient the ADMIN-only sections.
+                List<ReportSection> visible = registry.resolve(selectedKeys,
+                        r.getRoles() == null ? Set.<String>of() : r.getRoles());
+                Set<String> visibleKeys = visible.stream().map(ReportSection::key).collect(Collectors.toSet());
 
-            if (forUser.isEmpty()) {
-                log.debug("[reporting] recipient {} sees nothing in schedule {} — not sent",
-                        r.getUserId(), schedule.getId());
-                continue;
-            }
+                List<SectionFacts> forUser = groupFacts.stream()
+                        .filter(f -> visibleKeys.contains(f.getSectionKey()))
+                        .map(this::truncateForDisplay)
+                        .filter(f -> !f.isEmpty())
+                        .toList();
 
-            boolean ok = false;
-            String error = null;
-            try {
-                if (r.getEmail() == null || r.getEmail().isBlank()) {
-                    error = "no email on file";
-                } else {
-                    notificationService.sendHtmlEmailViaUnified(
-                            r.getEmail(), subject,
-                            renderer.render(instituteName, run.getScopeLabel(), window.label(), forUser),
-                            instituteId, null, null, "UTILITY_EMAIL");
-                    ok = true;
-                    sent++;
+                if (forUser.isEmpty()) {
+                    log.debug("[reporting] recipient {} sees nothing in run {} — not sent", r.getUserId(), run.getId());
+                    continue;
                 }
-            } catch (Exception e) {
-                error = truncate(e.getMessage());
-                log.warn("[reporting] delivery failed for recipient {} on schedule {}",
-                        r.getUserId(), schedule.getId(), e);
-            }
 
-            recipientRepository.save(ReportRunRecipient.builder()
-                    .runId(run.getId())
-                    .userId(r.getUserId())
-                    .email(r.getEmail())
-                    .role(r.getRoles() == null ? null : String.join(",", r.getRoles()))
-                    // Audit what was RENDERED, not what was merely permitted: a
-                    // section can survive the role filter and still be dropped
-                    // (empty after cohort filtering). A compliance view claiming a
-                    // section was delivered when it was not is worse than no view.
-                    .sectionsSent(forUser.stream().map(SectionFacts::getSectionKey)
-                            .collect(Collectors.joining(",")))
-                    .namedLearners(forUser.stream().filter(SectionFacts::isIdentifying)
-                            .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum())
-                    .delivered(ok)
-                    .errorMessage(error)
-                    .build());
+                boolean ok = false;
+                String error = null;
+                try {
+                    if (r.getEmail() == null || r.getEmail().isBlank()) {
+                        error = "no email on file";
+                    } else {
+                        notificationService.sendHtmlEmailViaUnified(
+                                r.getEmail(), subject,
+                                renderer.render(instituteName, run.getScopeLabel(), window.label(), forUser),
+                                instituteId, null, null, "UTILITY_EMAIL");
+                        ok = true;
+                        sent++;
+                    }
+                } catch (Exception e) {
+                    error = truncate(e.getMessage());
+                    log.warn("[reporting] delivery failed for recipient {} on run {}", r.getUserId(), run.getId(), e);
+                }
+
+                recipientRepository.save(ReportRunRecipient.builder()
+                        .runId(run.getId())
+                        .userId(r.getUserId())
+                        .email(r.getEmail())
+                        .role(r.getRoles() == null ? null : String.join(",", r.getRoles()))
+                        // Audit what was RENDERED, not what was permitted.
+                        .sectionsSent(forUser.stream().map(SectionFacts::getSectionKey)
+                                .collect(Collectors.joining(",")))
+                        .namedLearners(forUser.stream().filter(SectionFacts::isIdentifying)
+                                .mapToInt(f -> f.getRows() == null ? 0 : f.getRows().size()).sum())
+                        .delivered(ok)
+                        .errorMessage(error)
+                        .build());
+            }
         }
         return sent;
     }
 
-    /**
-     * Drop rows naming learners this reader may not see.
-     *
-     * This is the teacher hard-scope, applied at the last possible moment so the
-     * expensive computation happens once per document rather than once per reader.
-     * A null allow-list means no restriction; an EMPTY list means "may name nobody"
-     * and must not be confused with it.
-     */
-    private SectionFacts restrictNaming(SectionFacts f, List<String> allowedLearnerIds) {
-        if (allowedLearnerIds == null || !f.isIdentifying()) return f;
-
-        Set<String> allowed = Set.copyOf(allowedLearnerIds);
-        List<SectionFacts.Row> kept = (f.getRows() == null ? List.<SectionFacts.Row>of() : f.getRows())
-                .stream()
-                .filter(row -> row.getSubjectId() != null && allowed.contains(row.getSubjectId()))
-                .toList();
-
-        // Headlines are INSTITUTE-WIDE aggregates. Keeping them next to a filtered
-        // list produces a document that contradicts itself — "808 learners quiet"
-        // above a table of 37 — and the reader cannot tell which number applies to
-        // them. Replace them with one figure that is true for this reader, and say
-        // so in the title. Recomputing the aggregate per recipient would be correct
-        // too, but costs a query per reader per section.
-        return SectionFacts.builder()
-                .sectionKey(f.getSectionKey())
-                .title(f.getTitle() + " — your cohorts")
-                .identifying(true)
-                .headline("In your cohorts", String.valueOf(kept.size()))
-                .columns(f.getColumns())
-                .rows(kept.size() > MAX_DISPLAY_ROWS ? kept.subList(0, MAX_DISPLAY_ROWS) : kept)
-                .empty(kept.isEmpty())
-                .build();
+    /** Recipients with the same visibility get the same computed facts. */
+    private static String visibilityKey(ReportRecipientResolver.Recipient r) {
+        List<String> ids = r.getVisibleLearnerIds();
+        if (ids == null) return "ALL";
+        return "SCOPED:" + new java.util.TreeSet<>(ids).hashCode() + ":" + ids.size();
     }
 
     /**
-     * Rows shown in a document. Sections compute a wider slice so that this cut
-     * happens after the per-recipient cohort filter — truncating first would let a
-     * teacher whose learners fall outside the institute-wide top slice be told they
-     * have none.
+     * Rows shown in a document. Sections compute a wider slice, and this cut now
+     * happens on an ALREADY cohort-scoped result, so it can no longer zero out a
+     * teacher whose learners sat outside the institute-wide ordering.
      */
     private static final int MAX_DISPLAY_ROWS = 25;
 

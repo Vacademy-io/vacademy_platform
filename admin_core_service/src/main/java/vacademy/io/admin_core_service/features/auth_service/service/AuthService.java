@@ -92,12 +92,14 @@ public class AuthService {
         }
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            // Role names contain spaces in production ("CONTENT CREATOR"), so the
-            // query string must be encoded or the call 400s and the caller silently
-            // resolves zero recipients.
+            // Do NOT pre-encode. InternalClientUtils runs the path through
+            // UriComponentsBuilder.toUriString(), which encodes internally — a
+            // space in a real role name ("CONTENT CREATOR") becomes %20 correctly,
+            // whereas pre-encoding yields ADMIN%252CCONTENT+CREATOR and the comma
+            // stops being a separator. Verified against spring-web 6.1.
             String path = AuthServiceRoutes.GET_USERS_BY_INSTITUTE_ROLE
-                    + "?instituteId=" + enc(instituteId)
-                    + "&roles=" + enc(String.join(",", roles));
+                    + "?instituteId=" + instituteId
+                    + "&roles=" + String.join(",", roles);
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName,
                     HttpMethod.GET.name(),
@@ -791,9 +793,11 @@ public class AuthService {
         }
         try {
             ObjectMapper objectMapper = new ObjectMapper();
+            // See the note above: UriComponentsBuilder encodes; pre-encoding here
+            // turns every comma into literal %2C and the id list into one string.
             String path = AuthServiceRoutes.GET_INSTITUTE_ROLES
-                    + "?instituteId=" + enc(instituteId)
-                    + "&userIds=" + enc(String.join(",", userIds));
+                    + "?instituteId=" + instituteId
+                    + "&userIds=" + String.join(",", userIds);
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName, HttpMethod.GET.name(), authServerBaseUrl, path, null);
             return objectMapper.readValue(response.getBody(),
@@ -803,9 +807,5 @@ public class AuthService {
             log.warn("[reporting] institute-role lookup failed for institute {}", instituteId, e);
             return Map.of();
         }
-    }
-
-    private static String enc(String v) {
-        return java.net.URLEncoder.encode(v, java.nio.charset.StandardCharsets.UTF_8);
     }
 }

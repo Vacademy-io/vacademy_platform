@@ -12,6 +12,7 @@ import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import CertificatesSettings from '../-components/Certificates/CertificatesSettings';
 import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
+import ScheduledReportsSettings from '../-components/ScheduledReportsSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
@@ -154,6 +155,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.AiSettings,
             value: 'AI Settings',
             component: AiSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
+        },
+        {
+            tab: SettingsTabs.ScheduledReports,
+            value: 'Scheduled Reports',
+            component: ScheduledReportsSettings,
             domain: 'General',
             group: 'Platform Configuration',
         },

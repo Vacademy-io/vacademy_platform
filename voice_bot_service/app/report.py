@@ -56,6 +56,13 @@ def _llm_target(s):
     return s.sarvam_llm_base_url, s.sarvam_api_key, s.sarvam_llm_model
 
 
+# Every degraded or skipped analysis path returns these three keys explicitly rather
+# than omitting them. admin_core reads promisedSends to decide what to actually send,
+# and a MISSING key must not be distinguishable from an EMPTY one downstream — else a
+# failed analysis reads as "the model considered it and found nothing promised".
+_NO_SENDS: Dict[str, Any] = {"promisedSends": [], "whatsappNumber": None, "email": None}
+
+
 async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     s = get_settings()
     agent = outcome.context.get("agent") or {}
@@ -68,7 +75,8 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": "Incomplete", "summary": "No conversation captured.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None, "meetingRequested": False,
-                "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None}
+                "meetingDatetimeIso": None, "meetingDatetimeText": None,
+                "meetingType": None, **_NO_SENDS}
 
     # Current date/time so the analyser can resolve relative dates spoken on the call
     # ("tomorrow 3pm", "day after") into a concrete ISO instant. Same tz convention as
@@ -81,6 +89,25 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     now_stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
     now_offset = now.strftime("%z")
     now_offset = f"{now_offset[:3]}:{now_offset[3:]}" if now_offset else "+05:30"
+
+    # Send rules turn a promise made ON the call into a real WhatsApp/email/meeting
+    # (docs/crm/AI_CALL_ACTIONS.md). The artefact vocabulary is CLOSED and comes from
+    # the agent's own rules, exactly like `dispositions` — the model may not invent a
+    # key admin_core has no rule for, and admin_core drops one that slips through.
+    #
+    # An agent with no rules gets NO extra prompt text and NO extra keys. This prompt is
+    # already large and every agent alive today sends nothing, so the additive path must
+    # cost them zero tokens and zero behaviour change.
+    artefacts = [str(a).strip() for a in (agent.get("sendArtefacts") or []) if str(a).strip()]
+    artefact_spec = (
+        f"promisedSends (array, a subset of {artefacts}: ONLY artefacts the assistant "
+        "explicitly OFFERED and the caller ACCEPTED on this call — a mention in passing "
+        "is NOT a promise, and an artefact the caller declined is NOT a promise. Empty "
+        "array if none), "
+        "whatsappNumber (the number the caller confirmed for the send, digits with "
+        "country code, or null if they accepted but named no number), "
+        "email (only if the caller actually spoke an email address; null otherwise).\n"
+    ) if artefacts else ""
 
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
@@ -96,8 +123,9 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "meetingDatetimeIso (ISO 8601 with offset for the agreed meeting time resolved from RIGHT "
         f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
         "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
-        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n\n"
-        f"Transcript:\n{transcript}\n\nJSON:"
+        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n"
+        + artefact_spec +
+        f"\nTranscript:\n{transcript}\n\nJSON:"
     )
     base_url, api_key, model = _llm_target(s)
     payload = {
@@ -133,7 +161,7 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": "Incomplete",
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
-                "callbackTimeText": None}
+                "callbackTimeText": None, **_NO_SENDS}
 
 
 # Disposition labels that assert a MEETING WAS SECURED. Substring match on a
@@ -190,6 +218,93 @@ def _drop_unevidenced_booking(analysis: Dict[str, Any], corr: str) -> None:
         # Never cost the report: an unexpected shape here must leave the
         # analysis exactly as the model returned it.
         logger.exception("report: booking-evidence check failed corr=%s", corr)
+
+
+# Spoken acceptance, in both scripts saaras actually emits. Deliberately NOT a
+# per-artefact word map: artefact keys are per-institute ("scholarship_quiz") and the
+# calls are Hinglish, so a key-to-spoken-words map would be right for the one institute
+# it was written for and wrong for every other. What IS checkable without guessing is
+# whether the caller ever agreed to anything at all.
+# Spoken acceptance, in both scripts saaras actually emits. Deliberately NOT a
+# per-artefact word map: artefact keys are per-institute ("scholarship_quiz") and the
+# calls are Hinglish, so a key-to-spoken-words map would be right for the one institute
+# it was written for and wrong for every other. What IS checkable without guessing is
+# whether the caller ever agreed to anything at all.
+#
+# WHOLE WORDS, not substrings. The first cut of this matched substrings and the token
+# "ha" fired on "kaun bol raha hai" — a caller asking who we were read as consent to a
+# WhatsApp send. "ji" inside "jinke" and "ok" inside "book" are the same trap. Hindi
+# verb stems that legitimately need a prefix match get their own tuple below.
+_AFFIRMATIVE_WORDS = frozenset({
+    "haan", "han", "ha", "hn", "ji", "jee", "achha", "accha", "acha", "theek", "thik",
+    "sahi", "bilkul", "ok", "okay", "yes", "yeah", "yep", "sure", "please", "pakka",
+    "हाँ", "हां", "हा", "जी", "अच्छा", "ठीक", "सही", "बिल्कुल", "पक्का",
+})
+
+# Prefix-matched: these are verb stems whose inflections all mean the same consent
+# ("bhej do", "bhejiye", "bhejna", "भेजिए", "भेजना").
+_AFFIRMATIVE_PREFIXES = ("bhej", "send", "share", "भेज")
+
+# Punctuation stripped before matching, including the Devanagari danda Sarvam appends
+# to almost every final ("हाँ।").
+_WORD_STRIP = "।॥.,!?…\"'`~()[]{}:;-–—"
+
+
+def _sanitize_sends(analysis: Dict[str, Any], outcome: CallOutcome,
+                    agent: Dict[str, Any], corr: str) -> None:
+    """Keep only the promises we can stand behind. Sibling of _drop_unevidenced_booking.
+
+    The error directions are NOT symmetric, which is why this is stricter than the
+    booking guard. A dropped send costs a follow-up message. A send the caller never
+    agreed to is an unsolicited WhatsApp on a channel where that is a Meta violation,
+    not merely rude — and the number came from a transcript, so it may not even be
+    the person we called.
+
+    Four passes: closed vocabulary (the model may not invent an artefact admin_core
+    has no rule for), de-duplication, acceptance evidence, and contact sanity.
+    """
+    try:
+        allowed = {str(a).strip() for a in (agent.get("sendArtefacts") or []) if str(a).strip()}
+        raw = analysis.get("promisedSends")
+        promised = [str(x).strip() for x in raw if str(x).strip()] if isinstance(raw, list) else []
+
+        unknown = [k for k in promised if k not in allowed]
+        if unknown:
+            logger.warning("report: dropping promised artefact(s) %s with no rule on this "
+                           "agent corr=%s", unknown, corr)
+        promised = [k for k in promised if k in allowed]
+
+        seen: set = set()
+        promised = [k for k in promised if not (k in seen or seen.add(k))]
+
+        # Evidence. REPORT_REQUIRE_CONVERSATION already guarantees a caller turn exists
+        # by the time we get here; this asks the narrower question of whether any of
+        # those turns was an agreement.
+        if promised:
+            words = [w.strip(_WORD_STRIP) for w in
+                     " ".join(_caller_turns(outcome)).casefold().split()]
+            agreed = any(w in _AFFIRMATIVE_WORDS for w in words) or any(
+                w.startswith(_AFFIRMATIVE_PREFIXES) for w in words)
+            if not agreed:
+                logger.warning("report: analyser claims %s promised but no caller turn "
+                               "contains an acceptance — dropping all corr=%s",
+                               promised, corr)
+                promised = []
+        analysis["promisedSends"] = promised
+
+        digits = "".join(ch for ch in str(analysis.get("whatsappNumber") or "") if ch.isdigit())
+        analysis["whatsappNumber"] = digits if 10 <= len(digits) <= 15 else None
+        email = str(analysis.get("email") or "").strip()
+        analysis["email"] = email if (email.count("@") == 1 and " " not in email
+                                      and "." in email.split("@")[-1]) else None
+    except Exception:
+        # Fail CLOSED, unlike the booking guard which leaves the model's answer alone.
+        # There, leaving it costs a wrong label; here it would cost a message we cannot
+        # prove anyone asked for.
+        logger.exception("report: send-evidence check failed — sending nothing corr=%s", corr)
+        analysis["promisedSends"] = []
+        analysis["whatsappNumber"] = None
+        analysis["email"] = None
 
 
 def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
@@ -417,11 +532,13 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             "leadRating": None, "extractedQa": {}, "callbackRequested": False,
             "callbackTimeText": None, "meetingRequested": False,
             "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
+            **_NO_SENDS,
         }
     else:
         analysis = await _analyze(outcome)
         _drop_unevidenced_booking(analysis, outcome.corr)
     agent = ctx.get("agent") or {}
+    _sanitize_sends(analysis, outcome, agent, outcome.corr)
 
     payload: Dict[str, Any] = {
         "call_uuid": call_uuid or f"vai-{outcome.corr}",
@@ -445,6 +562,11 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         "meetingDatetimeIso": analysis.get("meetingDatetimeIso"),
         "meetingDatetimeText": analysis.get("meetingDatetimeText"),
         "meetingType": analysis.get("meetingType"),
+        # Artefacts the caller ACCEPTED on the call. admin_core resolves each against
+        # the agent's send rules and creates the real WhatsApp/email/meeting action.
+        "promisedSends": analysis.get("promisedSends") or [],
+        "whatsappNumber": analysis.get("whatsappNumber"),
+        "email": analysis.get("email"),
         "transferAttempted": outcome.transfer_requested,
         "transferStatus": "registered" if outcome.transfer_registered
                           else ("failed" if outcome.transfer_requested else None),

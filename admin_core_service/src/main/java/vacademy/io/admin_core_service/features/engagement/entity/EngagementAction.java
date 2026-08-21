@@ -120,6 +120,21 @@ public class EngagementAction {
     @Column(name = "llm_tokens_out")
     private Integer llmTokensOut;
 
+    /**
+     * Who created this row. NULL for everything the engine itself decided (every row that
+     * existed before V462); AI_CALL for a row an AI voice call produced.
+     */
+    @Column(length = 30)
+    private String source;
+
+    /**
+     * Natural key of the thing that caused it, callLogId:ruleId for an AI call. Under a
+     * partial unique index (V462) this is THE idempotency guard: a re-delivered webhook, a
+     * replayed spooled report or a reprocessed outcome must never send the brochure twice.
+     */
+    @Column(name = "source_ref")
+    private String sourceRef;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

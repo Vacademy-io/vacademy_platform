@@ -1,7 +1,22 @@
 # AI Call Actions — WhatsApp, Email, Meeting Booking
 
-Status: **spec, not implemented.** Written 2026-08-20.
-Scope: post-call sends first (v1), mid-call sends second (v2).
+Status: **implemented 2026-08-21** (spec written 2026-08-20). Post-call AND mid-call
+both shipped; nothing is live until an agent is given rules in CRM -> Calling -> AI Agents.
+
+**What actually shipped, and where it differs from this spec**
+
+| Spec said | Shipped |
+|---|---|
+| Phase 1: three new analyser fields | Done, plus a `_sanitize_sends` guard: closed vocabulary, de-dup, whole-word acceptance evidence, contact sanity. Fails CLOSED (a broken guard sends nothing). |
+| Phase 2: rows written from the outcome path | Done, post-commit and failure-isolated, in the same block as the auto-book. |
+| Idempotency "key on (call_id, artefact_key)" | Keyed on `(source, source_ref)` = `AI_CALL`, `callLogId:ruleId`, under a partial unique index (V462). Rule id, not artefact key, so two rules for one artefact stay independent. |
+| §2.1 auto-send is a product decision, default TASK | Default **SEND**, via `telephony.ai.actions.mode`. An admin-authored rule plus a caller saying yes is not the same act as the engine drafting something unprompted. Set the property to `TASK` to watch a batch first. |
+| §5 rules keyed off dispositions/extraction | Done, plus `promised` and `meetingRequested`. |
+| §8 v2 deferred | Shipped: `<<SEND:key>>` is registered in BOTH places §8 warns about, and there are unit tests for the partial-marker hold-back. |
+| BOOK_MEETING as a rule action | A rule chooses the booking PAGE; the existing `maybeAutoBookMeeting` still owns the calendar (it already validates the resolved time and rejects past ones). Duplicating that was the bigger risk. |
+
+Still open, unchanged by this work: §7 (the five templates must be registered and
+approved as UTILITY before any WhatsApp rule can succeed) and §9.2-9.4.
 
 ---
 

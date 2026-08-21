@@ -107,8 +107,23 @@ public class AiCallActionService {
             List<AiCallActionRule> parsed = mapper.readValue(
                     agent.getSendRules(), new TypeReference<List<AiCallActionRule>>() {});
             List<AiCallActionRule> out = new ArrayList<>();
+            int unusable = 0;
             for (AiCallActionRule r : parsed) {
-                if (r != null && !Boolean.FALSE.equals(r.getEnabled()) && isUsable(r)) out.add(r);
+                if (r == null || Boolean.FALSE.equals(r.getEnabled())) continue;
+                if (!isUsable(r)) {
+                    // Saving now rejects these (AiAgentService.ruleProblem), but a row written
+                    // before that check, or edited straight in the database, still reaches here.
+                    // Dropping it silently is what made a configured-looking rule that never
+                    // sent anything so hard to diagnose from the outside.
+                    unusable++;
+                    continue;
+                }
+                out.add(r);
+            }
+            if (unusable > 0) {
+                log.warn("ai-call-actions: agent {} has {} unusable send rule(s) - each needs an "
+                        + "action type, a key and a trigger; they will never fire",
+                        agent.getId(), unusable);
             }
             return out;
         } catch (Exception e) {

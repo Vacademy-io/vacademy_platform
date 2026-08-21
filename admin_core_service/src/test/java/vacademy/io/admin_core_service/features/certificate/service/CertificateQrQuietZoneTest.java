@@ -92,11 +92,47 @@ class CertificateQrQuietZoneTest {
         assertEquals(image.getWidth(), image.getHeight());
     }
 
-    /** A barcode carries its own start and stop patterns; no border is added. */
     @Test
-    void barcodesAreUnaffected() throws Exception {
+    void barcodesStayWideRatherThanSquare() throws Exception {
         BufferedImage image = decode(service.generateBarcodeDataUri("EDU2026001"));
         assertTrue(image.getWidth() > image.getHeight(), "a Code 128 should be wide, not square");
+    }
+
+    /**
+     * Code 128 needs at least 10 modules of blank space on each side. This used
+     * to be 0 — the note in the code claimed iText left a margin of its own, and
+     * a test asserted barcodes were "unaffected". Measured, the PNG had zero
+     * white columns on either edge, which is why barcodes printed over
+     * certificate artwork would not scan.
+     */
+    @Test
+    void barcodesArePrintedInsideAQuietZone() throws Exception {
+        BufferedImage image = decode(service.generateBarcodeDataUri("EDU2026001"));
+
+        int left = blankColumns(image, 0, 1);
+        int right = blankColumns(image, image.getWidth() - 1, -1);
+
+        assertTrue(left > 0, "no quiet zone on the left of the barcode");
+        assertTrue(right > 0, "no quiet zone on the right of the barcode");
+        assertEquals(left, right, "the quiet zone should be symmetric");
+
+        // 10 modules, and a module is at least one pixel before the output scale
+        // is applied — so the margin can never be a hairline.
+        assertTrue(left >= 10, "quiet zone is narrower than the 10 modules Code 128 requires: " + left);
+    }
+
+    /** Count fully-white pixel columns walking inward from one edge. */
+    private static int blankColumns(BufferedImage image, int from, int step) {
+        int blank = 0;
+        for (int x = from; x >= 0 && x < image.getWidth(); x += step) {
+            for (int y = 0; y < image.getHeight(); y++) {
+                if ((image.getRGB(x, y) & 0xFFFFFF) != 0xFFFFFF) {
+                    return blank;
+                }
+            }
+            blank++;
+        }
+        return blank;
     }
 
     @Test

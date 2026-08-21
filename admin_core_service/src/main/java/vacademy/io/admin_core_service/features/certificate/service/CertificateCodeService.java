@@ -56,6 +56,25 @@ public class CertificateCodeService {
     private static final int QR_QUIET_ZONE_MODULES = 4;
 
     /**
+     * The white border every Code 128 barcode is required to have, in modules
+     * (one module = the width of the narrowest bar, "X").
+     *
+     * <p>The spec calls for at least 10X on each side. This used to be 0, on the
+     * reasoning that "Code 128 carries its own start/stop patterns and iText
+     * leaves a margin around them". Both halves of that are wrong: the start and
+     * stop patterns are *data*, not blank space, and iText's
+     * {@code createAwtImage} renders the bars edge-to-edge with no margin at all
+     * — measured, the generated PNG had zero white pixel columns on either side.
+     *
+     * <p>The effect is worse than it sounds, because these barcodes are placed
+     * on certificate artwork. With no quiet zone the first bar sits directly
+     * against whatever the design puts there — on EduStream's template, a
+     * dark globe — and the scanner has no blank margin to lock the symbol's
+     * edges onto, so it never decodes.
+     */
+    private static final int BARCODE_QUIET_ZONE_MODULES = 10;
+
+    /**
      * QR encoding the given payload, as a PNG data URI.
      *
      * @param payload usually the certificate number, or a public verification URL
@@ -97,9 +116,7 @@ public class CertificateCodeService {
             Barcode128 barcode = new Barcode128(throwaway);
             barcode.setCode(payload.trim());
             Image awtImage = barcode.createAwtImage(Color.BLACK, Color.WHITE);
-            // Code 128 carries its own start/stop patterns and iText leaves a
-            // margin around them, so no extra quiet zone is added here.
-            return toPngDataUri(awtImage, BARCODE_SCALE, 0);
+            return toPngDataUri(awtImage, BARCODE_SCALE, barcodeQuietZonePixels(awtImage));
         } catch (Exception e) {
             log.warn("Could not generate certificate barcode for payload of length {}",
                     payload.length(), e);
@@ -137,6 +154,71 @@ public class CertificateCodeService {
             }
             return "data:image/png;base64," + Base64.getEncoder().encodeToString(out.toByteArray());
         }
+    }
+
+    /**
+     * The barcode's quiet zone in source-image pixels: ten modules.
+     *
+     * <p>The module width is measured off the rendered symbol rather than
+     * assumed. iText picks the bar width from {@code Barcode1D.getX()} and
+     * rounds it into whole pixels when rasterising, so the only reliable
+     * statement about "one module" is the narrowest run of same-coloured pixels
+     * actually present in the image.
+     */
+    static int barcodeQuietZonePixels(Image awtImage) {
+        try {
+            return Math.max(1, narrowBarPixels(rasterise(awtImage))) * BARCODE_QUIET_ZONE_MODULES;
+        } catch (Exception e) {
+            log.warn("Could not measure the barcode module width; falling back to a nominal quiet zone", e);
+            return BARCODE_QUIET_ZONE_MODULES;
+        }
+    }
+
+    /** Draw an AWT image onto a plain white RGB raster so its pixels can be read. */
+    private static BufferedImage rasterise(Image awtImage) {
+        int w = Math.max(1, awtImage.getWidth(null));
+        int h = Math.max(1, awtImage.getHeight(null));
+        BufferedImage buffered = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        var g = buffered.createGraphics();
+        try {
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, w, h);
+            g.drawImage(awtImage, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return buffered;
+    }
+
+    /**
+     * Width in pixels of the narrowest bar or space — one module.
+     *
+     * <p>Read across the vertical middle of the symbol, where every bar is
+     * present, and take the shortest unbroken run of one colour.
+     */
+    private static int narrowBarPixels(BufferedImage image) {
+        int y = image.getHeight() / 2;
+        int narrowest = Integer.MAX_VALUE;
+        int run = 0;
+        boolean previousDark = isDark(image, 0, y);
+        for (int x = 0; x < image.getWidth(); x++) {
+            boolean dark = isDark(image, x, y);
+            if (dark == previousDark) {
+                run++;
+            } else {
+                narrowest = Math.min(narrowest, run);
+                run = 1;
+                previousDark = dark;
+            }
+        }
+        narrowest = Math.min(narrowest, run);
+        return narrowest == Integer.MAX_VALUE ? 1 : narrowest;
+    }
+
+    private static boolean isDark(BufferedImage image, int x, int y) {
+        int rgb = image.getRGB(x, y);
+        int luminance = (((rgb >> 16) & 0xFF) * 299 + ((rgb >> 8) & 0xFF) * 587 + (rgb & 0xFF) * 114) / 1000;
+        return luminance < 128;
     }
 
     /**

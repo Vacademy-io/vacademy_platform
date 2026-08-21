@@ -9,7 +9,9 @@ export type {
   DripConditionLevel,
   DripConditionBehavior,
   DripConditionRuleType,
+  DripAnchor,
   DateBasedParams,
+  RelativeDateParams,
   CompletionBasedParams,
   PrerequisiteParams,
   SequentialParams,
@@ -21,6 +23,7 @@ export type {
 
 export {
   isDateBasedParams,
+  isRelativeDateParams,
   isCompletionBasedParams,
   isPrerequisiteParams,
   isSequentialParams,

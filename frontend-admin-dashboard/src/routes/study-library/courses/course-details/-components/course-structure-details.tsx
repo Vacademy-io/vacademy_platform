@@ -46,7 +46,6 @@ import {
     ArrowsIn,
     PencilSimple,
     DotsThree,
-    Info,
     DotsSixVertical,
     Copy,
 } from 'phosphor-react';
@@ -108,11 +107,18 @@ import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import { TokenKey, Authority } from '@/constants/auth/tokens';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
-import { ChapterDripConditionDialog } from './ChapterDripConditionDialog';
+import { ContentDripConditionDialog } from './ContentDripConditionDialog';
+import { DripScheduleDialog } from './DripScheduleDialog';
+import type {
+    DripCondition,
+    DripConditionContentLevel,
+    DripScheduleDefaults,
+} from '@/types/course-settings';
+import { DEFAULT_DRIP_SCHEDULE } from '@/types/course-settings';
 import { OfflineAvailabilityDialog } from './OfflineAvailabilityDialog';
 import type { OfflineSourceType } from '@/types/offline-access';
 import { OfflineTelemetryCard } from './OfflineTelemetryCard';
-import { WifiSlash } from '@phosphor-icons/react';
+import { WifiSlash, LockSimple, CalendarBlank } from '@phosphor-icons/react';
 import { AddSubjectForm } from '../subjects/-components/add-subject.tsx/add-subject-form';
 import { AddModulesForm } from '../subjects/modules/-components/add-modules.tsx/add-modules-form';
 import { AddChapterForm } from '../subjects/modules/chapters/-components/chapter-material/add-chapters/add-chapter-form';
@@ -625,15 +631,20 @@ export const CourseStructureDetails = ({
         isPending: boolean;
     }>({ submitFn: null, isPending: false });
 
-    // Chapter drip conditions state
-    const [chapterDripDialog, setChapterDripDialog] = useState<{
+    // Drip (unlock rule) state. One dialog serves subjects, modules and chapters
+    // — the rule shape is identical at every level, only the label changes.
+    const [contentDripDialog, setContentDripDialog] = useState<{
         open: boolean;
-        chapterId: string | null;
-        chapterName: string | null;
-        packageId: string | null;
-    }>({ open: false, chapterId: null, chapterName: null, packageId: null });
+        level: DripConditionContentLevel;
+        itemId: string | null;
+        itemName: string | null;
+    }>({ open: false, level: 'chapter', itemId: null, itemName: null });
+    const [dripScheduleOpen, setDripScheduleOpen] = useState(false);
     const [dripConditionsEnabled, setDripConditionsEnabled] = useState(false);
-    const [dripConditions, setDripConditions] = useState<any[]>([]);
+    const [dripEnforcing, setDripEnforcing] = useState(false);
+    const [dripConditions, setDripConditions] = useState<DripCondition[]>([]);
+    const [dripScheduleDefaults, setDripScheduleDefaults] =
+        useState<DripScheduleDefaults>(DEFAULT_DRIP_SCHEDULE);
     const [loadingDripConditions, setLoadingDripConditions] = useState(false);
 
     // Offline-availability dialog state. Rules resolve down the chain
@@ -1036,6 +1047,11 @@ export const CourseStructureDetails = ({
                 const settings = await getCourseSettings();
                 setDripConditionsEnabled(settings.dripConditions.enabled || false);
                 setDripConditions(settings.dripConditions.conditions || []);
+                setDripEnforcing(settings.dripConditions.applyConfiguredRules === true);
+                setDripScheduleDefaults({
+                    ...DEFAULT_DRIP_SCHEDULE,
+                    ...settings.dripConditions.scheduleDefaults,
+                });
             } catch (error) {
                 console.error('Failed to load drip conditions:', error);
             } finally {
@@ -1045,20 +1061,19 @@ export const CourseStructureDetails = ({
         loadDripSettings();
     }, []);
 
-    const handleOpenChapterDripDialog = (chapterId: string, chapterName: string) => {
-        setChapterDripDialog({
-            open: true,
-            chapterId,
-            chapterName,
-            packageId: searchParams?.courseId ?? '',
-        });
+    const handleOpenDripDialog = (
+        level: DripConditionContentLevel,
+        itemId: string,
+        itemName: string
+    ) => {
+        setContentDripDialog({ open: true, level, itemId, itemName });
     };
 
-    const handleCloseChapterDripDialog = () => {
-        setChapterDripDialog({ open: false, chapterId: null, chapterName: null, packageId: null });
+    const handleCloseDripDialog = () => {
+        setContentDripDialog((prev) => ({ ...prev, open: false }));
     };
 
-    const handleSaveChapterDripConditions = async (updatedConditions: any[]) => {
+    const handleSaveChapterDripConditions = async (updatedConditions: DripCondition[]) => {
         try {
             const settings = await getCourseSettings();
             const newSettings = {
@@ -1512,6 +1527,40 @@ export const CourseStructureDetails = ({
     const totalChaptersCount = Object.values(subjectModulesMap)
         .flat()
         .reduce((sum, m) => sum + m.chapters.length, 0);
+    /**
+     * Everything the day-wise scheduler can drip, in course order.
+     *
+     * Slides are only offered once their chapters have actually been loaded —
+     * scheduling half a course because the rest had not been fetched yet would
+     * silently lock the missing half out of the schedule.
+     */
+    const dripScheduleItems = useMemo(() => {
+        const modulesInOrder = subjects.flatMap((subject) =>
+            (subjectModulesMap[subject.id] ?? []).map((m) => m)
+        );
+        const chaptersInOrder = modulesInOrder.flatMap((m) => m.chapters);
+        return {
+            subject: subjects.map((subject) => ({
+                id: subject.id,
+                name: subject.subject_name,
+            })),
+            module: modulesInOrder.map((m) => ({
+                id: m.module.id,
+                name: m.module.module_name,
+            })),
+            chapter: chaptersInOrder.map((ch) => ({
+                id: ch.chapter.id,
+                name: ch.chapter.chapter_name,
+            })),
+            slide: chaptersInOrder.flatMap((ch) =>
+                (chapterSlidesMap[ch.chapter.id] ?? []).map((slide) => ({
+                    id: slide.id,
+                    name: slide.title || 'Untitled slide',
+                }))
+            ),
+        };
+    }, [subjects, subjectModulesMap, chapterSlidesMap]);
+
     const totalExpandable = subjects.length + totalModulesCount + totalChaptersCount;
     const totalOpen = openSubjects.size + openModules.size + openChapters.size;
     const isAllExpanded = totalExpandable > 0 && totalOpen >= totalExpandable;
@@ -1711,6 +1760,17 @@ export const CourseStructureDetails = ({
                                     {copyCourseContentMutation.isPending
                                         ? 'Importing…'
                                         : 'Import Content'}
+                                </MyButton>
+                            )}
+                            {!readOnly && canEditStructure && dripConditionsEnabled && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={() => setDripScheduleOpen(true)}
+                                    className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
+                                    disable={loadingDripConditions}
+                                >
+                                    <CalendarBlank size={14} weight="bold" />
+                                    Schedule Unlock
                                 </MyButton>
                             )}
                             {!readOnly && totalExpandable > 0 && (
@@ -2293,7 +2353,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                         e
                                                                                                                                                     ) => {
                                                                                                                                                         e.stopPropagation();
-                                                                                                                                                        handleOpenChapterDripDialog(
+                                                                                                                                                        handleOpenDripDialog(
+                                                                                                                                                            'chapter',
                                                                                                                                                             ch
                                                                                                                                                                 .chapter
                                                                                                                                                                 .id,
@@ -2303,14 +2364,13 @@ export const CourseStructureDetails = ({
                                                                                                                                                         );
                                                                                                                                                     }}
                                                                                                                                                 >
-                                                                                                                                                    <Info
+                                                                                                                                                    <LockSimple
                                                                                                                                                         size={
                                                                                                                                                             16
                                                                                                                                                         }
-                                                                                                                                                        className="mr-2"
+                                                                                                                                                        className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Drip
-                                                                                                                                                    Condition
+                                                                                                                                                    Unlock Rule
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -2949,7 +3009,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                         e
                                                                                                                                                     ) => {
                                                                                                                                                         e.stopPropagation();
-                                                                                                                                                        handleOpenChapterDripDialog(
+                                                                                                                                                        handleOpenDripDialog(
+                                                                                                                                                            'chapter',
                                                                                                                                                             ch
                                                                                                                                                                 .chapter
                                                                                                                                                                 .id,
@@ -2959,14 +3020,13 @@ export const CourseStructureDetails = ({
                                                                                                                                                         );
                                                                                                                                                     }}
                                                                                                                                                 >
-                                                                                                                                                    <Info
+                                                                                                                                                    <LockSimple
                                                                                                                                                         size={
                                                                                                                                                             16
                                                                                                                                                         }
-                                                                                                                                                        className="mr-2"
+                                                                                                                                                        className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Drip
-                                                                                                                                                    Condition
+                                                                                                                                                    Unlock Rule
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -3476,7 +3536,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                         e
                                                                                                                                                     ) => {
                                                                                                                                                         e.stopPropagation();
-                                                                                                                                                        handleOpenChapterDripDialog(
+                                                                                                                                                        handleOpenDripDialog(
+                                                                                                                                                            'chapter',
                                                                                                                                                             ch
                                                                                                                                                                 .chapter
                                                                                                                                                                 .id,
@@ -3486,14 +3547,13 @@ export const CourseStructureDetails = ({
                                                                                                                                                         );
                                                                                                                                                     }}
                                                                                                                                                 >
-                                                                                                                                                    <Info
+                                                                                                                                                    <LockSimple
                                                                                                                                                         size={
                                                                                                                                                             16
                                                                                                                                                         }
-                                                                                                                                                        className="mr-2"
+                                                                                                                                                        className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Drip
-                                                                                                                                                    Condition
+                                                                                                                                                    Unlock Rule
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -3971,6 +4031,24 @@ export const CourseStructureDetails = ({
                                                             Delete
                                                         </DropdownMenuItem>
                                                         )}
+                                                        {dripConditionsEnabled && (
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenDripDialog(
+                                                                        'subject',
+                                                                        subject.id,
+                                                                        subject.subject_name
+                                                                    );
+                                                                }}
+                                                            >
+                                                                <LockSimple
+                                                                    size={14}
+                                                                    className="mr-2 text-purple-600"
+                                                                />
+                                                                Unlock Rule
+                                                            </DropdownMenuItem>
+                                                        )}
                                                         {/* Sets the rule for every chapter under
                                                             this subject at once — the resolver
                                                             walks SUBJECT -> MODULE -> CHAPTER, so
@@ -4129,6 +4207,24 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Delete
                                                                 </DropdownMenuItem>
+                                                                )}
+                                                                {dripConditionsEnabled && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleOpenDripDialog(
+                                                                                'module',
+                                                                                mod.module.id,
+                                                                                mod.module.module_name
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <LockSimple
+                                                                            size={14}
+                                                                            className="mr-2 text-purple-600"
+                                                                        />
+                                                                        Unlock Rule
+                                                                    </DropdownMenuItem>
                                                                 )}
                                                                 {/* Same rule, one level down: covers every chapter in this
                                                                     module while leaving per-chapter overrides intact. */}
@@ -4289,6 +4385,24 @@ export const CourseStructureDetails = ({
                                                                     Delete
                                                                 </DropdownMenuItem>
                                                                 )}
+                                                                {dripConditionsEnabled && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleOpenDripDialog(
+                                                                                'module',
+                                                                                mod.module.id,
+                                                                                mod.module.module_name
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <LockSimple
+                                                                            size={14}
+                                                                            className="mr-2 text-purple-600"
+                                                                        />
+                                                                        Unlock Rule
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                                 {/* Same rule, one level down: covers every chapter in this
                                                                     module while leaving per-chapter overrides intact. */}
                                                                 {offlineAccessEnabled && (
@@ -4437,17 +4551,18 @@ export const CourseStructureDetails = ({
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        handleOpenChapterDripDialog(
+                                                                        handleOpenDripDialog(
+                                                                            'chapter',
                                                                             ch.chapter.id,
                                                                             ch.chapter.chapter_name
                                                                         );
                                                                     }}
                                                                 >
-                                                                    <Info
+                                                                    <LockSimple
                                                                         size={14}
                                                                         className="mr-2 text-purple-600"
                                                                     />
-                                                                    Drip Condition
+                                                                    Unlock Rule
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {offlineAccessEnabled && (
@@ -4614,17 +4729,18 @@ export const CourseStructureDetails = ({
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        handleOpenChapterDripDialog(
+                                                                        handleOpenDripDialog(
+                                                                            'chapter',
                                                                             ch.chapter.id,
                                                                             ch.chapter.chapter_name
                                                                         );
                                                                     }}
                                                                 >
-                                                                    <Info
+                                                                    <LockSimple
                                                                         size={14}
                                                                         className="mr-2 text-purple-600"
                                                                     />
-                                                                    Drip Condition
+                                                                    Unlock Rule
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {offlineAccessEnabled && (
@@ -4795,18 +4911,19 @@ export const CourseStructureDetails = ({
                                                                     <DropdownMenuItem
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            handleOpenChapterDripDialog(
+                                                                            handleOpenDripDialog(
+                                                                                'chapter',
                                                                                 ch.chapter.id,
                                                                                 ch.chapter
                                                                                     .chapter_name
                                                                             );
                                                                         }}
                                                                     >
-                                                                        <Info
+                                                                        <LockSimple
                                                                             size={14}
                                                                             className="mr-2 text-purple-600"
                                                                         />
-                                                                        Drip Condition
+                                                                        Unlock Rule
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {offlineAccessEnabled && (
@@ -5345,23 +5462,31 @@ export const CourseStructureDetails = ({
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Chapter Drip Condition Dialog */}
-            <ChapterDripConditionDialog
-                open={chapterDripDialog.open}
-                onClose={handleCloseChapterDripDialog}
-                chapterId={chapterDripDialog.chapterId}
-                chapterName={chapterDripDialog.chapterName}
-                packageId={chapterDripDialog.packageId}
+            {/* Unlock rule for one subject / module / chapter */}
+            <ContentDripConditionDialog
+                open={contentDripDialog.open}
+                onClose={handleCloseDripDialog}
+                level={contentDripDialog.level}
+                itemId={contentDripDialog.itemId}
+                itemName={contentDripDialog.itemName}
+                packageId={searchParams?.courseId ?? ''}
                 dripConditions={dripConditions}
                 onSave={handleSaveChapterDripConditions}
-                allChapters={Object.values(subjectModulesMap)
-                    .flat()
-                    .flatMap((modWithChapters) =>
-                        modWithChapters.chapters.map((ch) => ({
-                            id: ch.chapter.id,
-                            name: ch.chapter.chapter_name,
-                        }))
-                    )}
+                dripEnabled={dripConditionsEnabled}
+                enforcing={dripEnforcing}
+                siblings={dripScheduleItems[contentDripDialog.level] ?? []}
+            />
+
+            {/* Bulk day-wise release schedule for the whole course */}
+            <DripScheduleDialog
+                open={dripScheduleOpen}
+                onClose={() => setDripScheduleOpen(false)}
+                itemsByLevel={dripScheduleItems}
+                dripConditions={dripConditions}
+                onSave={handleSaveChapterDripConditions}
+                defaults={dripScheduleDefaults}
+                dripEnabled={dripConditionsEnabled}
+                enforcing={dripEnforcing}
             />
 
             {/* Offline Availability Dialog (subject / module / chapter) */}

@@ -86,6 +86,8 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
+/** Per-enrollment detail: carries the learner's enrollment date for one batch. */
+export const LEARNER_BATCH_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/batch-details`;
 // Learner self-service payment method (saved card + billing details)
 export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/learner/payment-method/v1/summary`;
 export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;

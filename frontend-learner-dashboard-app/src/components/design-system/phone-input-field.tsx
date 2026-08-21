@@ -15,6 +15,7 @@ import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { phoneValidateRule } from "@/lib/phone-validation";
+import { cn } from "@/lib/utils";
 
 interface PhoneInputFieldProps {
   label: string;
@@ -27,6 +28,13 @@ interface PhoneInputFieldProps {
   required?: boolean;
   value?: string;
   onChange?: (value: string) => void;
+  /**
+   * Typography overrides so the field can match the label/input sizing of the
+   * form it sits in (public forms use `text-subtitle` labels + large inputs,
+   * while the default here stays the compact design-system sizing).
+   */
+  labelClassName?: string;
+  inputClassName?: string;
   /**
    * Country-aware validation is on by default. It only takes effect on forms
    * that do NOT use a zodResolver (RHF ignores field rules when a resolver is
@@ -46,6 +54,8 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   value,
   onChange,
   validate = true,
+  labelClassName,
+  inputClassName,
 }) => {
   // Read institute-configured preferred countries from domain routing cache.
   // First entry becomes the default selected country; the full list is used
@@ -66,9 +76,9 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
       rules={validate ? { validate: phoneValidateRule({ required, label }) } : undefined}
       render={({ field }) => (
         <FormItem className="!w-full">
-          <FormLabel>
+          <FormLabel className={labelClassName}>
             {label}
-            {required && <span className="text-danger-600">*</span>}
+            {required && <span className="text-danger-600"> *</span>}
           </FormLabel>
           <FormControl>
             <PhoneInput
@@ -82,7 +92,10 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
                 field.onChange(formattedValue);
                 if (onChange) onChange(formattedValue);
               }}
-              inputClass="!w-full h-10 !rounded-md !border-input"
+              inputClass={cn(
+                "!w-full h-10 !rounded-md !border-input",
+                inputClassName
+              )}
               buttonClass="!rounded-s-md !border-input"
               disabled={disabled}
               value={value || field.value}

@@ -59,6 +59,7 @@ public class ReportRunService {
     private final ReportRecipientResolver recipientResolver;
     private final ReportWindowResolver windowResolver;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+    private final vacademy.io.admin_core_service.features.media_service.service.MediaService mediaService;
 
     /**
      * Fan out one schedule into its documents and run each independently.
@@ -214,7 +215,8 @@ public class ReportRunService {
             }
 
             // ── 4. Deliver ──────────────────────────────────────────────────
-            Delivery delivery = deliver(instituteId, instituteName, window, run, selected, groups, factsByGroup);
+            Delivery delivery = deliver(instituteId, instituteName, schedule.getFrequency(),
+                    window, run, selected, groups, factsByGroup);
             int delivered = delivery.sent();
             int namedLearners = delivery.namedLearners();
 
@@ -319,11 +321,44 @@ public class ReportRunService {
         }
 
         String html = renderer.render(
-                instituteNameOf(instituteId), scope.label(), window.label(), facts);
+                brandingOf(instituteId, instituteNameOf(instituteId)),
+                scope.label(),
+                new ReportRenderer.Period(
+                        ReportWindowResolver.cadenceOf(schedule.getFrequency()),
+                        window.describeRange()),
+                facts);
         return new PreviewResult(html, note, scopes.size(), named);
     }
 
     public record PreviewResult(String html, String note, int documentsPerRun, int namedLearners) {}
+
+    /**
+     * Institute name, logo and theme for the document header.
+     *
+     * The logo is best-effort on purpose: it is a media_service round trip, and a
+     * slow or failing media call must never hold up — or fail — a report send. A
+     * missing logo costs nothing, because the header prints the institute's name
+     * in text beside it precisely so that a blocked or absent image changes
+     * nothing about what the reader understands.
+     */
+    private ReportRenderer.Branding brandingOf(String instituteId, String instituteName) {
+        String logoUrl = null;
+        String themeCode = null;
+        try {
+            var institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute != null) {
+                themeCode = institute.getInstituteThemeCode();
+                String logoFileId = institute.getLogoFileId();
+                if (logoFileId != null && !logoFileId.isBlank()) {
+                    logoUrl = mediaService.getFileUrlById(logoFileId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[reporting] branding lookup failed for institute {} — sending unbranded",
+                    instituteId, e);
+        }
+        return new ReportRenderer.Branding(instituteName, logoUrl, themeCode);
+    }
 
     private String instituteNameOf(String instituteId) {
         try {
@@ -352,7 +387,7 @@ public class ReportRunService {
                 windowResolver.previewWindow(schedule, null));
     }
 
-    private Delivery deliver(String instituteId, String instituteName,
+    private Delivery deliver(String instituteId, String instituteName, String frequency,
                         ReportWindowResolver.Window window, ReportRun run,
                         List<ReportSection> selected,
                         Map<String, List<ReportRecipientResolver.Recipient>> groups,
@@ -361,6 +396,11 @@ public class ReportRunService {
         List<String> selectedKeys = selected.stream().map(ReportSection::key).toList();
 
         String subject = (instituteName == null ? "Vacademy" : instituteName) + " — " + run.getScopeLabel();
+        // Resolved once per run: the logo lookup is a cross-service call and doing
+        // it per recipient would multiply a remote dependency across the send.
+        ReportRenderer.Branding branding = brandingOf(instituteId, instituteName);
+        ReportRenderer.Period period = new ReportRenderer.Period(
+                ReportWindowResolver.cadenceOf(frequency), window.describeRange());
         int sent = 0;
         int namedTotal = 0;
 
@@ -397,7 +437,7 @@ public class ReportRunService {
                     } else {
                         notificationService.sendHtmlEmailViaUnified(
                                 r.getEmail(), subject,
-                                renderer.render(instituteName, run.getScopeLabel(), window.label(), forUser),
+                                renderer.render(branding, run.getScopeLabel(), period, forUser),
                                 instituteId, null, null, "UTILITY_EMAIL");
                         ok = true;
                         sent++;

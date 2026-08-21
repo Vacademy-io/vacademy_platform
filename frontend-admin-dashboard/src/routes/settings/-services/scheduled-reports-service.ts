@@ -110,6 +110,9 @@ export function newSchedule(): ReportSchedule {
         // Stable id is required — it is half the idempotency key, and the
         // backend refuses a schedule without one rather than risk sending twice.
         id: `sched-${Date.now().toString(36)}`,
+        // Must match defaultNameFor('weekly') in ScheduledReportsSettings — the
+        // name is the document heading, and the screen swaps it when the frequency
+        // changes, so the two lists have to agree.
         name: 'Weekly digest',
         enabled: true,
         frequency: 'weekly',

@@ -34,6 +34,50 @@ import {
     type ScopePreview,
 } from '../-services/scheduled-reports-service';
 
+/** Names this screen generates itself, and may therefore replace. */
+const DEFAULT_NAMES = ['Daily digest', 'Weekly digest', 'Monthly digest'];
+
+function defaultNameFor(frequency: ReportSchedule['frequency']) {
+    return frequency === 'daily'
+        ? 'Daily digest'
+        : frequency === 'monthly'
+          ? 'Monthly digest'
+          : 'Weekly digest';
+}
+
+function isDefaultName(name: string) {
+    return DEFAULT_NAMES.includes((name ?? '').trim());
+}
+
+/**
+ * Hand the rendered report to the browser as a file.
+ *
+ * The preview iframe is `sandbox=""`, which blocks downloads started inside it —
+ * so the blob is built and clicked here in the parent document instead. The URL is
+ * revoked on a later tick because revoking it synchronously can cancel the
+ * download before the browser has read it.
+ */
+function downloadPreview(html: string | null) {
+    if (!html) return;
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report-preview-${new Date().toISOString().slice(0, 10)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Full-size view, for a report too tall to read in a dialog. */
+function openPreviewInTab(html: string | null) {
+    if (!html) return;
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const opened = window.open(url, '_blank', 'noopener');
+    if (!opened) toast.error('Allow pop-ups to open the preview in a new tab.');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 /**
  * Scheduled Reports — push reporting configuration.
  *
@@ -345,6 +389,18 @@ export default function ScheduledReportsSettings() {
                                     onValueChange={(v) =>
                                         patchSchedule(s.id, {
                                             frequency: v as ReportSchedule['frequency'],
+                                            // The name is the document's heading, so a
+                                            // schedule created as "Weekly digest" and
+                                            // switched to daily would arrive contradicting
+                                            // itself. Carry the default across, but never
+                                            // clobber a name the admin actually chose.
+                                            ...(isDefaultName(s.name)
+                                                ? {
+                                                      name: defaultNameFor(
+                                                          v as ReportSchedule['frequency']
+                                                      ),
+                                                  }
+                                                : {}),
                                         })
                                     }
                                 >
@@ -562,12 +618,28 @@ export default function ScheduledReportsSettings() {
                             </p>
                         )}
                         {rendered.html ? (
-                            <iframe
-                                title="Report preview"
-                                className="h-96 w-full rounded-md border border-border bg-white"
-                                sandbox=""
-                                srcDoc={rendered.html}
-                            />
+                            <>
+                                <iframe
+                                    title="Report preview"
+                                    className="h-96 w-full rounded-md border border-border bg-white"
+                                    sandbox=""
+                                    srcDoc={rendered.html}
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <MyButton
+                                        buttonType="secondary"
+                                        onClick={() => openPreviewInTab(rendered.html)}
+                                    >
+                                        Open in new tab
+                                    </MyButton>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        onClick={() => downloadPreview(rendered.html)}
+                                    >
+                                        Download HTML
+                                    </MyButton>
+                                </div>
+                            </>
                         ) : (
                             <p className="text-body">Nothing would be sent for this schedule.</p>
                         )}

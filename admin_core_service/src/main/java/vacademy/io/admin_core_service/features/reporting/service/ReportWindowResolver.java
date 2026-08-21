@@ -8,6 +8,7 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
@@ -33,7 +34,36 @@ import java.util.Optional;
 public class ReportWindowResolver {
 
     /** A window, in the institute's zone, resolved to instants. */
-    public record Window(Instant start, Instant end, ZoneId zone, String label) {}
+    public record Window(Instant start, Instant end, ZoneId zone, String label) {
+
+        /**
+         * The literal dates covered, in the institute's own zone.
+         *
+         * {@code end} is EXCLUSIVE, so the last covered day is the day before it —
+         * printing the raw end would claim the report covers a day it does not.
+         */
+        public String describeRange() {
+            LocalDate first = LocalDate.ofInstant(start, zone);
+            LocalDate last = LocalDate.ofInstant(end, zone).minusDays(1);
+            DateTimeFormatter full = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH);
+            if (!last.isAfter(first)) {
+                return first.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH));
+            }
+            if (first.getYear() == last.getYear() && first.getMonth() == last.getMonth()) {
+                return first.getDayOfMonth() + " – " + last.format(full);
+            }
+            return first.format(full) + " – " + last.format(full);
+        }
+    }
+
+    /** Human name for a frequency, for the cadence chip in the document header. */
+    public static String cadenceOf(String frequency) {
+        return switch (frequency == null ? "weekly" : frequency.toLowerCase(Locale.ROOT)) {
+            case "daily" -> "Daily";
+            case "monthly" -> "Monthly";
+            default -> "Weekly";
+        };
+    }
 
     /**
      * @return the window to report on if this schedule is due now, else empty.

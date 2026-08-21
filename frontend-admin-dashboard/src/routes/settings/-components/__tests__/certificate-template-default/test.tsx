@@ -146,6 +146,10 @@ const templateCard = (name: string): HTMLElement => {
     return card as HTMLElement;
 };
 
+/** The page splits into tabs; the stamp switches live in the second one. */
+const openTab = (name: RegExp | string) =>
+    fireEvent.click(screen.getByRole('button', { name }));
+
 const save = async () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
     await waitFor(() => expect(handleConfigureCertificateSettings).toHaveBeenCalled());
@@ -234,6 +238,67 @@ describe('choosing the default certificate template', () => {
     });
 });
 
+describe('finding your way around the page', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        storeState.instituteDetails = instituteDetails(
+            JSON.stringify({
+                imageTemplate: image('tpl-a'),
+                fieldMappings: [],
+                customImages: [],
+                library: [libraryEntry('tpl-a', 'Completion', 'student_name')],
+                defaultTemplateId: 'tpl-a',
+            })
+        );
+    });
+
+    /**
+     * Three unrelated questions — what it looks like, how it is numbered, what
+     * a scan shows — read as one long form when stacked in a single column.
+     */
+    it('opens on the design, with the other two a click away', async () => {
+        render(<CertificatesSettings />);
+
+        expect(await screen.findByText('My Templates')).toBeInTheDocument();
+        // Asserted on the section's own content, not its name — the tab button
+        // carries that name and is on screen whichever tab is open.
+        expect(screen.queryByText('What a scan shows')).toBeNull();
+
+        openTab(/verification page/i);
+        expect(screen.getByText('What a scan shows')).toBeInTheDocument();
+        expect(screen.queryByText('My Templates')).toBeNull();
+
+        openTab(/numbering & codes/i);
+        expect(screen.getByText('Certificate numbering')).toBeInTheDocument();
+    });
+
+    /**
+     * Whether certificates are issued at all governs all three tabs, so it does
+     * not belong inside one of them.
+     */
+    it('keeps the master switch and threshold visible on every tab', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+
+        for (const tab of [/numbering & codes/i, /verification page/i, /design/i]) {
+            openTab(tab);
+            expect(screen.getByText('Auto-issue certificates')).toBeInTheDocument();
+            expect(screen.getByLabelText(/completion threshold/i)).toBeInTheDocument();
+        }
+    });
+
+    /** Saving is a page-level action, not a per-tab one. */
+    it('saves from whichever tab you are on', async () => {
+        render(<CertificatesSettings />);
+        await screen.findByText('My Templates');
+
+        openTab(/verification page/i);
+        await save();
+
+        expect(savePayload().currentHtmlTemplate).toContain('{{STUDENT_NAME}}');
+    });
+});
+
 describe('the automatic code and number', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -253,6 +318,7 @@ describe('the automatic code and number', () => {
         render(<CertificatesSettings />);
         await screen.findByText('My Templates');
 
+        openTab(/numbering & codes/i);
         const codeSwitch = screen
             .getByText(/Stamp the (QR code|barcode)/)
             .closest('label')!
@@ -269,6 +335,7 @@ describe('the automatic code and number', () => {
         render(<CertificatesSettings />);
         await screen.findByText('My Templates');
 
+        openTab(/numbering & codes/i);
         const numberSwitch = screen
             .getByText('Stamp the certificate number')
             .closest('label')!
@@ -298,6 +365,7 @@ describe('the automatic code and number', () => {
         render(<CertificatesSettings />);
         await screen.findByText('My Templates');
 
+        openTab(/verification page/i);
         expect(screen.queryByLabelText(/custom qr link/i)).toBeNull();
         expect(screen.queryByPlaceholderText(/your-site\.com/i)).toBeNull();
     });

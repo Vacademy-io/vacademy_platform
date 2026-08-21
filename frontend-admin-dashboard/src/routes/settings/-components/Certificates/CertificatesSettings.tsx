@@ -147,27 +147,153 @@ const formatCertificateNumberPreview = (opts: {
 };
 
 const AVAILABLE_FIELDS: AvailableField[] = [
-    { name: 'student_name', displayName: 'Student Name', type: 'text', isRequired: true, sampleValue: 'Alex Sample', source: 'system' },
-    { name: 'institute_name', displayName: 'Institute Name', type: 'text', isRequired: true, sampleValue: 'Vacademy Institute', source: 'system' },
-    { name: 'institute_logo', displayName: 'Institute Logo', type: 'text', isRequired: false, sampleValue: '(logo image)', source: 'system' },
-    { name: 'course_name', displayName: 'Course Name', type: 'text', isRequired: true, sampleValue: 'Intro to Sample Course', source: 'system' },
-    { name: 'package_name', displayName: 'Package Name', type: 'text', isRequired: false, sampleValue: 'Foundation Package', source: 'system' },
-    { name: 'package_level', displayName: 'Package Level', type: 'text', isRequired: false, sampleValue: 'Beginner', source: 'system' },
-    { name: 'session_name', displayName: 'Session Name', type: 'text', isRequired: false, sampleValue: '2025-26', source: 'system' },
-    { name: 'completion_date', displayName: 'Completion Date', type: 'date', isRequired: false, sampleValue: '08-05-2026', source: 'system' },
-    { name: 'completion_percentage', displayName: 'Completion %', type: 'number', isRequired: false, sampleValue: '92', source: 'system' },
-    { name: 'date_of_completion', displayName: 'Date of Completion', type: 'date', isRequired: false, sampleValue: '08-05-2026', source: 'system' },
-    { name: 'certificate_id', displayName: 'Certificate ID', type: 'text', isRequired: false, sampleValue: 'VA-0123-2026', source: 'system' },
-    { name: 'certificate_qr', displayName: 'QR Code', type: 'text', isRequired: false, sampleValue: '(QR image)', source: 'system' },
-    { name: 'certificate_barcode', displayName: 'Barcode', type: 'text', isRequired: false, sampleValue: '(barcode image)', source: 'system' },
+    {
+        name: 'student_name',
+        displayName: 'Student Name',
+        type: 'text',
+        isRequired: true,
+        sampleValue: 'Alex Sample',
+        source: 'system',
+    },
+    {
+        name: 'institute_name',
+        displayName: 'Institute Name',
+        type: 'text',
+        isRequired: true,
+        sampleValue: 'Vacademy Institute',
+        source: 'system',
+    },
+    {
+        name: 'institute_logo',
+        displayName: 'Institute Logo',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '(logo image)',
+        source: 'system',
+    },
+    {
+        name: 'course_name',
+        displayName: 'Course Name',
+        type: 'text',
+        isRequired: true,
+        sampleValue: 'Intro to Sample Course',
+        source: 'system',
+    },
+    {
+        name: 'package_name',
+        displayName: 'Package Name',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'Foundation Package',
+        source: 'system',
+    },
+    {
+        name: 'package_level',
+        displayName: 'Package Level',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'Beginner',
+        source: 'system',
+    },
+    {
+        name: 'session_name',
+        displayName: 'Session Name',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '2025-26',
+        source: 'system',
+    },
+    {
+        name: 'completion_date',
+        displayName: 'Completion Date',
+        type: 'date',
+        isRequired: false,
+        sampleValue: '08-05-2026',
+        source: 'system',
+    },
+    {
+        name: 'completion_percentage',
+        displayName: 'Completion %',
+        type: 'number',
+        isRequired: false,
+        sampleValue: '92',
+        source: 'system',
+    },
+    {
+        name: 'date_of_completion',
+        displayName: 'Date of Completion',
+        type: 'date',
+        isRequired: false,
+        sampleValue: '08-05-2026',
+        source: 'system',
+    },
+    {
+        name: 'certificate_id',
+        displayName: 'Certificate ID',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'VA-0123-2026',
+        source: 'system',
+    },
+    {
+        name: 'certificate_qr',
+        displayName: 'QR Code',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '(QR image)',
+        source: 'system',
+    },
+    {
+        name: 'certificate_barcode',
+        displayName: 'Barcode',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '(barcode image)',
+        source: 'system',
+    },
     // Worth placing beside a barcode: a barcode that gets damaged, photocopied
     // or cropped stops scanning, and the printed code is then the only way left
     // to verify the certificate.
-    { name: 'certificate_short_code', displayName: 'Verification Code', type: 'text', isRequired: false, sampleValue: 'A1B2C3D4E5', source: 'system' },
-    { name: 'enrollment_number', displayName: 'Enrollment Number', type: 'text', isRequired: false, sampleValue: 'ENR2024001', source: 'system' },
-    { name: 'email', displayName: 'Email', type: 'text', isRequired: false, sampleValue: 'student@example.com', source: 'system' },
-    { name: 'mobile_number', displayName: 'Mobile Number', type: 'text', isRequired: false, sampleValue: '+1 555 0100', source: 'system' },
-    { name: 'theme_color', displayName: 'Theme Color', type: 'text', isRequired: false, sampleValue: '#1e4fa1', source: 'system' },
+    {
+        name: 'certificate_short_code',
+        displayName: 'Verification Code',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'A1B2C3D4E5',
+        source: 'system',
+    },
+    {
+        name: 'enrollment_number',
+        displayName: 'Enrollment Number',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'ENR2024001',
+        source: 'system',
+    },
+    {
+        name: 'email',
+        displayName: 'Email',
+        type: 'text',
+        isRequired: false,
+        sampleValue: 'student@example.com',
+        source: 'system',
+    },
+    {
+        name: 'mobile_number',
+        displayName: 'Mobile Number',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '+1 555 0100',
+        source: 'system',
+    },
+    {
+        name: 'theme_color',
+        displayName: 'Theme Color',
+        type: 'text',
+        isRequired: false,
+        sampleValue: '#1e4fa1',
+        source: 'system',
+    },
 ];
 
 // Inline draggable chip mirrors the field-palette pattern from the wizard
@@ -257,10 +383,7 @@ const CustomFieldsEditor = ({
                         const key = normalizeCustomFieldKey(field.key || '');
                         const isDuplicate = !!key && (keyCounts[key] ?? 0) > 1;
                         return (
-                            <div
-                                key={index}
-                                className="rounded border bg-card p-3 space-y-2"
-                            >
+                            <div key={index} className="space-y-2 rounded border bg-card p-3">
                                 <div className="flex items-start gap-2">
                                     <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
                                         <div>
@@ -282,8 +405,11 @@ const CustomFieldsEditor = ({
                                                     update(index, {
                                                         displayName,
                                                         key:
-                                                            !field.key || field.key === derivedFromOld
-                                                                ? normalizeCustomFieldKey(displayName)
+                                                            !field.key ||
+                                                            field.key === derivedFromOld
+                                                                ? normalizeCustomFieldKey(
+                                                                      displayName
+                                                                  )
                                                                 : field.key,
                                                     });
                                                 }}
@@ -434,9 +560,7 @@ const isValidCustomUploadSlot = (raw: unknown): raw is CustomUploadSlot => {
     if (!raw || typeof raw !== 'object') return false;
     const r = raw as Record<string, unknown>;
     return (
-        !!r.imageTemplate &&
-        typeof r.imageTemplate === 'object' &&
-        Array.isArray(r.fieldMappings)
+        !!r.imageTemplate && typeof r.imageTemplate === 'object' && Array.isArray(r.fieldMappings)
     );
 };
 
@@ -473,7 +597,8 @@ const parseImageTemplateJson = (
                 fieldMappings: parsed.fieldMappings as FieldMapping[],
                 customImages: Array.isArray(parsed.customImages) ? parsed.customImages : [],
                 templateCustomizations:
-                    parsed.templateCustomizations && typeof parsed.templateCustomizations === 'object'
+                    parsed.templateCustomizations &&
+                    typeof parsed.templateCustomizations === 'object'
                         ? (parsed.templateCustomizations as TemplateCustomizations)
                         : null,
                 customUploadSlot: isValidCustomUploadSlot(parsed.customUploadSlot)
@@ -836,6 +961,17 @@ const CertificatesSettings = () => {
     }, [settingString]);
 
     const [activeView, setActiveView] = useState<'upload' | 'design' | 'preview'>('upload');
+
+    /**
+     * The page splits into three because it answers three unrelated questions,
+     * and stacked in one column they read as one long form: what the
+     * certificate looks like, how it is numbered and coded, and what someone
+     * scanning it sees. Whether certificates are issued at all stays outside
+     * the tabs — it governs all three.
+     */
+    const [settingsTab, setSettingsTab] = useState<'design' | 'numbering' | 'verification'>(
+        'design'
+    );
 
     // Which gallery card is currently active. Built-in template ids carry the
     // BUILTIN_TEMPLATE_ID_PREFIX so we can recognize them on reload; anything
@@ -1620,8 +1756,8 @@ const CertificatesSettings = () => {
                         Certificate Settings
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Upload a certificate background image, drag dynamic fields onto it, set the
-                        issue threshold, and choose the aspect ratio.
+                        Design the certificate, decide how it is numbered and coded, and set up the
+                        page people reach by scanning it.
                     </p>
                 </div>
                 <Button
@@ -1675,542 +1811,622 @@ const CertificatesSettings = () => {
                     />
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-3">
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="threshold">
-                            Completion threshold (%)
-                        </label>
-                        <input
-                            id="threshold"
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={autoIssuePercentage}
-                            onChange={(e) =>
-                                setAutoIssuePercentage(
-                                    Math.min(100, Math.max(1, Number(e.target.value) || 0))
-                                )
-                            }
-                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Default: 80. Backend re-validates this value at issuance time.
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-medium" htmlFor="aspect">
-                            Aspect ratio
-                        </label>
-                        <select
-                            id="aspect"
-                            value={aspectRatio}
-                            onChange={(e) =>
-                                setAspectRatio(e.target.value as CertificateAspectRatio)
-                            }
-                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                        >
-                            <option value="A4_LANDSCAPE">A4 Landscape</option>
-                            <option value="A4_PORTRAIT">A4 Portrait</option>
-                            <option value="A3_LANDSCAPE">A3 Landscape</option>
-                            <option value="A3_PORTRAIT">A3 Portrait</option>
-                            <option value="CUSTOM">Custom</option>
-                        </select>
-                    </div>
-
-                    {aspectRatio === 'CUSTOM' && (
-                        <div className="grid grid-cols-2 gap-2">
-                            <div>
-                                <label className="text-sm font-medium" htmlFor="cw">
-                                    Width (mm)
-                                </label>
-                                <input
-                                    id="cw"
-                                    type="number"
-                                    min={50}
-                                    value={customWidthMm}
-                                    onChange={(e) => setCustomWidthMm(Number(e.target.value) || 0)}
-                                    className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium" htmlFor="ch">
-                                    Height (mm)
-                                </label>
-                                <input
-                                    id="ch"
-                                    type="number"
-                                    min={50}
-                                    value={customHeightMm}
-                                    onChange={(e) => setCustomHeightMm(Number(e.target.value) || 0)}
-                                    className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                                />
-                            </div>
-                        </div>
-                    )}
+                <div className="max-w-xs">
+                    <label className="text-sm font-medium" htmlFor="threshold">
+                        Completion threshold (%)
+                    </label>
+                    <input
+                        id="threshold"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={autoIssuePercentage}
+                        onChange={(e) =>
+                            setAutoIssuePercentage(
+                                Math.min(100, Math.max(1, Number(e.target.value) || 0))
+                            )
+                        }
+                        className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        Learners receive a certificate once their course completion crosses this.
+                        Default 80; the server re-checks it at issuance.
+                    </p>
                 </div>
             </div>
 
-            <div className="space-y-6 rounded-lg border bg-card p-6">
-                <CertificateNumberingBuilder
-                    value={{
-                        pattern: numberingPattern,
-                        prefix: numberingPrefix,
-                        suffix: numberingSuffix,
-                        sequencePadding,
-                    }}
-                    onChange={(patch) => {
-                        if (patch.pattern !== undefined) setNumberingPattern(patch.pattern);
-                        if (patch.prefix !== undefined) setNumberingPrefix(patch.prefix);
-                        if (patch.suffix !== undefined) setNumberingSuffix(patch.suffix);
-                        if (patch.sequencePadding !== undefined)
-                            setSequencePadding(patch.sequencePadding);
-                    }}
-                    derivedPrefix={derivedPrefix}
-                    disabled={loading}
-                    // The builder previews through the page's own formatter, so
-                    // the samples cannot drift from the number that is issued.
-                    formatSample={(value, sequence) =>
-                        formatCertificateNumberPreview({
-                            pattern: value.pattern,
-                            prefix: value.prefix.trim() || derivedPrefix,
-                            suffix: value.suffix,
-                            padding: value.sequencePadding,
-                            sequence,
-                            year: new Date().getFullYear(),
-                        })
-                    }
-                />
-
-                <div>
-                    <label className="text-sm font-medium" htmlFor="badge-code-type">
-                        Scannable code on the certificate
-                    </label>
-                    <select
-                        id="badge-code-type"
-                        value={badgeCodeType}
-                        onChange={(e) =>
-                            setBadgeCodeType(e.target.value === 'BARCODE' ? 'BARCODE' : 'QR')
-                        }
-                        className="mt-1 w-full rounded border px-3 py-2 text-sm"
+            {/* Three questions, three tabs: what it looks like, how it is
+                numbered, and what a scan shows. Stacked in one column they read
+                as one long form and admins told us as much. */}
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1">
+                {(
+                    [
+                        ['design', 'Design'],
+                        ['numbering', 'Numbering & codes'],
+                        ['verification', 'Verification page'],
+                    ] as const
+                ).map(([key, label]) => (
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSettingsTab(key)}
+                        className={cn(
+                            'rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                            settingsTab === key
+                                ? 'bg-primary-50 text-primary-500'
+                                : 'text-neutral-600 hover:bg-neutral-50'
+                        )}
                     >
-                        <option value="QR">QR code (default)</option>
-                        <option value="BARCODE">Barcode (Code 128)</option>
-                    </select>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        Stamped next to the certificate number, bottom-right — the design below
-                        shows you exactly where. To position it yourself instead, drag that badge,
-                        or drag the <strong>QR Code</strong> / <strong>Barcode</strong> field onto
-                        the design. The same goes for the number: wherever you place{' '}
-                        <strong>Certificate ID</strong>, it stops being stamped automatically, so
-                        you never get two of either.
-                    </p>
-                </div>
+                        {label}
+                    </button>
+                ))}
+            </div>
 
-                {usesBarcode && (
+            {settingsTab === 'numbering' && (
+                <div className="space-y-6 rounded-lg border bg-card p-6">
+                    <CertificateNumberingBuilder
+                        value={{
+                            pattern: numberingPattern,
+                            prefix: numberingPrefix,
+                            suffix: numberingSuffix,
+                            sequencePadding,
+                        }}
+                        onChange={(patch) => {
+                            if (patch.pattern !== undefined) setNumberingPattern(patch.pattern);
+                            if (patch.prefix !== undefined) setNumberingPrefix(patch.prefix);
+                            if (patch.suffix !== undefined) setNumberingSuffix(patch.suffix);
+                            if (patch.sequencePadding !== undefined)
+                                setSequencePadding(patch.sequencePadding);
+                        }}
+                        derivedPrefix={derivedPrefix}
+                        disabled={loading}
+                        // The builder previews through the page's own formatter, so
+                        // the samples cannot drift from the number that is issued.
+                        formatSample={(value, sequence) =>
+                            formatCertificateNumberPreview({
+                                pattern: value.pattern,
+                                prefix: value.prefix.trim() || derivedPrefix,
+                                suffix: value.suffix,
+                                padding: value.sequencePadding,
+                                sequence,
+                                year: new Date().getFullYear(),
+                            })
+                        }
+                    />
+
                     <div>
-                        <label className="text-sm font-medium" htmlFor="barcode-content">
-                            What the barcode encodes
+                        <label className="text-sm font-medium" htmlFor="badge-code-type">
+                            Scannable code on the certificate
                         </label>
                         <select
-                            id="barcode-content"
-                            value={barcodeContent}
+                            id="badge-code-type"
+                            value={badgeCodeType}
                             onChange={(e) =>
-                                setBarcodeContent(
-                                    e.target.value === 'VERIFICATION_CODE'
-                                        ? 'VERIFICATION_CODE'
-                                        : 'NUMBER'
-                                )
+                                setBadgeCodeType(e.target.value === 'BARCODE' ? 'BARCODE' : 'QR')
                             }
                             className="mt-1 w-full rounded border px-3 py-2 text-sm"
                         >
-                            <option value="NUMBER">Certificate number only (default)</option>
-                            <option value="VERIFICATION_CODE">
-                                Verification code — anyone can scan it to check the certificate
-                            </option>
+                            <option value="QR">QR code (default)</option>
+                            <option value="BARCODE">Barcode (Code 128)</option>
                         </select>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            {barcodeContent === 'VERIFICATION_CODE' ? (
-                                <>
-                                    Scanning the barcode gives a code that verifies the certificate
-                                    on your verification page. It carries about twice as much data
-                                    as the number alone, so it needs to be at least{' '}
-                                    <strong>{minBarcodeWidthMm('VERIFICATION_CODE')}mm</strong> wide
-                                    to still scan off a printed page — the design below warns you if
-                                    it is too narrow.
-                                </>
-                            ) : (
-                                <>
-                                    Scanning gives the certificate number as text. That identifies
-                                    the certificate but proves nothing, because the number on its
-                                    own is not a credential. Switch to the verification code to make
-                                    a barcode scan actually verify.
-                                </>
-                            )}
+                            Stamped next to the certificate number, bottom-right — the design below
+                            shows you exactly where. To position it yourself instead, drag that
+                            badge, or drag the <strong>QR Code</strong> / <strong>Barcode</strong>{' '}
+                            field onto the design. The same goes for the number: wherever you place{' '}
+                            <strong>Certificate ID</strong>, it stops being stamped automatically,
+                            so you never get two of either.
                         </p>
                     </div>
-                )}
 
-                {/* The answer to "I removed the QR and it came back". The stamp
+                    {usesBarcode && (
+                        <div>
+                            <label className="text-sm font-medium" htmlFor="barcode-content">
+                                What the barcode encodes
+                            </label>
+                            <select
+                                id="barcode-content"
+                                value={barcodeContent}
+                                onChange={(e) =>
+                                    setBarcodeContent(
+                                        e.target.value === 'VERIFICATION_CODE'
+                                            ? 'VERIFICATION_CODE'
+                                            : 'NUMBER'
+                                    )
+                                }
+                                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                            >
+                                <option value="NUMBER">Certificate number only (default)</option>
+                                <option value="VERIFICATION_CODE">
+                                    Verification code — anyone can scan it to check the certificate
+                                </option>
+                            </select>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {barcodeContent === 'VERIFICATION_CODE' ? (
+                                    <>
+                                        Scanning the barcode gives a code that verifies the
+                                        certificate on your verification page. It carries about
+                                        twice as much data as the number alone, so it needs to be at
+                                        least{' '}
+                                        <strong>{minBarcodeWidthMm('VERIFICATION_CODE')}mm</strong>{' '}
+                                        wide to still scan off a printed page — the design below
+                                        warns you if it is too narrow.
+                                    </>
+                                ) : (
+                                    <>
+                                        Scanning gives the certificate number as text. That
+                                        identifies the certificate but proves nothing, because the
+                                        number on its own is not a credential. Switch to the
+                                        verification code to make a barcode scan actually verify.
+                                    </>
+                                )}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* The answer to "I removed the QR and it came back". The stamp
                     is a safety net for designs that place neither, and it was
                     unconditional — so removing the field from the design was
                     not enough to remove it from the certificate. */}
-                <div className="flex flex-col gap-3 rounded-md border p-4">
-                    <div>
-                        <div className="text-sm font-medium">Automatic stamp</div>
-                        <p className="text-xs text-muted-foreground">
-                            Printed bottom-right on certificates whose design does not place these
-                            itself. A field you place on the design always wins over the stamp.
-                        </p>
+                    <div className="flex flex-col gap-3 rounded-md border p-4">
+                        <div>
+                            <div className="text-sm font-medium">Automatic stamp</div>
+                            <p className="text-xs text-muted-foreground">
+                                Printed bottom-right on certificates whose design does not place
+                                these itself. A field you place on the design always wins over the
+                                stamp.
+                            </p>
+                        </div>
+                        <label className="flex items-start gap-3">
+                            <Switch checked={autoStampCode} onCheckedChange={setAutoStampCode} />
+                            <span className="text-sm">
+                                Stamp the {badgeCodeType === 'BARCODE' ? 'barcode' : 'QR code'}
+                                <span className="block text-xs text-muted-foreground">
+                                    {autoStampCode
+                                        ? 'Every certificate carries a scannable code.'
+                                        : 'Turned off — certificates with no code of their own cannot be verified by scanning.'}
+                                </span>
+                            </span>
+                        </label>
+                        <label className="flex items-start gap-3">
+                            <Switch
+                                checked={autoStampNumber}
+                                onCheckedChange={setAutoStampNumber}
+                            />
+                            <span className="text-sm">
+                                Stamp the certificate number
+                                <span className="block text-xs text-muted-foreground">
+                                    {autoStampNumber
+                                        ? 'Every certificate shows its number somewhere.'
+                                        : 'Turned off — the number is still allocated and still verifies, it is just not printed unless your design places it.'}
+                                </span>
+                            </span>
+                        </label>
                     </div>
-                    <label className="flex items-start gap-3">
-                        <Switch checked={autoStampCode} onCheckedChange={setAutoStampCode} />
-                        <span className="text-sm">
-                            Stamp the {badgeCodeType === 'BARCODE' ? 'barcode' : 'QR code'}
-                            <span className="block text-xs text-muted-foreground">
-                                {autoStampCode
-                                    ? 'Every certificate carries a scannable code.'
-                                    : 'Turned off — certificates with no code of their own cannot be verified by scanning.'}
-                            </span>
-                        </span>
-                    </label>
-                    <label className="flex items-start gap-3">
-                        <Switch checked={autoStampNumber} onCheckedChange={setAutoStampNumber} />
-                        <span className="text-sm">
-                            Stamp the certificate number
-                            <span className="block text-xs text-muted-foreground">
-                                {autoStampNumber
-                                    ? 'Every certificate shows its number somewhere.'
-                                    : 'Turned off — the number is still allocated and still verifies, it is just not printed unless your design places it.'}
-                            </span>
-                        </span>
-                    </label>
                 </div>
+            )}
 
-                <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
-            </div>
+            {settingsTab === 'verification' && (
+                <VerificationPageSection
+                    verificationPageUrl={verificationPageUrl}
+                    instituteName={effectiveInstituteName}
+                    logoUrl={logoUrl}
+                    themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
+                    config={verificationPage}
+                    onConfigChange={(patch) =>
+                        setVerificationPage((prev) => ({ ...prev, ...patch }))
+                    }
+                    customUrl={qrVerificationUrlTemplate}
+                    onClearCustomUrl={() => setQrVerificationUrlTemplate('')}
+                    sampleCertificateId={sampleCertificateNumber}
+                    disabled={loading}
+                />
+            )}
 
-            <VerificationPageSection
-                verificationPageUrl={verificationPageUrl}
-                instituteName={effectiveInstituteName}
-                logoUrl={logoUrl}
-                themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
-                config={verificationPage}
-                onConfigChange={(patch) => setVerificationPage((prev) => ({ ...prev, ...patch }))}
-                customUrl={qrVerificationUrlTemplate}
-                onClearCustomUrl={() => setQrVerificationUrlTemplate('')}
-                sampleCertificateId={sampleCertificateNumber}
-                disabled={loading}
-            />
+            {settingsTab === 'design' && (
+                <>
+                    <div className="space-y-6 rounded-lg border bg-card p-6">
+                        <div>
+                            <h3 className="text-base font-semibold">Page &amp; fields</h3>
+                            <p className="text-sm text-muted-foreground">
+                                The size the certificate prints at, and any values of your own you
+                                want to place on it.
+                            </p>
+                        </div>
 
-            <div className="contents"></div>
+                        <div className="grid gap-6 md:grid-cols-3">
+                            <div>
+                                <label className="text-sm font-medium" htmlFor="aspect">
+                                    Page size
+                                </label>
+                                <select
+                                    id="aspect"
+                                    value={aspectRatio}
+                                    onChange={(e) =>
+                                        setAspectRatio(e.target.value as CertificateAspectRatio)
+                                    }
+                                    className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                >
+                                    <option value="A4_LANDSCAPE">A4 Landscape</option>
+                                    <option value="A4_PORTRAIT">A4 Portrait</option>
+                                    <option value="A3_LANDSCAPE">A3 Landscape</option>
+                                    <option value="A3_PORTRAIT">A3 Portrait</option>
+                                    <option value="CUSTOM">Custom</option>
+                                </select>
+                            </div>
 
-            {/* Wizard-style header card with Upload | Design | Preview tabs.
+                            {aspectRatio === 'CUSTOM' && (
+                                <div className="grid grid-cols-2 gap-2 md:col-span-2">
+                                    <div>
+                                        <label className="text-sm font-medium" htmlFor="cw">
+                                            Width (mm)
+                                        </label>
+                                        <input
+                                            id="cw"
+                                            type="number"
+                                            min={50}
+                                            value={customWidthMm}
+                                            onChange={(e) =>
+                                                setCustomWidthMm(Number(e.target.value) || 0)
+                                            }
+                                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium" htmlFor="ch">
+                                            Height (mm)
+                                        </label>
+                                        <input
+                                            id="ch"
+                                            type="number"
+                                            min={50}
+                                            value={customHeightMm}
+                                            onChange={(e) =>
+                                                setCustomHeightMm(Number(e.target.value) || 0)
+                                            }
+                                            className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Custom fields live here rather than with numbering: each one
+                    becomes a chip you drag onto the design below. */}
+                        <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
+                    </div>
+
+                    {/* Wizard-style header card with Upload | Design | Preview tabs.
                 Mirrors pdf-annotation-step.tsx so the settings page matches the
                 bulk-generation flow's visual language. */}
-            <DndContext onDragEnd={handleDragEnd}>
-                <div className="flex flex-col gap-6">
-                    <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-6">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="rounded-lg bg-purple-100 p-2">
-                                    <Certificate className="size-5 text-purple-600" />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-semibold text-neutral-700">
-                                        Template Design & Certificate Generation
-                                    </h2>
-                                    <p className="text-sm text-neutral-500">
-                                        Upload template and annotate with student data fields
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                {/* Editor-mode pill: lets admins flip between
+                    <DndContext onDragEnd={handleDragEnd}>
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="rounded-lg bg-purple-100 p-2">
+                                            <Certificate className="size-5 text-purple-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-neutral-700">
+                                                Template Design & Certificate Generation
+                                            </h2>
+                                            <p className="text-sm text-neutral-500">
+                                                Upload template and annotate with student data
+                                                fields
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {/* Editor-mode pill: lets admins flip between
                                     the drag-and-drop visual editor and a raw
                                     HTML editor. Switching warns about losing
                                     in-progress edits in the other mode. */}
-                                <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
-                                    {[
-                                        { key: 'visual', label: 'Visual' },
-                                        { key: 'html', label: 'HTML' },
-                                    ].map(({ key, label }) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => {
-                                                if (key === editorMode) return;
-                                                // Both editors persist independently
-                                                // — switching is non-destructive. Just
-                                                // make sure HTML mode opens onto a
-                                                // real editable template (sample) if
-                                                // the admin has nothing of their own
-                                                // there yet.
-                                                if (key === 'html') {
-                                                    const trimmed = (htmlTemplate || '').trim();
-                                                    if (
-                                                        !trimmed ||
-                                                        /class\s*=\s*["']certificate-canvas["']/.test(
-                                                            htmlTemplate
-                                                        )
-                                                    ) {
-                                                        setHtmlTemplate(defaultCertificateHtml);
-                                                    }
-                                                }
-                                                setEditorMode(key as 'visual' | 'html');
-                                            }}
-                                            className={cn(
-                                                'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
-                                                editorMode === key
-                                                    ? 'bg-white text-purple-600 shadow-sm'
-                                                    : 'text-neutral-600 hover:text-neutral-700'
-                                            )}
-                                        >
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-                                {editorMode === 'visual' && (
-                                    <MyButton
-                                        buttonType="secondary"
-                                        scale="medium"
-                                        onClick={handleDownloadTemplate}
-                                        disabled={!imageTemplate || downloading}
-                                        className="flex items-center gap-2"
-                                    >
-                                        {downloading ? (
-                                            <Loader2 className="size-4 animate-spin" />
-                                        ) : (
-                                            <Download className="size-4" />
-                                        )}
-                                        Download Template
-                                    </MyButton>
-                                )}
-                                {editorMode === 'visual' && (
-                                    <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
-                                        {[
-                                            { key: 'upload', label: 'Upload', icon: UploadIcon },
-                                            { key: 'design', label: 'Design', icon: PaintBrush },
-                                            { key: 'preview', label: 'Preview', icon: Eye },
-                                        ].map(({ key, label, icon: Icon }) => (
-                                            <button
-                                                key={key}
-                                                onClick={() =>
-                                                    setActiveView(
-                                                        key as 'upload' | 'design' | 'preview'
-                                                    )
-                                                }
-                                                disabled={
-                                                    (key === 'design' || key === 'preview') &&
-                                                    !imageTemplate
-                                                }
-                                                className={cn(
-                                                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all',
-                                                    activeView === key
-                                                        ? 'bg-white text-purple-600 shadow-sm'
-                                                        : 'text-neutral-600 hover:text-neutral-700',
-                                                    (key === 'design' || key === 'preview') &&
-                                                        !imageTemplate &&
-                                                        'cursor-not-allowed opacity-50'
-                                                )}
+                                        <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
+                                            {[
+                                                { key: 'visual', label: 'Visual' },
+                                                { key: 'html', label: 'HTML' },
+                                            ].map(({ key, label }) => (
+                                                <button
+                                                    key={key}
+                                                    onClick={() => {
+                                                        if (key === editorMode) return;
+                                                        // Both editors persist independently
+                                                        // — switching is non-destructive. Just
+                                                        // make sure HTML mode opens onto a
+                                                        // real editable template (sample) if
+                                                        // the admin has nothing of their own
+                                                        // there yet.
+                                                        if (key === 'html') {
+                                                            const trimmed = (
+                                                                htmlTemplate || ''
+                                                            ).trim();
+                                                            if (
+                                                                !trimmed ||
+                                                                /class\s*=\s*["']certificate-canvas["']/.test(
+                                                                    htmlTemplate
+                                                                )
+                                                            ) {
+                                                                setHtmlTemplate(
+                                                                    defaultCertificateHtml
+                                                                );
+                                                            }
+                                                        }
+                                                        setEditorMode(key as 'visual' | 'html');
+                                                    }}
+                                                    className={cn(
+                                                        'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                                                        editorMode === key
+                                                            ? 'bg-white text-purple-600 shadow-sm'
+                                                            : 'text-neutral-600 hover:text-neutral-700'
+                                                    )}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {editorMode === 'visual' && (
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="medium"
+                                                onClick={handleDownloadTemplate}
+                                                disabled={!imageTemplate || downloading}
+                                                className="flex items-center gap-2"
                                             >
-                                                <Icon className="size-4" />
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {editorMode === 'html' && (
-                        <HtmlCertificateEditor
-                            html={htmlTemplate}
-                            onHtmlChange={setHtmlTemplate}
-                            textareaRef={htmlTextareaRef}
-                            logoUrl={logoUrl}
-                            instituteName={effectiveInstituteName}
-                            aspectRatio={aspectRatio}
-                            customWidthMm={customWidthMm}
-                            customHeightMm={customHeightMm}
-                            onResetToDefault={() => setHtmlTemplate(defaultCertificateHtml)}
-                            badgeCodeType={badgeCodeType}
-                            barcodeContent={barcodeContent}
-                            sampleCertificateId={sampleCertificateNumber}
-                            paletteFields={paletteFields}
-                            customFields={sanitizedCustomFields}
-                        />
-                    )}
-
-                    {editorMode === 'visual' && activeView !== 'preview' && (
-                        <CertificateTemplateLibrary
-                            templates={templateLibrary}
-                            activeTemplateId={activeLibraryId}
-                            defaultTemplateId={defaultTemplateId}
-                            onOpen={handleOpenLibraryTemplate}
-                            onMakeDefault={handleMakeDefaultTemplate}
-                            onRename={handleRenameLibraryTemplate}
-                            onDelete={handleDeleteLibraryTemplate}
-                            onAdd={handleAddLibraryTemplate}
-                            disabled={loading}
-                        />
-                    )}
-
-                    {/* Says which design is issued whenever that is not the one
-                        on screen. Without it an admin can spend a session
-                        perfecting a template that no learner will ever see. */}
-                    {editorMode === 'visual' &&
-                        activeLibraryId &&
-                        defaultTemplateId &&
-                        activeLibraryId !== defaultTemplateId && (
-                            <Alert
-                                variant="default"
-                                className="border-amber-300 bg-amber-50 text-amber-900"
-                            >
-                                <AlertTriangle className="size-4" />
-                                <AlertDescription>
-                                    You are editing{' '}
-                                    <strong>
-                                        {templateLibrary.find((t) => t.id === activeLibraryId)
-                                            ?.name || 'this template'}
-                                    </strong>
-                                    . Learners still receive{' '}
-                                    <strong>
-                                        {templateLibrary.find((t) => t.id === defaultTemplateId)
-                                            ?.name || 'the default template'}
-                                    </strong>
-                                    . Use <strong>Make default</strong> on a card above to change
-                                    that.
-                                </AlertDescription>
-                            </Alert>
-                        )}
-
-                    {editorMode === 'visual' && activeView === 'design' && (
-                        <CertificateTemplateGallery
-                            activeTemplateId={activeTemplateId}
-                            hasCustomUpload={hasCustomUpload}
-                            customThumbnailUrl={customThumbnailUrl}
-                            themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
-                            onSelectBuiltin={handleSelectBuiltinTemplate}
-                            onSelectCustom={handleSelectCustomUpload}
-                            disabled={loading}
-                        />
-                    )}
-
-                    {editorMode === 'visual' &&
-                        activeView === 'design' &&
-                        imageTemplate &&
-                        isBuiltinTemplateId(imageTemplate.id) &&
-                        templateCustomizations &&
-                        (() => {
-                            const tpl = getBuiltinTemplateById(imageTemplate.id);
-                            if (!tpl) return null;
-                            return (
-                                <TemplateCustomizationPanel
-                                    template={tpl}
-                                    customizations={templateCustomizations}
-                                    onChange={handleCustomizationsChange}
-                                    onResetToDefaults={handleResetCustomizations}
-                                    disabled={loading}
-                                />
-                            );
-                        })()}
-
-                    {editorMode === 'visual' && (
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-                            {(activeView === 'design' || activeView === 'preview') &&
-                                imageTemplate && (
-                                    <div className="lg:col-span-1">
-                                        <div className="space-y-3 rounded-lg border bg-card p-4">
-                                            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                                Drag a field
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {paletteFields.map((f) => (
-                                                    <DraggableFieldChip key={f.name} field={f} />
+                                                {downloading ? (
+                                                    <Loader2 className="size-4 animate-spin" />
+                                                ) : (
+                                                    <Download className="size-4" />
+                                                )}
+                                                Download Template
+                                            </MyButton>
+                                        )}
+                                        {editorMode === 'visual' && (
+                                            <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
+                                                {[
+                                                    {
+                                                        key: 'upload',
+                                                        label: 'Upload',
+                                                        icon: UploadIcon,
+                                                    },
+                                                    {
+                                                        key: 'design',
+                                                        label: 'Design',
+                                                        icon: PaintBrush,
+                                                    },
+                                                    { key: 'preview', label: 'Preview', icon: Eye },
+                                                ].map(({ key, label, icon: Icon }) => (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() =>
+                                                            setActiveView(
+                                                                key as
+                                                                    | 'upload'
+                                                                    | 'design'
+                                                                    | 'preview'
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            (key === 'design' ||
+                                                                key === 'preview') &&
+                                                            !imageTemplate
+                                                        }
+                                                        className={cn(
+                                                            'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all',
+                                                            activeView === key
+                                                                ? 'bg-white text-purple-600 shadow-sm'
+                                                                : 'text-neutral-600 hover:text-neutral-700',
+                                                            (key === 'design' ||
+                                                                key === 'preview') &&
+                                                                !imageTemplate &&
+                                                                'cursor-not-allowed opacity-50'
+                                                        )}
+                                                    >
+                                                        <Icon className="size-4" />
+                                                        {label}
+                                                    </button>
                                                 ))}
                                             </div>
-                                            <div className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
-                                                {fieldMappings.length} field
-                                                {fieldMappings.length === 1 ? '' : 's'} placed
-                                            </div>
-                                        </div>
+                                        )}
                                     </div>
-                                )}
-
-                            <div
-                                className={cn(
-                                    activeView === 'upload' ? 'col-span-1' : 'lg:col-span-3'
-                                )}
-                            >
-                                {activeView === 'upload' && (
-                                    <PdfUploadSection
-                                        onImageTemplateUpload={handleImageTemplateUpload}
-                                        onTemplateRemove={handleTemplateRemove}
-                                        uploadedTemplate={imageTemplate ?? undefined}
-                                        isLoading={loading}
-                                    />
-                                )}
-
-                                {activeView === 'design' && imageTemplate && (
-                                    <CertificateVisualEditor
-                                        imageTemplate={imageTemplate}
-                                        fieldMappings={fieldMappings}
-                                        onFieldMappingsChange={setFieldMappings}
-                                        systemImageUrls={{ institute_logo: logoUrl }}
-                                        customImages={customImages}
-                                        onCustomImagesChange={setCustomImages}
-                                        badgeCodeType={badgeCodeType}
-                                        barcodeContent={barcodeContent}
-                                        autoStampCode={autoStampCode}
-                                        autoStampNumber={autoStampNumber}
-                                        // Deleting a code or the number from the
-                                        // design is the gesture an admin already
-                                        // tried; make it mean what they meant,
-                                        // instead of the platform stamping it
-                                        // straight back on the issued PDF.
-                                        onAutoStampChange={(part, enabled) => {
-                                            if (part === 'code') setAutoStampCode(enabled);
-                                            else setAutoStampNumber(enabled);
-                                        }}
-                                        // The editor works in canvas pixels, but
-                                        // whether a code scans is a printed-millimetre
-                                        // question — which depends on the page size.
-                                        pageWidthMm={
-                                            aspectRatioToMm(
-                                                aspectRatio,
-                                                customWidthMm,
-                                                customHeightMm
-                                            ).wMm
-                                        }
-                                        sampleCertificateId={sampleCertificateNumber}
-                                    />
-                                )}
-
-                                {activeView === 'preview' && imageTemplate && (
-                                    <CertificateSettingsPreview
-                                        imageTemplate={imageTemplate}
-                                        autoStampCode={autoStampCode}
-                                        autoStampNumber={autoStampNumber}
-                                        fieldMappings={fieldMappings}
-                                        customImages={customImages}
-                                        logoUrl={logoUrl}
-                                        instituteName={effectiveInstituteName}
-                                        badgeCodeType={badgeCodeType}
-                                        barcodeContent={barcodeContent}
-                                        customFields={sanitizedCustomFields}
-                                        sampleCertificateId={sampleCertificateNumber}
-                                    />
-                                )}
+                                </div>
                             </div>
+
+                            {editorMode === 'html' && (
+                                <HtmlCertificateEditor
+                                    html={htmlTemplate}
+                                    onHtmlChange={setHtmlTemplate}
+                                    textareaRef={htmlTextareaRef}
+                                    logoUrl={logoUrl}
+                                    instituteName={effectiveInstituteName}
+                                    aspectRatio={aspectRatio}
+                                    customWidthMm={customWidthMm}
+                                    customHeightMm={customHeightMm}
+                                    onResetToDefault={() => setHtmlTemplate(defaultCertificateHtml)}
+                                    badgeCodeType={badgeCodeType}
+                                    barcodeContent={barcodeContent}
+                                    sampleCertificateId={sampleCertificateNumber}
+                                    paletteFields={paletteFields}
+                                    customFields={sanitizedCustomFields}
+                                />
+                            )}
+
+                            {editorMode === 'visual' && activeView !== 'preview' && (
+                                <CertificateTemplateLibrary
+                                    templates={templateLibrary}
+                                    activeTemplateId={activeLibraryId}
+                                    defaultTemplateId={defaultTemplateId}
+                                    onOpen={handleOpenLibraryTemplate}
+                                    onMakeDefault={handleMakeDefaultTemplate}
+                                    onRename={handleRenameLibraryTemplate}
+                                    onDelete={handleDeleteLibraryTemplate}
+                                    onAdd={handleAddLibraryTemplate}
+                                    disabled={loading}
+                                />
+                            )}
+
+                            {/* Says which design is issued whenever that is not the one
+                        on screen. Without it an admin can spend a session
+                        perfecting a template that no learner will ever see. */}
+                            {editorMode === 'visual' &&
+                                activeLibraryId &&
+                                defaultTemplateId &&
+                                activeLibraryId !== defaultTemplateId && (
+                                    <Alert
+                                        variant="default"
+                                        className="border-amber-300 bg-amber-50 text-amber-900"
+                                    >
+                                        <AlertTriangle className="size-4" />
+                                        <AlertDescription>
+                                            You are editing{' '}
+                                            <strong>
+                                                {templateLibrary.find(
+                                                    (t) => t.id === activeLibraryId
+                                                )?.name || 'this template'}
+                                            </strong>
+                                            . Learners still receive{' '}
+                                            <strong>
+                                                {templateLibrary.find(
+                                                    (t) => t.id === defaultTemplateId
+                                                )?.name || 'the default template'}
+                                            </strong>
+                                            . Use <strong>Make default</strong> on a card above to
+                                            change that.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+
+                            {editorMode === 'visual' && activeView === 'design' && (
+                                <CertificateTemplateGallery
+                                    activeTemplateId={activeTemplateId}
+                                    hasCustomUpload={hasCustomUpload}
+                                    customThumbnailUrl={customThumbnailUrl}
+                                    themeColor={instituteDetails?.institute_theme_code || '#1e4fa1'}
+                                    onSelectBuiltin={handleSelectBuiltinTemplate}
+                                    onSelectCustom={handleSelectCustomUpload}
+                                    disabled={loading}
+                                />
+                            )}
+
+                            {editorMode === 'visual' &&
+                                activeView === 'design' &&
+                                imageTemplate &&
+                                isBuiltinTemplateId(imageTemplate.id) &&
+                                templateCustomizations &&
+                                (() => {
+                                    const tpl = getBuiltinTemplateById(imageTemplate.id);
+                                    if (!tpl) return null;
+                                    return (
+                                        <TemplateCustomizationPanel
+                                            template={tpl}
+                                            customizations={templateCustomizations}
+                                            onChange={handleCustomizationsChange}
+                                            onResetToDefaults={handleResetCustomizations}
+                                            disabled={loading}
+                                        />
+                                    );
+                                })()}
+
+                            {editorMode === 'visual' && (
+                                <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+                                    {(activeView === 'design' || activeView === 'preview') &&
+                                        imageTemplate && (
+                                            <div className="lg:col-span-1">
+                                                <div className="space-y-3 rounded-lg border bg-card p-4">
+                                                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                                        Drag a field
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {paletteFields.map((f) => (
+                                                            <DraggableFieldChip
+                                                                key={f.name}
+                                                                field={f}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <div className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
+                                                        {fieldMappings.length} field
+                                                        {fieldMappings.length === 1 ? '' : 's'}{' '}
+                                                        placed
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    <div
+                                        className={cn(
+                                            activeView === 'upload' ? 'col-span-1' : 'lg:col-span-3'
+                                        )}
+                                    >
+                                        {activeView === 'upload' && (
+                                            <PdfUploadSection
+                                                onImageTemplateUpload={handleImageTemplateUpload}
+                                                onTemplateRemove={handleTemplateRemove}
+                                                uploadedTemplate={imageTemplate ?? undefined}
+                                                isLoading={loading}
+                                            />
+                                        )}
+
+                                        {activeView === 'design' && imageTemplate && (
+                                            <CertificateVisualEditor
+                                                imageTemplate={imageTemplate}
+                                                fieldMappings={fieldMappings}
+                                                onFieldMappingsChange={setFieldMappings}
+                                                systemImageUrls={{ institute_logo: logoUrl }}
+                                                customImages={customImages}
+                                                onCustomImagesChange={setCustomImages}
+                                                badgeCodeType={badgeCodeType}
+                                                barcodeContent={barcodeContent}
+                                                autoStampCode={autoStampCode}
+                                                autoStampNumber={autoStampNumber}
+                                                // Deleting a code or the number from the
+                                                // design is the gesture an admin already
+                                                // tried; make it mean what they meant,
+                                                // instead of the platform stamping it
+                                                // straight back on the issued PDF.
+                                                onAutoStampChange={(part, enabled) => {
+                                                    if (part === 'code') setAutoStampCode(enabled);
+                                                    else setAutoStampNumber(enabled);
+                                                }}
+                                                // The editor works in canvas pixels, but
+                                                // whether a code scans is a printed-millimetre
+                                                // question — which depends on the page size.
+                                                pageWidthMm={
+                                                    aspectRatioToMm(
+                                                        aspectRatio,
+                                                        customWidthMm,
+                                                        customHeightMm
+                                                    ).wMm
+                                                }
+                                                sampleCertificateId={sampleCertificateNumber}
+                                            />
+                                        )}
+
+                                        {activeView === 'preview' && imageTemplate && (
+                                            <CertificateSettingsPreview
+                                                imageTemplate={imageTemplate}
+                                                autoStampCode={autoStampCode}
+                                                autoStampNumber={autoStampNumber}
+                                                fieldMappings={fieldMappings}
+                                                customImages={customImages}
+                                                logoUrl={logoUrl}
+                                                instituteName={effectiveInstituteName}
+                                                badgeCodeType={badgeCodeType}
+                                                barcodeContent={barcodeContent}
+                                                customFields={sanitizedCustomFields}
+                                                sampleCertificateId={sampleCertificateNumber}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
-            </DndContext>
+                    </DndContext>
+                </>
+            )}
         </div>
     );
 };
-
 
 /**
  * Raw HTML editor: textarea on the left for writing/pasting custom HTML,

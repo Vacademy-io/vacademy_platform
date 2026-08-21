@@ -672,6 +672,8 @@ const AudienceResponseForm = ({
                                     control={form.control}
                                     country={phoneCountryCode}
                                     required={value.is_mandatory}
+                                    labelClassName="text-subtitle font-regular"
+                                    inputClassName="!text-subtitle placeholder:!text-body"
                                   />
                                 </FormControl>
                               </FormItem>

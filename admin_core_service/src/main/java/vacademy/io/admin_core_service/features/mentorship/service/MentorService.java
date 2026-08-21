@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.mentorship.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -228,9 +229,7 @@ public class MentorService {
 
     /** Mentor self-connects their OWN Google account — returns the consent URL (state carries the mentor id). */
     public Map<String, String> initiateGoogleConnect(String instituteId, CustomUserDetails user) {
-        Mentor mentor = mentorRepository
-                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
-                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
         OAuthConnectState state = oAuthConnectStateRepository.save(OAuthConnectState.builder()
                 .instituteId(instituteId)
                 .vendor("GOOGLE_OAUTH")
@@ -297,10 +296,17 @@ public class MentorService {
         return bookingPageService.getById(mentor.getBookingPageId(), instituteId);
     }
 
+    /**
+     * NOT_FOUND on purpose. "You are not a mentor" is a normal answer, not a server fault — the
+     * sidebar asks this question about ordinary admins. The no-status VacademyException constructor
+     * defaults to NOT_EXTENDED (510), which made every such answer look like a server error in the
+     * client's network tab and log an ERROR with a stack trace in GlobalExceptionHandler.
+     */
     private Mentor getMyMentorOrThrow(String instituteId, CustomUserDetails user) {
         return mentorRepository
                 .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
-                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "You are not a mentor in this institute"));
     }
 
     /** Resolve the caller's mentor row, provisioning a booking page if they don't have one yet. */

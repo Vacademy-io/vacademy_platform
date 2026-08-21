@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { StorageKey } from '@/constants/storage/storage';
 
@@ -12,12 +12,11 @@ interface TabItem {
 
 export const useTabSettings = () => {
     const { getValue } = useLocalStorage<TabItem[]>(StorageKey.TAB_SETTINGS, []);
-    const [tabSettings, setTabSettings] = useState<TabItem[]>([]);
-
-    useEffect(() => {
-        const settings = getValue();
-        setTabSettings(settings);
-    }, []); // Remove getValue from dependencies to prevent infinite re-renders
+    // Seeded synchronously from localStorage rather than in an effect, so the FIRST render
+    // already knows what is hidden. Callers use this to decide whether to fetch at all, and a
+    // one-render lag meant those requests fired before the answer arrived. The old effect ran
+    // once on mount with no deps, so it never picked up later writes either — nothing is lost.
+    const [tabSettings] = useState<TabItem[]>(() => getValue());
 
     const isTabVisible = (tabId: string): boolean => {
         const tab = tabSettings.find((t) => t.tabId === tabId);

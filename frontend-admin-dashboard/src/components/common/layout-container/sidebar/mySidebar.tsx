@@ -144,7 +144,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // Mentorship sub-item is adminOnly; this one has no role gate, so without this
     // check every non-mentor admin gets an entry that only ever renders
     // "Couldn't load your mentor profile".
-    const { isMentor } = useIsMentor();
+    // Only worth asking where the entry could actually appear: if this institute/role hides
+    // Mentorship, the answer changes nothing, so the probe is skipped entirely rather than
+    // firing a mentorship request on every page of an institute that doesn't use mentorship.
+    const mentorshipEntryVisible = isSubItemVisible('mentorship', 'mentorship-my-mentorship');
+    const { isMentor } = useIsMentor(mentorshipEntryVisible);
 
     // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
     // entry is available when the feature is ON, or when it's off but the institute

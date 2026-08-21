@@ -12,10 +12,20 @@
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB guard against abuse / huge files
 
-// SSRF guard: only proxy https objects from AWS S3 (the media bucket lives
-// there). Blocks internal/metadata targets (those are IPs, not *.amazonaws.com).
+// SSRF guard: only proxy https objects from the media bucket's public hosts.
+// Blocks internal/metadata targets (those are IPs, not these hostnames).
+//
+// cloudfront.net matters: media-service hands out CloudFront URLs
+// (d1om4dxj9e7kkd.cloudfront.net/...) for institute branding, not raw S3 ones.
+// While this list was amazonaws.com-only, EVERY og:image on EVERY white-label
+// domain 403'd here, so WhatsApp/Facebook link previews had no institute logo.
+const ALLOWED_HOST_SUFFIXES = [".amazonaws.com", ".cloudfront.net"];
+
 function isAllowed(target) {
-  return target.protocol === "https:" && target.hostname.endsWith(".amazonaws.com");
+  return (
+    target.protocol === "https:" &&
+    ALLOWED_HOST_SUFFIXES.some((suffix) => target.hostname.endsWith(suffix))
+  );
 }
 
 function sniffImageType(bytes) {
@@ -59,7 +69,17 @@ export async function onRequest(context) {
 
   let upstream;
   try {
-    upstream = await fetch(target.toString());
+    upstream = await fetch(target.toString(), {
+      // The CDN in front of the media bucket rejects requests with no
+      // User-Agent (403). The Workers runtime sends none by default, so
+      // without this every proxied logo failed even once the host was
+      // allowlisted. Verified: same URL is 200 with a UA, 403 without.
+      headers: {
+        "user-agent": "VacademyBrandingImageProxy/1.0",
+        accept: "image/*,*/*;q=0.8",
+      },
+      cf: { cacheTtl: 86400, cacheEverything: true },
+    });
   } catch {
     return new Response("upstream error", { status: 502 });
   }

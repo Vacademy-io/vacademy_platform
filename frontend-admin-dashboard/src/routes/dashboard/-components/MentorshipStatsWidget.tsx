@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
+import { useTabSettings } from '@/hooks/use-tab-settings';
 import { useMentorDashboard } from '@/routes/mentorship/-hooks/use-mentorship';
 
 interface Tile {
@@ -37,9 +38,14 @@ interface Tile {
 export default function MentorshipStatsWidget() {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
-    const { data, isLoading, isError } = useMentorDashboard(instituteId);
+    // The card self-hides when the institute has no mentors, but it has to ask the server to find
+    // that out. Skip the call entirely where Mentorship is switched off for this institute — the
+    // home page is the one screen every admin loads, so a pointless request there is the worst place
+    // for one. Every tile below links into Mentorship, so a hidden module has nothing to show anyway.
+    const mentorshipVisible = useTabSettings().isTabVisible('mentorship');
+    const { data, isLoading, isError } = useMentorDashboard(instituteId, mentorshipVisible);
 
-    if (!instituteId || isError) return null;
+    if (!instituteId || isError || !mentorshipVisible) return null;
     if (!isLoading && (data?.total_mentors ?? 0) === 0) return null;
 
     const go = (to = '/mentorship/mentors') => navigate({ to });

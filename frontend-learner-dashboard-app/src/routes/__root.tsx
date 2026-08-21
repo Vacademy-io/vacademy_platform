@@ -48,6 +48,7 @@ import { getChatbotSettings } from "@/services/chatbot-settings";
 import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
 import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
 import { ChildViewBanner } from "@/components/parent/ChildViewBanner";
+import { GetAppBanner } from "@/components/common/get-app-banner";
 import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
 import { getUserId } from "@/constants/getUserId";
 import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
@@ -802,6 +803,7 @@ const RootComponent = () => {
     <ChatbotProvider>
       {!suppressAppChrome && <ChildViewBanner />}
       {!suppressAppChrome && <OtaUpdateBanner />}
+      {!suppressAppChrome && <GetAppBanner />}
       <Outlet />
       {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}
       {!isPublicRoute(pathname) && !suppressAppChrome && <AppOverlayHost />}

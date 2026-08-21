@@ -47,7 +47,7 @@ import { savePrivateQuestions } from '../-services/assessment-details-services';
 import { AssessmentDetailQuestions } from '../-utils/assessment-details-interface';
 import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { getAssessmentJoinUrl } from '@/lib/learner-portal-url';
 
 interface Announcement {
     id: string;
@@ -66,6 +66,12 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
             instituteId: instituteDetails?.id,
             type: examType,
         })
+    );
+    // Institute's own learner domain — a learner.vacademy.io link leaks Vacademy
+    // branding in the URL itself and in its WhatsApp link preview.
+    const joinUrl = getAssessmentJoinUrl(
+        assessmentDetails[0]?.saved_data.assessment_url,
+        instituteDetails?.learner_portal_base_url
     );
     const [announcementList, setAnnouncementList] = useState<Announcement[]>([]);
     const [currentQuestionIndexes, setCurrentQuestionIndexes] = useState<{
@@ -372,20 +378,13 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
                     <h1 className="text-sm font-semibold">Join Link:</h1>
                     <div className="flex items-center gap-8">
                         <div className="flex items-center gap-4">
-                            <span className="px-3 py-2 text-sm underline">
-                                {`${BASE_URL_LEARNER_DASHBOARD}/register?code=
-                                ${assessmentDetails[0]?.saved_data.assessment_url}`}
-                            </span>
+                            <span className="px-3 py-2 text-sm underline">{joinUrl}</span>
                             <MyButton
                                 type="button"
                                 scale="small"
                                 buttonType="secondary"
                                 className="h-9 min-w-10"
-                                onClick={() =>
-                                    copyToClipboard(
-                                        `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`
-                                    )
-                                }
+                                onClick={() => copyToClipboard(joinUrl)}
                             >
                                 <Copy size={32} />
                             </MyButton>
@@ -393,11 +392,7 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <QRCode
-                        value={`${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`}
-                        className="size-14"
-                        id={`qr-code-svg-participants`}
-                    />
+                    <QRCode value={joinUrl} className="size-14" id={`qr-code-svg-participants`} />
                     <MyButton
                         type="button"
                         scale="small"

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "@tanstack/react-router";
 import axios from "axios";
 import { ChatMessage, ChatbotContext, QuizSubmission } from "./types";
+import { getCachedInstituteBranding } from "@/services/domain-routing";
 import {
   chatbotAPI,
   ContextType,
@@ -39,7 +40,13 @@ export const useChatbot = () => {
   const [chatbotSettings, setChatbotSettings] = useState<ChatbotSettingsData>(
     DEFAULT_CHATBOT_SETTINGS,
   );
-  const [instituteName, setInstituteName] = useState<string>("Vacademy");
+  // Rendered in the chatbot header. Seeding it with "Vacademy" meant every
+  // white-label learner saw the Vacademy name until getChatbotSettings resolved
+  // — and permanently if that call failed. Start from the branding already
+  // resolved for this hostname instead.
+  const [instituteName, setInstituteName] = useState<string>(
+    () => getCachedInstituteBranding()?.instituteName || "",
+  );
   const [isExpanded, setIsExpanded] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<AIStatus>("idle");
@@ -148,7 +155,16 @@ export const useChatbot = () => {
       try {
         getChatbotSettings(true).then((settings) => {
           setChatbotSettings(settings);
-          setInstituteName(settings.institute_name);
+          // An admin-set name wins, but the untouched default is the literal
+          // "Vacademy" — and it is also what a failed fetch returns. Fall back
+          // to this hostname's branding rather than re-branding a white-label
+          // institute's chatbot as Vacademy.
+          setInstituteName(
+            settings.institute_name &&
+              settings.institute_name !== DEFAULT_CHATBOT_SETTINGS.institute_name
+              ? settings.institute_name
+              : getCachedInstituteBranding()?.instituteName || "",
+          );
           // Update chatbot page visibility from admin settings
           if (settings.chatbot_pages) {
             setChatbotPages(settings.chatbot_pages);

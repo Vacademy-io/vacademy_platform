@@ -13,11 +13,20 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- iOS "Add to Home Screen" label. Rewritten per-institute by the branding
+         script below (and blanked on unresolved white-label hosts) — the value
+         here is only the Vacademy-host default. -->
     <meta name="apple-mobile-web-app-title" content="Vacademy" />
     <script>
       (function () {
         try {
           var branding = localStorage.getItem("TabBranding");
+          var setAppleTitle = function (value) {
+            var m = document.querySelector(
+              'meta[name="apple-mobile-web-app-title"]'
+            );
+            if (m) m.setAttribute("content", value);
+          };
           if (!branding) {
             // Cold cache (no institute branding yet): the default /favicon.ico
             // and /icons/icon-192.webp are the Vacademy mark. Keep them only on
@@ -30,6 +39,9 @@
               coldHost === "localhost" ||
               coldHost === "127.0.0.1";
             if (!isVacademyHost) {
+              // Same reasoning as the icon: on someone else's domain, no name
+              // beats the Vacademy name in iOS's "Add to Home Screen" sheet.
+              setAppleTitle("");
               var blankIcon =
                 "data:image/svg+xml," +
                 encodeURIComponent(
@@ -52,6 +64,7 @@
             var parsed = JSON.parse(branding);
             if (parsed.tabText) {
               document.title = parsed.tabText;
+              setAppleTitle(parsed.tabText);
             }
             if (parsed.tabIconUrl) {
               var href = parsed.tabIconUrl;

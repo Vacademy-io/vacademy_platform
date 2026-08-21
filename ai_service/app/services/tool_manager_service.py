@@ -346,9 +346,11 @@ Use this information to provide personalized guidance to the student.
                 stmt = text("""
                     SELECT DISTINCT s.id, s.title, s.source_type
                     FROM slide s
-                    JOIN chapter_to_slides cts ON cts.slide_id = s.id
+                    JOIN chapter_to_slides cts
+                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
                     JOIN chapter_package_session_mapping cpsm
                         ON cpsm.chapter_id = cts.chapter_id
+                       AND cpsm.status <> 'DELETED'
                     JOIN package_session ps ON ps.id = cpsm.package_session_id
                     JOIN package_institute pi ON pi.package_id = ps.package_id
                     WHERE s.status != 'DELETED'
@@ -386,9 +388,11 @@ Use this information to provide personalized guidance to the student.
                     JOIN rich_text_data rt ON rt.id = q.text_id
                     JOIN slide s
                         ON s.source_id = q.quiz_slide_id AND s.source_type = 'QUIZ'
-                    JOIN chapter_to_slides cts ON cts.slide_id = s.id
+                    JOIN chapter_to_slides cts
+                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
                     JOIN chapter_package_session_mapping cpsm
                         ON cpsm.chapter_id = cts.chapter_id
+                       AND cpsm.status <> 'DELETED'
                     JOIN package_session ps ON ps.id = cpsm.package_session_id
                     JOIN package_institute pi ON pi.package_id = ps.package_id
                     WHERE q.status != 'DELETED'

@@ -82,6 +82,15 @@ class ChatQuizStateRepository:
         """Persist the answer key. Best-effort: a failure here must not stop the
         student receiving their quiz, it only degrades to the old behaviour."""
         try:
+            # A learner can generate several quizzes in one session and submit
+            # none of them; only the newest is ever scored, so older keys are
+            # dead weight holding correct answers around indefinitely. Drop them
+            # as we write, which bounds the table to one row per live session
+            # without needing a sweeper.
+            self.db.execute(
+                text("DELETE FROM chat_quiz_state WHERE session_id = :session_id"),
+                {"session_id": session_id},
+            )
             self.db.execute(
                 text(
                     "INSERT INTO chat_quiz_state (id, session_id, quiz_id, quiz_json) "

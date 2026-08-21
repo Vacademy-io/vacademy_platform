@@ -112,11 +112,14 @@ _OWNERSHIP_SQL = text(
     SELECT 1
     FROM document_slide d
     JOIN slide sl ON sl.source_id = d.id AND sl.source_type = 'DOCUMENT'
-    JOIN chapter_to_slides cts ON cts.slide_id = sl.id
-    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cts.chapter_id
+    JOIN chapter_to_slides cts
+        ON cts.slide_id = sl.id AND cts.status <> 'DELETED'
+    JOIN chapter_package_session_mapping cpsm
+        ON cpsm.chapter_id = cts.chapter_id AND cpsm.status <> 'DELETED'
     JOIN package_session ps ON ps.id = cpsm.package_session_id
     JOIN package_institute pi ON pi.package_id = ps.package_id
     WHERE d.published_data = :file_id
+      AND sl.status <> 'DELETED'
       AND pi.institute_id = :institute_id
     LIMIT 1
     """
@@ -172,7 +175,7 @@ def get_cached_slide_text(db: Session, file_id: str) -> Optional[str]:
 
 def schedule_slide_text_extraction(file_id: str) -> None:
     """Fire-and-forget warm of the cache. Never raises into the request path."""
-    if not file_id or file_id in _in_flight:
+    if not file_id or file_id in _in_flight or file_id in _no_text:
         return
     try:
         loop = asyncio.get_running_loop()
@@ -218,9 +221,13 @@ async def _extract_and_cache(file_id: str) -> None:
             body = "\n\n".join(p for p in parts if p).strip()
 
             if not body:
+                # Remember it, or every future view of this scanned deck
+                # re-downloads and re-parses several MB for nothing.
+                if len(_no_text) < _NO_TEXT_MAX:
+                    _no_text.add(file_id)
                 logger.info(
                     "slide text: fileId=%s has no digital text (likely scanned); "
-                    "skipping rather than paying for OCR",
+                    "recorded as no-text, skipping rather than paying for OCR",
                     file_id,
                 )
                 return

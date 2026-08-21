@@ -1,4 +1,3 @@
-import { Lock } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 interface LockNoticeProps {
@@ -13,17 +12,14 @@ interface LockNoticeProps {
  * Deliberately not a tooltip: on the card-only course layout most learners are
  * on a phone, where a hover tooltip never opens and a lock icon with no reason
  * next to it just reads as broken.
+ *
+ * Carries no padlock of its own — the card already shows one centred on the
+ * thumbnail, and two locks on one card is one lock too many.
  */
 export function LockNotice({ message, className }: LockNoticeProps) {
   return (
-    <p
-      className={cn(
-        "flex items-center gap-1 text-caption text-muted-foreground",
-        className,
-      )}
-    >
-      <Lock size={12} weight="fill" className="shrink-0" />
-      <span className="line-clamp-2">{message || "Locked"}</span>
+    <p className={cn("text-caption text-muted-foreground", className)}>
+      {message || "Locked"}
     </p>
   );
 }

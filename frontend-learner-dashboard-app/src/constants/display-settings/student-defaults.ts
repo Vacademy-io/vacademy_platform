@@ -181,6 +181,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     // table-of-contents page (Content Structure card only, no right-hand
     // overview card / description / tags) switch this to "contentOnly".
     enrolledLayout: "full",
+    contentCardImageFit: "cover",
   },
   courseSettings: {
     quiz: {

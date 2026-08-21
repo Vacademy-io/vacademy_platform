@@ -284,4 +284,14 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
     @Transactional
     @Query(value = "DELETE FROM engagement_handled_reply WHERE claimed_at < :before", nativeQuery = true)
     int pruneHandledReplies(@Param("before") Instant before);
+
+    /**
+     * Subject lookup for AiCallEngagementProvisioner's get-or-create. Deliberately
+     * findFirst rather than a unique lookup: ux_em_subject already guarantees at most one
+     * per (engine, subject), and findFirst cannot throw if that ever ceases to hold.
+     */
+    java.util.Optional<EngagementMember> findFirstByEngineIdAndUserId(String engineId, String userId);
+
+    java.util.Optional<EngagementMember> findFirstByEngineIdAndAudienceResponseId(
+            String engineId, String audienceResponseId);
 }

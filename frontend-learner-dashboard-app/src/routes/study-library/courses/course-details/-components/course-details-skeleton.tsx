@@ -38,11 +38,11 @@ export const ContentOnlyCourseDetailsSkeleton = () => (
             {Array.from({ length: 6 }).map((_, i) => (
               <Card
                 key={i}
-                className="h-full overflow-hidden border-neutral-200 bg-card rounded-xl"
+                className="h-full rounded-lg border-neutral-200 bg-card p-2"
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <Skeleton className="aspect-video w-full rounded-none" />
-                  <div className="flex flex-col gap-2 p-3 flex-1">
+                  <Skeleton className="mb-2 aspect-video w-full rounded-lg" />
+                  <div className="flex flex-1 flex-col gap-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/3" />
                   </div>

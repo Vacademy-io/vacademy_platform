@@ -95,6 +95,22 @@ logger = logging.getLogger(__name__)
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
 
+# Mid-call sends. UNLIKE the two above, this marker carries a PAYLOAD, so both places
+# that know about markers need the variable-length form: the strip in SentinelGate and
+# the hold-back in _split_safe. Miss either and the caller HEARS it — that is not
+# hypothetical, it is what happened with [STOP] on 2026-08-18, when parents heard the
+# word "stop" read out mid-sentence.
+SEND_MARKER_OPEN = "<<SEND:"
+SEND_MARKER_CLOSE = ">>"
+# Artefact keys are authored in the agent UI, so validate rather than trust: anything
+# outside this set is a mis-generation and must never reach admin_core.
+_SEND_KEY_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+
+
+def _valid_send_key(key: str) -> bool:
+    return bool(key) and len(key) <= 64 and all(c in _SEND_KEY_CHARS for c in key)
+
 # If a graceful stop (stop_when_done) hasn't ended the runner within this many
 # seconds, hard-cancel — a chatty caller can otherwise starve the drain forever.
 _GRACEFUL_STOP_DEADLINE_SECS = 25.0
@@ -1103,7 +1119,7 @@ class SentinelGate(FrameProcessor):
     pipeline after the final utterance finished playing."""
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
-                 on_reply_start=None,
+                 on_reply_start=None, on_send=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
                  transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
@@ -1114,6 +1130,12 @@ class SentinelGate(FrameProcessor):
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
         self._on_reply_start = on_reply_start or (lambda: None)
+        # Mid-call send hook. Default no-op so every existing construction site and
+        # every test keeps working untouched.
+        self._on_send = on_send or (lambda _key: None)
+        # One send per artefact per call. The model re-states its offer when the caller
+        # says 'haan' twice, and the caller must not get the brochure twice for it.
+        self._sends_fired: set = set()
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -1242,6 +1264,8 @@ class SentinelGate(FrameProcessor):
                 # later, unrelated response close the call.
                 self._end_this_response = True
                 self._buffer = self._buffer.replace(END_MARKER, "")
+            if SEND_MARKER_OPEN in self._buffer:
+                self._buffer = self._extract_sends(self._buffer)
             emit, self._buffer = self._split_safe(self._buffer)
             if emit:
                 self._utterance += emit
@@ -1365,10 +1389,52 @@ class SentinelGate(FrameProcessor):
             registered = None
         self._outcome.transfer_registered = registered is not None
 
+    def _extract_sends(self, buffer: str) -> str:
+        """Strip every COMPLETE send marker and fire it; leave a partial one in place.
+
+        A partial marker stays in the buffer and _split_safe holds it back from the TTS,
+        so a marker split across two token chunks is never spoken and never lost.
+        """
+        out = []
+        pos = 0
+        while True:
+            start = buffer.find(SEND_MARKER_OPEN, pos)
+            if start == -1:
+                out.append(buffer[pos:])
+                break
+            end = buffer.find(SEND_MARKER_CLOSE, start + len(SEND_MARKER_OPEN))
+            if end == -1:
+                out.append(buffer[pos:])      # incomplete — wait for the next chunk
+                break
+            key = buffer[start + len(SEND_MARKER_OPEN):end].strip()
+            out.append(buffer[pos:start])
+            pos = end + len(SEND_MARKER_CLOSE)
+            if not _valid_send_key(key):
+                logger.info("sentinel: ignoring malformed send marker %r corr=%s",
+                            key, self._outcome.corr)
+            elif key in self._sends_fired:
+                logger.info("sentinel: send %s already fired this call corr=%s",
+                            key, self._outcome.corr)
+            else:
+                self._sends_fired.add(key)
+                logger.info("sentinel: mid-call send %s corr=%s", key, self._outcome.corr)
+                try:
+                    self._on_send(key)
+                except Exception:
+                    # The voice path outranks the send, always.
+                    logger.exception("sentinel: send hook failed for %s corr=%s",
+                                     key, self._outcome.corr)
+        return "".join(out)
+
     @staticmethod
     def _split_safe(buffer: str) -> tuple[str, str]:
         """Emit everything except a trailing prefix that might grow into a marker."""
-        for marker in (END_MARKER, TRANSFER_MARKER):
+        # A send marker has a VARIABLE payload, so the fixed-prefix scan below cannot
+        # see a half-written one. Hold back from an unterminated open marker to the end.
+        idx = buffer.rfind(SEND_MARKER_OPEN)
+        if idx != -1 and SEND_MARKER_CLOSE not in buffer[idx:]:
+            return buffer[:idx], buffer[idx:]
+        for marker in (END_MARKER, TRANSFER_MARKER, SEND_MARKER_OPEN):
             for i in range(min(len(marker) - 1, len(buffer)), 0, -1):
                 if buffer.endswith(marker[:i]):
                     return buffer[:-i], buffer[-i:]
@@ -2147,6 +2213,39 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         else f"- If the caller asks for a human, say a counsellor will call them right back, "
              f"then append {END_MARKER}."
     )
+    # Offers the admin attached to this agent's send rules. Built here so a rule is
+    # self-contained: the admin writes the question once, on the rule, and never has to
+    # keep a duplicate copy of it inside the system prompt.
+    #
+    # MID_CALL offers carry the marker instruction; POST_CALL ones do NOT, because the
+    # post-call analyser reads the acceptance straight from the transcript. Telling the
+    # model to emit a marker for those would fire a send twice.
+    #
+    # Empty for every agent without rules, so this adds nothing to their prompt.
+    _offers = [o for o in (agent.get("sendOffers") or [])
+               if isinstance(o, dict) and o.get("ask") and o.get("key")]
+    sends_line = ""
+    if _offers:
+        _mid = [o for o in _offers if str(o.get("timing", "")).upper() == "MID_CALL"]
+        _post = [o for o in _offers if o not in _mid]
+        _parts = [
+            "THINGS YOU CAN SEND. You may offer these, in your own words, at the moment "
+            "they naturally fit — never all at once, and never one the caller already "
+            "declined. Offer at most one per turn."
+        ]
+        for o in _post:
+            _parts.append(f"- Offer: {o['ask']}")
+        for o in _mid:
+            _parts.append(
+                f"- Offer: {o['ask']} If the caller AGREES, finish that reply with the "
+                f"exact token {SEND_MARKER_OPEN}{o['key']}{SEND_MARKER_CLOSE}")
+        if _mid:
+            _parts.append(
+                "The tokens are silent instructions to our system. NEVER say a token out "
+                "loud, never spell it, never mention that you are sending a code, and "
+                "never write one unless the caller clearly agreed in that very turn.")
+        sends_line = chr(10).join(_parts)
+
     disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
                          + ", ".join(dispositions)) if dispositions else "")
 
@@ -2256,6 +2355,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             fields_line,
             end_line,
             human_line,
+            sends_line,
             disposition_line,
         ]
         return "\n".join(l for l in lines if l)
@@ -2309,6 +2409,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "zero zero'), 'pandrah tarikh'. Exception: a 10-digit phone number is read digit by digit.",
         end_line,
         human_line,
+        sends_line,
         disposition_line,
         f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
         f"every single time, and NEVER introduce yourself with any other name, spelling or "
@@ -2630,9 +2731,24 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             t.get("text") or "" for t in outcome.transcript[-6:]
             if t.get("role") == "assistant"),
         diag=diag)
+
+    def _fire_mid_call_send(key: str) -> None:
+        """Hand a mid-call send to admin_core WITHOUT blocking the voice path.
+
+        create_task, never await: this is a cross-ocean HTTP call (bot in Mumbai,
+        admin_core in Singapore) and the agent is mid-sentence. A lost fire is
+        recoverable — the post-call rules see the same acceptance in promisedSends.
+        """
+        try:
+            asyncio.create_task(
+                admin_core.post_action(corr, key, agent.get("id")))
+        except Exception:
+            logger.exception("sentinel: could not schedule send %s corr=%s", key, corr)
+
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
-                            transfer_closing=transfer_closing, end_closing=end_closing)
+                            transfer_closing=transfer_closing, end_closing=end_closing,
+                            on_send=_fire_mid_call_send)
 
     run_guard = RunGuard(llm_context,
                          enabled=lambda: settings.run_guard_enabled,

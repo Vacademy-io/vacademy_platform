@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
-import type { EnrolledCourseLayout } from "@/types/student-display-settings";
+import type {
+  ContentCardImageFit,
+  EnrolledCourseLayout,
+} from "@/types/student-display-settings";
 
 /**
  * QA override, mirroring DEBUG_UI_TYPE in the settings service. The settings
@@ -39,6 +42,10 @@ export function useCourseDisplaySettings() {
   const [chapterOpensFirstSlide, setChapterOpensFirstSlide] = useState<
     boolean | undefined
   >(undefined);
+  // How Content Structure cards fit their thumbnail. "cover" crops to fill,
+  // matching the admin dashboard; "contain" shows the whole artwork.
+  const [contentCardImageFit, setContentCardImageFit] =
+    useState<ContentCardImageFit>("cover");
 
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -53,6 +60,7 @@ export function useCourseDisplaySettings() {
             readDebugEnrolledLayout() ?? cd.enrolledLayout ?? "full"
           );
           setChapterOpensFirstSlide(cd.chapterOpensFirstSlide);
+          setContentCardImageFit(cd.contentCardImageFit ?? "cover");
         }
       })
       .catch(() => {
@@ -62,6 +70,7 @@ export function useCourseDisplaySettings() {
         setShowInstructors(false);
         setEnrolledLayout(readDebugEnrolledLayout() ?? "full");
         setChapterOpensFirstSlide(undefined);
+        setContentCardImageFit("cover");
       });
   }, []);
 
@@ -72,5 +81,6 @@ export function useCourseDisplaySettings() {
     showInstructors,
     enrolledLayout,
     chapterOpensFirstSlide,
+    contentCardImageFit,
   };
 }

@@ -5,21 +5,23 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.reporting.entity.ReportRun;
-import vacademy.io.admin_core_service.features.reporting.spi.ReportSection;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 /**
  * What a report costs, and charging it.
  *
- * <h3>The price</h3>
- * {@link #BASE_CREDITS} per DOCUMENT, plus each included section's
- * {@link ReportSection#creditWeight()}. Two things follow from "per document":
- * recipients are free — one report to twenty admins costs the same as to one,
- * which is what makes naming learners in the body defensible — while SCOPE
- * multiplies, because thirty batch reports are thirty computations and thirty
- * emails. Frequency needs no multiplier: daily simply runs thirty times a month.
+ * <h3>The price (business decision, 2026-08-22)</h3>
+ * <b>The static report is free.</b> Only the AI analysis is billed, at
+ * {@link #AI_ANALYSIS_CREDITS} credits per DOCUMENT, and only when the schedule
+ * actually asks for it. Sections carry no price, so an admin is never penalised for
+ * wanting to see more of their own data — the numbers come out of their own
+ * database.
+ *
+ * "Per document" still matters for the AI charge: recipients are free (one
+ * narrative sent to twenty admins is written once), while SCOPE multiplies, because
+ * thirty batch reports mean thirty separate analyses. Frequency needs no multiplier
+ * — daily simply runs thirty times a month.
  *
  * <h3>Charged after delivery, never before</h3>
  * A run that is skipped, empty, or fails to reach anybody must not cost anything —
@@ -49,8 +51,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReportBillingService {
 
-    /** Charged once per generated document, whatever the recipient count. */
-    public static final int BASE_CREDITS = 2;
+    /**
+     * Charged once per document that actually carries an AI analysis, whatever the
+     * recipient count. A static report charges nothing.
+     */
+    public static final int AI_ANALYSIS_CREDITS = 2;
 
     /** {@code request_type} on the credit transaction, for attribution. */
     private static final String REQUEST_TYPE = "report";
@@ -65,16 +70,16 @@ public class ReportBillingService {
     private final CreditClient creditClient;
 
     /**
-     * Price for one document containing these sections.
+     * Price for one document.
      *
-     * Takes the sections the RUN computed, not a per-reader subset: two admins with
-     * different roles may each see fewer sections than were computed, but the work
-     * — and therefore the cost — happened once.
+     * @param aiAnalysisIncluded whether an analysis was actually PRODUCED, not
+     *        merely requested. A narrative that failed to generate must not be
+     *        billed — the static report still goes out, free.
      */
-    public BigDecimal costOf(List<ReportSection> sections) {
-        int weights = sections == null ? 0
-                : sections.stream().mapToInt(ReportSection::creditWeight).sum();
-        return BigDecimal.valueOf((long) BASE_CREDITS + weights);
+    public BigDecimal costOf(boolean aiAnalysisIncluded) {
+        return aiAnalysisIncluded
+                ? BigDecimal.valueOf(AI_ANALYSIS_CREDITS)
+                : BigDecimal.ZERO;
     }
 
     /**

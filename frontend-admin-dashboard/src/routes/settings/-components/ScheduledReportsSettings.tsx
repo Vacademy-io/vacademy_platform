@@ -384,12 +384,6 @@ export default function ScheduledReportsSettings() {
                                                     names learners
                                                 </Badge>
                                             )}
-                                            {sec.creditWeight > 0 && (
-                                                <Badge className="ml-2" variant="secondary">
-                                                    +{sec.creditWeight} credit
-                                                    {sec.creditWeight === 1 ? '' : 's'}
-                                                </Badge>
-                                            )}
                                             {!sec.available && (
                                                 <span className="ml-2 text-caption text-neutral-500">
                                                     no data in the last 30 days
@@ -554,11 +548,18 @@ export default function ScheduledReportsSettings() {
                                         </span>
                                     )}
                                     <span className="block">
-                                        <b>{p.creditsPerDocument}</b> credits per report
-                                        {' → '}
-                                        <b>{p.creditsPerRun}</b> per run,{' '}
-                                        <b>{p.creditsPerMonth}</b> a month. Recipients are
-                                        free; scope and sections are what cost.
+                                        {p.creditsPerDocument === 0 ? (
+                                            <>Free — no AI analysis on this schedule.</>
+                                        ) : (
+                                            <>
+                                                <b>{p.creditsPerDocument}</b> credits per report
+                                                {' → '}
+                                                <b>{p.creditsPerRun}</b> per run,{' '}
+                                                <b>{p.creditsPerMonth}</b> a month for the AI
+                                                analysis. The report itself is free; recipients
+                                                are free; scope is what multiplies.
+                                            </>
+                                        )}
                                     </span>
                                     {p.sampleLabels?.length > 1 && (
                                         <span className="block text-caption text-neutral-500">
@@ -594,6 +595,31 @@ export default function ScheduledReportsSettings() {
                                     </label>
                                 ))}
                             </div>
+                            {/* The one billable choice on this screen. */}
+                            <div className="mb-3 rounded-md border border-border p-3">
+                                <label className="flex items-start gap-2 text-body">
+                                    <Checkbox
+                                        checked={s.ai?.enabled ?? false}
+                                        onCheckedChange={(v) =>
+                                            patchSchedule(s.id, { ai: { enabled: Boolean(v) } })
+                                        }
+                                    />
+                                    <span>
+                                        Add AI analysis
+                                        <Badge className="ml-2" variant="secondary">
+                                            2 credits per report
+                                        </Badge>
+                                        <span className="block text-caption text-neutral-500">
+                                            Reads the figures below and writes what to do about
+                                            them — what to fix, who to reach, what learners are
+                                            asking for. The report itself is free; only this is
+                                            charged, and only when an analysis is actually
+                                            produced.
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+
                             {/* The server refuses a run above this, BEFORE sending —
                                 the only point at which refusing is still free. */}
                             <div className="mb-3 flex flex-wrap items-center gap-2">

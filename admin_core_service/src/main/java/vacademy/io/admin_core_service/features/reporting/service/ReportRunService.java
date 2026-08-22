@@ -61,6 +61,7 @@ public class ReportRunService {
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final vacademy.io.admin_core_service.features.media_service.service.MediaService mediaService;
     private final ReportBillingService billing;
+    private final ReportNarratorService narrator;
 
     /**
      * Fan out one schedule into its documents and run each independently.
@@ -82,11 +83,11 @@ public class ReportRunService {
         // document instead, thirty documents at ten credits each would every one
         // pass a cap of fifty and the run would still spend three hundred.
         Integer cap = schedule.getCreditCapPerRun();
-        if (cap != null && !scopes.isEmpty()) {
-            java.math.BigDecimal perDoc = billing.costOf(
-                    registry.resolve(schedule.getSections(), null).stream()
-                            .filter(sec -> sec.supportedScopes().contains(scopes.get(0).type()))
-                            .toList());
+        boolean aiRequested = schedule.getAi() != null && schedule.getAi().isEnabled();
+        if (cap != null && aiRequested && !scopes.isEmpty()) {
+            // Only the analysis is billable, so a static schedule can never breach a
+            // cap and is not checked against one.
+            java.math.BigDecimal perDoc = billing.costOf(true);
             java.math.BigDecimal runCost = perDoc.multiply(
                     java.math.BigDecimal.valueOf(scopes.size()));
             if (runCost.compareTo(java.math.BigDecimal.valueOf(cap)) > 0) {
@@ -234,13 +235,31 @@ public class ReportRunService {
                 return;
             }
 
-            // Priced from the sections this document actually computed. The
-            // per-run cap was already enforced in execute(), before any of this ran.
-            java.math.BigDecimal cost = billing.costOf(selected);
+            // ── 4. Analyse (optional, billable) ─────────────────────────────
+            // Only for groups that see everything. A narrative is prose and cannot be
+            // filtered by learner id after the fact, so giving an institute-wide
+            // analysis to a cohort-scoped teacher would leak other cohorts through
+            // the summary even though every table was correctly restricted.
+            Map<String, ReportNarratorService.Narrative> narrativeByGroup = new LinkedHashMap<>();
+            if (schedule.getAi() != null && schedule.getAi().isEnabled()) {
+                for (var g : groups.entrySet()) {
+                    ReportRecipientResolver.Recipient first = g.getValue().get(0);
+                    if (first.getVisibleLearnerIds() != null || first.getVisibleCohortIds() != null) {
+                        continue; // scoped reader — static report only
+                    }
+                    ReportNarratorService.Narrative n = narrator.narrate(
+                            instituteName, window.describeRange(),
+                            factsByGroup.getOrDefault(g.getKey(), List.of()), instituteId);
+                    if (n != null) narrativeByGroup.put(g.getKey(), n);
+                }
+            }
 
-            // ── 4. Deliver ──────────────────────────────────────────────────
+            // Billed on what was actually produced, never on what was asked for.
+            java.math.BigDecimal cost = billing.costOf(!narrativeByGroup.isEmpty());
+
+            // ── 5. Deliver ──────────────────────────────────────────────────
             Delivery delivery = deliver(instituteId, instituteName, schedule.getFrequency(),
-                    window, run, selected, groups, factsByGroup);
+                    window, run, selected, groups, factsByGroup, narrativeByGroup);
             int delivered = delivery.sent();
             int namedLearners = delivery.namedLearners();
 
@@ -252,7 +271,7 @@ public class ReportRunService {
                         "no recipients could be delivered to (resolution or send failed)");
             }
 
-            // ── 5. Charge ───────────────────────────────────────────────────
+            // ── 6. Charge ───────────────────────────────────────────────────
             // Only now: the document exists and reached someone. Skipped, empty and
             // undelivered runs never reach this line and so never cost anything.
             java.math.BigDecimal charged = billing.chargeForRun(instituteId, run, cost,
@@ -423,7 +442,8 @@ public class ReportRunService {
                         ReportWindowResolver.Window window, ReportRun run,
                         List<ReportSection> selected,
                         Map<String, List<ReportRecipientResolver.Recipient>> groups,
-                        Map<String, List<SectionFacts>> factsByGroup) {
+                        Map<String, List<SectionFacts>> factsByGroup,
+                        Map<String, ReportNarratorService.Narrative> narrativeByGroup) {
 
         List<String> selectedKeys = selected.stream().map(ReportSection::key).toList();
 
@@ -438,6 +458,7 @@ public class ReportRunService {
 
         for (var g : groups.entrySet()) {
             List<SectionFacts> groupFacts = factsByGroup.getOrDefault(g.getKey(), List.of());
+            ReportNarratorService.Narrative groupNarrative = narrativeByGroup.get(g.getKey());
 
             for (ReportRecipientResolver.Recipient r : g.getValue()) {
                 // Sections this role may see at all. An empty role set is passed
@@ -469,7 +490,8 @@ public class ReportRunService {
                     } else {
                         notificationService.sendHtmlEmailViaUnified(
                                 r.getEmail(), subject,
-                                renderer.render(branding, run.getScopeLabel(), period, forUser),
+                                renderer.render(branding, run.getScopeLabel(), period,
+                                        forUser, groupNarrative),
                                 instituteId, null, null, "UTILITY_EMAIL");
                         ok = true;
                         sent++;

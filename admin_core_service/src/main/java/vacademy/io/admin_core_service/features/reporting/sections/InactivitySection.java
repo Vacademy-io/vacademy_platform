@@ -98,10 +98,6 @@ public class InactivitySection implements ReportSection {
         return true; // names learners — platform-user recipients only, and audited
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {

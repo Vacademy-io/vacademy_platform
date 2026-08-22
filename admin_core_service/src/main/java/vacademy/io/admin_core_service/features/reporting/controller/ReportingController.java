@@ -135,11 +135,10 @@ public class ReportingController {
             @RequestAttribute("user") CustomUserDetails user,
             @RequestBody ReportScheduleConfig schedule) {
         String instituteId = requireInstituteId(request, user);
-        // Price the sections the schedule actually selected, resolved through the
-        // registry so a withdrawn or renamed key cannot inflate the quote.
-        double perDocument = billing
-                .costOf(registry.resolve(schedule.getSections(), null))
-                .doubleValue();
+        // Only the AI analysis is billable — the static report is free — so the
+        // quote turns entirely on whether this schedule asks for one.
+        boolean aiRequested = schedule.getAi() != null && schedule.getAi().isEnabled();
+        double perDocument = billing.costOf(aiRequested).doubleValue();
         return ResponseEntity.ok(scopeResolver.preview(instituteId, schedule, perDocument));
     }
 

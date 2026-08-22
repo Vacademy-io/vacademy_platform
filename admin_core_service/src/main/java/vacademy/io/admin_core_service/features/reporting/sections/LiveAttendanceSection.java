@@ -102,10 +102,6 @@ public class LiveAttendanceSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE, ReportContext.ScopeType.BATCH);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {
@@ -247,7 +243,16 @@ public class LiveAttendanceSection implements ReportSection {
                 ? (int) Math.round(100.0 * sumAttended / sumInvited) + "%"
                 : "—");
         if (rated > 0) {
-            facts.headline("Below " + POOR_ATTENDANCE_PCT + "%", poor + " of " + rated);
+            int overall = (int) Math.round(100.0 * sumAttended / sumInvited);
+            facts.headline("Below " + POOR_ATTENDANCE_PCT + "%", poor + " of " + rated)
+                    .tone("Overall attendance", overall >= 70 ? "good"
+                            : overall >= POOR_ATTENDANCE_PCT ? "warn" : "bad")
+                    .tone("Below " + POOR_ATTENDANCE_PCT + "%", poor == 0 ? "good" : "warn");
+        }
+        // Classes held with attendance never captured is a data problem, not a
+        // teaching one, and it is the common case — so it is called out in colour.
+        if (held > 0 && known < held) {
+            facts.tone("Attendance recorded", known == 0 ? "bad" : "warn");
         }
 
         return facts

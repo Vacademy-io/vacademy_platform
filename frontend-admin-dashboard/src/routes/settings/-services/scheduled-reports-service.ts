@@ -56,9 +56,11 @@ export interface ReportSchedule {
     skipIfNoData: boolean;
     /** Refuse a run costing more than this many credits. Null = no cap. */
     creditCapPerRun: number | null;
-    // No `ai` field on purpose. The narration layer (Phase 2) does not exist yet,
-    // and a persisted { enabled, depth } that nothing reads is a setting that lies
-    // to whoever ticks it. It comes back when there is a narrator to honour it.
+    /**
+     * The AI analysis. This is the ONLY billable part of a report — the static
+     * report is free — so this toggle is also the price switch.
+     */
+    ai: { enabled: boolean };
 }
 
 export interface ReportSettingConfig {
@@ -133,6 +135,7 @@ export function newSchedule(): ReportSchedule {
         recipients: { roles: ['ADMIN'], userIds: [] },
         skipIfNoData: true,
         creditCapPerRun: null,
+        ai: { enabled: false },
     };
 }
 

@@ -85,10 +85,6 @@ public class AiAssistantSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE, ReportContext.ScopeType.BATCH);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {
@@ -162,6 +158,9 @@ public class AiAssistantSection implements ReportSection {
                 .headline("Questions asked", String.valueOf(questions))
                 .headline("Material lookups", lookups == 0
                         ? "0" : foundNothing + " of " + lookups + " found nothing")
+                .tone("Material lookups", lookups == 0 ? "warn"
+                        : foundNothing == 0 ? "good"
+                        : foundNothing >= lookups ? "bad" : "warn")
                 .column("Learners looked for")
                 .column("Asked")
                 .rows(rows)

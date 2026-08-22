@@ -49,6 +49,25 @@ public class ReportRenderer {
     private static final String MONO =
             "ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace";
 
+    /**
+     * Section glyphs. Emoji rather than image icons on purpose: mail clients block
+     * remote images by default, and an icon that vanishes takes its meaning with it,
+     * whereas an emoji is text and always arrives.
+     */
+    private static final java.util.Map<String, String> ICONS = java.util.Map.of(
+            "inactivity", "🌙",
+            "live_attendance", "🎥",
+            "learner_engagement", "📈",
+            "doubts", "❓",
+            "session_feedback", "⭐",
+            "payments", "💳",
+            "ai_assistant", "🤖",
+            "ai_spend", "⚡");
+
+    private static final String GOOD = "#12996b";
+    private static final String WARN = "#b4690e";
+    private static final String BAD = "#d0342c";
+
     /** Who the report is for, and what it should look like. */
     public record Branding(String instituteName, String logoUrl, String themeCode) {}
 
@@ -60,6 +79,12 @@ public class ReportRenderer {
 
     public String render(Branding branding, String heading, Period period,
                          List<SectionFacts> sections) {
+        return render(branding, heading, period, sections, null);
+    }
+
+    public String render(Branding branding, String heading, Period period,
+                         List<SectionFacts> sections,
+                         ReportNarratorService.Narrative narrative) {
         String accent = accentFor(branding == null ? null : branding.themeCode());
         String institute = branding == null || branding.instituteName() == null
                 ? "Vacademy" : branding.instituteName();
@@ -77,6 +102,7 @@ public class ReportRenderer {
         renderHeader(b, institute, logoUrl, heading, period, accent);
 
         b.append("<tr><td style=\"padding:8px 28px 28px;\">");
+        renderNarrative(b, narrative, accent);
         for (int i = 0; i < sections.size(); i++) {
             renderSection(b, sections.get(i), i + 1, accent);
         }
@@ -139,8 +165,10 @@ public class ReportRenderer {
                 .append(";font-size:11px;font-weight:700;color:").append(accent)
                 .append(";padding-right:10px;vertical-align:baseline;width:26px;\">")
                 .append(String.format("%02d", index)).append("</td>");
+        String icon = ICONS.get(s.getSectionKey());
         b.append("<td style=\"font-size:15px;font-weight:700;letter-spacing:.02em;color:")
                 .append(INK).append(";vertical-align:baseline;\">")
+                .append(icon == null ? "" : icon + "&nbsp;&nbsp;")
                 .append(esc(s.getTitle())).append("</td>");
         b.append("</tr></table>");
 
@@ -158,9 +186,10 @@ public class ReportRenderer {
                     .append(PANEL).append(";border:1px solid ").append(RULE)
                     .append(";border-radius:4px;\"><tr>");
             for (var e : s.getHeadlines().entrySet()) {
+                String tone = toneColour(s, e.getKey(), accent);
                 b.append("<td style=\"padding:12px 14px;vertical-align:top;\">")
                         .append("<div style=\"font-family:").append(MONO)
-                        .append(";font-size:21px;font-weight:700;color:").append(accent)
+                        .append(";font-size:21px;font-weight:700;color:").append(tone)
                         .append(";line-height:1.15;font-variant-numeric:tabular-nums;\">")
                         .append(esc(e.getValue())).append("</div>")
                         .append("<div style=\"font-family:").append(MONO)
@@ -197,6 +226,75 @@ public class ReportRenderer {
             b.append("</table>");
         }
         b.append("</div>");
+    }
+
+    /**
+     * The AI analysis, above the numbers.
+     *
+     * Placed first because it is the reason someone opens the mail on a busy
+     * morning, and labelled as AI-written so nobody mistakes the prose for a
+     * computed figure. Every number inside it came from the tables below — the
+     * narrator is forbidden from producing one of its own.
+     */
+    private void renderNarrative(StringBuilder b, ReportNarratorService.Narrative n, String accent) {
+        if (n == null || !n.isUsable()) return;
+
+        b.append("<div style=\"margin-top:26px;padding:18px 20px;background:").append(SHELL)
+                .append(";border-radius:6px;\">");
+        b.append("<div style=\"font-family:").append(MONO)
+                .append(";font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:")
+                .append(SHELL_MUTED).append(";\">✨&nbsp;&nbsp;What to do about it · AI analysis</div>");
+        b.append("<div style=\"font-size:16px;line-height:1.45;font-weight:600;color:#ffffff;")
+                .append("margin:10px 0 0;\">").append(esc(n.headline())).append("</div>");
+
+        int i = 1;
+        for (ReportNarratorService.Action a : n.actions()) {
+            b.append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" ")
+                    .append("style=\"border-collapse:collapse;width:100%;margin-top:14px;\"><tr>");
+            b.append("<td style=\"width:24px;vertical-align:top;font-family:").append(MONO)
+                    .append(";font-size:11px;font-weight:700;color:").append(accent).append(";\">")
+                    .append(String.format("%02d", i++)).append("</td>");
+            b.append("<td style=\"vertical-align:top;\">")
+                    .append("<div style=\"font-size:14px;font-weight:600;color:").append(SHELL_TEXT)
+                    .append(";\">").append(esc(a.title())).append("</div>");
+            if (a.detail() != null && !a.detail().isBlank()) {
+                b.append("<div style=\"font-size:13px;line-height:1.5;color:").append(SHELL_MUTED)
+                        .append(";margin-top:3px;\">").append(esc(a.detail())).append("</div>");
+            }
+            if (a.who() != null && !a.who().isBlank()) {
+                b.append("<div style=\"font-family:").append(MONO)
+                        .append(";font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:")
+                        .append(accent).append(";margin-top:4px;\">→ ").append(esc(a.who()))
+                        .append("</div>");
+            }
+            b.append("</td></tr></table>");
+        }
+
+        if (n.asking() != null && !n.asking().isEmpty()) {
+            b.append("<div style=\"margin-top:16px;padding-top:12px;border-top:1px solid #24304a;\">")
+                    .append("<div style=\"font-family:").append(MONO)
+                    .append(";font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:")
+                    .append(SHELL_MUTED).append(";\">🔍&nbsp;&nbsp;Learners asked for</div>");
+            for (String q : n.asking()) {
+                b.append("<div style=\"font-size:13px;color:").append(SHELL_TEXT)
+                        .append(";margin-top:5px;\">· ").append(esc(q)).append("</div>");
+            }
+            b.append("</div>");
+        }
+        b.append("</div>");
+    }
+
+    /** Section-declared severity, falling back to the accent (which asserts nothing). */
+    private String toneColour(SectionFacts s, String label, String accent) {
+        if (s.getTones() == null) return accent;
+        String tone = s.getTones().get(label);
+        if (tone == null) return accent;
+        return switch (tone) {
+            case "good" -> GOOD;
+            case "warn" -> WARN;
+            case "bad" -> BAD;
+            default -> accent;
+        };
     }
 
     private void renderFooter(StringBuilder b) {

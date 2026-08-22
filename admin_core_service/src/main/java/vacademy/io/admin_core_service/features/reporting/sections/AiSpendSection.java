@@ -64,10 +64,6 @@ public class AiSpendSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {

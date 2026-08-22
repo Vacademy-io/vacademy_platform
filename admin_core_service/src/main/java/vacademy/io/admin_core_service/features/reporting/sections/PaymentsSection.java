@@ -87,10 +87,6 @@ public class PaymentsSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {
@@ -189,6 +185,8 @@ public class PaymentsSection implements ReportSection {
                         ? "0" : failedCount + " · " + amounts(failed))
                 .headline("Awaiting payment", pendingCount == 0
                         ? "0" : pendingCount + " · " + amounts(pending))
+                .tone("Failed", failedCount == 0 ? "good" : "bad")
+                .tone("Awaiting payment", pendingCount == 0 ? "good" : "warn")
                 .column("Learner")
                 .column("Status")
                 .column("Amount")

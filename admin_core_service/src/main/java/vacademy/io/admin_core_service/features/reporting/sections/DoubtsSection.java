@@ -88,10 +88,6 @@ public class DoubtsSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE, ReportContext.ScopeType.BATCH);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {
@@ -138,6 +134,9 @@ public class DoubtsSection implements ReportSection {
         int raised = num(s.get("raised_in_window"));
         int resolved = num(s.get("resolved_in_window"));
         Object medianH = s.get("median_h");
+        Object medianFirst = s.get("median_first_reply_h");
+        int everReplied = num(s.get("ever_replied"));
+        int withinDay = num(s.get("replied_within_day"));
 
         List<Map<String, Object>> open = jdbcTemplate.queryForList(OPEN_SQL,
                 ctx.getInstituteId(), batchScoped, batchId, cohortRestricted, cohortCsv,
@@ -189,10 +188,21 @@ public class DoubtsSection implements ReportSection {
                 .headline("Open now", String.valueOf(openNow))
                 .headline("No reply yet", String.valueOf(unanswered))
                 .headline("Waiting " + STALE_DAYS + "+ days", String.valueOf(stale))
-                .headline("Raised", String.valueOf(raised))
-                .headline("Resolved", String.valueOf(resolved))
+                // The turnaround pair. First reply is the number that matters to a
+                // waiting learner; resolution can lag it by weeks.
+                .headline("Median first reply", medianFirst == null
+                        ? "—" : describeHours(((Number) medianFirst).intValue()))
+                .headline("Answered in a day", everReplied == 0
+                        ? "—" : withinDay + " of " + everReplied)
                 .headline("Median to resolve", medianH == null
                         ? "—" : describeHours(((Number) medianH).intValue()))
+                // Colour asserts something, so only where the data is unambiguous:
+                // a doubt nobody has answered in three days is simply bad.
+                .tone("Waiting " + STALE_DAYS + "+ days", stale > 0 ? "bad" : "good")
+                .tone("No reply yet", unanswered > 0 ? "warn" : "good")
+                .tone("Median first reply", medianFirst == null ? "warn"
+                        : ((Number) medianFirst).intValue() <= 24 ? "good"
+                        : ((Number) medianFirst).intValue() <= 72 ? "warn" : "bad")
                 .column("Learner")
                 .column("Type")
                 .column("Waiting")
@@ -229,7 +239,13 @@ public class DoubtsSection implements ReportSection {
                        d.type, d.guest_name, d.html_text,
                        EXISTS (SELECT 1 FROM doubts r
                                WHERE r.parent_id = d.id
-                                 AND r.status <> 'DELETED') AS answered
+                                 AND r.status <> 'DELETED') AS answered,
+                       -- Turnaround is measured to the FIRST reply, not to
+                       -- resolution: a learner is unblocked when somebody answers,
+                       -- and a thread can stay open long after that.
+                       (SELECT min(r.created_at) FROM doubts r
+                        WHERE r.parent_id = d.id
+                          AND r.status <> 'DELETED') AS first_reply
                 FROM doubts d
                 WHERE d.institute_id = ?
                   AND d.parent_id IS NULL
@@ -261,7 +277,15 @@ public class DoubtsSection implements ReportSection {
                        FILTER (WHERE status = 'RESOLVED'
                                  AND resolved_time >= ? AND resolved_time < ?
                                  -- Guard against clock skew producing a negative age.
-                                 AND resolved_time >= raised_time)) AS median_h
+                                 AND resolved_time >= raised_time)) AS median_h,
+                   round(percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY EXTRACT(EPOCH FROM (first_reply - raised_time)) / 3600)
+                       FILTER (WHERE first_reply IS NOT NULL
+                                 AND first_reply >= raised_time)) AS median_first_reply_h,
+                   count(*) FILTER (WHERE first_reply IS NOT NULL) AS ever_replied,
+                   count(*) FILTER (WHERE first_reply IS NOT NULL
+                                      AND first_reply - raised_time
+                                          < INTERVAL '24 hours') AS replied_within_day
             FROM root
             """;
 

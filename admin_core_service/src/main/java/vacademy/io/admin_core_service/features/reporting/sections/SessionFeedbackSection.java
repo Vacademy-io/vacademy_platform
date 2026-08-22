@@ -97,10 +97,6 @@ public class SessionFeedbackSection implements ReportSection {
         return Set.of(ReportContext.ScopeType.INSTITUTE, ReportContext.ScopeType.BATCH);
     }
 
-    @Override
-    public int creditWeight() {
-        return 1;
-    }
 
     @Override
     public boolean isAvailableFor(String instituteId) {
@@ -193,7 +189,8 @@ public class SessionFeedbackSection implements ReportSection {
                 .headline("Responses", String.valueOf(responses))
                 .headline("Classes rated", String.valueOf(totalClasses))
                 .headline("Average rating", avg == null ? "—" : fmtRating(avg) + " of 5")
-                .headline("Rated " + trimNumber(LOW_RATING) + " or below", String.valueOf(low));
+                .headline("Rated " + trimNumber(LOW_RATING) + " or below", String.valueOf(low))
+                .tone("Rated " + trimNumber(LOW_RATING) + " or below", low == 0 ? "good" : "warn");
 
         // Only mention the hidden channel when it actually has something in it.
         if (withDoubt > 0) {

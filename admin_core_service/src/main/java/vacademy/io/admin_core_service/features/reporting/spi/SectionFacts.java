@@ -54,6 +54,18 @@ public class SectionFacts {
     /** Does this section name individual learners? Drives recipient restrictions. */
     private final boolean identifying;
 
+    /**
+     * Optional severity per headline label: "good", "warn" or "bad".
+     *
+     * Declared by the section rather than inferred by the renderer. Colour in a
+     * report is an assertion — painting a figure red says "this is wrong" — and only
+     * the section knows whether 40% is a triumph or a disaster for its own metric.
+     * Anything not listed here renders in the institute's accent, which asserts
+     * nothing.
+     */
+    @Singular("tone")
+    private final Map<String, String> tones;
+
     /** One detail line. Values are pre-formatted and positionally match columns. */
     @Getter
     @Builder

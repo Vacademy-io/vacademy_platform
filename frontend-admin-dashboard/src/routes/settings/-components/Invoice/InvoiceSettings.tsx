@@ -652,6 +652,39 @@ export default function InvoiceSettings() {
                         )}
                     </div>
 
+                    <div className="space-y-3 rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="invoice-proforma" className="cursor-pointer">
+                                    Issue unpaid invoices as proforma
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    An invoice raised before payment is issued as a proforma,
+                                    numbered from a separate series. The real invoice number is
+                                    allocated only when it is paid, so a proforma that is cancelled
+                                    or never paid leaves no gap in your invoice series.
+                                </p>
+                            </div>
+                            <Switch
+                                id="invoice-proforma"
+                                checked={settings.proformaEnabled}
+                                onCheckedChange={(v) => update({ proformaEnabled: v })}
+                            />
+                        </div>
+                        {settings.proformaEnabled && (
+                            <p className="rounded-md bg-warning-50 p-2 text-xs text-warning-700">
+                                Invoices already issued keep their current numbers. Proformas are
+                                numbered{' '}
+                                <span className="font-medium">
+                                    {settings.numbering.format.includes('{{doc_type}}')
+                                        ? 'using PRO as the document type'
+                                        : `PRO-${settings.numbering.format}`}
+                                </span>{' '}
+                                and are renumbered into your invoice series on payment.
+                            </p>
+                        )}
+                    </div>
+
                     <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="space-y-0.5">
                             <Label htmlFor="invoice-manual-enroll" className="cursor-pointer">

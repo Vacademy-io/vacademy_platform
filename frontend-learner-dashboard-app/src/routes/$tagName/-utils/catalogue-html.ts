@@ -67,10 +67,14 @@ const MAX_PAGE_CSS = 150000;
 
 /** Hosts whose assets may be referenced from custom CSS (fonts, backgrounds).
  *  url() is otherwise stripped: an arbitrary host in a stylesheet leaks every
- *  visitor's IP to it and is a standard exfiltration channel. Our own media
- *  origins are safe and are the only place an uploaded font can live. */
+ *  visitor's IP to it and is a standard exfiltration channel.
+ *
+ *  Pinned to OUR buckets, not to the providers. A first cut allowed any
+ *  *.amazonaws.com / *.cloudfront.net, which anyone can register a subdomain
+ *  of — evil-bucket.s3.amazonaws.com passed. That reopened the exact channel
+ *  the rule exists to close. */
 const MEDIA_HOST_RE =
-    /^https:\/\/([a-z0-9-]+\.)*(vacademy\.io|cloudfront\.net|amazonaws\.com)\//i;
+    /^https:\/\/(([a-z0-9-]+\.)*vacademy\.io|vacademy-media-storage-public\.s3\.amazonaws\.com|d1om4dxj9e7kkd\.cloudfront\.net)\//i;
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 const CSS_URL_RE = /url\s*\([^)]*\)/gi;

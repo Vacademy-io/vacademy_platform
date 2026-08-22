@@ -220,6 +220,23 @@ def sanitize_page_html(html: str) -> Tuple[str, bool]:
 _ROUTE_HOOK = 'data-vacademy="route" data-route="%s"'
 _SCROLL_HOOK = 'data-vacademy="scroll" data-target="%s"'
 
+# Values are interpolated into double-quoted attributes. Without escaping, an
+# href like  x" style="position:fixed;width:100vw  closes the attribute and
+# injects a NEW one that the allowlist then happily keeps — a full-viewport
+# overlay built out of a link. Found in review, before anything rendered it.
+_UNSAFE_ATTR_RE = re.compile(r"[\"'<>`]")
+_UNSAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9/_-]")
+
+
+def _attr(value: str) -> str:
+    """Safe to place inside a double-quoted attribute."""
+    return _UNSAFE_ATTR_RE.sub("", value or "")
+
+
+def _slug(value: str) -> str:
+    """Route / anchor ids are slugs; anything else cannot be legitimate."""
+    return _UNSAFE_SLUG_RE.sub("", value or "")
+
 
 def normalise_route(href: str) -> str:
     """A bundle-relative link -> a catalogue page route ('' means home)."""
@@ -236,29 +253,46 @@ def normalise_route(href: str) -> str:
 
 
 def rewrite_links(html: str, report: Dict[str, Any]) -> str:
-    """Convert plain anchors into hooks the renderer can act on."""
-    counts = {"internal": 0, "anchors": 0, "external": 0, "http_upgraded": 0}
+    """Convert plain anchors into hooks the renderer can act on.
 
-    def _one(m: "re.Match[str]") -> str:
-        before, href, after = m.group(1), m.group(2).strip(), m.group(3)
-        attrs = (before + after).rstrip()
+    Parsed, not regexed. A regex rewrite re-emits the surrounding attributes as
+    text, which turns a perfectly safe single-quoted href — <a href='x" style="
+    position:fixed;width:100vw'> — into TWO attributes and hands the allowlist a
+    full-viewport overlay. The original markup was harmless; the rewrite created
+    the injection. BeautifulSoup handles attributes structurally and quotes its
+    own output, so the class of bug cannot occur."""
+    counts = {"internal": 0, "anchors": 0, "external": 0, "http_upgraded": 0}
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:  # never silently pass links through unrewritten
+        report["links_not_rewritten"] = True
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.find_all("a"):
+        href = (a.get("href") or "").strip()
         if href.startswith("#") and len(href) > 1:
+            target = _slug(href[1:])
+            a["href"] = f"#{target}"
+            a["data-vacademy"] = "scroll"
+            a["data-target"] = target
             counts["anchors"] += 1
-            return f'<a{attrs} href="{href}" {_SCROLL_HOOK % href[1:]}>'
-        if href.lower().startswith("http://"):
+        elif href.lower().startswith("http://"):
             # nh3 allows https only, so an http link would lose its href
             # entirely. Upgrading beats silently deleting it.
+            a["href"] = "https://" + href[7:]
             counts["http_upgraded"] += 1
-            return f'<a{attrs} href="https://{href[7:]}">'
-        if _REMOTE_RE.match(href) or href.startswith(("mailto:", "tel:")):
+        elif _REMOTE_RE.match(href) or href.startswith(("mailto:", "tel:")):
             counts["external"] += 1
-            return m.group(0)
-        if not href or href.startswith("javascript:"):
-            return f"<a{attrs}>"
-        counts["internal"] += 1
-        return f'<a{attrs} href="{href}" {_ROUTE_HOOK % normalise_route(href)}>'
+        elif not href or href.lower().startswith("javascript:"):
+            if a.has_attr("href"):
+                del a["href"]
+        else:
+            a["data-vacademy"] = "route"
+            a["data-route"] = _slug(normalise_route(href))
+            counts["internal"] += 1
 
-    out = _ANCHOR_RE.sub(_one, html)
+    out = str(soup)
     report["links"] = {k: v for k, v in counts.items() if v}
     # A button with no hook is inert — worth telling the admin.
     inert = len(re.findall(r"<button\b(?![^>]*data-vacademy)", out, re.I))

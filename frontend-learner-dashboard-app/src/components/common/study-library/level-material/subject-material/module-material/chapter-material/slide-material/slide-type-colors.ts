@@ -10,6 +10,21 @@
 // listen (sky), read (amber), answer (purple), practise (teal), submit
 // (emerald), sit an exam (rose), run code (indigo), present (cyan).
 
+import {
+  BookOpen,
+  ChatText,
+  Exam,
+  FileDoc,
+  FilePdf,
+  File as FileIcon,
+  Headphones,
+  Lightning,
+  ListChecks,
+  PlayCircle,
+  PresentationChart,
+  Question,
+} from "@phosphor-icons/react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import type { Slide } from "@/hooks/study-library/use-slides";
 
 export type SlideTypeColors = {
@@ -142,3 +157,37 @@ export const getSlideTypeColors = (
       return PALETTE.gray!;
   }
 };
+
+/** The icon for a slide's type, paired with the colour above so the two can't
+ *  disagree. Shared by every sidebar mode that draws a slide row. */
+export function getSlideTypeIcon(slide: Slide): PhosphorIcon {
+  switch ((slide.source_type || "").toUpperCase()) {
+    case "VIDEO":
+    case "HTML_VIDEO":
+      return PlayCircle;
+    case "DOCUMENT":
+      // Guess PDF vs DOC by available fields; fall back to FileDoc.
+      if (slide.document_slide?.type?.toLowerCase().includes("pdf"))
+        return FilePdf;
+      return FileDoc;
+    case "QUESTION":
+      return Question;
+    case "QUIZ":
+      return ListChecks;
+    case "ASSESSMENT":
+      return Exam;
+    case "AUDIO":
+      return Headphones;
+    case "ASSIGNMENT":
+      return ChatText;
+    case "JUPYTER":
+    case "CODE":
+      return Lightning;
+    case "PRESENTATION":
+      return PresentationChart;
+    case "FEEDBACK":
+      return BookOpen;
+    default:
+      return FileIcon;
+  }
+}

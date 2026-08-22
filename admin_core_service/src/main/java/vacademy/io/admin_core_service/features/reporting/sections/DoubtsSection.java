@@ -138,9 +138,19 @@ public class DoubtsSection implements ReportSection {
         int everReplied = num(s.get("ever_replied"));
         int withinDay = num(s.get("replied_within_day"));
 
-        List<Map<String, Object>> open = jdbcTemplate.queryForList(OPEN_SQL,
-                ctx.getInstituteId(), batchScoped, batchId, cohortRestricted, cohortCsv,
-                MAX_ROWS);
+        // A daily reader gets what changed; a weekly or monthly reader gets how
+        // things stand. Reporting the standing backlog every day shows the same
+        // ancient doubts forever and buries the ones that arrived today.
+        boolean incremental = ctx.isDailyCadence() && ctx.hasPreviousRun();
+        Timestamp since = incremental ? Timestamp.from(ctx.getPreviousRunAt()) : null;
+
+        List<Map<String, Object>> open = incremental
+                ? jdbcTemplate.queryForList(NEW_SINCE_SQL,
+                        ctx.getInstituteId(), batchScoped, batchId, cohortRestricted, cohortCsv,
+                        since, since, STALE_DAYS, since, STALE_DAYS, MAX_ROWS)
+                : jdbcTemplate.queryForList(OPEN_SQL,
+                        ctx.getInstituteId(), batchScoped, batchId, cohortRestricted, cohortCsv,
+                        MAX_ROWS);
 
         List<SectionFacts.Row> rows = new ArrayList<>();
         int named = 0;
@@ -173,9 +183,17 @@ public class DoubtsSection implements ReportSection {
                     .build());
         }
 
-        if (openNow > named && named > 0) {
+        if (!incremental && openNow > named && named > 0) {
             rows.add(SectionFacts.Row.builder()
                     .value((openNow - named) + " more open, longest-waiting shown first")
+                    .value("").value("").value("")
+                    .build());
+        } else if (incremental && openNow > 0) {
+            // Standing backlog still stated, so a quiet day does not read as an
+            // empty queue — but it is one line, not twelve repeated rows.
+            rows.add(SectionFacts.Row.builder()
+                    .value(openNow + " still open in total, " + stale
+                            + " waiting more than " + STALE_DAYS + " days")
                     .value("").value("").value("")
                     .build());
         }
@@ -184,7 +202,12 @@ public class DoubtsSection implements ReportSection {
                 .sectionKey(key())
                 .title(title())
                 .identifying(true)
-                .empty(openNow == 0 && raised == 0 && resolved == 0)
+                // On a daily cadence an unchanged backlog is not news. Combined with
+                // skipIfNoData this is what stops a subscriber receiving the same
+                // report every morning.
+                .empty(incremental
+                        ? named == 0 && raised == 0 && resolved == 0
+                        : openNow == 0 && raised == 0 && resolved == 0)
                 .headline("Open now", String.valueOf(openNow))
                 .headline("No reply yet", String.valueOf(unanswered))
                 .headline("Waiting " + STALE_DAYS + "+ days", String.valueOf(stale))
@@ -298,6 +321,56 @@ public class DoubtsSection implements ReportSection {
      *
      * Params: ROOT_CTE params, limit.
      */
+    /**
+     * What is NEW since the reader last heard from us: raised since then, or having
+     * crossed the staleness threshold since then. Newest first, because on a daily
+     * report the day's news is the point.
+     *
+     * The backlog query below orders OLDEST first, which on a daily cadence shows
+     * the same twelve ancient doubts forever — measured on real data the eight
+     * doubts raised that week ranked 25th and lower and never appeared at all.
+     *
+     * Params: ROOT_CTE params, since, staleDays, since, limit.
+     */
+    private static final String NEW_SINCE_SQL = ROOT_CTE + """
+            SELECT r.user_id,
+                   COALESCE(NULLIF(btrim(r.guest_name), ''), s.full_name) AS asker,
+                   r.type,
+                   r.answered,
+                   GREATEST(0, date_part('day', now() - r.raised_time))::int AS days_waiting,
+                   (r.raised_time >= ?) AS newly_raised,
+                   left(btrim(
+                     replace(replace(replace(replace(replace(replace(replace(
+                       regexp_replace(
+                         regexp_replace(
+                           regexp_replace(
+                             regexp_replace(left(r.html_text, 4000), '<[^>]*>', ' ', 'g'),
+                           '<[^>]*$', ' ', 'g'),
+                         '\\S{45,}', ' ', 'g'),
+                       '\\s+', ' ', 'g'),
+                     U&'\\FEFF', ''), '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'),
+                     '&quot;', '"'), '&#39;', ''''), '&amp;', '&')
+                   ), 90) AS snippet
+            FROM root r
+            LEFT JOIN LATERAL (
+                SELECT st.full_name FROM student st
+                WHERE st.user_id = r.user_id
+                ORDER BY st.created_at DESC NULLS LAST LIMIT 1
+            ) s ON TRUE
+            WHERE r.status = 'ACTIVE'
+              AND (
+                -- newly arrived...
+                r.raised_time >= ?
+                -- ...or it went stale while the reader was not looking, which is a
+                -- state change worth reporting even though the doubt is not new.
+                OR (NOT r.answered
+                    AND r.raised_time < now() - make_interval(days => ?)
+                    AND r.raised_time >= ? - make_interval(days => ?))
+              )
+            ORDER BY r.raised_time DESC
+            LIMIT ?
+            """;
+
     private static final String OPEN_SQL = ROOT_CTE + """
             SELECT r.user_id,
                    COALESCE(NULLIF(btrim(r.guest_name), ''), s.full_name) AS asker,

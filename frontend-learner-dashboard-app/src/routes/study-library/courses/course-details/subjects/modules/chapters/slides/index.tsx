@@ -23,6 +23,7 @@ import {
   calculateOverallCompletion,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseTreeSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/course-tree-sidebar";
+import { LessonListSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/lesson-list-sidebar";
 import {
   computeDisplayTitles,
   getSlideMeta,
@@ -87,14 +88,22 @@ const SLIDES_FOCUS_MODE_KEY = "slides-viewer-focus-mode";
  * localStorage for 24h per institute, so a change in the admin does not reach a
  * warm cache — and previewing a navigation mode should not require editing a
  * live institute's settings. Set `DEBUG_SLIDES_SIDEBAR_NAV` to "hidden",
- * "breadcrumb" or "ancestors" and reload; remove the key to go back to the
- * institute's own configuration.
+ * "breadcrumb", "ancestors" or "lessons" and reload; remove the key to go back
+ * to the institute's own configuration.
  */
-type SidebarNavMode = "ancestors" | "breadcrumb" | "hidden";
+type SidebarNavMode = "ancestors" | "breadcrumb" | "lessons" | "hidden";
+const SIDEBAR_NAV_MODES: SidebarNavMode[] = [
+  "ancestors",
+  "breadcrumb",
+  "lessons",
+  "hidden",
+];
 function readDebugSidebarNav(): SidebarNavMode | null {
   try {
     const v = localStorage.getItem("DEBUG_SLIDES_SIDEBAR_NAV");
-    return v === "hidden" || v === "breadcrumb" || v === "ancestors" ? v : null;
+    return SIDEBAR_NAV_MODES.includes(v as SidebarNavMode)
+      ? (v as SidebarNavMode)
+      : null;
   } catch {
     return null;
   }
@@ -1494,9 +1503,9 @@ function Slides() {
 
         {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
             Rendered only in "breadcrumb" (flat list) mode — in "ancestors"
-            tree mode the expanded tree below already shows the full path, so
-            the crumb was pure duplication (and truncated into noise at
-            sidebar width). Subject crumb is only rendered when the course
+            tree and lesson-list modes the sidebar below already shows the
+            full path, so the crumb was pure duplication (and truncated into
+            noise at sidebar width). Subject crumb is only rendered when the course
             structure actually has subjects (`subjectId` set +
             studyLibraryData populated) — otherwise the crumb collapses to
             Module > Chapter as before. */}
@@ -1668,7 +1677,35 @@ function Slides() {
           • "breadcrumb" renders the legacy per-chapter flat slide list;
             cross-module navigation happens via the breadcrumb popovers. */}
       <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-        {sidebarNavigation === "ancestors" ? (
+        {sidebarNavigation === "lessons" ? (
+          <LessonListSidebar
+            courseId={courseId || ""}
+            sessionId={resolvedSessionId}
+            subjects={courseSubjects}
+            currentSubjectId={subjectId || ""}
+            currentChapterId={chapterId || ""}
+            currentSlideId={slideId || ""}
+            currentSubjectModules={modulesWithChaptersData}
+            onSlideSelect={({
+              subjectId: targetSubjectId,
+              moduleId: targetModuleId,
+              chapterId: targetChapterId,
+              slideId: targetSlideId,
+            }) => {
+              navigate({
+                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                search: {
+                  courseId,
+                  subjectId: targetSubjectId,
+                  moduleId: targetModuleId,
+                  chapterId: targetChapterId,
+                  slideId: targetSlideId,
+                  sessionId,
+                },
+              });
+            }}
+          />
+        ) : sidebarNavigation === "ancestors" ? (
           <div className="py-1">
             <CourseTreeSidebar
               courseId={courseId || ""}

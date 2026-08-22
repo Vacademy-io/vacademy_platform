@@ -166,6 +166,11 @@ public class ReportRunService {
                     .scopeType(scope.type())
                     .scopeId(scope.id())
                     .scopeLabel(run.getScopeLabel())
+                    .cadence(schedule.getFrequency())
+                    // What this reader has already been told. Sections reporting a
+                    // standing backlog use it so a daily subscriber gets the day's
+                    // news instead of the same list again.
+                    .previousRunAt(lastSentAt(schedule.getId(), scope.id()))
                     // Naming limits are a RECIPIENT property, not a scope property —
                     // the facts are computed once and filtered per reader below.
                     .visibleLearnerIds(null)
@@ -347,6 +352,8 @@ public class ReportRunService {
                 .instituteId(instituteId).zone(window.zone())
                 .windowStart(window.start()).windowEnd(window.end())
                 .scopeType(scope.type()).scopeId(scope.id()).scopeLabel(scope.label())
+                .cadence(schedule.getFrequency())
+                .previousRunAt(lastSentAt(schedule.getId(), scope.id()))
                 .visibleLearnerIds(me == null ? null : me.getVisibleLearnerIds())
                 .visibleCohortIds(me == null ? null : me.getVisibleCohortIds())
                 .build();
@@ -420,6 +427,26 @@ public class ReportRunService {
         }
         return new ReportRenderer.Branding(
                 name == null || name.isBlank() ? "Vacademy" : name, logoUrl, themeCode);
+    }
+
+    /**
+     * When this schedule last reached somebody about this scope, or null if never.
+     *
+     * A lookup failure returns null, which sections read as "first run" and answer
+     * with the full picture. That is the safe direction: showing a reader the
+     * standing state once more is a far smaller fault than suppressing a report
+     * because we wrongly believed they had already seen it.
+     */
+    private java.time.Instant lastSentAt(String scheduleId, String scopeId) {
+        try {
+            return runRepository.findLastSentAt(scheduleId, scopeId)
+                    .map(java.sql.Timestamp::toInstant)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("[reporting] last-sent lookup failed for schedule {} scope {}",
+                    scheduleId, scopeId, e);
+            return null;
+        }
     }
 
     private String instituteNameOf(String instituteId) {

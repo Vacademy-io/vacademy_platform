@@ -62,7 +62,8 @@ public class ReportRenderer {
             "session_feedback", "⭐",
             "payments", "💳",
             "ai_assistant", "🤖",
-            "ai_spend", "⚡");
+            "ai_spend", "⚡",
+            "assessments", "📝");
 
     private static final String GOOD = "#12996b";
     private static final String WARN = "#b4690e";

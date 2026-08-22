@@ -23,6 +23,20 @@ public interface ReportRunRepository extends JpaRepository<ReportRun, String> {
      * status column, so inserting again would collide, and skipping would let a
      * transient auth_service or SMTP blip claim the window permanently.
      */
+    /**
+     * When this schedule last actually reached somebody about this scope.
+     *
+     * Only SENT counts: a SKIPPED or FAILED run told the reader nothing, so
+     * treating it as "you have heard this already" would suppress the very first
+     * real report. COALESCE on the scope keeps institute-wide runs (null scope)
+     * comparable, matching the idempotency index.
+     */
+    @Query("SELECT MAX(r.createdAt) FROM ReportRun r WHERE r.scheduleId = :scheduleId "
+            + "AND COALESCE(r.scopeId, '') = COALESCE(:scopeId, '') "
+            + "AND r.status = 'SENT'")
+    java.util.Optional<java.sql.Timestamp> findLastSentAt(@Param("scheduleId") String scheduleId,
+                                                          @Param("scopeId") String scopeId);
+
     @Query("SELECT r FROM ReportRun r WHERE r.scheduleId = :scheduleId "
             + "AND r.windowStart = :windowStart "
             + "AND (:scopeId IS NULL AND r.scopeId IS NULL OR r.scopeId = :scopeId)")

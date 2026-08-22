@@ -35,22 +35,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import {
-  BookOpen,
-  Exam,
-  FileDoc,
-  FilePdf,
-  Headphones,
-  ListChecks,
-  PlayCircle,
-  Question,
   CheckCircle,
-  Lightning,
-  File as FileIcon,
-  PresentationChart,
-  ChatText,
   GraduationCap,
-  Stack,
   LockSimple,
+  Stack,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -74,7 +62,7 @@ import {
   getSlideTitle,
   humanizeTitle,
 } from "./slide-display-utils";
-import { getSlideTypeColors } from "./slide-type-colors";
+import { getSlideTypeColors, getSlideTypeIcon } from "./slide-type-colors";
 
 type BreadcrumbSubject = {
   id: string;
@@ -135,38 +123,6 @@ const isRedundantLoneSubject = (
   if (subject.length < 3 || course.length < 3) return subject === course && !!subject;
   return subject === course || course.includes(subject) || subject.includes(course);
 };
-
-function getSlideIcon(slide: Slide) {
-  const type = slide.source_type?.toUpperCase();
-  switch (type) {
-    case "VIDEO":
-    case "HTML_VIDEO":
-      return PlayCircle;
-    case "DOCUMENT":
-      // Guess PDF vs DOC by available fields; fall back to FileDoc.
-      if (slide.document_slide?.type?.toLowerCase().includes("pdf")) return FilePdf;
-      return FileDoc;
-    case "QUESTION":
-      return Question;
-    case "QUIZ":
-      return ListChecks;
-    case "ASSESSMENT":
-      return Exam;
-    case "AUDIO":
-      return Headphones;
-    case "ASSIGNMENT":
-      return ChatText;
-    case "JUPYTER":
-    case "CODE":
-      return Lightning;
-    case "PRESENTATION":
-      return PresentationChart;
-    case "FEEDBACK":
-      return BookOpen;
-    default:
-      return FileIcon;
-  }
-}
 
 // Fixed row height for the expandable levels. The sticky offsets below are
 // derived from it, so a padding-only change here would silently leave gaps
@@ -303,7 +259,7 @@ const SlideRow = ({
   displayTitle: string;
   onClick: () => void;
 }) => {
-  const Icon = getSlideIcon(slide);
+  const Icon = getSlideTypeIcon(slide);
   const colors = getSlideTypeColors(slide);
   const title = getSlideTitle(slide);
   const label = humanizeTitle(displayTitle);

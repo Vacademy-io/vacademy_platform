@@ -1737,19 +1737,18 @@ function SidebarNavigationPicker({
     onChange: (v: SlidesSidebarNavigation) => void;
 }): JSX.Element {
     return (
-        <div className="mt-4 pt-4 border-t">
+        <div className="mt-4 border-t pt-4">
             <div className="mb-1 flex items-baseline justify-between gap-2">
                 <div>
                     <div className="text-sm font-semibold">Sidebar Navigation</div>
-                    <p className="text-xs text-muted-foreground max-w-prose">
-                        Controls how the learner moves across subjects, modules
-                        and chapters from the slide viewer. Each option changes
-                        what the left sidebar shows — pick whichever fits your
-                        learners&apos; mental model.
+                    <p className="max-w-prose text-xs text-muted-foreground">
+                        Controls how the learner moves across subjects, modules and chapters from
+                        the slide viewer. Each option changes what the left sidebar shows — pick
+                        whichever fits your learners&apos; mental model.
                     </p>
                 </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <NavOptionCard
                     selected={value === 'breadcrumb'}
                     onSelect={() => onChange('breadcrumb')}
@@ -1758,10 +1757,9 @@ function SidebarNavigationPicker({
                     description={
                         <>
                             Sidebar lists <strong>only the current chapter&apos;s slides</strong>.
-                            To jump to another module or subject, the learner
-                            taps the breadcrumb at the top and picks from a
-                            dropdown. Best when courses are small or you want
-                            learners focused on the current chapter.
+                            To jump to another module or subject, the learner taps the breadcrumb at
+                            the top and picks from a dropdown. Best when courses are small or you
+                            want learners focused on the current chapter.
                         </>
                     }
                     preview={<BreadcrumbModePreview />}
@@ -1773,14 +1771,30 @@ function SidebarNavigationPicker({
                     badge="Richer"
                     description={
                         <>
-                            Sidebar shows the <strong>entire Subject → Module → Chapter → Slide tree</strong>.
-                            Learners can scan, expand and jump to any slide
-                            without leaving the viewer. The breadcrumb becomes
-                            a passive label. Best for longer courses where
-                            side-by-side discovery matters.
+                            Sidebar shows the{' '}
+                            <strong>entire Subject → Module → Chapter → Slide tree</strong>.
+                            Learners can scan, expand and jump to any slide without leaving the
+                            viewer. The breadcrumb becomes a passive label. Best for longer courses
+                            where side-by-side discovery matters.
                         </>
                     }
                     preview={<TreeModePreview />}
+                />
+                <NavOptionCard
+                    selected={value === 'lessons'}
+                    onSelect={() => onChange('lessons')}
+                    title="Lesson list"
+                    badge="Media-rich"
+                    description={
+                        <>
+                            The whole course as a <strong>flat list of lessons</strong>, each with a
+                            thumbnail, a full two-line title and its length. Chapters become
+                            headings rather than toggles, so nothing has to be expanded, and a
+                            course-wide progress bar sits at the top. Best for courses learners work
+                            through in order.
+                        </>
+                    }
+                    preview={<LessonListModePreview />}
                 />
                 <NavOptionCard
                     selected={value === 'hidden'}
@@ -1789,11 +1803,10 @@ function SidebarNavigationPicker({
                     badge="Focused"
                     description={
                         <>
-                            The viewer shows <strong>only the slide</strong>. Learners
-                            move with the <strong>Previous / Next</strong> buttons
-                            above the content, which roll over into the next or
-                            previous chapter at the edges. Best when you want a
-                            single, guided path with nothing to browse past.
+                            The viewer shows <strong>only the slide</strong>. Learners move with the{' '}
+                            <strong>Previous / Next</strong> buttons above the content, which roll
+                            over into the next or previous chapter at the edges. Best when you want
+                            a single, guided path with nothing to browse past.
                         </>
                     }
                     preview={<NoSidebarModePreview />}
@@ -1802,7 +1815,6 @@ function SidebarNavigationPicker({
         </div>
     );
 }
-
 function NavOptionCard({
     selected,
     onSelect,
@@ -1922,6 +1934,69 @@ function TreeModePreview(): JSX.Element {
     );
 }
 
+// Mock of the lesson list: a progress line, chapter headings and thumbnail rows.
+function LessonListModePreview(): JSX.Element {
+    return (
+        <div className="overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+            <div className="border-b border-neutral-200 bg-white px-2 py-1.5">
+                <div className="text-2xs font-medium text-neutral-600">3 / 24 completed</div>
+                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-200">
+                    <div className="h-full w-1/6 rounded-full bg-primary-400" />
+                </div>
+            </div>
+            <div className="py-1">
+                <div className="px-2 pb-0.5 pt-1.5 text-2xs font-semibold text-neutral-800">
+                    C1 · Basics
+                </div>
+                <MockLessonRow label="Welcome to the course" meta="9m" tone="bg-blue-100" done />
+                <MockLessonRow label="How numbers behave" meta="4m" tone="bg-amber-100" />
+                <div className="px-2 pb-0.5 pt-2 text-2xs font-semibold text-neutral-800">
+                    C2 · Integers
+                </div>
+                <MockLessonRow label="The integer line" meta="12m" tone="bg-blue-100" active />
+                <MockLessonRow label="Practice set" meta="6 questions" tone="bg-teal-100" />
+            </div>
+        </div>
+    );
+}
+
+function MockLessonRow({
+    label,
+    meta,
+    tone,
+    active,
+    done,
+}: {
+    label: string;
+    meta: string;
+    tone: string;
+    active?: boolean;
+    done?: boolean;
+}): JSX.Element {
+    return (
+        <div
+            className={`flex items-center gap-1.5 border-s-2 px-2 py-1 ${
+                active ? 'border-primary-500 bg-primary-50' : 'border-transparent'
+            }`}
+        >
+            <span className={`h-4 w-6 shrink-0 rounded-sm ${done ? 'bg-success-200' : tone}`} />
+            <span className="min-w-0 flex-1">
+                <span
+                    className={`block truncate text-2xs ${
+                        active
+                            ? 'font-semibold text-primary-700'
+                            : done
+                              ? 'text-neutral-400'
+                              : 'text-neutral-700'
+                    }`}
+                >
+                    {label}
+                </span>
+                <span className="block text-2xs text-neutral-400">{meta}</span>
+            </span>
+        </div>
+    );
+}
 function MockSlideRow({
     label,
     active,

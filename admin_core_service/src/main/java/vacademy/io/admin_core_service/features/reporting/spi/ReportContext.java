@@ -47,6 +47,33 @@ public class ReportContext {
     /** Human label for the scope, used in the subject line and heading. */
     private final String scopeLabel;
 
+    /** "daily" | "weekly" | "monthly" — how often this reader hears from us. */
+    private final String cadence;
+
+    /**
+     * When this schedule last successfully reported on this scope, or null on the
+     * first ever run.
+     *
+     * Exists so a section can distinguish "the state of things" from "what changed
+     * since you last heard from us". Sections that report a STANDING BACKLOG must
+     * use it, because a backlog is identical tomorrow: measured on real data, a
+     * daily doubts report showed the same twelve 120-to-160-day-old doubts every
+     * day while the eight raised that week ranked 25th and below and were never
+     * shown at all. A daily reader needs the day's news; a weekly reader is the one
+     * who benefits from being reminded of the worst of the backlog.
+     */
+    private final Instant previousRunAt;
+
+    /** True when this reader has heard from us before about this scope. */
+    public boolean hasPreviousRun() {
+        return previousRunAt != null;
+    }
+
+    /** Daily readers get "what changed"; longer cadences get "how things stand". */
+    public boolean isDailyCadence() {
+        return cadence != null && cadence.equalsIgnoreCase("daily");
+    }
+
     /**
      * Learner ids this document is allowed to name, or null for "no restriction".
      *

@@ -158,8 +158,11 @@ export type OutlineMode = 'expanded' | 'collapsed';
  * - "breadcrumb": Sidebar shows only the current chapter's slide list; learners
  *   jump across modules/subjects via breadcrumb popovers (legacy layout).
  * - "ancestors": Sidebar shows the full Subject → Module → Chapter → Slide tree.
+ * - "lessons": Sidebar shows the whole course as a flat, thumbnail-led lesson
+ *   list — chapters are headings rather than toggles and nothing collapses.
+ * - "hidden": No sidebar; the learner moves with Previous / Next alone.
  */
-export type SlidesSidebarNavigation = 'breadcrumb' | 'ancestors' | 'hidden';
+export type SlidesSidebarNavigation = 'breadcrumb' | 'ancestors' | 'lessons' | 'hidden';
 
 /**
  * Layout of the course-details page once the learner is ENROLLED in the course.

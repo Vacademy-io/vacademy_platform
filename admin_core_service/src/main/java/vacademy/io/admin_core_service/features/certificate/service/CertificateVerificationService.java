@@ -48,6 +48,28 @@ public class CertificateVerificationService {
     private final IssuedCertificateRepository issuedCertificateRepository;
     private final InstituteRepository instituteRepository;
     private final AuthService authService;
+    /**
+     * Deliberately NOT a constructor dependency.
+     *
+     * <p>{@code @RequiredArgsConstructor} only takes final fields, so making this
+     * final would widen the generated constructor and break every existing caller
+     * — three verification tests construct this service directly with three
+     * arguments. Field injection keeps that constructor exactly as it was, and
+     * this is only needed for the one optional path that serves an uploaded PDF.
+     *
+     * <p>Consequently it can be null (in those tests, or if the bean is absent),
+     * so every use must be null-guarded.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vacademy.io.admin_core_service.features.media_service.service.MediaService mediaService;
+
+    /** Shared: ObjectMapper is thread-safe once configured, and these are read-only parses. */
+    private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    static final String PAGE_MODE = "PAGE";
+    static final String DOCUMENT_MODE = "DOCUMENT";
+    static final String PDF_DOCUMENT = "PDF";
 
     private static final SecureRandom RANDOM = new SecureRandom();
     /** 16 bytes → 128 bits, url-safe base64 → 22 chars. Not guessable. */
@@ -244,6 +266,9 @@ public class CertificateVerificationService {
         Institute institute = instituteRepository.findById(certificate.getInstituteId())
                 .orElse(null);
 
+        // Parsed once and shared by every settings read below.
+        com.fasterxml.jackson.databind.JsonNode certificateConfig = readCertificateConfig(institute);
+
         return CertificateVerificationDto.builder()
                 .valid(true)
                 .certificateId(certificate.getCertificateId())
@@ -254,16 +279,253 @@ public class CertificateVerificationService {
                 .instituteLogoFileId(institute != null ? institute.getLogoFileId() : null)
                 .instituteThemeCode(institute != null ? institute.getInstituteThemeCode() : null)
                 .instituteWebsite(institute != null ? institute.getWebsiteUrl() : null)
-                .instituteNote(readVerificationSetting(institute, "verificationNote"))
-                .headline(readVerificationSetting(institute, "verificationHeadline"))
-                .showCourse(readVerificationFlag(institute, "verificationShowCourse"))
-                .showIssueDate(readVerificationFlag(institute, "verificationShowIssueDate"))
-                .showCompletion(readVerificationFlag(institute, "verificationShowCompletion"))
+                .instituteNote(readSetting(certificateConfig, "verificationNote"))
+                .headline(readSetting(certificateConfig, "verificationHeadline"))
+                .showCourse(readFlag(certificateConfig, "verificationShowCourse"))
+                .showIssueDate(readFlag(certificateConfig, "verificationShowIssueDate"))
+                .showCompletion(readFlag(certificateConfig, "verificationShowCompletion"))
                 .courseName(certificate.getCourseName())
                 .issuedAt(certificate.getIssuedAt())
                 .completionPercentage(certificate.getCompletionPercentage())
                 .learnerName(maskName(resolveLearnerName(certificate.getUserId())))
+                .verificationMode(resolveVerificationMode(certificateConfig))
+                .documentType(resolveDocumentType(certificateConfig))
+                .documentUrl(resolveDocumentUrl(certificateConfig, certificate))
                 .build();
+    }
+
+    /**
+     * {@code DOCUMENT} only when the institute both asked for it and actually has
+     * something to serve; {@code PAGE} otherwise.
+     *
+     * <p>Resolved server-side on purpose. A half-configured institute — mode
+     * switched over, document never designed — must still verify, and the client
+     * should not have to encode that rule.
+     */
+    static String resolveVerificationMode(com.fasterxml.jackson.databind.JsonNode config) {
+        if (!DOCUMENT_MODE.equalsIgnoreCase(readSetting(config, "verificationMode"))) {
+            return PAGE_MODE;
+        }
+        return hasDocument(config) ? DOCUMENT_MODE : PAGE_MODE;
+    }
+
+    /** {@code PDF}/{@code HTML} when a document will be served, else null. */
+    private static String resolveDocumentType(com.fasterxml.jackson.databind.JsonNode config) {
+        if (!DOCUMENT_MODE.equals(resolveVerificationMode(config))) {
+            return null;
+        }
+        return PDF_DOCUMENT.equalsIgnoreCase(readSetting(config, "verificationDocumentType"))
+                ? PDF_DOCUMENT : "HTML";
+    }
+
+    /** Whether there is a document to serve, of whichever type is configured. */
+    private static boolean hasDocument(com.fasterxml.jackson.databind.JsonNode config) {
+        if (PDF_DOCUMENT.equalsIgnoreCase(readSetting(config, "verificationDocumentType"))) {
+            return StringUtils.hasText(readSetting(config, "verificationDocumentFileId"));
+        }
+        return StringUtils.hasText(readSetting(config, "verificationDocumentHtml"));
+    }
+
+    /**
+     * Where the client should send the reader, or null to render the page.
+     *
+     * <p>An uploaded PDF is served straight from media; designed HTML goes
+     * through this service so the tokens are substituted against the credential
+     * the reader actually presented. The credential is carried on the URL for
+     * the same reason it is required on {@code /verify}: the document names a
+     * learner, so a bare certificate number must never fetch it.
+     */
+    private String resolveDocumentUrl(com.fasterxml.jackson.databind.JsonNode config, IssuedCertificate certificate) {
+        if (!DOCUMENT_MODE.equals(resolveVerificationMode(config))) {
+            return null;
+        }
+        if (PDF_DOCUMENT.equalsIgnoreCase(readSetting(config, "verificationDocumentType"))) {
+            String fileId = readSetting(config, "verificationDocumentFileId");
+            return StringUtils.hasText(fileId) ? mediaFileUrl(fileId) : null;
+        }
+        // A path on this API, deliberately not an absolute URL. The scan lands on
+        // whichever learner portal the institute configured, so there is no single
+        // correct host to bake in here — the client prefixes the same API base it
+        // already used to call /verify. documentType tells it this is the case.
+        return "/admin-core-service/open/v1/certificate/verify/"
+                + urlEncode(certificate.getCertificateId()) + "/document";
+    }
+
+    /**
+     * Render the institute's designed verification document for one certificate.
+     *
+     * <p>Requires the same credential as {@link #verify}: the document names a
+     * learner, so a bare certificate number must not fetch it. An unknown number
+     * and a wrong credential both come back empty, exactly as on the page.
+     *
+     * <p><b>The token values are taken from the verification DTO, not from the
+     * certificate row.</b> That is the whole privacy guarantee: the page masks
+     * the learner's name, and building the document from the same object means
+     * it cannot print more than the page already shows. Reading the raw row here
+     * would quietly turn a public URL into a full-name disclosure.
+     *
+     * @return the substituted HTML, or empty when the credential does not
+     *         resolve or the institute has no HTML document configured
+     */
+    public Optional<String> renderVerificationDocument(String certificateId, String credential) {
+        if (!StringUtils.hasText(certificateId) || !StringUtils.hasText(credential)) {
+            return Optional.empty();
+        }
+        String number = certificateId.trim();
+        String secret = credential.trim();
+
+        // Resolved through the same credential-checked lookup as verify(). There
+        // is deliberately no findByCertificateId on the repository — numbers are
+        // sequential, so a number-only lookup would make the whole institute
+        // enumerable. Adding one for convenience here would reopen exactly that.
+        Optional<IssuedCertificate> found =
+                issuedCertificateRepository.findByCertificateIdAndVerificationToken(number, secret)
+                        .or(() -> issuedCertificateRepository.findByCertificateIdAndShortCode(number, secret));
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        CertificateVerificationDto dto = toDto(found.get());
+
+        Institute institute = instituteRepository.findById(found.get().getInstituteId()).orElse(null);
+        com.fasterxml.jackson.databind.JsonNode config = readCertificateConfig(institute);
+
+        // A PDF document is served straight from media; there is nothing to
+        // substitute into it, so this endpoint has no answer for that mode.
+        if (PDF_DOCUMENT.equalsIgnoreCase(readSetting(config, "verificationDocumentType"))) {
+            return Optional.empty();
+        }
+
+        String template = readSetting(config, "verificationDocumentHtml");
+        if (!StringUtils.hasText(template)) {
+            return Optional.empty();
+        }
+        return Optional.of(substituteVerificationTokens(template, dto));
+    }
+
+    /**
+     * Fill the verification document's tokens from what the page would show.
+     *
+     * <p>The token names match the certificate editor's, so a field dragged onto
+     * a certificate behaves the same when dragged onto a verification document.
+     * Anything left unresolved is blanked rather than printed raw — the same
+     * rule the certificate renderer applies, and it matters more here because
+     * this page is public.
+     */
+    String substituteVerificationTokens(String template, CertificateVerificationDto dto) {
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("STUDENT_NAME", nullToEmpty(dto.getLearnerName()));
+        values.put("CERTIFICATE_ID", nullToEmpty(dto.getCertificateId()));
+        values.put("INSTITUTE_NAME", nullToEmpty(dto.getInstituteName()));
+        values.put("COURSE_NAME", nullToEmpty(dto.getCourseName()));
+        values.put("VERIFICATION_HEADLINE", nullToEmpty(dto.getHeadline()));
+        values.put("VERIFICATION_NOTE", nullToEmpty(dto.getInstituteNote()));
+        values.put("DATE_OF_COMPLETION", dto.getIssuedAt() == null ? ""
+                : new java.text.SimpleDateFormat("dd MMM yyyy").format(dto.getIssuedAt()));
+        values.put("COMPLETION_PERCENTAGE", dto.getCompletionPercentage() == null ? ""
+                : dto.getCompletionPercentage() + "%");
+
+        String out = template;
+        for (java.util.Map.Entry<String, String> entry : values.entrySet()) {
+            out = out.replace("{{" + entry.getKey() + "}}", entry.getValue());
+        }
+        // Blank any token this document carries that verification has no value
+        // for — an unresolved {{TOKEN}} printed literally on a public page reads
+        // as a broken record rather than a verified one.
+        return out.replaceAll("\\{\\{[A-Z0-9_]+}}", "");
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
+     * A permanent public URL for an uploaded verification PDF.
+     *
+     * <p>Non-expiring deliberately: the QR is printed on a physical certificate
+     * that may be scanned years later, and a signed URL with a lifetime would
+     * turn every one of those into a dead link.
+     */
+    private String mediaFileUrl(String fileId) {
+        if (mediaService == null) {
+            return null;   // see the field docs: optional, so the page is the fallback
+        }
+        try {
+            return mediaService.getFilePublicUrlByIdWithoutExpiry(fileId);
+        } catch (Exception e) {
+            // Falling back to the page beats showing a broken document.
+            log.warn("Could not resolve the verification document url for file {}", fileId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Percent-encode a certificate number for use as a path segment.
+     *
+     * <p>Numbering patterns allow {@code /}, so an unencoded {@code EDU/2026/001}
+     * would split one segment into three and miss the route. {@code +} means a
+     * literal plus in a path rather than a space, so it has to become {@code %20}.
+     */
+    private static String urlEncode(String value) {
+        return java.net.URLEncoder
+                .encode(value == null ? "" : value.trim(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+    }
+
+    /**
+     * The institute's COURSE_COMPLETION certificate config, parsed once.
+     *
+     * <p>Every {@code readVerificationSetting} call used to re-parse the whole
+     * settings blob with a fresh ObjectMapper. That blob is large — tens of
+     * kilobytes for an institute with a designed template — and this is a
+     * public, unauthenticated endpoint, so parsing it a dozen times per scan is
+     * an amplification worth avoiding. Read it once and pass the node down.
+     *
+     * @return the config node, or null when absent or malformed
+     */
+    private com.fasterxml.jackson.databind.JsonNode readCertificateConfig(Institute institute) {
+        String settingJson = institute != null ? institute.getSetting() : null;
+        if (!StringUtils.hasText(settingJson)) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode entries = OBJECT_MAPPER.readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode config : entries) {
+                    if ("COURSE_COMPLETION".equals(config.path("key").asText(null))) {
+                        return config;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Same posture as before: a malformed blob means defaults, never a
+            // failed verification.
+            log.warn("Could not read certificate settings for institute {}",
+                    institute != null ? institute.getId() : null, e);
+        }
+        return null;
+    }
+
+    /** One string field off an already-parsed config node. */
+    private static String readSetting(com.fasterxml.jackson.databind.JsonNode config, String field) {
+        if (config == null) {
+            return null;
+        }
+        com.fasterxml.jackson.databind.JsonNode value = config.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        String text = value.asText(null);
+        return StringUtils.hasText(text) ? text.trim() : null;
+    }
+
+    /** One boolean flag off an already-parsed config node; null when unset. */
+    private static Boolean readFlag(com.fasterxml.jackson.databind.JsonNode config, String field) {
+        if (config == null) {
+            return null;
+        }
+        com.fasterxml.jackson.databind.JsonNode value = config.path(field);
+        return value.isBoolean() ? value.asBoolean() : null;
     }
 
     /**
@@ -303,7 +565,7 @@ public class CertificateVerificationService {
         }
         try {
             com.fasterxml.jackson.databind.JsonNode entries =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingJson)
+                    OBJECT_MAPPER.readTree(settingJson)
                             .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
             if (entries.isArray()) {
                 for (com.fasterxml.jackson.databind.JsonNode config : entries) {

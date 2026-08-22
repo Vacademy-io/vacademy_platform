@@ -165,6 +165,8 @@ export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/upd
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
 // Where the institute's certificate counter currently stands. Read-only and
 // reserves nothing, so the numbering screen can call it while the admin edits.
+// Rasterises an uploaded verification PDF into a canvas the editor can use.
+export const CERTIFICATE_VERIFICATION_DOCUMENT_UPLOAD = `${BASE_URL}/admin-core-service/institute/v1/certificate/verification-document/upload`;
 export const CERTIFICATE_NUMBERING_STATUS = `${BASE_URL}/admin-core-service/institute/v1/certificate/numbering-status`;
 // Course-scoped certificate management, backing the Certificates tab on the
 // course page. Settings are addressed by packageId (an override applies to every

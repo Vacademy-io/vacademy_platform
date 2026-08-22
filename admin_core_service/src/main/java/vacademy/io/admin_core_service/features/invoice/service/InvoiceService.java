@@ -249,6 +249,22 @@ public class InvoiceService {
     private static final String DOC_TYPE_ADMIN = "ADM";
     private static final String DOC_TYPE_LIVE_SESSION = "LS";
 
+    /**
+     * Doc type and counter namespace for proforma invoices. The namespace is what keeps a
+     * proforma out of the institute's real invoice series — see
+     * {@code InvoiceNumberContext.seqNamespace}.
+     */
+    private static final String DOC_TYPE_PROFORMA = "PRO";
+
+    /** {@code invoice_data_json} keys carrying proforma state. See {@link #finalizeProformaOnPayment}. */
+    private static final String JSON_KEY_PROFORMA = "proforma";
+    private static final String JSON_KEY_PROFORMA_DOC_TYPE = "proformaDocType";
+    private static final String JSON_KEY_PROFORMA_NUMBER = "proformaNumber";
+    private static final String JSON_KEY_FINALIZED_AT = "finalizedAt";
+
+    private static final String DOCUMENT_TITLE_INVOICE = "INVOICE";
+    private static final String DOCUMENT_TITLE_PROFORMA = "PROFORMA INVOICE";
+
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     // ── Editable-placeholder support (admin invoice preview / overrides) ──────────────
@@ -1682,6 +1698,201 @@ public class InvoiceService {
                 buildInvoiceNumberContext(instituteId, institute, config, invoiceData, docType));
     }
 
+    // ── Proforma ─────────────────────────────────────────────────────────────
+
+    /**
+     * Whether this institute issues unpaid invoices as proformas
+     * ({@code INVOICE_SETTING.proformaEnabled}). Defaults to false, so nothing changes for
+     * an institute that has not opted in.
+     */
+    public boolean isProformaEnabled(String instituteId) {
+        try {
+            Institute institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null) {
+                return false;
+            }
+            return isProformaEnabled(institute);
+        } catch (Exception e) {
+            log.warn("Could not resolve proformaEnabled for institute {} — treating as off", instituteId, e);
+            return false;
+        }
+    }
+
+    private boolean isProformaEnabled(Institute institute) {
+        Object raw = getInvoiceSettings(institute).get("proformaEnabled");
+        return raw instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(raw));
+    }
+
+    /**
+     * Allocate a PROFORMA number: its own series, never the institute's invoice series.
+     *
+     * <p>A proforma is a request for payment, not a tax document. Numbering it out of the
+     * real series would mean every cancelled or never-paid proforma leaves a permanent gap
+     * in a sequence that is supposed to be gapless — so it counts in its own {@code PRO:*}
+     * namespace and only draws a real number when it is paid (see
+     * {@link #finalizeProformaOnPayment}).
+     *
+     * <p>The institute's configured format is kept and simply prefixed, so
+     * {@code ACME/2026-27/0007} proformas read {@code PRO-ACME/2026-27/0007}. Formats that
+     * already carry {@code {{doc_type}}} render {@code PRO} through that token instead and
+     * are left alone.
+     *
+     * <p><b>Scope of the guarantee:</b> a proforma number is unique among OUTSTANDING
+     * proformas, not across all time. A row carries one {@code (seq_no, seq_scope_key)}
+     * pair, and finalization re-points that pair at the real series — so the proforma
+     * counter only ever sees proformas that have not yet been paid, and a number can be
+     * handed out again once its previous holder became an invoice. That is deliberate and
+     * harmless: nothing in tax law requires a proforma series to be gapless or permanent
+     * (which is the entire reason for this feature), the unique constraint still prevents
+     * two live documents sharing a number, and the number a paid invoice used to carry is
+     * preserved on it as {@code proformaNumber}. Strict lifetime-monotonic proforma numbers
+     * would need a dedicated column, since one row cannot record its position in two series.
+     */
+    private InvoiceNumberAllocation allocateProformaNumber(String instituteId, InvoiceData invoiceData) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        if (!config.usesDocType()) {
+            config = config.withFormat(DOC_TYPE_PROFORMA + "-" + config.getFormat());
+        }
+        InvoiceNumberContext context = buildInvoiceNumberContext(
+                instituteId, institute, config, invoiceData, DOC_TYPE_PROFORMA);
+        context.setSeqNamespace(DOC_TYPE_PROFORMA);
+        InvoiceNumberAllocation allocation = invoiceNumberService.generate(config, context);
+        applyAllocation(invoiceData, allocation);
+        log.info("Allocated proforma number {} (seq {} in {}) for institute {}",
+                allocation.number(), allocation.seqNo(), allocation.scopeKey(), instituteId);
+        return allocation;
+    }
+
+    /** True when this invoice is still an unpaid proforma. */
+    private boolean isProforma(Invoice invoice) {
+        return Boolean.parseBoolean(
+                String.valueOf(readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA)));
+    }
+
+    /**
+     * Turn a paid proforma into a real invoice: allocate the actual invoice number NOW,
+     * re-render the PDF under it, and record what it used to be.
+     *
+     * <p>This is the moment the tax document comes into existence, which is the whole point
+     * of the feature — the institute's invoice series only ever advances for money that was
+     * actually received, so it stays gapless no matter how many proformas were raised and
+     * abandoned.
+     *
+     * <p>Called from both settlement paths ({@link #markInvoicePaidManually} and
+     * {@link #markAdminInvoicePaidByPaymentLog}) BEFORE the status flips to PAID. Idempotent:
+     * an invoice that is not a proforma — including one already finalized by an earlier
+     * delivery of the same webhook — returns untouched.
+     *
+     * <p>Best-effort on the PDF only. If re-rendering fails the invoice still gets its real
+     * number and the old proforma PDF is left in place rather than losing the number
+     * allocation; {@code resolveOrRegeneratePdfUrl} re-renders it on the next download.
+     */
+    private Invoice finalizeProformaOnPayment(Invoice invoice) {
+        if (!isProforma(invoice)) {
+            return invoice;
+        }
+        String proformaNumber = invoice.getInvoiceNumber();
+        String docType = readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA_DOC_TYPE);
+        if (!StringUtils.hasText(docType)) {
+            docType = DOC_TYPE_ADMIN;
+        }
+
+        UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()))
+                .stream().findFirst().orElse(UserDTO.builder().build());
+        Institute institute = instituteRepository.findById(invoice.getInstituteId()).orElse(null);
+        InvoiceData numberingData = numberingDataForAdminInvoice(
+                institute, user, invoice.getInvoiceDate(), invoice.getCurrency());
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+
+        InvoiceNumberAllocation allocation =
+                allocateInvoiceNumber(invoice.getInstituteId(), numberingData, docType);
+
+        int maxAttempts = 4;
+        Invoice finalized;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                finalized = self.saveFinalizedProformaNumber(
+                        invoice.getId(), allocation, proformaNumber);
+                break;
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= maxAttempts - 1) {
+                    throw e;
+                }
+                InvoiceNumberAllocation retry = invoiceNumberService.nextAfterCollision(config,
+                        buildInvoiceNumberContext(invoice.getInstituteId(), institute, config,
+                                numberingData, docType),
+                        attempt + 1);
+                log.warn("Invoice number {} collided while finalizing proforma {} for institute {} "
+                                + "— retrying as {} (attempt {}).",
+                        allocation.number(), proformaNumber, invoice.getInstituteId(),
+                        retry.number(), attempt + 1);
+                allocation = retry;
+            }
+        }
+
+        // The number was written by a DIFFERENT persistence context, so the instance the caller
+        // is holding still carries the proforma number. Copy the authoritative fields across —
+        // the caller saves this instance again to flip the status, and without this that save
+        // would write the stale number straight back over the one just allocated.
+        invoice.setInvoiceNumber(finalized.getInvoiceNumber());
+        invoice.setSeqNo(finalized.getSeqNo());
+        invoice.setSeqScopeKey(finalized.getSeqScopeKey());
+        invoice.setInvoiceDataJson(finalized.getInvoiceDataJson());
+
+        // Re-render under the real number. buildInvoiceDataFromPersistedInvoice reads the
+        // number off the row we just saved, so the new PDF (and its S3 object name) carry it.
+        try {
+            String pdfFileId = regenerateInvoicePdf(invoice);
+            if (StringUtils.hasText(pdfFileId)) {
+                invoice.setPdfFileId(pdfFileId);
+            }
+        } catch (Exception e) {
+            log.error("Proforma {} finalized as {} but PDF re-render failed — the stored PDF still "
+                            + "shows the proforma. It regenerates on next download.",
+                    proformaNumber, invoice.getInvoiceNumber(), e);
+        }
+
+        log.info("[ProformaFinalized] invoiceId={} proforma={} issuedAs={} seq={}",
+                invoice.getId(), proformaNumber, invoice.getInvoiceNumber(), invoice.getSeqNo());
+        return invoice;
+    }
+
+    /**
+     * Writes the real invoice number onto a proforma, in its own transaction.
+     *
+     * <p>MUST be invoked through {@code self} (the injected proxy), not directly: the whole
+     * point is the {@code REQUIRES_NEW} boundary. A duplicate-number write aborts the
+     * transaction it occurs in, so running this inline would leave the caller with a dead
+     * transaction and nothing to retry into.
+     *
+     * <p>Committing separately from the PAID flip is safe in both directions. If the caller
+     * rolls back afterwards, the invoice keeps its real number but stays PENDING_PAYMENT with
+     * {@code proforma=false} — and the retried webhook (or a repeated manual mark-paid,
+     * which still sees PENDING_PAYMENT) skips finalization as a no-op and just flips the
+     * status. No number is ever allocated twice.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Invoice saveFinalizedProformaNumber(String invoiceId, InvoiceNumberAllocation allocation,
+                                               String proformaNumber) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        invoice.setInvoiceNumber(allocation.number());
+        invoice.setSeqNo(allocation.seqNo());
+        invoice.setSeqScopeKey(allocation.scopeKey());
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put(JSON_KEY_PROFORMA, false);
+        audit.put(JSON_KEY_PROFORMA_NUMBER, proformaNumber);
+        audit.put(JSON_KEY_FINALIZED_AT, LocalDateTime.now().toString());
+        invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), audit));
+        // saveAndFlush so a duplicate number surfaces HERE, inside this transaction, where the
+        // caller can catch it — a deferred flush would blow up in the caller instead.
+        return invoiceRepository.saveAndFlush(invoice);
+    }
+
     private Institute resolveInstituteForNumbering(String instituteId, InvoiceData invoiceData) {
         if (invoiceData != null && invoiceData.getInstitute() != null) {
             return invoiceData.getInstitute();
@@ -1878,6 +2089,12 @@ public class InvoiceService {
         // Basic invoice info
         filled = filled.replace("{{invoice_number}}",
                 ov.apply("invoice_number", invoiceData.getInvoiceNumber()));
+        // "PROFORMA INVOICE" while unpaid, "INVOICE" once it is a real one. Templates that
+        // predate this token keep their hardcoded heading — the PRO- number prefix still
+        // marks the document — so no institute's custom template breaks by not having it.
+        filled = filled.replace("{{document_title}}",
+                ov.apply("document_title", StringUtils.hasText(invoiceData.getDocumentTitle())
+                        ? invoiceData.getDocumentTitle() : DOCUMENT_TITLE_INVOICE));
         filled = filled.replace("{{invoice_date}}",
                 ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
                         ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
@@ -3843,6 +4060,8 @@ public class InvoiceService {
 
         // Read institute invoice settings once for all users in this bulk request
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        // Proforma institutes raise these unpaid; the real invoice number is drawn on payment.
+        boolean proformaMode = isProformaEnabled(institute);
 
         // Subtotal = sum of (unitPrice * quantity) from line items
         BigDecimal subtotal = request.getLineItems().stream()
@@ -3919,9 +4138,13 @@ public class InvoiceService {
                     log.warn("Overridden invoice number '{}' already exists — generating a fresh number instead",
                             overrideNumber);
                 }
-                allocation = allocateInvoiceNumber(request.getInstituteId(),
-                        numberingDataForAdminInvoice(institute, user, invoiceDate, request.getCurrency()),
-                        DOC_TYPE_ADMIN);
+                InvoiceData numberingData =
+                        numberingDataForAdminInvoice(institute, user, invoiceDate, request.getCurrency());
+                // Proforma institutes raise unpaid invoices out of a separate PRO series; the
+                // real invoice number is only drawn when the money arrives.
+                allocation = proformaMode
+                        ? allocateProformaNumber(request.getInstituteId(), numberingData)
+                        : allocateInvoiceNumber(request.getInstituteId(), numberingData, DOC_TYPE_ADMIN);
             }
             String invoiceNumber = allocation.number();
 
@@ -3949,6 +4172,12 @@ public class InvoiceService {
                 Map<String, Object> dataJson = new HashMap<>();
                 if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
                 if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
+                if (proformaMode) {
+                    // Read back by finalizeProformaOnPayment: the flag says "still a proforma",
+                    // the doc type says which real series to draw from once it is paid.
+                    dataJson.put(JSON_KEY_PROFORMA, true);
+                    dataJson.put(JSON_KEY_PROFORMA_DOC_TYPE, DOC_TYPE_ADMIN);
+                }
                 if (!dataJson.isEmpty()) {
                     invoice.setInvoiceDataJson(INVOICE_JSON_MAPPER.writeValueAsString(dataJson));
                 }
@@ -4246,7 +4475,12 @@ public class InvoiceService {
             throw new VacademyException("Failed to promote payment log to SUCCESS: " + e.getMessage());
         }
 
-        // 3. Link PaymentLog → Invoice + flip status to PAID
+        // 3. A proforma becomes a real invoice at the moment it is paid — this is where the
+        // institute's actual invoice number gets drawn. Runs before the PAID flip so the
+        // number and the status land in the same transaction.
+        invoice = finalizeProformaOnPayment(invoice);
+
+        // Link PaymentLog → Invoice + flip status to PAID
         PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new VacademyException(
                         "Payment log not found after creation: " + paymentLogId));
@@ -4660,9 +4894,14 @@ public class InvoiceService {
         BigDecimal subtotal = price.setScale(2, RoundingMode.HALF_UP);
         EffectiveTax tax = computeEffectiveTax(invoiceSettings, subtotal, null, null);
 
-        InvoiceNumberAllocation allocation = allocateInvoiceNumber(instituteId,
-                numberingDataForAdminInvoice(institute, user, LocalDateTime.now(), currency),
-                DOC_TYPE_LIVE_SESSION);
+        // Raised unpaid, so it follows the institute's proforma policy like an admin invoice:
+        // the real number is only drawn once the registration is actually paid for.
+        boolean proformaMode = isProformaEnabled(institute);
+        InvoiceData numberingData =
+                numberingDataForAdminInvoice(institute, user, LocalDateTime.now(), currency);
+        InvoiceNumberAllocation allocation = proformaMode
+                ? allocateProformaNumber(instituteId, numberingData)
+                : allocateInvoiceNumber(instituteId, numberingData, DOC_TYPE_LIVE_SESSION);
 
         Invoice invoice = new Invoice();
         invoice.setInvoiceNumber(allocation.number());
@@ -4682,6 +4921,13 @@ public class InvoiceService {
         invoice.setTaxIncluded(tax.taxIncluded());
         invoice.setSource(INVOICE_SOURCE_LIVE_SESSION);
         invoice.setSourceId(registrationId);
+        if (proformaMode) {
+            Map<String, Object> proformaState = new HashMap<>();
+            proformaState.put(JSON_KEY_PROFORMA, true);
+            proformaState.put(JSON_KEY_PROFORMA_DOC_TYPE, DOC_TYPE_LIVE_SESSION);
+            invoice.setInvoiceDataJson(
+                    mergeInvoiceDataJson(invoice.getInvoiceDataJson(), proformaState));
+        }
         invoice = invoiceRepository.save(invoice);
 
         AdminInvoiceLineItemRequestDTO lineReq = new AdminInvoiceLineItemRequestDTO();
@@ -4781,6 +5027,10 @@ public class InvoiceService {
             return;
         }
 
+        // A proforma becomes a real invoice at the moment it is paid — draw the institute's
+        // actual invoice number before flipping the status.
+        invoice = finalizeProformaOnPayment(invoice);
+
         invoice.setStatus(INVOICE_STATUS_PAID);
         invoiceRepository.saveAndFlush(invoice);
         log.info("Admin invoice {} marked as PAID via paymentLogId={}", invoice.getInvoiceNumber(), paymentLogId);
@@ -4865,6 +5115,9 @@ public class InvoiceService {
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoice.getInvoiceNumber())
+                // Taken from the row rather than a parameter so the heading can never
+                // disagree with what the invoice actually is.
+                .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(subtotal)
@@ -5367,6 +5620,7 @@ public class InvoiceService {
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoice.getInvoiceNumber())
+                .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())
@@ -5505,6 +5759,7 @@ public class InvoiceService {
         return InvoiceDTO.builder()
                 .id(invoice.getId())
                 .invoiceNumber(invoice.getInvoiceNumber())
+                .proforma(isProforma(invoice))
                 .userPlanId(userPlanId) // Retrieved from payment log via mapping
                 .paymentLogId(primaryPaymentLogId) // Primary payment log ID (for backward compatibility)
                 .paymentLogIds(paymentLogIds) // All payment log IDs

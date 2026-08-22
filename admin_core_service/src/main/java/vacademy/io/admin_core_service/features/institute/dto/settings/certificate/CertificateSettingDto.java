@@ -127,6 +127,30 @@ public class CertificateSettingDto {
     private Boolean verificationShowIssueDate;
     private Boolean verificationShowCompletion;
 
+    // What a scanned QR actually opens.
+    //
+    // PAGE (default, and what every existing institute keeps) renders the built-in
+    // verification page from the fields above. DOCUMENT serves a document the
+    // institute supplied instead — some registrars want the scan to produce
+    // something that looks like an official record rather than a web page.
+    //
+    // Null means PAGE. Existing settings blobs have no such key, so they must
+    // keep behaving exactly as they do now.
+    private String verificationMode;
+
+    // HTML or PDF. HTML is designed in the same visual editor as the certificate
+    // and carries {{TOKEN}}s; PDF is uploaded as-is and cannot be substituted
+    // into, so it is the right choice only for a static notice.
+    private String verificationDocumentType;
+
+    // The designed HTML, tokens and all. Substituted at scan time through the
+    // same pipeline as the certificate, so a token that resolves on the
+    // certificate resolves here too.
+    private String verificationDocumentHtml;
+
+    // Media file id of the uploaded PDF, when verificationDocumentType is PDF.
+    private String verificationDocumentFileId;
+
     // Admin-defined fields, so an institute can put values on its certificates
     // that the platform has no built-in token for — a grade, a director's name,
     // an accreditation line. Each entry becomes a draggable chip in the visual

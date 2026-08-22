@@ -51,6 +51,12 @@ public class InvoiceData {
      */
     private Long seqNo;
     private String seqScopeKey;
+    /**
+     * Heading the PDF prints, via {@code {{document_title}}} — "INVOICE" for a real invoice,
+     * "PROFORMA INVOICE" while the document is still an unpaid proforma. Null renders as
+     * "INVOICE", which is what every existing caller wants.
+     */
+    private String documentTitle;
     private LocalDateTime invoiceDate;
     private LocalDateTime dueDate;
     

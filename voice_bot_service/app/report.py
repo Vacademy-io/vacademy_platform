@@ -60,7 +60,7 @@ def _llm_target(s):
 # than omitting them. admin_core reads promisedSends to decide what to actually send,
 # and a MISSING key must not be distinguishable from an EMPTY one downstream — else a
 # failed analysis reads as "the model considered it and found nothing promised".
-_NO_SENDS: Dict[str, Any] = {"promisedSends": [], "whatsappNumber": None, "email": None}
+_NO_SENDS: Dict[str, Any] = {"promisedSends": [], "declinedSends": [], "conditionsMet": [], "whatsappNumber": None, "email": None}
 
 
 async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
@@ -106,8 +106,22 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "array if none), "
         "whatsappNumber (the number the caller confirmed for the send, digits with "
         "country code, or null if they accepted but named no number), "
-        "email (only if the caller actually spoke an email address; null otherwise).\n"
+        "email (only if the caller actually spoke an email address; null otherwise), "
+        f"declinedSends (array, a subset of {artefacts}: ONLY artefacts the assistant "
+        "explicitly OFFERED and the caller REFUSED — 'nahi', 'not now', 'don't send'. An "
+        "artefact never offered is NOT declined, and one they simply did not respond to is "
+        "NOT declined. Empty array if none).\n"
     ) if artefacts else ""
+
+    # The admin's own trigger conditions, in their words. Closed vocabulary again: the
+    # model may only echo back conditions we asked about, so a rule can never fire on a
+    # sentence the model invented. Costs nothing when no rule uses one.
+    conditions = [str(c).strip() for c in (agent.get("sendConditions") or []) if str(c).strip()]
+    condition_spec = (
+        f"conditionsMet (array, a subset of {conditions}: return ONLY those statements that "
+        "the transcript CLEARLY supports. If a statement is not clearly true, leave it out. "
+        "Never invent a statement that is not in that list).\n"
+    ) if conditions else ""
 
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
@@ -124,7 +138,7 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
         "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
         "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n"
-        + artefact_spec +
+        + artefact_spec + condition_spec +
         f"\nTranscript:\n{transcript}\n\nJSON:"
     )
     base_url, api_key, model = _llm_target(s)
@@ -276,6 +290,36 @@ def _sanitize_sends(analysis: Dict[str, Any], outcome: CallOutcome,
 
         seen: set = set()
         promised = [k for k in promised if not (k in seen or seen.add(k))]
+
+        # Declines: same closed vocabulary and de-duplication. The evidence bar is
+        # deliberately LOWER than for a promise, because the error directions invert -
+        # a missed decline means we send something unwanted, so a decline we are unsure
+        # about should still count. A refusal also needs no contact details.
+        raw_declined = analysis.get("declinedSends")
+        declined = ([str(x).strip() for x in raw_declined if str(x).strip()]
+                    if isinstance(raw_declined, list) else [])
+        declined = [k for k in declined if k in allowed]
+        seen_d: set = set()
+        declined = [k for k in declined if not (k in seen_d or seen_d.add(k))]
+        # An artefact cannot be both accepted and refused on one call. Trust the refusal:
+        # sending something the caller may have declined is the expensive mistake.
+        both = [k for k in declined if k in promised]
+        if both:
+            logger.warning("report: %s reported as BOTH promised and declined - treating as "
+                           "declined corr=%s", both, corr)
+            promised = [k for k in promised if k not in declined]
+        analysis["declinedSends"] = declined
+
+        # Custom conditions: closed vocabulary only. The model may echo back a statement
+        # the admin wrote, never one it composed, so a rule cannot fire on invented text.
+        wanted = {str(c).strip() for c in (agent.get("sendConditions") or []) if str(c).strip()}
+        raw_cond = analysis.get("conditionsMet")
+        met = ([str(x).strip() for x in raw_cond if str(x).strip()]
+               if isinstance(raw_cond, list) else [])
+        invented = [c for c in met if c not in wanted]
+        if invented:
+            logger.warning("report: dropping %d invented condition(s) corr=%s", len(invented), corr)
+        analysis["conditionsMet"] = [c for c in met if c in wanted]
 
         # Evidence. REPORT_REQUIRE_CONVERSATION already guarantees a caller turn exists
         # by the time we get here; this asks the narrower question of whether any of
@@ -565,6 +609,8 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         # Artefacts the caller ACCEPTED on the call. admin_core resolves each against
         # the agent's send rules and creates the real WhatsApp/email/meeting action.
         "promisedSends": analysis.get("promisedSends") or [],
+        "declinedSends": analysis.get("declinedSends") or [],
+        "conditionsMet": analysis.get("conditionsMet") or [],
         "whatsappNumber": analysis.get("whatsappNumber"),
         "email": analysis.get("email"),
         "transferAttempted": outcome.transfer_requested,

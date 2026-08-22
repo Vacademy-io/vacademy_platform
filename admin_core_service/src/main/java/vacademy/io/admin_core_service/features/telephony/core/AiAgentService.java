@@ -296,6 +296,8 @@ public class AiAgentService {
         boolean promised = w != null && w.getPromised() != null && !w.getPromised().isBlank();
         boolean hasPredicate = w != null && (promised
                 || (w.getDisposition() != null && !w.getDisposition().isBlank())
+                || (w.getDeclined() != null && !w.getDeclined().isBlank())
+                || (w.getCustom() != null && !w.getCustom().isBlank())
                 || Boolean.TRUE.equals(w.getMeetingRequested())
                 || (w.getExtracted() != null && !w.getExtracted().isEmpty()));
         if (!hasPredicate) {

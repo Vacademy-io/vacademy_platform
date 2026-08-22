@@ -52,7 +52,10 @@ _SVG_ATTRS = {
 }
 PAGE_HTML_ATTRS: Dict[str, set] = {
     "*": {"class", "id", "style", "title", "role", "aria-label", "aria-hidden",
-          "aria-labelledby", "data-vacademy", "data-audience", "data-course"} | _SVG_ATTRS,
+          "aria-labelledby", "data-vacademy", "data-audience", "data-course",
+          # The hook OBJECTS. Allowing data-vacademy without these kept the
+          # verb and stripped the target, so every rewritten link became inert.
+          "data-route", "data-target", "data-href"} | _SVG_ATTRS,
     "a": {"href", "target", "name"},
     "img": {"src", "alt", "width", "height", "loading", "decoding"},
     "time": {"datetime"},
@@ -69,6 +72,7 @@ _CSS_IMPORT_RE = re.compile(r"@import\b[^;]*;", re.I)
 _CSS_URL_RE = re.compile(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", re.I)
 _BANNED_CSS_RE = re.compile(r"expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:", re.I)
 _SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=["\'])([^"\']*)(["\'])', re.I)
+_ANCHOR_RE = re.compile(r'<a\b([^>]*?)\bhref=["\']([^"\']*)["\']([^>]*)>', re.I)
 _REMOTE_RE = re.compile(r"^(https?:)?//", re.I)
 
 
@@ -136,6 +140,9 @@ def import_html_page(
 
     html = _SRC_RE.sub(_fix_src, html)
 
+    # 5b. Links -> hooks the renderer can act on (see rewrite_links).
+    html = rewrite_links(html, report)
+
     # 6. Interactive elements. Tier 1 has no JS and no form target, so a
     #    checkbox that never saves is worse than no checkbox — they are removed
     #    by the allowlist. Count them FIRST so the admin is told what to
@@ -191,3 +198,70 @@ def sanitize_page_html(html: str) -> Tuple[str, bool]:
         ), True
     except ImportError:
         return re.sub(r"<[^>]*>", "", html), False
+
+
+# ─── Link bridge ─────────────────────────────────────────────────────────────
+#
+# A pasted page's links do not work as written, and each fails differently:
+#
+#   href="#section"   survives, then does NOTHING — fragment navigation cannot
+#                     see ids inside a shadow root.
+#   href="start/"     survives, resolves against the browser's base rather than
+#                     the catalogue route, and leaves the site.
+#   href="http://…"   has its href STRIPPED by the scheme allowlist, leaving a
+#                     dead <a> with no indication anything was lost.
+#   <button>          keeps no attributes, so it can never do anything.
+#
+# So links are rewritten at import time into a small attribute vocabulary the
+# renderer binds at runtime with one delegated click handler. Authors can also
+# write these by hand, which is how a pasted button reaches our lead capture or
+# checkout — the thing that makes hosting here worth more than a static host.
+
+_ROUTE_HOOK = 'data-vacademy="route" data-route="%s"'
+_SCROLL_HOOK = 'data-vacademy="scroll" data-target="%s"'
+
+
+def normalise_route(href: str) -> str:
+    """A bundle-relative link -> a catalogue page route ('' means home)."""
+    r = (href or "").strip().split("?")[0].split("#")[0]
+    r = re.sub(r"^\.{1,2}/", "", r)
+    while r.startswith("../"):
+        r = r[3:]
+    r = r.lstrip("./").lstrip("/").rstrip("/")
+    if r.endswith(".html"):
+        r = r[:-5]
+    if r in ("index", "."):
+        r = ""
+    return r
+
+
+def rewrite_links(html: str, report: Dict[str, Any]) -> str:
+    """Convert plain anchors into hooks the renderer can act on."""
+    counts = {"internal": 0, "anchors": 0, "external": 0, "http_upgraded": 0}
+
+    def _one(m: "re.Match[str]") -> str:
+        before, href, after = m.group(1), m.group(2).strip(), m.group(3)
+        attrs = (before + after).rstrip()
+        if href.startswith("#") and len(href) > 1:
+            counts["anchors"] += 1
+            return f'<a{attrs} href="{href}" {_SCROLL_HOOK % href[1:]}>'
+        if href.lower().startswith("http://"):
+            # nh3 allows https only, so an http link would lose its href
+            # entirely. Upgrading beats silently deleting it.
+            counts["http_upgraded"] += 1
+            return f'<a{attrs} href="https://{href[7:]}">'
+        if _REMOTE_RE.match(href) or href.startswith(("mailto:", "tel:")):
+            counts["external"] += 1
+            return m.group(0)
+        if not href or href.startswith("javascript:"):
+            return f"<a{attrs}>"
+        counts["internal"] += 1
+        return f'<a{attrs} href="{href}" {_ROUTE_HOOK % normalise_route(href)}>'
+
+    out = _ANCHOR_RE.sub(_one, html)
+    report["links"] = {k: v for k, v in counts.items() if v}
+    # A button with no hook is inert — worth telling the admin.
+    inert = len(re.findall(r"<button\b(?![^>]*data-vacademy)", out, re.I))
+    if inert:
+        report["inert_buttons"] = inert
+    return out

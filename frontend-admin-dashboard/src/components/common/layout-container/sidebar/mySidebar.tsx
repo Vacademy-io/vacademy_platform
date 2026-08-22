@@ -144,11 +144,15 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // Mentorship sub-item is adminOnly; this one has no role gate, so without this
     // check every non-mentor admin gets an entry that only ever renders
     // "Couldn't load your mentor profile".
-    // Only worth asking where the entry could actually appear: if this institute/role hides
-    // Mentorship, the answer changes nothing, so the probe is skipped entirely rather than
-    // firing a mentorship request on every page of an institute that doesn't use mentorship.
+    // Mentorship must not be touched from anywhere else in the app. A mentor is recognised from
+    // the access token alone (zero requests), so the fallback probe is only worth running where
+    // the answer is actually in play: on a Mentorship route, and only when the entry isn't hidden
+    // for this institute anyway. Everywhere else — dashboard, students, fees — nothing is called.
+    // The result is cached for the session, so returning to the dashboard keeps the entry without
+    // re-asking.
     const mentorshipEntryVisible = isSubItemVisible('mentorship', 'mentorship-my-mentorship');
-    const { isMentor } = useIsMentor(mentorshipEntryVisible);
+    const onMentorshipRoute = currentRoute.startsWith('/mentorship');
+    const { isMentor } = useIsMentor(mentorshipEntryVisible && onMentorshipRoute);
 
     // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
     // entry is available when the feature is ON, or when it's off but the institute

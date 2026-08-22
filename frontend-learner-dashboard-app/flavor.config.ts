@@ -53,8 +53,8 @@ export const flavorConfig: FlavorConfigs = {
   // iThinkers by Fivesep Android app
   "com.fivesep.app": {
     appName: "iThinkers by Fivesep",
-    domain: "vacademy.io",
-    subdomain: "fivesep",
+    domain: "ithinkersolympiad.com",
+    subdomain: "practice",
   },
 
   // Shiksha Nation iOS app (Shreyash Jain account, team 35NLZB49QN)

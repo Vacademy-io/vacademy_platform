@@ -106,6 +106,10 @@ export interface AiCallActionRule {
     when?: {
         disposition?: string;
         promised?: string;
+        /** The agent offered this artefact and the caller REFUSED it. */
+        declined?: string;
+        /** A sentence the admin wrote, judged true of the call by the post-call analyser. */
+        custom?: string;
         meetingRequested?: boolean;
         extracted?: Record<string, string>;
     };

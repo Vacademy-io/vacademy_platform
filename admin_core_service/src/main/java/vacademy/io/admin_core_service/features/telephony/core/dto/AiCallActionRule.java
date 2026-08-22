@@ -125,6 +125,21 @@ public class AiCallActionRule {
         private String disposition;
         /** This artefact key appeared in the analyser's promisedSends. */
         private String promised;
+        /**
+         * This artefact key appeared in the analyser's declinedSends - the agent offered
+         * it and the caller REFUSED. Lets a rule answer a "no" ("they turned the quiz
+         * down, send the brochure instead") rather than only a "yes".
+         */
+        private String declined;
+        /**
+         * A statement the admin wrote, which the post-call analyser judged true of this
+         * call ("the parent asked about fees"). The analyser may only echo back conditions
+         * we published, never one it composed, so a rule cannot fire on invented text.
+         *
+         * <p>Post-call only: it is judged from the whole transcript, which does not exist
+         * while the call is still running.
+         */
+        private String custom;
         /** The analyser reported an agreed meeting. */
         private Boolean meetingRequested;
         /**

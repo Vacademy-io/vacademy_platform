@@ -143,6 +143,7 @@ public class AiCallActionService {
         if (r.getActionType() == null || r.getActionType().isBlank()) return false;
         AiCallActionRule.When w = r.getWhen();
         return w != null && (notBlank(w.getDisposition()) || notBlank(w.getPromised())
+                || notBlank(w.getDeclined()) || notBlank(w.getCustom())
                 || Boolean.TRUE.equals(w.getMeetingRequested())
                 || (w.getExtracted() != null && !w.getExtracted().isEmpty()));
     }
@@ -187,7 +188,25 @@ public class AiCallActionService {
         return out;
     }
 
-    /** True when this agent books meetings through a rule, so the legacy auto-book stands down. */
+    /**
+      * The admin-written conditions this agent's rules test, for the analyser to judge.
+      *
+      * <p>Published as a CLOSED list for the same reason the artefact keys are: the model
+      * may only echo back a statement we asked about, so a rule can never fire on a
+      * sentence it composed itself.
+      */
+     public List<String> conditions(AiAgent agent) {
+         List<String> out = new ArrayList<>();
+         for (AiCallActionRule r : rulesOf(agent)) {
+             AiCallActionRule.When w = r.getWhen();
+             if (w != null && notBlank(w.getCustom()) && !out.contains(w.getCustom().trim())) {
+                 out.add(w.getCustom().trim());
+             }
+         }
+         return out;
+     }
+
+     /** True when this agent books meetings through a rule, so the legacy auto-book stands down. */
     public boolean hasBookMeetingRule(AiAgent agent) {
         return rulesOf(agent).stream()
                 .anyMatch(r -> ACTION_BOOK_MEETING.equalsIgnoreCase(r.getActionType()));
@@ -210,12 +229,15 @@ public class AiCallActionService {
     // ── evaluation ───────────────────────────────────────────────────────────────
 
     /** What a rule is evaluated against. Built once per call, never mutated. */
-    record View(String disposition, Set<String> promised, boolean meetingRequested,
-                Map<String, String> extracted) {}
+    record View(String disposition, Set<String> promised, Set<String> declined,
+                boolean meetingRequested, Map<String, String> extracted,
+                Set<String> conditionsMet) {}
 
     /** Reads the analyser's own report body. Absent fields degrade to "no match", never throw. */
     View viewOf(JsonNode report, String disposition) {
         Set<String> promised = new HashSet<>();
+        Set<String> declined = new HashSet<>();
+        Set<String> conditionsMet = new HashSet<>();
         Map<String, String> extracted = new HashMap<>();
         boolean meeting = false;
         if (report != null) {
@@ -227,6 +249,22 @@ public class AiCallActionService {
                     }
                 });
             }
+            JsonNode ds = report.path("declinedSends");
+            if (ds.isArray()) {
+                ds.forEach(n -> {
+                    if (n != null && !n.isNull() && !n.asText().isBlank()) {
+                        declined.add(n.asText().trim());
+                    }
+                });
+            }
+            JsonNode cm = report.path("conditionsMet");
+            if (cm.isArray()) {
+                cm.forEach(n -> {
+                    if (n != null && !n.isNull() && !n.asText().isBlank()) {
+                        conditionsMet.add(n.asText().trim());
+                    }
+                });
+            }
             meeting = report.path("meetingRequested").asBoolean(false);
             JsonNode qa = report.path("extractedQa");
             if (qa.isObject()) {
@@ -235,8 +273,8 @@ public class AiCallActionService {
                         e.getValue() == null || e.getValue().isNull() ? "" : e.getValue().asText("")));
             }
         }
-        return new View(disposition == null ? "" : disposition, promised, meeting,
-                Collections.unmodifiableMap(extracted));
+        return new View(disposition == null ? "" : disposition, promised, declined, meeting,
+                Collections.unmodifiableMap(extracted), conditionsMet);
     }
 
     /** PURE. Every non-null predicate member must hold (AND). */
@@ -248,6 +286,15 @@ public class AiCallActionService {
             return false;
         }
         if (notBlank(w.getPromised()) && !v.promised().contains(w.getPromised().trim())) {
+            return false;
+        }
+        if (notBlank(w.getDeclined()) && !v.declined().contains(w.getDeclined().trim())) {
+            return false;
+        }
+        // Case-insensitive: the admin's sentence travels to the model and back as text,
+        // and an LLM that re-cases a word must not silently stop a rule from firing.
+        if (notBlank(w.getCustom())
+                && v.conditionsMet().stream().noneMatch(c -> c.equalsIgnoreCase(w.getCustom().trim()))) {
             return false;
         }
         if (Boolean.TRUE.equals(w.getMeetingRequested()) && !v.meetingRequested()) {

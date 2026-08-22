@@ -120,6 +120,14 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setVerificationShowCourse(incoming.getVerificationShowCourse() != null ? incoming.getVerificationShowCourse() : existing.getVerificationShowCourse());
                     dto.setVerificationShowIssueDate(incoming.getVerificationShowIssueDate() != null ? incoming.getVerificationShowIssueDate() : existing.getVerificationShowIssueDate());
                     dto.setVerificationShowCompletion(incoming.getVerificationShowCompletion() != null ? incoming.getVerificationShowCompletion() : existing.getVerificationShowCompletion());
+                    // Same preserve-on-null merge as every field above: the settings
+                    // screen posts only what it edits, so a null here means "leave it",
+                    // not "clear it". Clearing a verification document is done by
+                    // switching the mode back to PAGE, never by omitting the field.
+                    dto.setVerificationMode(incoming.getVerificationMode() != null ? incoming.getVerificationMode() : existing.getVerificationMode());
+                    dto.setVerificationDocumentType(incoming.getVerificationDocumentType() != null ? incoming.getVerificationDocumentType() : existing.getVerificationDocumentType());
+                    dto.setVerificationDocumentHtml(incoming.getVerificationDocumentHtml() != null ? incoming.getVerificationDocumentHtml() : existing.getVerificationDocumentHtml());
+                    dto.setVerificationDocumentFileId(incoming.getVerificationDocumentFileId() != null ? incoming.getVerificationDocumentFileId() : existing.getVerificationDocumentFileId());
                     // Preserve-on-null like the rest, so a save from an older
                     // client can't wipe the institute's field definitions.
                     // Clearing every field is still possible — that sends an

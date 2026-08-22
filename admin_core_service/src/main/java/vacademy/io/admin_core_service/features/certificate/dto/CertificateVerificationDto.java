@@ -85,4 +85,41 @@ public class CertificateVerificationDto {
     private Boolean showCourse;
     private Boolean showIssueDate;
     private Boolean showCompletion;
+
+    /**
+     * What the scan should present: {@code PAGE} (default) or {@code DOCUMENT}.
+     *
+     * <p>The client decides on this rather than guessing from the presence of a
+     * URL, so an institute that configured a document but left it empty still
+     * falls back to the page instead of showing a blank frame.
+     */
+    private String verificationMode;
+
+    /**
+     * Which kind of document {@link #documentUrl} points at: {@code PDF} or
+     * {@code HTML}. Null when the mode is PAGE.
+     *
+     * <p>This exists because the two are fetched differently, and without it the
+     * client cannot tell them apart — see {@link #documentUrl}.
+     */
+    private String documentType;
+
+    /**
+     * Where the verification document lives, when the mode is {@code DOCUMENT}.
+     *
+     * <p><b>How to resolve it depends on {@link #documentType}:</b>
+     * <ul>
+     *   <li>{@code PDF} — an absolute, permanent media URL. Open it as-is.</li>
+     *   <li>{@code HTML} — a path on <em>this API</em>, not on the portal the
+     *       reader is looking at. Prefix it with the API base the client already
+     *       uses for {@code /verify}. A scan lands on the institute's own learner
+     *       portal ({@code student.edustream.ae/verify/…}) while the API lives on
+     *       a different host, so treating this as same-origin would 404.</li>
+     * </ul>
+     *
+     * <p>Null whenever the mode is PAGE, or when the mode is DOCUMENT but nothing
+     * has been designed or uploaded yet — in which case the client renders the
+     * page, so verification never dead-ends on a half-finished configuration.
+     */
+    private String documentUrl;
 }

@@ -3,6 +3,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { MyButton } from '@/components/design-system/button';
+import { cn } from '@/lib/utils';
 
 /**
  * The page a scanned certificate opens, and the little of it an institute
@@ -22,6 +23,23 @@ export interface VerificationPageConfig {
     showCourse: boolean;
     showIssueDate: boolean;
     showCompletion: boolean;
+    /**
+     * What a scan opens: the built-in page, or a document the institute supplied.
+     * 'PAGE' is the default and what every institute has today.
+     */
+    mode: 'PAGE' | 'DOCUMENT';
+    /**
+     * How the supplied document was made. 'HTML' is designed here and carries
+     * dynamic fields; 'PDF' is served exactly as uploaded and cannot, because a
+     * finished PDF has no text to substitute into.
+     */
+    documentType: 'HTML' | 'PDF';
+    /** The designed document, tokens and all. */
+    documentHtml: string;
+    /** Media id of a PDF served verbatim. */
+    documentFileId: string;
+    /** Canvas background derived from an uploaded PDF's first page. */
+    documentBackgroundUrl: string;
 }
 
 export const DEFAULT_VERIFICATION_HEADLINE = 'This certificate is genuine';
@@ -38,6 +56,14 @@ interface Props {
     customUrl: string;
     onClearCustomUrl: () => void;
     sampleCertificateId: string;
+    /**
+     * Upload a PDF and get back a canvas to lay fields on. Resolves to the
+     * background's URL, or rejects with a message worth showing the admin.
+     */
+    onUploadDocument?: (file: File) => Promise<void>;
+    /** Open the visual editor on the verification document. */
+    onEditDocument?: () => void;
+    uploading?: boolean;
     disabled?: boolean;
 }
 
@@ -51,6 +77,9 @@ export const VerificationPageSection = ({
     customUrl,
     onClearCustomUrl,
     sampleCertificateId,
+    onUploadDocument,
+    onEditDocument,
+    uploading,
     disabled,
 }: Props) => {
     const displayName = instituteName || 'Your institute';
@@ -64,6 +93,113 @@ export const VerificationPageSection = ({
                     Scanning the code on a certificate opens this page. It is hosted on your own
                     portal and needs no login, so anyone holding the certificate can check it.
                 </p>
+            </div>
+
+            <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50/60 p-4">
+                <div className="text-sm font-medium">What the code opens</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                        {
+                            value: 'PAGE' as const,
+                            title: 'Verification page',
+                            hint: 'The hosted page below. Works on any phone, nothing to maintain.',
+                        },
+                        {
+                            value: 'DOCUMENT' as const,
+                            title: 'Your own document',
+                            hint: 'Upload a PDF and place dynamic fields on it, like a certificate.',
+                        },
+                    ].map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => onConfigChange({ mode: option.value })}
+                            className={cn(
+                                'rounded-md border p-3 text-left transition',
+                                config.mode === option.value
+                                    ? 'border-primary-500 bg-primary-50'
+                                    : 'border-neutral-200 bg-white hover:border-neutral-300'
+                            )}
+                        >
+                            <div className="text-sm font-medium">{option.title}</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                                {option.hint}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+
+                {config.mode === 'DOCUMENT' && (
+                    <div className="space-y-3 border-t pt-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <input
+                                id="verification-doc-file"
+                                type="file"
+                                accept="application/pdf"
+                                className="hidden"
+                                disabled={disabled || uploading}
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    // Reset immediately so re-picking the same file
+                                    // still fires a change event.
+                                    e.target.value = '';
+                                    if (file && onUploadDocument) void onUploadDocument(file);
+                                }}
+                            />
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="medium"
+                                disable={disabled || uploading}
+                                onClick={() =>
+                                    document.getElementById('verification-doc-file')?.click()
+                                }
+                            >
+                                {uploading ? 'Reading the PDF…' : 'Upload a PDF'}
+                            </MyButton>
+                            {config.documentBackgroundUrl && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="primary"
+                                    scale="medium"
+                                    disable={disabled}
+                                    onClick={() => onEditDocument?.()}
+                                >
+                                    Place fields
+                                </MyButton>
+                            )}
+                        </div>
+
+                        {config.documentBackgroundUrl ? (
+                            <div className="flex items-start gap-3">
+                                <img
+                                    src={config.documentBackgroundUrl}
+                                    alt="Verification document"
+                                    className="h-24 w-auto rounded border bg-white object-contain"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Fields you place are filled in when someone scans — the
+                                    certificate number, the course, the learner&apos;s name as the
+                                    page shows it. Only the first page becomes the document.
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground">
+                                Upload the PDF you want people to see. Its first page becomes a
+                                canvas you can drop dynamic fields onto, exactly like a certificate.
+                            </p>
+                        )}
+
+                        <div className="flex items-start gap-2 rounded-md border border-warning-300 bg-warning-50 p-3">
+                            <span className="text-xs text-warning-700">
+                                Until you upload a document, scans keep opening the verification
+                                page below — so verification never breaks while you are still
+                                setting this up.
+                            </span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">

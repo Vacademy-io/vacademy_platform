@@ -27,6 +27,25 @@ export interface CertificateVerification {
   institute_logo_file_id?: string | null;
   institute_theme_code?: string | null;
   institute_website?: string | null;
+  /**
+   * What this scan should present: 'PAGE' (default) or 'DOCUMENT'.
+   *
+   * Resolved server-side, so an institute that switched to DOCUMENT but never
+   * finished designing one still reports PAGE — verification must never
+   * dead-end on half-finished configuration.
+   */
+  verification_mode?: "PAGE" | "DOCUMENT" | null;
+  /** Which kind of document {@link document_url} points at. */
+  document_type?: "HTML" | "PDF" | null;
+  /**
+   * Where the document lives, when verification_mode is 'DOCUMENT'.
+   *
+   * PDF -> an absolute, permanent media URL; open as-is.
+   * HTML -> a path on the API, NOT on this portal. It must be prefixed with
+   * BASE_URL: the scan lands on the institute's own domain while the API lives
+   * elsewhere, so treating it as same-origin would 404.
+   */
+  document_url?: string | null;
   /** A line the institute chose to show here, or nothing. */
   institute_note?: string | null;
   /**

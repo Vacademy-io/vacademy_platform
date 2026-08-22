@@ -16,8 +16,10 @@ import {
     Trash,
 } from '@phosphor-icons/react';
 import { nanoid } from 'nanoid';
+import { toast } from 'sonner';
 import {
     getCertificateNumberingStatus,
+    uploadVerificationDocument,
     handleConfigureCertificateSettings,
     type BarcodeContent,
     type CertificateAspectRatio,
@@ -541,6 +543,10 @@ type CertificateConfig = {
     verificationShowCourse?: boolean;
     verificationShowIssueDate?: boolean;
     verificationShowCompletion?: boolean;
+    verificationMode?: 'PAGE' | 'DOCUMENT';
+    verificationDocumentType?: 'HTML' | 'PDF';
+    verificationDocumentHtml?: string;
+    verificationDocumentFileId?: string;
     customFields?: CertificateCustomField[];
     currentHtmlCertificateTemplate?: string;
     placeHoldersMapping?: Record<string, string>;
@@ -641,6 +647,20 @@ const parseImageTemplateJson = (
     };
 };
 
+/**
+ * Pull the canvas background out of a saved verification document.
+ *
+ * <p>The document is stored as HTML, so the background it was designed on lives
+ * in its own markup rather than in a separate field. Reading it back means the
+ * settings screen can show a thumbnail without a second round trip, and without
+ * a field that could drift out of sync with the document itself.
+ */
+const extractBackgroundUrl = (html: string): string => {
+    if (!html) return '';
+    const match = html.match(/<img[^>]*class="bg"[^>]*src="([^"]+)"/);
+    return match?.[1] ?? '';
+};
+
 const CertificatesSettings = () => {
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
     const settingString = instituteDetails?.setting || '';
@@ -684,6 +704,7 @@ const CertificatesSettings = () => {
     const [highestIssuedSequence, setHighestIssuedSequence] = useState<number | undefined>(
         undefined
     );
+    const [uploadingVerificationDoc, setUploadingVerificationDoc] = useState(false);
     const [qrVerificationUrlTemplate, setQrVerificationUrlTemplate] = useState<string>('');
     const [badgeCodeType, setBadgeCodeType] = useState<'QR' | 'BARCODE'>('QR');
     // Defaults to NUMBER, which is what every certificate issued before this
@@ -701,6 +722,13 @@ const CertificatesSettings = () => {
     const [verificationPage, setVerificationPage] = useState<VerificationPageConfig>({
         headline: '',
         note: '',
+        // PAGE is the shipped behaviour: a scan opens the hosted verification
+        // page unless an institute deliberately supplies its own document.
+        mode: 'PAGE',
+        documentType: 'HTML',
+        documentHtml: '',
+        documentFileId: '',
+        documentBackgroundUrl: '',
         showCourse: true,
         showIssueDate: true,
         showCompletion: true,
@@ -936,6 +964,13 @@ const CertificatesSettings = () => {
             showCourse: ex.verificationShowCourse !== false,
             showIssueDate: ex.verificationShowIssueDate !== false,
             showCompletion: ex.verificationShowCompletion !== false,
+            // Absent means PAGE. Every institute saved before this existed relies
+            // on that, and the backend resolves the same way.
+            mode: ex.verificationMode === 'DOCUMENT' ? 'DOCUMENT' : 'PAGE',
+            documentType: ex.verificationDocumentType === 'PDF' ? 'PDF' : 'HTML',
+            documentHtml: ex.verificationDocumentHtml ?? '',
+            documentFileId: ex.verificationDocumentFileId ?? '',
+            documentBackgroundUrl: extractBackgroundUrl(ex.verificationDocumentHtml ?? ''),
         });
         setAutoStampCode(ex.autoStampCode !== false);
         setAutoStampNumber(ex.autoStampNumber !== false);
@@ -1674,6 +1709,13 @@ const CertificatesSettings = () => {
                 verificationShowCourse: verificationPage.showCourse,
                 verificationShowIssueDate: verificationPage.showIssueDate,
                 verificationShowCompletion: verificationPage.showCompletion,
+                verificationMode: verificationPage.mode,
+                verificationDocumentType: verificationPage.documentType,
+                // Omitted rather than blanked when empty: the backend merge
+                // preserves on null, so sending '' would wipe a document the
+                // admin did not touch on this visit.
+                verificationDocumentHtml: verificationPage.documentHtml || undefined,
+                verificationDocumentFileId: verificationPage.documentFileId || undefined,
                 // Always sent, including as `[]`, so deleting the last custom
                 // field actually clears it. `undefined` would hit the backend's
                 // preserve-on-null merge and silently keep the old list.
@@ -1736,6 +1778,13 @@ const CertificatesSettings = () => {
                     verificationShowCourse: verificationPage.showCourse,
                     verificationShowIssueDate: verificationPage.showIssueDate,
                     verificationShowCompletion: verificationPage.showCompletion,
+                    verificationMode: verificationPage.mode,
+                verificationDocumentType: verificationPage.documentType,
+                // Omitted rather than blanked when empty: the backend merge
+                // preserves on null, so sending '' would wipe a document the
+                // admin did not touch on this visit.
+                verificationDocumentHtml: verificationPage.documentHtml || undefined,
+                verificationDocumentFileId: verificationPage.documentFileId || undefined,
                     customFields: sanitizedCustomFields,
                 };
                 const nextSettings = {
@@ -2093,6 +2142,46 @@ const CertificatesSettings = () => {
                     customUrl={qrVerificationUrlTemplate}
                     onClearCustomUrl={() => setQrVerificationUrlTemplate('')}
                     sampleCertificateId={sampleCertificateNumber}
+                    uploading={uploadingVerificationDoc}
+                    onUploadDocument={async (file) => {
+                        setUploadingVerificationDoc(true);
+                        try {
+                            const canvas = await uploadVerificationDocument(file);
+                            // Seed a document whose background is the uploaded page,
+                            // in exactly the shape the certificate renderer expects —
+                            // so the same editor, substitution and PDF pipeline all
+                            // apply with no special case for verification.
+                            const seeded =
+                                `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" />` +
+                                `<style>@page { size: ${canvas.page_width_mm}mm ${canvas.page_height_mm}mm; margin: 0; }` +
+                                `html, body { margin: 0; padding: 0; }` +
+                                `.certificate-canvas { position: relative; width: ${canvas.width_px}px;` +
+                                ` height: ${canvas.height_px}px; overflow: hidden; }` +
+                                `.certificate-canvas > img.bg { position: absolute; inset: 0;` +
+                                ` width: 100%; height: 100%; object-fit: cover; }</style></head><body>` +
+                                `<div class="certificate-canvas">` +
+                                `<img class="bg" src="${canvas.background_url}" alt="" />` +
+                                `</div></body></html>`;
+                            setVerificationPage((prev) => ({
+                                ...prev,
+                                documentType: 'HTML',
+                                documentHtml: seeded,
+                                documentBackgroundUrl: canvas.background_url,
+                            }));
+                            if ((canvas.page_count ?? 1) > 1) {
+                                toast.info(
+                                    `That PDF has ${canvas.page_count} pages — only the first becomes the document.`
+                                );
+                            }
+                        } catch (e) {
+                            toast.error(
+                                e instanceof Error ? e.message : 'That PDF could not be read.'
+                            );
+                        } finally {
+                            setUploadingVerificationDoc(false);
+                        }
+                    }}
+                    onEditDocument={() => setSettingsTab('design')}
                     disabled={loading}
                 />
             )}

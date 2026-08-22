@@ -57,6 +57,19 @@ public class InvoiceData {
      * "INVOICE", which is what every existing caller wants.
      */
     private String documentTitle;
+    /**
+     * Label printed beside {@link #invoiceNumber}, via {@code {{document_number_label}}}.
+     * "Proforma Number" while the document is a proforma, "Invoice Number" once it is a real
+     * invoice — so a number that is going to change is never presented as an invoice number.
+     * Null renders as "Invoice Number".
+     */
+    private String documentNumberLabel;
+    /**
+     * The proforma number this invoice was issued as, once it has been paid and finalized.
+     * Rendered by {@code {{proforma_reference}}} so the final invoice visibly points back at
+     * the proforma the customer is holding. Null on everything else.
+     */
+    private String proformaNumber;
     private LocalDateTime invoiceDate;
     private LocalDateTime dueDate;
     

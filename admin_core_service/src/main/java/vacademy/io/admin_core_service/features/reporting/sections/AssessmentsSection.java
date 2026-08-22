@@ -82,7 +82,15 @@ public class AssessmentsSection implements ReportSection {
     public boolean isAvailableFor(String instituteId) {
         LocalDate today = LocalDate.now();
         JsonNode summary = client.fetchSummary(instituteId, today.minusDays(30), today);
-        return summary != null && summary.path("attempts").asInt(0) > 0;
+        if (summary == null) {
+            // THROW rather than return false. The registry catches this and hides
+            // the section, whereas false is rendered by the config screen as the
+            // positive claim "no data in the last 30 days" — which is how a failing
+            // endpoint told an institute with 834 attempts that it had none.
+            throw new IllegalStateException(
+                    "assessment availability unknown for institute " + instituteId);
+        }
+        return summary.path("attempts").asInt(0) > 0;
     }
 
     @Override

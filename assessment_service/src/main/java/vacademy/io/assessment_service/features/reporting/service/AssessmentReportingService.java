@@ -65,15 +65,19 @@ public class AssessmentReportingService {
 
         List<Map<String, Object>> assessments = new ArrayList<>(rows.size());
         for (Map<String, Object> r : rows) {
-            assessments.add(Map.of(
-                    "name", r.get("name") == null ? "" : r.get("name"),
-                    "attempts", num(r.get("attempts")),
-                    "awaitingEvaluation", num(r.get("awaiting")),
-                    "scored", num(r.get("scored")),
-                    // May be null when the paper has no usable maximum — the caller
-                    // renders that as "—" rather than inventing a figure.
-                    "avgScorePct", r.get("avg_score_pct"),
-                    "lastAttempt", String.valueOf(r.get("last_attempt"))));
+            // LinkedHashMap, NOT Map.of: avgScorePct is deliberately null when the
+            // paper has no usable maximum, and Map.of throws NullPointerException on
+            // a null value. The immutable factory turned the one field designed to
+            // say "we cannot know" into a 500 that reached the config screen as
+            // "no data in the last 30 days".
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("name", r.get("name") == null ? "" : r.get("name"));
+            row.put("attempts", num(r.get("attempts")));
+            row.put("awaitingEvaluation", num(r.get("awaiting")));
+            row.put("scored", num(r.get("scored")));
+            row.put("avgScorePct", r.get("avg_score_pct"));
+            row.put("lastAttempt", String.valueOf(r.get("last_attempt")));
+            assessments.add(row);
         }
 
         Map<String, Object> out = new java.util.LinkedHashMap<>();

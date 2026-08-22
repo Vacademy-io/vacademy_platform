@@ -270,6 +270,9 @@ public class VoiceBotInternalController {
             // question once, on the rule, instead of hand-syncing it into the prompt.
             List<Map<String, String>> offers = aiCallActionService.offers(a);
             if (!offers.isEmpty()) base.put("sendOffers", offers);
+            // The admin's own trigger sentences, for the post-call analyser to judge.
+            List<String> conditions = aiCallActionService.conditions(a);
+            if (!conditions.isEmpty()) base.put("sendConditions", conditions);
         }
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
         // V421 — snake_case ON PURPOSE: the bot reads agent.get("tts_model"). The

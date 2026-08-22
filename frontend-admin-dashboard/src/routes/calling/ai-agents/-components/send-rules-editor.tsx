@@ -30,7 +30,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchEmailTemplates } from '@/routes/calling/ai-agents/-services/ai-agents';
 import type { AiCallActionRule } from '@/routes/settings/-components/AiAgentsCard';
 
-type TriggerKind = 'promised' | 'disposition' | 'meeting' | 'extracted';
+type TriggerKind = 'promised' | 'declined' | 'custom' | 'disposition' | 'meeting' | 'extracted';
 
 interface Props {
     rules: AiCallActionRule[];
@@ -56,6 +56,8 @@ function slugify(label: string): string {
 function triggerKindOf(rule: AiCallActionRule): TriggerKind {
     const w = rule.when || {};
     if (w.promised) return 'promised';
+    if (w.declined) return 'declined';
+    if (w.custom !== undefined) return 'custom';
     if (w.disposition) return 'disposition';
     if (w.meetingRequested) return 'meeting';
     if (w.extracted && Object.keys(w.extracted).length) return 'extracted';
@@ -87,6 +89,9 @@ function ruleProblems(rule: AiCallActionRule): string[] {
     if (w.extracted && Object.keys(w.extracted).some((k) => !k)) {
         problems.push('Choose which captured answer triggers this.');
     }
+    if (triggerKindOf(rule) === 'custom' && !(rule.when || {}).custom) {
+        problems.push('Describe the situation this rule should run in.');
+    }
     if (rule.actionType === 'BOOK_MEETING') {
         if (!rule.bookingPageId) problems.push('Choose a booking page.');
     } else if (rule.channel === 'WHATSAPP' && !rule.template) {
@@ -96,6 +101,11 @@ function ruleProblems(rule: AiCallActionRule): string[] {
     }
     // The question IS the trigger for a "caller says yes" rule: with no question the
     // agent never offers it, so nothing can be agreed to and the rule sits idle.
+    if (triggerKindOf(rule) === 'custom' && rule.timing === 'MID_CALL') {
+        problems.push(
+            'A described situation is judged after the call, so this rule cannot send during it.'
+        );
+    }
     if (!rule.askLine && (triggerKindOf(rule) === 'promised' || rule.timing === 'MID_CALL')) {
         problems.push(
             'Write what the agent asks — this rule fires when the agent offers it and the caller agrees, so without a question it never runs.'
@@ -197,11 +207,15 @@ export function SendRulesEditor({
         const when: AiCallActionRule['when'] =
             kind === 'promised'
                 ? { promised: rule.artefact || slugify(rule.label || '') }
-                : kind === 'disposition'
-                  ? { disposition: dispositions[0] || '' }
-                  : kind === 'meeting'
-                    ? { meetingRequested: true }
-                    : { extracted: { [extractionQuestions[0] || '']: 'present' } };
+                : kind === 'declined'
+                  ? { declined: rule.artefact || slugify(rule.label || '') }
+                  : kind === 'custom'
+                    ? { custom: '' }
+                    : kind === 'disposition'
+                      ? { disposition: dispositions[0] || '' }
+                      : kind === 'meeting'
+                        ? { meetingRequested: true }
+                        : { extracted: { [extractionQuestions[0] || '']: 'present' } };
         update(i, { when });
     };
 
@@ -298,6 +312,12 @@ export function SendRulesEditor({
                                         <SelectItem value="promised">
                                             The caller says yes to your question
                                         </SelectItem>
+                                        <SelectItem value="declined">
+                                            The caller says no to your question
+                                        </SelectItem>
+                                        <SelectItem value="custom">
+                                            Something else I describe
+                                        </SelectItem>
                                         <SelectItem value="disposition">
                                             The call ended with a disposition
                                         </SelectItem>
@@ -309,6 +329,24 @@ export function SendRulesEditor({
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
+
+                                {kind === 'custom' && (
+                                    <>
+                                        <Input
+                                            className="h-8"
+                                            placeholder="e.g. the parent asked about fees"
+                                            value={rule.when?.custom || ''}
+                                            onChange={(e) =>
+                                                update(i, { when: { custom: e.target.value } })
+                                            }
+                                        />
+                                        <p className="text-caption text-neutral-500">
+                                            Written as a statement about the call. After each call
+                                            the AI decides whether it was clearly true — if it is
+                                            unsure, the rule does not run.
+                                        </p>
+                                    </>
+                                )}
 
                                 {kind === 'disposition' && (
                                     <Select

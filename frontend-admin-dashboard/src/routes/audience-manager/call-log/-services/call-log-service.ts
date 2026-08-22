@@ -151,6 +151,14 @@ export interface CallDiagnostics {
         ttfbP50?: number | null;
         ttfbP95?: number | null;
         ttfbMax?: number | null;
+        /** Speech cache. null (never 0) means the cache was off or unreadable,
+         *  i.e. NOT MEASURED — render it that way, the same discipline the bot
+         *  applies to every other signal in this blob. */
+        cacheHits?: number | null;
+        cacheMisses?: number | null;
+        cacheCharsSaved?: number | null;
+        cacheSecsSaved?: number | null;
+        cacheHitRate?: number | null;
     } | null;
     playout?: {
         repliesGenerated?: number | null;
@@ -285,6 +293,10 @@ export interface CallRow extends CallHealthFields {
     disposition_notes: string | null;
     dispositioned_at: number | string | null;
     ai_disposition: string | null;
+    /** Rupees the TTS speech cache kept off this call's bill. Null when the bot
+     *  did not measure, and on the engines with no confirmed per-minute cost
+     *  (edge is free; smallest has no invoice rate yet). */
+    ttsCacheSavedInr?: number | null;
     callback_at: number | string | null;
     created_at: number | string | null;
 }
@@ -518,6 +530,14 @@ export interface CallDetail extends CallHealthFields {
     provider_details: CallDetailKeyVal[];
     /** Verbatim provider webhook body — present only for callers who may unmask numbers. */
     raw_provider_response: string | null;
+    /**
+     * Was the TTS speech cache running on THIS call? Decided by the backend, not
+     * inferred here: the panel must not appear for the agents nobody has enabled
+     * it for. Null = it was off (or the call predates the feature) — the panel is
+     * hidden. True includes the case where it ran and hit nothing, which is a real
+     * reading and must still be shown.
+     */
+    tts_cache_active?: boolean | null;
     /** Highest-priority fired fault code, e.g. "TTS_WEDGE". */
     diag_headline?: string | null;
     /** Human sentence for {@link diag_headline}, written by the bot. */
@@ -552,6 +572,39 @@ export async function fetchCallDetail(instituteId: string, callLogId: string): P
         // `undefined` — the health sheet distinguishes "not reported" from "loading".
         diagnostics: (data?.diagnostics as CallDiagnostics | undefined) ?? null,
     };
+}
+
+/**
+ * One thing an AI call promised, and what became of it.
+ *
+ * A failed send used to be visible only in the engagement inbox, and a queued or
+ * successful one nowhere at all - so "it said it would WhatsApp the link, did it?"
+ * had no answer on the call itself.
+ */
+export interface CallAction {
+    id: string;
+    rule_id?: string | null;
+    action_type?: string | null;
+    channel?: string | null;
+    /** OPEN (queued) | DISPATCHING | SENT | FAILED | EXPIRED */
+    status?: string | null;
+    template_name?: string | null;
+    error_message?: string | null;
+    created_at?: string | null;
+    dispatched_at?: string | null;
+}
+
+export const callActionsKey = (instituteId: string, callLogId: string) =>
+    ['crm-call-log-actions', instituteId, callLogId] as const;
+
+export async function fetchCallActions(
+    instituteId: string,
+    callLogId: string
+): Promise<CallAction[]> {
+    const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/${callLogId}/actions`, {
+        params: { instituteId },
+    });
+    return Array.isArray(data) ? data : [];
 }
 
 // ── GET /{id}/recording ────────────────────────────────────────────────────

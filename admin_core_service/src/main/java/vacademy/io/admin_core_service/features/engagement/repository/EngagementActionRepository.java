@@ -241,5 +241,26 @@ public interface EngagementActionRepository extends JpaRepository<EngagementActi
             """, nativeQuery = true)
     List<Object[]> dismissalStats(@Param("engineId") String engineId, @Param("since") Instant since);
 
+    /**
+     * What one AI call triggered - for the Call Log's health sheet.
+     *
+     * <p>source_ref is '<call_log_id>:<rule_id>', so a prefix LIKE finds every rule that
+     * fired on that call. Uses ux_ea_source_ref (source, source_ref): the leading column is
+     * an equality and the second a left-anchored prefix, which btree serves as a range scan
+     * rather than a scan of the table.
+     *
+     * <p>Scoped by institute as well as by call id: the call id alone is a UUID, but a
+     * cross-institute read must be impossible by construction and not merely unlikely.
+     */
+    @Query(value = """
+            SELECT * FROM engagement_action
+             WHERE source = 'AI_CALL'
+               AND institute_id = :instituteId
+               AND source_ref LIKE :refPrefix
+             ORDER BY created_at DESC
+            """, nativeQuery = true)
+    List<EngagementAction> findByCallRefPrefix(@Param("instituteId") String instituteId,
+                                               @Param("refPrefix") String refPrefix);
+
     List<EngagementAction> findTop20ByMemberIdOrderByCreatedAtDesc(String memberId);
 }

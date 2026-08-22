@@ -213,6 +213,14 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         int userCameraCap = intOrDefault(bbbCfg, "user_camera_cap", 3);
         // Lock settings restrict VIEWERS (students) only — moderators keep full
         // access, e.g. a teacher can still private-message a locked student.
+        // disable_mic pins viewers to the listen-only path. Transparent listen-only
+        // (forced on per-meeting in buildJoinUrlForUser) already keeps idle students
+        // off hot FreeSWITCH channels; the lock turns that from a default into a
+        // guarantee — no viewer can take a mic channel, so a large broadcast class
+        // can't be hurt by an unmute stampede. disable_cam likewise guarantees the
+        // presenter is the only camera producer.
+        boolean disableMic = boolOrDefault(bbbCfg, "disable_mic", false);
+        boolean disableCam = boolOrDefault(bbbCfg, "disable_cam", false);
         boolean disablePrivateChat = boolOrDefault(bbbCfg, "disable_private_chat", false);
         boolean disablePublicChat = boolOrDefault(bbbCfg, "disable_public_chat", false);
         boolean disableSharedNotes = boolOrDefault(bbbCfg, "disable_shared_notes", false);
@@ -230,6 +238,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("meetingCameraCap", String.valueOf(meetingCameraCap));
         params.put("userCameraCap", String.valueOf(userCameraCap));
         params.put("guestPolicy", guestPolicy);
+        params.put("lockSettingsDisableMic", String.valueOf(disableMic));
+        params.put("lockSettingsDisableCam", String.valueOf(disableCam));
         params.put("lockSettingsDisablePrivateChat", String.valueOf(disablePrivateChat));
         params.put("lockSettingsDisablePublicChat", String.valueOf(disablePublicChat));
         params.put("lockSettingsDisableNotes", String.valueOf(disableSharedNotes));
@@ -442,6 +452,21 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      */
     public String buildJoinUrlForUser(String meetingId, String fullName,
             String userId, String role, String instituteId, String bbbServerId) {
+        return buildJoinUrlForUser(meetingId, fullName, userId, role, instituteId, bbbServerId, null);
+    }
+
+    /**
+     * Build a personalized join URL.
+     *
+     * @param viewerMicLocked whether this meeting was created with
+     *        {@code lockSettingsDisableMic=true}. When true the audio userdata must
+     *        leave listen-only available, otherwise a viewer has no way to hear the
+     *        class at all. Pass null when the meeting's config isn't known — the
+     *        join URL then keeps the historical auto-join-with-microphone behaviour.
+     */
+    public String buildJoinUrlForUser(String meetingId, String fullName,
+            String userId, String role, String instituteId, String bbbServerId,
+            Boolean viewerMicLocked) {
         String apiUrl;
         String secret;
         if (bbbServerId != null) {
@@ -489,7 +514,18 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     // Skip the "Microphone / Listen only" chooser and echo test
                     params.put("userdata-bbb_auto_join_audio", "true");
                     params.put("userdata-bbb_skip_check_audio", "true");
-                    params.put("userdata-bbb_listen_only_mode", "false");
+                    if (Boolean.TRUE.equals(viewerMicLocked)) {
+                        // The meeting was created with lockSettingsDisableMic=true, so
+                        // viewers may ONLY join listen-only. bbb_listen_only_mode=false
+                        // means "cannot join audio without a microphone" — together they
+                        // leave a viewer with no audio path at all, so it must not be sent
+                        // here. bbb_force_listen_only is the matching client-side setting
+                        // and, per BBB, does not apply to moderators, so the presenter
+                        // still auto-joins with their mic.
+                        params.put("userdata-bbb_force_listen_only", "true");
+                    } else {
+                        params.put("userdata-bbb_listen_only_mode", "false");
+                    }
                     // Transparent listen-only (BBB 3.0): a muted/idle student stays on the
                     // cheap shared-audio path instead of holding a FreeSWITCH mic channel,
                     // yet can unmute instantly. This keeps the no-prompt auto-join UX above

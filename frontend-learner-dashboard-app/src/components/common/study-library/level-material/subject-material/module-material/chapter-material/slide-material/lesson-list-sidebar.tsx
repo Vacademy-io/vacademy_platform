@@ -48,6 +48,7 @@ import {
   humanizeTitle,
 } from "./slide-display-utils";
 import { getSlideTypeColors, getSlideTypeIcon } from "./slide-type-colors";
+import { useRevealWhenActive } from "./reveal-active-row";
 
 type BreadcrumbSubject = {
   id: string;
@@ -86,6 +87,19 @@ const chapterSlideCount = (chapter: Chapter): number =>
   (chapter.assignment_slide_count ?? 0) +
   (chapter.unknown_count ?? 0);
 
+/** Roughly one lesson row: 12px padding, a 40px thumbnail, 12px padding and a
+ *  hairline. Titles wrap to two lines, so real rows vary by a few pixels — this
+ *  is for reserving a not-yet-fetched section's space, not for laying it out. */
+const APPROX_ROW_H = 68;
+
+/** Animated placeholder rows drawn for the section currently fetching. Beyond
+ *  this the space is simply reserved — nobody reads the twentieth shimmer. */
+const SKELETON_ROWS = 6;
+
+/** Cover ids per lookup. They travel in the query string, so an unbounded
+ *  batch is a URL long enough for the gateway to reject. */
+const MAX_COVER_BATCH = 40;
+
 /** A slide's cover image, if the content carries one. Checked in order of how
  *  specific it is to this slide. */
 const coverFileId = (slide: Slide): string | null =>
@@ -118,29 +132,10 @@ const LessonRow = ({
   const meta = getSlideMeta(slide);
   const pct = Math.min(slide.percentage_completed ?? 0, 100);
   const isComplete = pct >= getSlideCompletionThreshold();
-  const rowRef = useRef<HTMLButtonElement>(null);
-
   // Bring the lesson in progress into view on arrival. A 49-lesson list opens
-  // well past the fold otherwise.
-  useEffect(() => {
-    if (!isActive || !rowRef.current) return;
-    const el = rowRef.current;
-    let parent = el.parentElement;
-    while (parent && parent !== document.body) {
-      const overflowY = getComputedStyle(parent).overflowY;
-      if (
-        /(auto|scroll|overlay)/.test(overflowY) &&
-        parent.scrollHeight > parent.clientHeight + 1
-      ) {
-        const parentRect = parent.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        parent.scrollTop +=
-          elRect.top - parentRect.top - (parent.clientHeight - elRect.height) / 2;
-        return;
-      }
-      parent = parent.parentElement;
-    }
-  }, [isActive]);
+  // well past the fold otherwise. The hook retries across frames because this
+  // row can mount before the list has grown tall enough to scroll at all.
+  const rowRef = useRevealWhenActive<HTMLButtonElement>(isActive);
 
   return (
     <button
@@ -259,6 +254,10 @@ const LessonSection = ({
 }) => {
   const slideEvaluations = useContentStore((state) => state.slideEvaluations);
   const sectionRef = useRef<HTMLDivElement>(null);
+  // `onVisible` is a fresh closure each render; holding it in a ref keeps the
+  // observer effect below keyed on the section's own state alone.
+  const onVisibleRef = useRef(onVisible);
+  onVisibleRef.current = onVisible;
   const total = slides ? slides.length : chapterSlideCount(chapter);
   const done = slides
     ? slides.filter(
@@ -273,13 +272,13 @@ const LessonSection = ({
     const el = sectionRef.current;
     if (!el || slides || isLoading) return;
     if (typeof IntersectionObserver === "undefined") {
-      onVisible();
+      onVisibleRef.current();
       return;
     }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
-          onVisible();
+          onVisibleRef.current();
           observer.disconnect();
         }
       },
@@ -287,7 +286,7 @@ const LessonSection = ({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [slides, isLoading, onVisible]);
+  }, [slides, isLoading]);
 
   const displayTitles = useMemo(
     () =>
@@ -339,20 +338,43 @@ const LessonSection = ({
         );
       })}
 
-      {/* Skeleton at the real height, so the scrollbar doesn't jump as
-          sections stream in behind the learner. */}
+      {/* An unloaded section still has to occupy its eventual height, or the
+          scrollbar jumps as sections stream in behind the learner. But drawing
+          one animated skeleton row per slide meant a large course mounted with
+          hundreds of pulsing nodes for chapters nobody had scrolled to. So:
+          animated rows only for the section actually fetching (a couple at a
+          time, capped), and a single reserved-space div for the rest. */}
       {!slides &&
-        Array.from({ length: Math.max(1, Math.min(total, 6)) }).map((_, i) => (
+        (isLoading ? (
+          <>
+            {Array.from({
+              length: Math.max(1, Math.min(total, SKELETON_ROWS)),
+            }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-3 border-b border-gray-100 px-3 py-3"
+              >
+                <div className="h-10 w-14 flex-shrink-0 animate-pulse rounded-md bg-gray-100" />
+                <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
+                  <div className="h-2.5 w-4/5 animate-pulse rounded bg-gray-100" />
+                  <div className="h-2 w-1/3 animate-pulse rounded bg-gray-100" />
+                </div>
+              </div>
+            ))}
+            {total > SKELETON_ROWS && (
+              <div
+                aria-hidden
+                // Dynamic: the space the rows still to arrive will occupy.
+                style={{ height: (total - SKELETON_ROWS) * APPROX_ROW_H }}
+              />
+            )}
+          </>
+        ) : (
           <div
-            key={i}
-            className="flex items-start gap-3 border-b border-gray-100 px-3 py-3"
-          >
-            <div className="h-10 w-14 flex-shrink-0 animate-pulse rounded-md bg-gray-100" />
-            <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
-              <div className="h-2.5 w-4/5 animate-pulse rounded bg-gray-100" />
-              <div className="h-2 w-1/3 animate-pulse rounded bg-gray-100" />
-            </div>
-          </div>
+            aria-hidden
+            // Dynamic: the space this section will occupy once fetched.
+            style={{ height: Math.max(1, total) * APPROX_ROW_H }}
+          />
         ))}
 
       {slides && visible.length === 0 && (
@@ -395,9 +417,15 @@ export const LessonListSidebar = ({
     SystemTerms.Modules
   );
 
+  // Seeded with the subject whose outline arrived as a prop, so the stable
+  // loader below doesn't re-fetch what we were handed.
+  const requestedSubjects = useRef<Set<string>>(
+    new Set(currentSubjectId && currentSubjectModules ? [currentSubjectId] : [])
+  );
   const loadSubjectModules = useCallback(
     async (subjectId: string) => {
-      if (!subjectId || subjectModulesMap[subjectId]) return;
+      if (!subjectId || requestedSubjects.current.has(subjectId)) return;
+      requestedSubjects.current.add(subjectId);
       try {
         let modules: ModulesWithChapters[] = [];
         try {
@@ -413,41 +441,38 @@ export const LessonListSidebar = ({
           [subjectId]: modules || [],
         }));
       } catch {
+        requestedSubjects.current.delete(subjectId);
         toast.error("Couldn't load the course outline.");
       }
     },
-    [sessionId, subjectModulesMap]
+    [sessionId]
   );
 
-  const loadChapterSlides = useCallback(
-    async (chapterId: string) => {
-      if (!chapterId || chapterSlidesMap[chapterId]) return;
-      let alreadyLoading = false;
+  // Requested-chapter bookkeeping lives in a ref so this callback can be
+  // stable. Deriving the guard from `chapterSlidesMap` instead would give the
+  // callback a new identity every time any section landed, which tears down
+  // and rebuilds the IntersectionObserver of every other section on the page.
+  const requestedChapters = useRef<Set<string>>(new Set());
+  const loadChapterSlides = useCallback(async (chapterId: string) => {
+    if (!chapterId || requestedChapters.current.has(chapterId)) return;
+    requestedChapters.current.add(chapterId);
+    setLoadingChapters((prev) => new Set(prev).add(chapterId));
+    try {
+      const slides = await fetchSlidesByChapterId(chapterId);
+      setChapterSlidesMap((prev) => ({ ...prev, [chapterId]: slides || [] }));
+    } catch {
+      // One section failing shouldn't toast once per chapter on a bad
+      // connection. It renders empty; allow a later attempt to retry it.
+      requestedChapters.current.delete(chapterId);
+      setChapterSlidesMap((prev) => ({ ...prev, [chapterId]: [] }));
+    } finally {
       setLoadingChapters((prev) => {
-        if (prev.has(chapterId)) {
-          alreadyLoading = true;
-          return prev;
-        }
-        return new Set(prev).add(chapterId);
+        const next = new Set(prev);
+        next.delete(chapterId);
+        return next;
       });
-      if (alreadyLoading) return;
-      try {
-        const slides = await fetchSlidesByChapterId(chapterId);
-        setChapterSlidesMap((prev) => ({ ...prev, [chapterId]: slides || [] }));
-      } catch {
-        // A single section failing shouldn't toast once per chapter on a bad
-        // connection — it renders as an empty section and retries on remount.
-        setChapterSlidesMap((prev) => ({ ...prev, [chapterId]: [] }));
-      } finally {
-        setLoadingChapters((prev) => {
-          const next = new Set(prev);
-          next.delete(chapterId);
-          return next;
-        });
-      }
-    },
-    [chapterSlidesMap]
-  );
+    }
+  }, []);
 
   // Every subject's outline, up front: the list is flat, so there is no
   // expand step during which to fetch it. Chapters within it still stream.
@@ -465,7 +490,11 @@ export const LessonListSidebar = ({
   useEffect(() => {
     const pending = Object.values(chapterSlidesMap)
       .flat()
-      .filter((slide) => !thumbUrls[slide.id])
+      // `in`, not truthiness: a slide whose cover can't be resolved is
+      // recorded as "" below, and `!""` would put it straight back into
+      // `pending` — the effect writes thumbUrls, so it re-runs, re-requests,
+      // and never stops. An entry existing at all means "already asked".
+      .filter((slide) => !(slide.id in thumbUrls))
       .map((slide) => ({ slideId: slide.id, fileId: coverFileId(slide) }))
       .filter(
         (entry): entry is { slideId: string; fileId: string } => !!entry.fileId
@@ -473,7 +502,15 @@ export const LessonListSidebar = ({
     if (pending.length === 0) return;
 
     let cancelled = false;
-    const uniqueIds = Array.from(new Set(pending.map((p) => p.fileId)));
+    // media-service takes the ids in the query string, so a chapter with a
+    // hundred covers would build a URL long enough to be rejected. Ask for a
+    // batch at a time; the rest come back on the next pass, since anything
+    // still missing an entry stays in `pending`.
+    const uniqueIds = Array.from(new Set(pending.map((p) => p.fileId))).slice(
+      0,
+      MAX_COVER_BATCH
+    );
+    const requested = new Set(uniqueIds);
     getPublicUrls(uniqueIds.join(","))
       .then((files: unknown) => {
         if (cancelled) return;
@@ -487,10 +524,9 @@ export const LessonListSidebar = ({
         setThumbUrls((prev) => {
           const next = { ...prev };
           for (const { slideId, fileId } of pending) {
-            const url = urlById.get(fileId);
-            // Record misses as "" too, so a slide whose file can't be
-            // resolved isn't re-requested on every render.
-            next[slideId] = url ?? "";
+            if (!requested.has(fileId)) continue; // left for the next batch
+            // Misses are recorded as "" so they aren't asked for again.
+            next[slideId] = urlById.get(fileId) ?? "";
           }
           return next;
         });
@@ -499,7 +535,9 @@ export const LessonListSidebar = ({
         if (cancelled) return;
         setThumbUrls((prev) => {
           const next = { ...prev };
-          for (const { slideId } of pending) next[slideId] = "";
+          for (const { slideId, fileId } of pending) {
+            if (requested.has(fileId)) next[slideId] = "";
+          }
           return next;
         });
       });

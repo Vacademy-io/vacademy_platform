@@ -32,7 +32,7 @@
 //     a check once complete. The unit is named in the chip's tooltip, since
 //     the numbers alone can't say whether they count chapters or slides.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import {
   CheckCircle,
@@ -63,6 +63,7 @@ import {
   humanizeTitle,
 } from "./slide-display-utils";
 import { getSlideTypeColors, getSlideTypeIcon } from "./slide-type-colors";
+import { useRevealWhenActive } from "./reveal-active-row";
 
 type BreadcrumbSubject = {
   id: string;
@@ -128,30 +129,6 @@ const isRedundantLoneSubject = (
 // derived from it, so a padding-only change here would silently leave gaps
 // between the pinned rows.
 const EXPANDER_ROW_H = 36;
-
-/** Reveal a row inside its own scroll container. `scrollIntoView` walks every
- *  scrollable ancestor, which on mobile also yanks the page behind the
- *  offcanvas sheet — this touches the sidebar's scroller and nothing else. */
-function revealInScrollParent(el: HTMLElement) {
-  let parent = el.parentElement;
-  while (parent && parent !== document.body) {
-    const overflowY = getComputedStyle(parent).overflowY;
-    if (
-      /(auto|scroll|overlay)/.test(overflowY) &&
-      parent.scrollHeight > parent.clientHeight + 1
-    ) {
-      const parentRect = parent.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const delta =
-        elRect.top -
-        parentRect.top -
-        (parent.clientHeight - elRect.height) / 2;
-      parent.scrollTop = Math.max(0, parent.scrollTop + delta);
-      return;
-    }
-    parent = parent.parentElement;
-  }
-}
 
 /** Attach the full text as a native tooltip only when the label is actually
  *  clipped — or when `always` says the rendered label isn't a piece of the
@@ -270,17 +247,14 @@ const SlideRow = ({
   const meta = getSlideMeta(slide);
   const pct = Math.min(slide.percentage_completed ?? 0, 100);
   const isComplete = pct >= getSlideCompletionThreshold();
-  const rowRef = useRef<HTMLButtonElement>(null);
   const indent = depth * 14 + 12;
 
   // Auto-reveal the current slide. The ancestor chain is auto-expanded on
   // mount, but in a 20-chapter course that puts the active row well below the
   // fold — the learner opened the viewer to a sidebar that looked like it had
-  // scrolled nowhere. Runs only when a row becomes active, so it never
-  // fights the learner's own scrolling.
-  useEffect(() => {
-    if (isActive && rowRef.current) revealInScrollParent(rowRef.current);
-  }, [isActive]);
+  // scrolled nowhere. Fires once per active row, so it never fights the
+  // learner's own scrolling.
+  const rowRef = useRevealWhenActive<HTMLButtonElement>(isActive);
 
   return (
     <button

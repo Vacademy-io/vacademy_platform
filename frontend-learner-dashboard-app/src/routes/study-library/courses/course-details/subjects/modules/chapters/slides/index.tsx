@@ -33,6 +33,7 @@ import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNam
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import useSidebarBranding from "@/components/common/layout-container/sidebar/useSidebar";
 import { InitStudyLibraryProvider } from "@/providers/study-library/init-study-library-provider";
 import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-with-chapters-provider";
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
@@ -797,6 +798,23 @@ function Slides() {
   const [courseName, setCourseName] = useState("");
   const [levelName, setLevelName] = useState("");
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string>("");
+  // Identity for the panel header — the app sidebar's own header is suppressed
+  // while this panel is mounted, so this is where the institute name now
+  // appears. `hideInstituteName` is an operator branding switch, honoured here
+  // exactly as it is there.
+  //
+  // Subscribed field by field ON PURPOSE. A bare `useStore()` subscribes to
+  // the whole store, and every write to it allocates a new state object — so
+  // this route would re-render, rebuild `SidebarComponent`, and re-trigger
+  // LayoutContainer's hasCustomSidebar effect, forever.
+  const instituteName = useSidebarBranding((state) => state.instituteName);
+  const hideInstituteName = useSidebarBranding(
+    (state) => state.hideInstituteName
+  );
+  // A sub-org learner is white-labelled: their own name and logo replace the
+  // parent institute's. The app sidebar header did this and it went with it.
+  const subOrgName = useSidebarBranding((state) => state.subOrgName);
+  const subOrgLogoUrl = useSidebarBranding((state) => state.subOrgLogoUrl);
   const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(
     null
   );
@@ -1445,47 +1463,89 @@ function Slides() {
     }
   }, [previousChapter, navigate, courseId, subjectId, sessionId]);
 
+  // "Institute · Level" on one line. The level is dropped when it's absent,
+  // a "default" placeholder, or already spelled out inside the course name.
+  const sidebarEyebrow = useMemo(() => {
+    const showLevel =
+      !!levelName &&
+      levelName.trim().toLowerCase() !== "default" &&
+      !(
+        courseName &&
+        courseName.toLowerCase().includes(levelName.trim().toLowerCase())
+      );
+    // Sub-org branding wins over the parent's, and is never suppressed by
+    // `hideInstituteName` — that switch is about the PARENT's name.
+    const owner = subOrgName || (hideInstituteName ? null : instituteName);
+    return [owner, showLevel ? toTitleCase(levelName) : null]
+      .filter(Boolean)
+      .join(" · ");
+  }, [
+    instituteName,
+    hideInstituteName,
+    subOrgName,
+    levelName,
+    courseName,
+  ]);
+
   const SidebarComponent = (
     <div className="flex flex-col h-full bg-white border-e border-gray-100">
-      {/* --- Header Section: Title & Breadcrumbs --- */}
-      <div className="flex-none px-3 py-2.5 space-y-2 border-b border-gray-100 bg-white z-10">
+      {/* --- Header Section: Identity & Breadcrumbs ---
+          One header, not two. This panel now replaces the app sidebar's own
+          institute header (see mySidebar), so it carries both names: the
+          institute as a small eyebrow and the course as the title, beside a
+          single logo. The level joins the eyebrow rather than taking a third
+          line, and is dropped when the course name already contains it — batch
+          names routinely embed the level ("Class 8 | MGP | B 3" under level
+          "Class 8"), which said the same thing twice. Between this and the
+          removed duplicate header the panel gets ~110px back. */}
+      <div className="flex-none px-3 py-2 space-y-1.5 border-b border-gray-100 bg-white z-10">
         {/* Course Info Row */}
         <div className="flex items-center gap-2.5">
-          <div className="flex-shrink-0 w-7 h-7 rounded-md border border-gray-150 bg-white flex items-center justify-center text-primary-600">
-            {instituteLogoUrl ? (
+          {/* The affordance is the whole tile, not just the image: the logo id
+              can be missing or fail to resolve, and the fallback icon used to
+              be dead where the image was clickable. A real button when it
+              navigates, a plain tile when it doesn't. */}
+          {(() => {
+            const logoUrl = subOrgLogoUrl || instituteLogoUrl;
+            const inner = logoUrl ? (
               <img
-                src={instituteLogoUrl}
-                alt="Institute"
-                onClick={
-                  homeIconClickRoute ? handleInstituteLogoClick : undefined
-                }
-                className={`max-w-full max-h-full object-contain ${homeIconClickRoute ? "cursor-pointer" : ""
-                  }`}
+                src={logoUrl}
+                alt={subOrgName || "Institute"}
+                className="max-w-full max-h-full object-contain"
               />
             ) : (
               <GraduationCap size={16} weight="duotone" />
-            )}
-          </div>
+            );
+            const tile =
+              "flex-shrink-0 w-7 h-7 rounded-md border border-gray-150 bg-white flex items-center justify-center text-primary-500";
+            return homeIconClickRoute ? (
+              <button
+                type="button"
+                onClick={handleInstituteLogoClick}
+                aria-label="Go to home"
+                className={`${tile} cursor-pointer transition-colors hover:border-gray-300`}
+              >
+                {inner}
+              </button>
+            ) : (
+              <div className={tile}>{inner}</div>
+            );
+          })()}
           <div className="min-w-0 flex-1">
-            <h3 className="text-caption font-semibold text-gray-900 leading-tight line-clamp-2 break-words">
-              {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
-            </h3>
-            {/* Batch names routinely embed the level ("Class 8 | MGP | B 3"
-                under level "Class 8") — repeating it as a subtitle said the
-                same thing twice, so the subtitle is dropped when redundant. */}
-            {!(
-              levelName &&
-              courseName &&
-              courseName
-                .toLowerCase()
-                .includes(levelName.trim().toLowerCase())
-            ) && (
-              <p className="text-caption text-gray-500 font-medium tracking-wide uppercase mt-0.5">
-                {levelName && levelName.toLowerCase() !== "default"
-                  ? toTitleCase(levelName)
-                  : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
+            {sidebarEyebrow && (
+              <p
+                className="text-2xs font-medium tracking-wide text-gray-500 truncate"
+                title={sidebarEyebrow}
+              >
+                {sidebarEyebrow}
               </p>
             )}
+            <h3
+              className="text-caption font-semibold text-gray-900 leading-tight truncate"
+              title={courseName ? toTitleCase(courseName) : undefined}
+            >
+              {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
+            </h3>
           </div>
           {/* Focus mode: hides this sidebar + tightens content margins.
               Desktop only — on mobile the sidebar is already an offcanvas
@@ -1502,14 +1562,15 @@ function Slides() {
         </div>
 
         {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
-            Rendered only in "breadcrumb" (flat list) mode — in "ancestors"
-            tree and lesson-list modes the sidebar below already shows the
-            full path, so the crumb was pure duplication (and truncated into
-            noise at sidebar width). Subject crumb is only rendered when the course
-            structure actually has subjects (`subjectId` set +
-            studyLibraryData populated) — otherwise the crumb collapses to
-            Module > Chapter as before. */}
-        {showLearningPath && sidebarNavigation === "breadcrumb" && (() => {
+            Rendered in every mode. It was gated to "breadcrumb" mode on the
+            reasoning that the tree already shows the path — but the tree shows
+            it only where the learner happens to be scrolled, and the crumb is
+            the one line that says where you are without having to look for it.
+            It also stays the fastest way to jump a module. Subject crumb is
+            only rendered when the course structure actually has subjects
+            (`subjectId` set + studyLibraryData populated) — otherwise the
+            crumb collapses to Module > Chapter as before. */}
+        {showLearningPath && (() => {
           // Backends frequently emit a "Default"-named subject / module /
           // chapter as a placeholder when that level isn't really part of
           // the course. Those crumbs aren't useful navigation context — hide
@@ -1913,7 +1974,14 @@ function Slides() {
       // No sidebar prop at all in "hidden" mode — passing an empty node would
       // still reserve the rail. LayoutContainer then falls back to the app's
       // own sidebar, so the learner keeps a way out of the viewer.
-      {...(hideSlidesSidebar ? {} : { sidebarComponent: SidebarComponent })}
+      {...(hideSlidesSidebar
+        ? {}
+        : {
+            sidebarComponent: SidebarComponent,
+            // This panel's own header carries the institute name, so the app
+            // sidebar's branding header would be a second copy.
+            hideBrandingHeader: true,
+          })}
       className={
         effectiveFocusMode || hideSlidesSidebar
           ? "m-0 md:m-1"

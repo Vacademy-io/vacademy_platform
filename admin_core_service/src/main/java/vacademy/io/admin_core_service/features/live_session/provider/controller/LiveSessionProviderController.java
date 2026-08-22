@@ -376,17 +376,43 @@ public class LiveSessionProviderController {
         // persist-meetingId critical section so concurrent first-join requests
         // can't create two separate BBB rooms (the bug that caused
         // "faculty can't see learners until they leave and rejoin").
+        //
+        // Steady-state fast path: once the meeting exists, there is nothing to
+        // create, so skip ensureMeetingForSchedule entirely rather than take its
+        // row lock just to read the id back. Every joiner used to serialise on
+        // that one schedule row — when a class started together the queue behind
+        // the first (BBB-calling) holder reached 14-15s per join and pinned a
+        // pooled connection for the whole wait, which is what dragged the rest of
+        // the platform down on 2026-08-22. `schedule` was loaded above, outside
+        // any transaction, so this costs no extra query.
+        //
+        // Guarded on !recreate: a moderator recreate must still take the lock so
+        // it is the one that clears and replaces the id. A viewer racing that
+        // recreate can read the pre-recreate id here, but the isMeetingRunning
+        // check below then returns "Meeting has ended" — the same answer it gives
+        // today, because BBB reports a freshly recreated meeting as not-running
+        // until its first participant joins.
         CreateMeetingResponseDTO ensured;
-        try {
-            ensured = providerService.ensureMeetingForSchedule(
-                    scheduleId,
-                    () -> buildBbbCreateRequest(scheduleId),
-                    recreate, role);
-        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
-            log.warn("[BBB] Lock timeout waiting for in-flight meeting creation on scheduleId={}: {}",
-                    scheduleId, e.getMessage());
-            return ResponseEntity.status(503).body(Map.of(
-                    "error", "Meeting is being created, please retry"));
+        if (!recreate && schedule.getProviderMeetingId() != null
+                && !schedule.getProviderMeetingId().isBlank()) {
+            ensured = CreateMeetingResponseDTO.builder()
+                    .providerMeetingId(schedule.getProviderMeetingId())
+                    .joinUrl(schedule.getCustomMeetingLink())
+                    .hostUrl(schedule.getProviderHostUrl())
+                    .justCreated(false)
+                    .build();
+        } else {
+            try {
+                ensured = providerService.ensureMeetingForSchedule(
+                        scheduleId,
+                        () -> buildBbbCreateRequest(scheduleId),
+                        recreate, role);
+            } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+                log.warn("[BBB] Lock timeout waiting for in-flight meeting creation on scheduleId={}: {}",
+                        scheduleId, e.getMessage());
+                return ResponseEntity.status(503).body(Map.of(
+                        "error", "Meeting is being created, please retry"));
+            }
         }
         String providerMeetingId = ensured.getProviderMeetingId();
         boolean justCreated = ensured.isJustCreated();
@@ -432,7 +458,8 @@ public class LiveSessionProviderController {
             fullName = user.getUsername();
         }
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
-                providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId());
+                providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId(),
+                resolveBbbViewerMicLocked(schedule));
 
         // Mark attendance with join timestamp.
         // Note: LIVE_SESSION_START is NOT emitted from here. It's dispatched
@@ -1051,6 +1078,38 @@ public class LiveSessionProviderController {
      * live_session row. Used to apply per-institute branding (theme color, etc.)
      * to the generated join URL.
      */
+    /**
+     * True when this schedule's meeting was created with the participant mic lock on
+     * ({@code bbb_config.disable_mic}). The join URL needs this so it doesn't also tell
+     * the client that a microphone is required — a viewer would then have no audio at
+     * all. Returns false (not null) when the config is missing or unparseable, which
+     * preserves the historical join behaviour.
+     */
+    private Boolean resolveBbbViewerMicLocked(SessionSchedule schedule) {
+        if (schedule == null || schedule.getSessionId() == null) {
+            return Boolean.FALSE;
+        }
+        try {
+            return liveSessionRepository.findById(schedule.getSessionId())
+                    .map(s -> s.getBbbConfigJson())
+                    .filter(json -> json != null && !json.isBlank())
+                    .map(json -> {
+                        try {
+                            java.util.Map<String, Object> cfg = objectMapper.readValue(json,
+                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+                            return Boolean.TRUE.equals(cfg.get("disable_mic"));
+                        } catch (Exception e) {
+                            log.warn("[BBB] Failed to parse bbbConfigJson for mic lock: {}", e.getMessage());
+                            return Boolean.FALSE;
+                        }
+                    })
+                    .orElse(Boolean.FALSE);
+        } catch (Exception e) {
+            log.warn("[BBB] Failed to resolve mic lock for schedule {}: {}", schedule.getId(), e.getMessage());
+            return Boolean.FALSE;
+        }
+    }
+
     private String resolveInstituteId(SessionSchedule schedule) {
         if (schedule == null || schedule.getSessionId() == null) {
             return null;

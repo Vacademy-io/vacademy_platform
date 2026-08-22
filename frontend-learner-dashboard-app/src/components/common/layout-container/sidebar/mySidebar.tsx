@@ -99,8 +99,14 @@ const humanizeText = (text: string) => {
 
 export const MySidebar = ({
   sidebarComponent,
+  hideBrandingHeader,
 }: {
   sidebarComponent?: React.ReactNode;
+  /** Set by a custom sidebar that shows the institute itself (the slides
+   *  viewer does). Without it the panel gets two stacked headers, each with
+   *  its own copy of the logo. Off by default — the chapters sidebar has no
+   *  identity block of its own and still needs this one. */
+  hideBrandingHeader?: boolean;
 }) => {
   const navigate = useNavigate();
   const { state, isMobile, toggleSidebar } = useSidebar();
@@ -480,7 +486,24 @@ export const MySidebar = ({
       }
     >
       <SidebarContent className={`sidebar-content flex flex-col bg-nav-surface dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
-        <SidebarHeader className="border-b border-border pb-2">
+        {/* A custom sidebar that carries its own identity block (the slides
+            viewer puts institute and course on one compact line) suppresses
+            this one — two stacked headers, each with its own copy of the
+            logo, ate ~110px off the top of the panel before a single lesson
+            appeared. The Android close button is kept either way: it's the
+            only way out of the sheet. */}
+        <SidebarHeader
+          className={
+            hideBrandingHeader
+              ? // The Android close button is absolutely positioned and used to
+                // clear the branding menu's `mt-12`. With the menu gone it needs
+                // its own room, or it lands on top of the panel's header.
+                isAndroid
+                ? "p-0 pt-16"
+                : "p-0"
+              : "border-b border-border pb-2"
+          }
+        >
           {isAndroid && (
             <button
               type="button"
@@ -491,6 +514,7 @@ export const MySidebar = ({
               <X size={18} />
             </button>
           )}
+          {!hideBrandingHeader && (
           <SidebarMenu className={`px-1 ${isAndroid || isIOS ? 'mt-12' : ''}`}>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -603,6 +627,7 @@ export const MySidebar = ({
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
+          )}
         </SidebarHeader>
 
         <SidebarMenu

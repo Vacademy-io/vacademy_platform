@@ -23,6 +23,20 @@ import java.util.List;
  * small fresh learner_operation lookups, so progress stays instant while
  * the expensive structure query runs at most once per TTL.
  *
+ * Both entries are loaded with sync = true, so a key that expires under
+ * concurrent load is fetched once and the other callers wait on that fetch
+ * rather than each running the structure query themselves.
+ *
+ * Sizing note, from replaying the 2026-08-22 18:30 IST traffic: this is
+ * insurance, not a hot path. Peak same-key concurrency was 2, across only 6 of
+ * 147 keys, so sync = true removed 0% of executions — the access pattern is
+ * long-tail (132 distinct keys per 247 requests), which also means the 2m TTL
+ * expires most keys before they are re-requested. Do not expect this cache to
+ * carry much load: the real fix for that query was scoping it (see
+ * ModuleChapterMappingRepository#getModuleChapterProgress). Keep sync = true
+ * anyway — it costs nothing and does matter if one large cohort ever opens the
+ * same course together.
+ *
  * Must stay a separate bean from LearnerStudyLibraryService: @Cacheable
  * only intercepts calls that cross the Spring proxy.
  */
@@ -37,7 +51,7 @@ public class LearnerCourseStructureCacheService {
     private final SlideRepository slideRepository;
 
     /** Modules + chapters tree for a subject; query has no locale variance. */
-    @Cacheable(value = "learnerModulesStructure", key = "#subjectId + ':' + #packageSessionId")
+    @Cacheable(value = "learnerModulesStructure", key = "#subjectId + ':' + #packageSessionId", sync = true)
     public String getModulesWithChaptersStructureJson(String subjectId, String packageSessionId) {
         return moduleChapterMappingRepository.getModuleChapterProgress(
                 subjectId,
@@ -52,7 +66,7 @@ public class LearnerCourseStructureCacheService {
     }
 
     /** Per-chapter slide trees for a package session, translated content included — keyed by locale. */
-    @Cacheable(value = "learnerPackageSlidesStructure", key = "#packageSessionId + ':' + #lang")
+    @Cacheable(value = "learnerPackageSlidesStructure", key = "#packageSessionId + ':' + #lang", sync = true)
     public String getPackageSlidesStructureJson(String packageSessionId, String lang) {
         return slideRepository.getLearnerSlidesByPackageSessionId(
                 packageSessionId,

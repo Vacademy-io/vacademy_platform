@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { MyButton } from "@/components/design-system/button";
 import { useRouter } from "@tanstack/react-router";
@@ -39,6 +39,17 @@ export function AssessmentPreview() {
     );
   });
   const [showWarningModal, setShowWarningModal] = useState(false);
+  // Starting an attempt is a one-shot, non-idempotent transition (PREVIEW -> LIVE).
+  // Two entry points can fire it — the Start button and the timeLeft<=0 effect
+  // below, which runs on mount whenever the assessment has no preview time — so
+  // without a guard a double-tap or a remount sends two concurrent
+  // assessment-start-assessment calls. The loser gets "Assessment already live or
+  // in preview" (510) and, worse, the two racing writers can overwrite each
+  // other's startTime and reset the learner's timer. The ref is what actually
+  // guards (it is set synchronously, before any await); the state only drives
+  // the disabled styling.
+  const startingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
   const { fullScreen } = useProctoring({
     forceFullScreen: true,
     preventTabSwitch: true,
@@ -91,8 +102,18 @@ export function AssessmentPreview() {
   };
   const handleStartAssessment = async () => {
     // resetAssessment();
-    await startAssessment();
-    router.navigate({ to: newPath, replace: true });
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      await startAssessment();
+      router.navigate({ to: newPath, replace: true });
+    } catch (error) {
+      // Let the learner retry rather than stranding them on a dead button.
+      console.error("Error starting assessment:", error);
+      startingRef.current = false;
+      setStarting(false);
+    }
   };
 
   useEffect(() => {
@@ -260,12 +281,13 @@ export function AssessmentPreview() {
           <div className="mx-auto w-full max-w-4xl">
             <MyButton
               onClick={() => handleStartAssessment()}
+              disable={starting}
               buttonType="primary"
               scale="large"
               layoutVariant="default"
               className="h-12 w-full"
             >
-              Start Test
+              {starting ? "Starting..." : "Start Test"}
             </MyButton>
           </div>
         </div>

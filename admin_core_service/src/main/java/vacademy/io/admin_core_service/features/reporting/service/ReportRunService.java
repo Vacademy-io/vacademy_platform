@@ -392,12 +392,22 @@ public class ReportRunService {
      * in text beside it precisely so that a blocked or absent image changes
      * nothing about what the reader understands.
      */
-    private ReportRenderer.Branding brandingOf(String instituteId, String instituteName) {
+    private ReportRenderer.Branding brandingOf(String instituteId, String fallbackName) {
+        String name = fallbackName;
         String logoUrl = null;
         String themeCode = null;
         try {
             var institute = instituteRepository.findById(instituteId).orElse(null);
             if (institute != null) {
+                // Authoritative, because the caller's name is not reliable: the
+                // run-now controller has no institute name to hand and passed null,
+                // which put "Vacademy" in the header of every manual send while the
+                // scheduled path — which does resolve it — was correct. Deriving it
+                // here removes the whole class of caller-dependent branding bugs.
+                if (institute.getInstituteName() != null
+                        && !institute.getInstituteName().isBlank()) {
+                    name = institute.getInstituteName();
+                }
                 themeCode = institute.getInstituteThemeCode();
                 String logoFileId = institute.getLogoFileId();
                 if (logoFileId != null && !logoFileId.isBlank()) {
@@ -408,7 +418,8 @@ public class ReportRunService {
             log.warn("[reporting] branding lookup failed for institute {} — sending unbranded",
                     instituteId, e);
         }
-        return new ReportRenderer.Branding(instituteName, logoUrl, themeCode);
+        return new ReportRenderer.Branding(
+                name == null || name.isBlank() ? "Vacademy" : name, logoUrl, themeCode);
     }
 
     private String instituteNameOf(String instituteId) {
@@ -447,10 +458,13 @@ public class ReportRunService {
 
         List<String> selectedKeys = selected.stream().map(ReportSection::key).toList();
 
-        String subject = (instituteName == null ? "Vacademy" : instituteName) + " — " + run.getScopeLabel();
         // Resolved once per run: the logo lookup is a cross-service call and doing
         // it per recipient would multiply a remote dependency across the send.
         ReportRenderer.Branding branding = brandingOf(instituteId, instituteName);
+        // Same identity in the subject as in the header — they were computed from
+        // different sources before, so a manual send arrived titled "Vacademy" over
+        // a document that said the institute's name.
+        String subject = branding.instituteName() + " — " + run.getScopeLabel();
         ReportRenderer.Period period = new ReportRenderer.Period(
                 ReportWindowResolver.cadenceOf(frequency), window.describeRange());
         int sent = 0;

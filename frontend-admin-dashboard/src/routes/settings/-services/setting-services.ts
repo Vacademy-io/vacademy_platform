@@ -1,5 +1,9 @@
 import { getInstituteId } from '@/constants/helper';
-import { CERTIFICATE_NUMBERING_STATUS, CONFIGURE_CERTIFICATE_SETTINGS } from '@/constants/urls';
+import {
+    CERTIFICATE_NUMBERING_STATUS,
+    CERTIFICATE_VERIFICATION_DOCUMENT_UPLOAD,
+    CONFIGURE_CERTIFICATE_SETTINGS,
+} from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { certificateHtml } from '../-utils/certificate-html';
 
@@ -94,6 +98,20 @@ export interface CertificateSavePayload {
     verificationShowCourse?: boolean;
     verificationShowIssueDate?: boolean;
     verificationShowCompletion?: boolean;
+    /**
+     * What a scanned code opens. Omit or send 'PAGE' for the hosted verification
+     * page — the behaviour every institute had before documents existed.
+     */
+    verificationMode?: 'PAGE' | 'DOCUMENT';
+    /** 'HTML' is designed here and carries dynamic fields; 'PDF' is served as-is. */
+    verificationDocumentType?: 'HTML' | 'PDF';
+    /**
+     * The designed document. Omitted rather than blanked when empty: the backend
+     * merge preserves on null, so sending '' would wipe a document the admin did
+     * not touch on this visit.
+     */
+    verificationDocumentHtml?: string;
+    verificationDocumentFileId?: string;
     /**
      * Admin-defined fields, for values the platform has no built-in token for.
      * Each becomes a draggable chip and a {{CF_<KEY>}} token on the template.
@@ -215,5 +233,38 @@ export const getCertificateNumberingStatus = async (params?: {
             resetAnnually: params?.resetAnnually,
         },
     });
+    return response?.data;
+};
+
+export interface VerificationDocumentCanvas {
+    background_file_id: string;
+    background_url: string;
+    width_px: number;
+    height_px: number;
+    page_width_mm: number;
+    page_height_mm: number;
+    page_count: number;
+}
+
+/**
+ * Upload a verification PDF and get back a canvas to lay fields on.
+ *
+ * <p>The PDF's first page is rasterised server-side, because a PDF has no canvas
+ * a browser can drop a field onto. What comes back is ordinary background
+ * artwork, so the certificate editor works on it unchanged.
+ *
+ * <p>Nothing is persisted by this call — the admin still has to place fields and
+ * save, so abandoning the screen leaves the current verification setup alone.
+ */
+export const uploadVerificationDocument = async (
+    file: File
+): Promise<VerificationDocumentCanvas> => {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await authenticatedAxiosInstance.post(
+        CERTIFICATE_VERIFICATION_DOCUMENT_UPLOAD,
+        body,
+        { params: { instituteId: getInstituteId() } }
+    );
     return response?.data;
 };

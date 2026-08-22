@@ -38,6 +38,32 @@ public class PublicCertificateVerificationController {
     private final CertificateVerificationService verificationService;
 
     /**
+     * The document is <b>admin-authored HTML served on this API's own origin</b> —
+     * the only place in this service that returns HTML to a browser at all.
+     * Everywhere else a certificate template goes to a PDF, which cannot execute
+     * anything.
+     *
+     * <p>Without a policy, an institute admin could put a {@code <script>} in
+     * their verification document and have it run, unauthenticated, on the API
+     * origin for every person who scans one of their certificates. That turns
+     * "can edit my institute's settings" into "can run script against the host
+     * that issues everyone's tokens".
+     *
+     * <p>So: no scripts, no frames, no form posts, no network of its own. Inline
+     * styles and images stay, because they are the entire design — a certificate
+     * document is inline CSS plus artwork, and blocking those would render a
+     * blank page.
+     */
+    private static final String DOCUMENT_CSP = String.join("; ",
+            "default-src 'none'",
+            "img-src 'self' data: https:",
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self' data: https:",
+            "form-action 'none'",
+            "base-uri 'none'",
+            "frame-ancestors 'self'");
+
+    /**
      * @param certificateId the human-readable number from the certificate
      * @param t             the QR's long token
      * @param c             the barcode's short code; supply either, not both
@@ -77,5 +103,39 @@ public class PublicCertificateVerificationController {
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(CertificateVerificationDto.builder().valid(false).build()));
+    }
+
+    /**
+     * The institute's designed verification document, tokens filled in.
+     *
+     * <p>Reached when {@code /verify} answered {@code verificationMode=DOCUMENT}.
+     * Guarded by the same credential rule as {@code /verify} — the document names
+     * a learner, so a bare certificate number must never fetch it, and an unknown
+     * number is answered identically to a wrong credential.
+     *
+     * <p>Returns HTML rather than JSON because the reader's browser renders it
+     * directly. An uploaded PDF never reaches here: it is served straight from
+     * media, and {@code /verify} hands out that URL instead.
+     */
+    @GetMapping(value = "/verify/{certificateId}/document", produces = "text/html; charset=UTF-8")
+    public ResponseEntity<String> verificationDocument(
+            @PathVariable String certificateId,
+            @RequestParam(name = "t", required = false) String t,
+            @RequestParam(name = "c", required = false) String c) {
+
+        String credential = t != null && !t.isBlank() ? t : c;
+
+        return verificationService.renderVerificationDocument(certificateId, credential)
+                .map(html -> ResponseEntity.ok()
+                        .header("Content-Security-Policy", DOCUMENT_CSP)
+                        // Without this a browser may sniff past the declared type
+                        // and treat the body as something more dangerous.
+                        .header("X-Content-Type-Options", "nosniff")
+                        // Nothing here is per-user beyond the credential already in
+                        // the URL, but it names a learner, so keep it out of shared
+                        // caches.
+                        .header("Cache-Control", "private, max-age=0, no-store")
+                        .body(html))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 }

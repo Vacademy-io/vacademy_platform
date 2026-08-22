@@ -1814,10 +1814,20 @@ public class InvoiceService {
         return invoiceNumberService.preview(config, context);
     }
 
-    /** True when this invoice is still an unpaid proforma. */
+    /**
+     * True when this invoice is still an unpaid proforma.
+     *
+     * <p>Substring-rejects before parsing: this runs per row in {@code mapToDTO}, and an
+     * invoice from an institute that never enabled proformas has no marker in its JSON at
+     * all, so the parse would be pure waste on by far the common case.
+     */
     private boolean isProforma(Invoice invoice) {
+        String json = invoice.getInvoiceDataJson();
+        if (!StringUtils.hasText(json) || !json.contains(JSON_KEY_PROFORMA)) {
+            return false;
+        }
         return Boolean.parseBoolean(
-                String.valueOf(readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA)));
+                String.valueOf(readInvoiceDataJsonField(json, JSON_KEY_PROFORMA)));
     }
 
     /**
@@ -2115,6 +2125,15 @@ public class InvoiceService {
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
         String filled = template;
+        // Institutes can supply their own INVOICE template, and those predate the proforma
+        // tokens. Note what this template supports so the proforma marking can be injected
+        // below rather than silently not happening. Checked against the RAW template, before
+        // any substitution has consumed the tokens.
+        boolean templateNamesDocument = template != null
+                && (template.contains("{{document_title}}")
+                        || template.contains("{{document_number_label}}"));
+        boolean templateShowsProformaRef = template != null
+                && template.contains("{{proforma_reference}}");
 
         // Log whether template contains any placeholders
         boolean hasPlaceholders = filled.contains("{{");
@@ -2320,7 +2339,76 @@ public class InvoiceService {
             filled = filled.replace("{{terms_and_conditions}}", termsHtml);
         }
 
+        return applyProformaFallbackMarkup(filled, invoiceData,
+                templateNamesDocument, templateShowsProformaRef);
+    }
+
+    /**
+     * Marks a proforma on templates that have no proforma tokens.
+     *
+     * <p>A custom institute template renders whatever heading its author hardcoded, so
+     * without this a proforma comes out looking exactly like a tax invoice, with a number
+     * that is going to be replaced. Rather than trying to rewrite someone else's heading
+     * (there is no reliable way to find it), this prepends a self-contained banner: it
+     * cannot disturb the existing layout, and it states the two things the reader needs -
+     * that this is not a tax invoice, and that the number is provisional.
+     *
+     * <p>The mirror case is a finalized invoice whose template has no
+     * {@code {{proforma_reference}}}: it gets a single quiet line carrying the proforma
+     * number, so the customer can still reconcile it against the document they were sent.
+     *
+     * <p>All styling is inline. The template's own stylesheet is unknown to us, and a
+     * class-based banner would inherit rules we cannot see.
+     */
+    private String applyProformaFallbackMarkup(String filled, InvoiceData invoiceData,
+                                               boolean templateNamesDocument,
+                                               boolean templateShowsProformaRef) {
+        boolean isProformaDoc = DOCUMENT_TITLE_PROFORMA.equals(invoiceData.getDocumentTitle());
+        String proformaNumber = invoiceData.getProformaNumber();
+
+        if (isProformaDoc && !templateNamesDocument) {
+            String number = StringUtils.hasText(invoiceData.getInvoiceNumber())
+                    ? escapeHtml(invoiceData.getInvoiceNumber()) : "";
+            String banner = "<div style=\"border:2px solid #b45309;background:#fffbeb;color:#7c2d12;"
+                    + "padding:10px 14px;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:12px;line-height:1.5;\">"
+                    + "<div style=\"font-size:16px;font-weight:bold;letter-spacing:1px;\">"
+                    + "PROFORMA INVOICE</div>"
+                    + "<div>This is a request for payment, not a tax invoice."
+                    + (StringUtils.hasText(number)
+                            ? " Reference <strong>" + number + "</strong> is provisional -"
+                                    + " your final invoice number is issued once payment is received."
+                            : " The final invoice number is issued once payment is received.")
+                    + "</div></div>";
+            return injectAfterBodyOpen(filled, banner);
+        }
+
+        if (!isProformaDoc && StringUtils.hasText(proformaNumber) && !templateShowsProformaRef) {
+            String line = "<div style=\"margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:11px;color:#4b5563;\">Ref. Proforma: <strong>"
+                    + escapeHtml(proformaNumber) + "</strong></div>";
+            return injectAfterBodyOpen(filled, line);
+        }
+
         return filled;
+    }
+
+    /**
+     * Insert {@code snippet} immediately inside the document body, or at the very start when
+     * the template has no {@code <body>} (some institute templates are fragments rather than
+     * whole documents). Case-insensitive, and tolerant of attributes on the tag.
+     */
+    private String injectAfterBodyOpen(String html, String snippet) {
+        if (!StringUtils.hasText(html)) {
+            return snippet;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<body[^>]*>", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(html);
+        if (m.find()) {
+            return html.substring(0, m.end()) + snippet + html.substring(m.end());
+        }
+        return snippet + html;
     }
 
     /**

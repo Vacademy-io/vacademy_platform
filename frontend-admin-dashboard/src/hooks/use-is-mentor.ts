@@ -36,10 +36,12 @@ function hasMentorRoleInToken(instituteId: string | null | undefined): boolean {
  * token issued before the promotion won't carry the role until the user signs in
  * again. Without the fallback a real mentor would lose their only workspace, so it
  * stays — but it is now:
- *   - skipped entirely when the caller is on `enabled: false` (the Mentorship entry
- *     is hidden for this institute or role, so the answer changes nothing), and
+ *   - skipped entirely on `enabled: false`. The sidebar passes false unless the user
+ *     is actually on a Mentorship route, so no other screen in the app — dashboard
+ *     included — touches mentorship, and
  *   - cached for the whole session rather than re-asked every few minutes, since
- *     "you are not a mentor" does not change while the user is signed in.
+ *     "you are not a mentor" does not change while the user is signed in. The cached
+ *     answer keeps the entry visible after the user navigates back away.
  *
  * Fail-closed, like the sidebar's chat gate: `false` while loading and on error. A
  * real mentor briefly not seeing the entry on a flaky request is a far smaller

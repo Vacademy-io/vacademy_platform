@@ -60,7 +60,9 @@ const { ORNAMENT_PRESETS } = await importTs('src/routes/manage-pages/-utils/cata
 // product-page component but cannot be scoped to one, which misled admins when
 // the composer emitted it. Use courseCatalog (full grid) or productPageOffer
 // (one product page's courses) instead.
-const FORBIDDEN = new Set(['productCourseGrid']);
+// htmlPage is a whole pasted page, created only by the Add Page flow and
+// always a page's sole component. The composer must never emit one.
+const FORBIDDEN = new Set(['productCourseGrid', 'htmlPage']);
 const ESCAPE_HATCH_NOTES = {
     htmlBlock:
         'ESCAPE HATCH for bespoke sections only. props {html, css, prompt}. Sanitized + rendered in a scoped sandbox: ' +

@@ -795,6 +795,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             prompt: '',
         },
     },
+    /** A whole page pasted from elsewhere (ChatGPT/Claude, an agency, an old
+     *  site). Rendered by renderHtmlPage: page-level caps, SVG allowed, action
+     *  hooks bound. Never drag-and-dropped — a page is either an HTML page or a
+     *  built page, so this is created by the "HTML page" option in Add Page and
+     *  is the page's only component. Kept out of the AI composer's vocabulary
+     *  (FORBIDDEN in the schema exporter) for the same reason. */
+    htmlPage: {
+        type: 'htmlPage',
+        enabled: true,
+        props: {
+            html: '',
+            css: '',
+        },
+    },
 };
 
 export const getComponentTemplate = (type: string): Component => {

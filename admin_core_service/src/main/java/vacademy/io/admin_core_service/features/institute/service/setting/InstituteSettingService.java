@@ -1456,11 +1456,31 @@ public class InstituteSettingService {
                     // For data: URLs (base64), keep as-is
                     // For file: URLs, keep as-is (will be resolved with baseUri)
 
-                    // Ensure images have proper styling for PDF rendering
-                    String style = img.attr("style");
-                    if (!style.contains("max-width")) {
-                        style += (style.isEmpty() ? "" : "; ") + "max-width: 100%; height: auto;";
-                        img.attr("style", style);
+                    // Keep loose images from overflowing the page — but never
+                    // touch one the template has positioned itself.
+                    //
+                    // This used to append "max-width: 100%; height: auto" to
+                    // *every* image. Inline styles outrank the stylesheet, so on
+                    // a certificate that rule silently replaced the artwork's
+                    // `height: 100%` with `height: auto`: the background then
+                    // drew at its own aspect ratio instead of filling the
+                    // canvas, and whatever it no longer covered came out blank
+                    // white. It only showed up when the uploaded artwork's
+                    // aspect ratio differed from the page, which is why the
+                    // stock templates looked fine. `object-fit: cover` would
+                    // have masked it, but openhtmltopdf is a CSS 2.1 renderer
+                    // and ignores object-fit entirely.
+                    //
+                    // The guard is deliberately broad: an absolutely positioned
+                    // image, an image with its own dimensions, or one dressed by
+                    // a stylesheet class is placed on purpose, and a generic
+                    // "fit to the page" rule can only break it.
+                    if (!isTemplatePositioned(img)) {
+                        String style = img.attr("style");
+                        if (!style.contains("max-width")) {
+                            style += (style.isEmpty() ? "" : "; ") + "max-width: 100%; height: auto;";
+                            img.attr("style", style);
+                        }
                     }
                 }
             }
@@ -1470,6 +1490,25 @@ public class InstituteSettingService {
             System.err.println("Error processing images for PDF: " + e.getMessage());
             return html; // Return original HTML if processing fails
         }
+    }
+
+    /**
+     * Whether the template positions or sizes this image itself, in which case
+     * the generic page-fitting rule must be left off.
+     *
+     * <p>Covers the three ways a certificate template takes control: a stylesheet
+     * class (the full-bleed background is {@code <img class="bg">} with no inline
+     * style at all), absolute positioning, or explicit inline dimensions.
+     */
+    static boolean isTemplatePositioned(Element img) {
+        if (StringUtils.hasText(img.attr("class"))) {
+            return true;
+        }
+        String style = img.attr("style").replace(" ", "").toLowerCase();
+        return style.contains("position:absolute")
+                || style.contains("position:fixed")
+                || style.contains("width:")
+                || style.contains("height:");
     }
 
     private String convertUrlToBase64(String imageUrl) {

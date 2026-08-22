@@ -147,6 +147,16 @@ export interface InvoiceSettingsData {
     /** Which email carries the invoice PDF after a successful payment. */
     invoicePdfPlacement: InvoicePdfPlacement;
     /**
+     * Issue unpaid invoices as PROFORMA documents.
+     *
+     * When on, an invoice raised before payment is a proforma: it is numbered from a
+     * separate `PRO-` series and does NOT consume a number from the real invoice series.
+     * The real invoice number is allocated at the moment the invoice is paid, and the PDF
+     * is regenerated under it. A proforma that is cancelled or never paid therefore leaves
+     * no gap in the numbered tax series.
+     */
+    proformaEnabled: boolean;
+    /**
      * Generate an invoice when an admin enrolls learners manually / in bulk
      * (no payment gateway). Read by BulkAssignmentService.
      */
@@ -188,6 +198,7 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettingsData = {
     currency: 'INR',
     sendInvoiceEmail: false,
     invoicePdfPlacement: 'INVOICE_EMAIL',
+    proformaEnabled: false,
     generateInvoiceOnManualEnroll: false,
     sendAdminCopy: false,
     adminCopyUserIds: [],
@@ -304,6 +315,7 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
             base.invoicePdfPlacement === 'PAYMENT_CONFIRMATION_EMAIL'
                 ? 'PAYMENT_CONFIRMATION_EMAIL'
                 : DEFAULT_INVOICE_SETTINGS.invoicePdfPlacement,
+        proformaEnabled: base.proformaEnabled ?? DEFAULT_INVOICE_SETTINGS.proformaEnabled,
         generateInvoiceOnManualEnroll:
             base.generateInvoiceOnManualEnroll ?? DEFAULT_INVOICE_SETTINGS.generateInvoiceOnManualEnroll,
         sendAdminCopy: base.sendAdminCopy ?? DEFAULT_INVOICE_SETTINGS.sendAdminCopy,

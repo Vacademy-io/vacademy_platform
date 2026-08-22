@@ -47,6 +47,12 @@ export interface InvoiceDTO {
     tax_included: boolean;
     /** Admin-entered notes, if any — used to prefill "Duplicate". */
     notes?: string | null;
+    /**
+     * True while this is still an unpaid PROFORMA: it carries a number from the institute's
+     * separate proforma series and only becomes a numbered invoice when it is paid.
+     * Only set when the institute has `proformaEnabled` in its invoice settings.
+     */
+    proforma?: boolean | null;
     created_at: string;
     updated_at: string;
     line_items: InvoiceLineItemDTO[];

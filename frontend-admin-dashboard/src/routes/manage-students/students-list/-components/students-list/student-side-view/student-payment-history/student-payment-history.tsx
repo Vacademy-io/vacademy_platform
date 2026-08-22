@@ -336,6 +336,18 @@ const InvoicesList = ({
                                                 {shortInvoiceLabel(inv.invoice_number, inv.id)}
                                             </span>
                                             <span className="shrink-0">{getStatusBadge(inv.status)}</span>
+                                            {/* A proforma is not a tax invoice yet — it holds a
+                                                number from the separate PRO- series and gets a real
+                                                invoice number only once it is paid. Worth calling
+                                                out on the row so admins don't quote it as one. */}
+                                            {inv.proforma && (
+                                                <span
+                                                    className="inline-flex shrink-0 items-center rounded-full border border-neutral-300 bg-neutral-50 px-2 py-0.5 text-xs font-medium text-neutral-600"
+                                                    title="Proforma — becomes a numbered invoice when paid"
+                                                >
+                                                    PROFORMA
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
                                             <span>{formatDate(inv.due_date || inv.invoice_date)}</span>

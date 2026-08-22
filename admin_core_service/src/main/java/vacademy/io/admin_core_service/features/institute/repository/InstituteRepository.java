@@ -73,7 +73,7 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
     List<InstituteSearchProjection> searchByQuery(@Param("query") String query);
 
     @Query(value = """
-            SELECT i.* FROM institute i
+            SELECT i.* FROM institutes i
             JOIN student_session_institute_group_mapping ssigm ON ssigm.institute_id = i.id
             WHERE ssigm.user_id = :userId
             AND ssigm.package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1

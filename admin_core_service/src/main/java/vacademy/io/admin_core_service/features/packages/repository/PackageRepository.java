@@ -1502,6 +1502,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes,
+                    ps.id, ps.session_id,
                     s.id, s.session_name
             """, countQuery = """
                 SELECT COUNT(DISTINCT ps.id)

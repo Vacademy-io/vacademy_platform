@@ -77,22 +77,12 @@ public interface UserRepository extends CrudRepository<User, String> {
                         @Param("roleStatus") List<String> roleStatus,
                         @Param("roleNames") List<String> roleNames);
 
-        @Query(value = """
-                        SELECT u.* FROM users u
-                        JOIN user_role ur ON u.id = ur.user_id
-                        JOIN roles r ON r.id = ur.role_id
-                        WHERE u.mobile = :mobile
-                          AND ur.status IN (:roleStatus)
-                          AND r.role_name IN (:roleNames)
-                        ORDER BY u.created_at DESC
-                        LIMIT 1
-                        """, nativeQuery = true)
-        Optional<User> findMostRecentUserByMobileAndRoleStatusAndRoleNames(
-                        @Param("mobile") String mobile,
-                        @Param("roleStatus") List<String> roleStatus,
-                        @Param("roleNames") List<String> roleNames);
-
-        // NEW METHOD: For WhatsApp OTP login - uses correct column name 'mobile_number'
+        // For WhatsApp OTP login - uses correct column name 'mobile_number'.
+        //
+        // This supersedes findMostRecentUserByMobileAndRoleStatusAndRoleNames, which was
+        // removed: it was byte-for-byte identical apart from filtering on a column named
+        // "mobile", which does not exist on users (the column is mobile_number). It had no
+        // callers and threw 42703 on every execution.
         @Query(value = """
                         SELECT u.* FROM users u
                         JOIN user_role ur ON u.id = ur.user_id

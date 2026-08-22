@@ -19,17 +19,22 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             "                AND cpsm.packageSession.id = :packageSessionId)")
     List<Chapter> findChaptersByModuleIdAndStatusNotDeleted(String moduleId, String packageSessionId);
 
+    /**
+     * scope_chapters resolves the (typically ~20) chapters this subject + package
+     * session actually contains, ONCE, and both derived tables below (chap_data,
+     * chapter_slide_pct) are restricted to it. Without that scope they are
+     * uncorrelated, so Postgres materialises slide counts and per-slide progress for
+     * EVERY chapter on the platform -- full seq scans of chapter_to_slides, slide,
+     * chapter and document_slide, ~678MB of buffers per call -- and only then joins
+     * the result down to the chapters of this subject. Measured over 20 production
+     * keys: 368ms to 12ms mean, byte-identical output. MATERIALIZED so the CTE is
+     * computed once rather than inlined into both consumers.
+     *
+     * NOTE: keep prose OUT of the SQL text block. An apostrophe inside a SQL "--"
+     * comment makes Spring Data read the rest of the statement as a string literal,
+     * and the application then fails to BOOT with "Could not create query for ...".
+     */
     @Query(value = """
-            -- scope_chapters resolves the (typically ~20) chapters this subject +
-            -- package session actually contains, ONCE, and both derived tables below
-            -- (chap_data, chapter_slide_pct) are restricted to it. Without this they
-            -- are uncorrelated, so Postgres materialises slide counts and per-slide
-            -- progress for EVERY chapter on the platform -- full seq scans of
-            -- chapter_to_slides, slide, chapter and document_slide, ~678MB of buffers
-            -- per call -- and only then joins that down to this subject's chapters.
-            -- Measured over 20 production keys: 368ms -> 12ms mean, byte-identical
-            -- output. MATERIALIZED so the CTE is computed once rather than inlined
-            -- into both consumers.
             WITH scope_chapters AS MATERIALIZED (
                 SELECT DISTINCT c0.id AS chapter_id
                 FROM subject_module_mapping smm0
@@ -175,13 +180,16 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     @Query("SELECT mcm FROM ModuleChapterMapping mcm WHERE mcm.module.id = :moduleId")
     List<ModuleChapterMapping> findByModuleId(@Param("moduleId") String moduleId);
 
+    /**
+     * Scoped the same way as {@link #getModuleChapterProgress} -- see that method for
+     * why: the derived table(s) below are uncorrelated, so without scope_chapters
+     * Postgres builds per-chapter slide counts (and progress) for EVERY chapter on the
+     * platform via full seq scans, then discards all but the chapters of this subject.
+     *
+     * NOTE: keep prose OUT of the SQL text block -- an apostrophe inside a SQL "--"
+     * comment stops the application booting (see getModuleChapterProgress).
+     */
     @Query(value = """
-            -- See getModuleChapterProgress: the derived table(s) below are
-            -- uncorrelated, so without this scope Postgres builds per-chapter slide
-            -- counts (and progress) for EVERY chapter on the platform via full seq
-            -- scans of chapter_to_slides/slide/chapter/document_slide, then discards
-            -- all but this subject's. scope_chapters resolves the real chapter set
-            -- once and restricts them to it. MATERIALIZED so it is computed once.
             WITH scope_chapters AS MATERIALIZED (
                 SELECT DISTINCT c0.id AS chapter_id
                 FROM subject_module_mapping smm0
@@ -258,13 +266,16 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList);
 
+    /**
+     * Scoped the same way as {@link #getModuleChapterProgress} -- see that method for
+     * why: the derived table(s) below are uncorrelated, so without scope_chapters
+     * Postgres builds per-chapter slide counts (and progress) for EVERY chapter on the
+     * platform via full seq scans, then discards all but the chapters of this subject.
+     *
+     * NOTE: keep prose OUT of the SQL text block -- an apostrophe inside a SQL "--"
+     * comment stops the application booting (see getModuleChapterProgress).
+     */
     @Query(value = """
-            -- See getModuleChapterProgress: the derived table(s) below are
-            -- uncorrelated, so without this scope Postgres builds per-chapter slide
-            -- counts (and progress) for EVERY chapter on the platform via full seq
-            -- scans of chapter_to_slides/slide/chapter/document_slide, then discards
-            -- all but this subject's. scope_chapters resolves the real chapter set
-            -- once and restricts them to it. MATERIALIZED so it is computed once.
             WITH scope_chapters AS MATERIALIZED (
                 SELECT DISTINCT c0.id AS chapter_id
                 FROM subject_module_mapping smm0

@@ -365,7 +365,12 @@ public class DoubtsSection implements ReportSection {
                 -- state change worth reporting even though the doubt is not new.
                 OR (NOT r.answered
                     AND r.raised_time < now() - make_interval(days => ?)
-                    AND r.raised_time >= ? - make_interval(days => ?))
+                    -- Cast explicitly: a bare parameter minus an interval leaves
+                    -- Postgres to infer the parameter type. Never write a literal
+                    -- question mark in a SQL comment here -- the driver counts it
+                    -- as a bind parameter.
+                    AND r.raised_time >= CAST(? AS timestamptz)
+                                         - make_interval(days => ?))
               )
             ORDER BY r.raised_time DESC
             LIMIT ?

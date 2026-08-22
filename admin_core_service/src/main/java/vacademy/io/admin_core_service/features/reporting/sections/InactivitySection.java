@@ -126,6 +126,13 @@ public class InactivitySection implements ReportSection {
         int neverStarted = 0, activeThisWeek = 0;
         int lapsed7 = 0, lapsed30 = 0;
         List<SectionFacts.Row> detail = new ArrayList<>();
+
+        // "How things stand" for weekly and monthly readers; "what changed" for
+        // daily ones. A lapsed-learner list is identical tomorrow, so a daily
+        // subscriber would otherwise receive the same names indefinitely.
+        boolean incremental = ctx.isDailyCadence() && ctx.hasPreviousRun();
+        java.time.Instant since = incremental ? ctx.getPreviousRunAt() : null;
+        int newlyQuiet = 0;
         Instant now = Instant.now();
 
         for (Map<String, Object> r : rows) {
@@ -154,6 +161,14 @@ public class InactivitySection implements ReportSection {
             if (ctx.namingRestricted() && !ctx.getVisibleLearnerIds().contains(userId)) continue;
             if (detail.size() >= MAX_COMPUTED) continue;
 
+            // On a daily cadence, name only the learners who went quiet SINCE the
+            // last report. Whoever was already on yesterday's list is not news, and
+            // repeating them every morning is how a digest gets filtered to spam.
+            if (incremental && !crossedSinceLastRun(lastSeenTs.toInstant(), since, now)) {
+                continue;
+            }
+            newlyQuiet++;
+
             detail.add(SectionFacts.Row.builder()
                     .subjectId(userId)
                     .value(str(r.get("full_name"), "(unnamed learner)"))
@@ -162,7 +177,9 @@ public class InactivitySection implements ReportSection {
                     .build());
         }
 
-        boolean nothingToSay = lapsed7 == 0;
+        // A daily report with nobody newly quiet has nothing to say, even though the
+        // standing count is unchanged and non-zero.
+        boolean nothingToSay = incremental ? newlyQuiet == 0 : lapsed7 == 0;
 
         return SectionFacts.builder()
                 .sectionKey(key())
@@ -179,6 +196,23 @@ public class InactivitySection implements ReportSection {
                 .column("Activity before stopping")
                 .rows(detail)
                 .build();
+    }
+
+    /**
+     * Did this learner cross the inactivity threshold since the last report?
+     *
+     * The threshold is a moving boundary, so "newly quiet" is not about the learner
+     * doing anything — it is about the boundary passing their last activity. They
+     * crossed it while we were not looking exactly when their last activity sits
+     * between the threshold as it was at the previous run and the threshold now.
+     */
+    private static boolean crossedSinceLastRun(java.time.Instant lastSeen,
+                                               java.time.Instant since,
+                                               java.time.Instant now) {
+        if (since == null) return true;
+        java.time.Instant thresholdNow = now.minus(java.time.Duration.ofDays(INACTIVE_DAYS));
+        java.time.Instant thresholdThen = since.minus(java.time.Duration.ofDays(INACTIVE_DAYS));
+        return lastSeen.isBefore(thresholdNow) && !lastSeen.isBefore(thresholdThen);
     }
 
     private static String str(Object o, String fallback) {

@@ -187,6 +187,17 @@ function EmbedComponent() {
         params: { scheduleId: sessionId, role: "VIEWER" },
       })
       .then((response) => {
+        // The host starts the class; until then the backend returns NOT_STARTED
+        // instead of creating a room. Leave bbbJoinUrl unset (an undefined src
+        // would render an empty frame) and allow the learner to retry.
+        if (response.data?.status === "NOT_STARTED") {
+          toast.info(
+            response.data?.message ||
+            "Your teacher hasn't started this class yet. Please wait a moment and try again."
+          );
+          bbbFetchedRef.current = false;
+          return;
+        }
         setBbbJoinUrl(response.data.joinUrl);
       })
       .catch((err) => {

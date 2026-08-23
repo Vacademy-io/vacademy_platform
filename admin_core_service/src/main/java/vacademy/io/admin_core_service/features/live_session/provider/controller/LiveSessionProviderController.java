@@ -371,6 +371,30 @@ public class LiveSessionProviderController {
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
 
+        // Only the host starts the class. A viewer arriving before the meeting
+        // exists is told to wait rather than creating one — mirroring the rule
+        // GuestController has always enforced ("Guest cannot create meetings").
+        //
+        // Why this matters: creation is the one path that calls BBB and takes the
+        // schedule row lock. When a class opens, hundreds of learners hit this
+        // endpoint within the same second; letting any of them win that race is
+        // what produces duplicate BBB rooms (students stranded in a room the
+        // teacher is not in) and what puts every joiner behind a single lock.
+        // With this gate the meeting is created exactly once, by the host, before
+        // anyone else can ask for it.
+        //
+        // NOTE: `role` is client-supplied (see the note above), so this is a
+        // correctness guard against the accidental stampede, not an authorisation
+        // control. Server-derived roles are tracked with the wider BBB hardening.
+        if (!"MODERATOR".equalsIgnoreCase(role)
+                && (schedule.getProviderMeetingId() == null || schedule.getProviderMeetingId().isBlank())) {
+            log.info("[BBB] Viewer join before host started; scheduleId={}, userId={}",
+                    scheduleId, user != null ? user.getUserId() : null);
+            return ResponseEntity.ok(Map.of(
+                    "status", "NOT_STARTED",
+                    "message", "Your teacher hasn't started this class yet. Please wait a moment and try again."));
+        }
+
         // Ensure the BBB meeting exists for this schedule. The service holds a
         // pessimistic row lock across the read-meetingId → maybe-call-BBB →
         // persist-meetingId critical section so concurrent first-join requests

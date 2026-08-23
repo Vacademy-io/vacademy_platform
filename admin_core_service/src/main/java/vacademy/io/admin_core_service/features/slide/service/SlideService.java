@@ -1563,6 +1563,37 @@ public class SlideService {
      * @param packageSessionIds List of package session IDs
      * @return Map of package session ID to read time in minutes
      */
+    /**
+     * Pure function of packageSessionIds (the three status lists below are
+     * constants), which is why it is safe to cache without any user or institute
+     * scoping. It is the expensive half of the institute-details payload: every
+     * call re-aggregates slide read times across every batch, and the authenticated
+     * /institute/v1/details endpoint is uncached and fires on each dashboard load.
+     *
+     * Keyed on the list's toString rather than the hashCode idiom used by the
+     * caches in UserResolutionService: the key is longer, but a hash collision here
+     * would serve one institute's read times for another, and a miss is cheap.
+     * Order-sensitive, so a reordered list is a miss and never a wrong hit.
+     *
+     * Only ever called from other beans (InstituteInitManager), so the cache proxy
+     * actually applies -- a self-invocation from inside SlideService would silently
+     * bypass it.
+     *
+     * Guarded with condition rather than unless. Spring evaluates condition BEFORE
+     * the key, so a null argument skips the cache entirely and reaches the method's
+     * own null check; with only an unless clause the key expression would run first
+     * and throw SpelEvaluationException on null.toString(), making that check dead.
+     *
+     * An EMPTY result is deliberately cacheable: an institute with batches but no
+     * published slides legitimately aggregates to nothing, and excluding it via
+     * unless would re-run this query on every dashboard load for exactly the
+     * cold-start tenants the cache is meant to help.
+     *
+     * Staleness is bounded only by the 2m TTL -- there is no eviction hook on slide
+     * publish, so a newly published slide can take up to 2 minutes to move a batch's
+     * displayed duration.
+     */
+    @org.springframework.cache.annotation.Cacheable(value = "packageSessionReadTimes", key = "#packageSessionIds.toString()", condition = "#packageSessionIds != null && !#packageSessionIds.isEmpty()")
     public Map<String, Double> calculateReadTimesForPackageSessions(List<String> packageSessionIds) {
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             return Map.of();

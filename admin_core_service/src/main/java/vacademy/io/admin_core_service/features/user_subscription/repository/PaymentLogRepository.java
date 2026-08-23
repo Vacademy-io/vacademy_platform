@@ -361,6 +361,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * carried no currency), so it is resolved against the plan being paid for and then the
    * invite — otherwise the dashboard gets no currency back and has to guess a symbol.
    */
+  /*
+   * GROUP BY 1, not a repeat of the TO_CHAR expression. Spring Data expands each
+   * occurrence of a named parameter into its own positional placeholder, so writing
+   * :timeZone in both the SELECT and the GROUP BY produced two different
+   * placeholders. Postgres then could not see the two expressions as equal and
+   * rejected every call with:
+   *   ERROR: column "pl.created_at" must appear in the GROUP BY clause
+   * This endpoint failed 100% of the time in production -- verified against
+   * pg_stat/admin-core logs: zero successful calls. The ordinal form references the
+   * first output column, so there is only one placeholder left to bind.
+   */
   @Query(value = """
       SELECT TO_CHAR(pl.created_at AT TIME ZONE 'UTC' AT TIME ZONE :timeZone, 'YYYY-MM-DD') AS day,
              SUM(pl.payment_amount) AS amount,
@@ -377,7 +388,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         AND pl.created_at <= :endDate
         AND pl.payment_status = 'PAID'
         AND (:noSubOrg = true OR ei.sub_org_id = :subOrgId)
-      GROUP BY TO_CHAR(pl.created_at AT TIME ZONE 'UTC' AT TIME ZONE :timeZone, 'YYYY-MM-DD')
+      GROUP BY 1
       ORDER BY day
       """, nativeQuery = true)
   List<CollectionSummaryProjection> getCollectionSummary(

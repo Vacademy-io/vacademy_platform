@@ -265,6 +265,13 @@ public class InvoiceService {
     private static final String DOCUMENT_TITLE_INVOICE = "INVOICE";
     private static final String DOCUMENT_TITLE_PROFORMA = "PROFORMA INVOICE";
 
+    private static final String DOCUMENT_NUMBER_LABEL_INVOICE = "Invoice Number";
+    private static final String DOCUMENT_NUMBER_LABEL_PROFORMA = "Proforma Number";
+
+    /** Learner-facing noun for the document, for emails and alerts. */
+    private static final String DOCUMENT_NOUN_INVOICE = "invoice";
+    private static final String DOCUMENT_NOUN_PROFORMA = "proforma invoice";
+
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     // ── Editable-placeholder support (admin invoice preview / overrides) ──────────────
@@ -1765,10 +1772,62 @@ public class InvoiceService {
         return allocation;
     }
 
-    /** True when this invoice is still an unpaid proforma. */
+    /**
+     * The proforma number this invoice was issued as before it was paid, or null if it was
+     * never a proforma (or still is one — a live proforma shows its number as its own, not as
+     * a back-reference to itself).
+     */
+    private String finalizedFromProformaNumber(Invoice invoice) {
+        if (isProforma(invoice)) {
+            return null;
+        }
+        return readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA_NUMBER);
+    }
+
+    /** Learner-facing noun for this document: "proforma invoice" while unpaid, else "invoice". */
+    private String documentNoun(Invoice invoice) {
+        return isProforma(invoice) ? DOCUMENT_NOUN_PROFORMA : DOCUMENT_NOUN_INVOICE;
+    }
+
+    /** Title-case form of {@link #documentNoun} for subjects and headings. */
+    private String documentNounTitleCase(Invoice invoice) {
+        return isProforma(invoice) ? "Proforma Invoice" : "Invoice";
+    }
+
+    /**
+     * The proforma number the institute WOULD issue next, without consuming it. Mirrors
+     * {@link #allocateProformaNumber} exactly — same prefixing rule, same {@code PRO:}
+     * counter — so the create-invoice dialog previews the number the document will really
+     * get. Previewing through the invoice series instead would show the admin a number from
+     * a series the proforma is never going to touch.
+     */
+    private String previewProformaNumber(String instituteId, InvoiceData invoiceData) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        if (!config.usesDocType()) {
+            config = config.withFormat(DOC_TYPE_PROFORMA + "-" + config.getFormat());
+        }
+        InvoiceNumberContext context = buildInvoiceNumberContext(
+                instituteId, institute, config, invoiceData, DOC_TYPE_PROFORMA);
+        context.setSeqNamespace(DOC_TYPE_PROFORMA);
+        return invoiceNumberService.preview(config, context);
+    }
+
+    /**
+     * True when this invoice is still an unpaid proforma.
+     *
+     * <p>Substring-rejects before parsing: this runs per row in {@code mapToDTO}, and an
+     * invoice from an institute that never enabled proformas has no marker in its JSON at
+     * all, so the parse would be pure waste on by far the common case.
+     */
     private boolean isProforma(Invoice invoice) {
+        String json = invoice.getInvoiceDataJson();
+        if (!StringUtils.hasText(json) || !json.contains(JSON_KEY_PROFORMA)) {
+            return false;
+        }
         return Boolean.parseBoolean(
-                String.valueOf(readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA)));
+                String.valueOf(readInvoiceDataJsonField(json, JSON_KEY_PROFORMA)));
     }
 
     /**
@@ -2066,6 +2125,15 @@ public class InvoiceService {
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
         String filled = template;
+        // Institutes can supply their own INVOICE template, and those predate the proforma
+        // tokens. Note what this template supports so the proforma marking can be injected
+        // below rather than silently not happening. Checked against the RAW template, before
+        // any substitution has consumed the tokens.
+        boolean templateNamesDocument = template != null
+                && (template.contains("{{document_title}}")
+                        || template.contains("{{document_number_label}}"));
+        boolean templateShowsProformaRef = template != null
+                && template.contains("{{proforma_reference}}");
 
         // Log whether template contains any placeholders
         boolean hasPlaceholders = filled.contains("{{");
@@ -2095,6 +2163,23 @@ public class InvoiceService {
         filled = filled.replace("{{document_title}}",
                 ov.apply("document_title", StringUtils.hasText(invoiceData.getDocumentTitle())
                         ? invoiceData.getDocumentTitle() : DOCUMENT_TITLE_INVOICE));
+        // A proforma number is provisional — it is replaced by a real invoice number when the
+        // document is paid. Labelling it "Invoice Number" would present a number that is going
+        // to change as if it were the final one, which is exactly the confusion this avoids.
+        filled = filled.replace("{{document_number_label}}",
+                ov.apply("document_number_label", StringUtils.hasText(invoiceData.getDocumentNumberLabel())
+                        ? invoiceData.getDocumentNumberLabel() : DOCUMENT_NUMBER_LABEL_INVOICE));
+        // On the finalized invoice, point back at the proforma the customer already has, so the
+        // two documents can be reconciled despite carrying different numbers. Empty everywhere
+        // else, and a template without the token simply renders no back-reference.
+        filled = filled.replace("{{proforma_reference}}",
+                StringUtils.hasText(invoiceData.getProformaNumber())
+                        ? "<div class=\"invoice-details-row\">"
+                                + "<div class=\"invoice-details-label\">Ref. Proforma:</div>"
+                                + "<div class=\"invoice-details-value\">"
+                                + escapeHtml(invoiceData.getProformaNumber()) + "</div>"
+                                + "</div>"
+                        : "");
         filled = filled.replace("{{invoice_date}}",
                 ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
                         ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
@@ -2254,7 +2339,76 @@ public class InvoiceService {
             filled = filled.replace("{{terms_and_conditions}}", termsHtml);
         }
 
+        return applyProformaFallbackMarkup(filled, invoiceData,
+                templateNamesDocument, templateShowsProformaRef);
+    }
+
+    /**
+     * Marks a proforma on templates that have no proforma tokens.
+     *
+     * <p>A custom institute template renders whatever heading its author hardcoded, so
+     * without this a proforma comes out looking exactly like a tax invoice, with a number
+     * that is going to be replaced. Rather than trying to rewrite someone else's heading
+     * (there is no reliable way to find it), this prepends a self-contained banner: it
+     * cannot disturb the existing layout, and it states the two things the reader needs -
+     * that this is not a tax invoice, and that the number is provisional.
+     *
+     * <p>The mirror case is a finalized invoice whose template has no
+     * {@code {{proforma_reference}}}: it gets a single quiet line carrying the proforma
+     * number, so the customer can still reconcile it against the document they were sent.
+     *
+     * <p>All styling is inline. The template's own stylesheet is unknown to us, and a
+     * class-based banner would inherit rules we cannot see.
+     */
+    private String applyProformaFallbackMarkup(String filled, InvoiceData invoiceData,
+                                               boolean templateNamesDocument,
+                                               boolean templateShowsProformaRef) {
+        boolean isProformaDoc = DOCUMENT_TITLE_PROFORMA.equals(invoiceData.getDocumentTitle());
+        String proformaNumber = invoiceData.getProformaNumber();
+
+        if (isProformaDoc && !templateNamesDocument) {
+            String number = StringUtils.hasText(invoiceData.getInvoiceNumber())
+                    ? escapeHtml(invoiceData.getInvoiceNumber()) : "";
+            String banner = "<div style=\"border:2px solid #b45309;background:#fffbeb;color:#7c2d12;"
+                    + "padding:10px 14px;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:12px;line-height:1.5;\">"
+                    + "<div style=\"font-size:16px;font-weight:bold;letter-spacing:1px;\">"
+                    + "PROFORMA INVOICE</div>"
+                    + "<div>This is a request for payment, not a tax invoice."
+                    + (StringUtils.hasText(number)
+                            ? " Reference <strong>" + number + "</strong> is provisional -"
+                                    + " your final invoice number is issued once payment is received."
+                            : " The final invoice number is issued once payment is received.")
+                    + "</div></div>";
+            return injectAfterBodyOpen(filled, banner);
+        }
+
+        if (!isProformaDoc && StringUtils.hasText(proformaNumber) && !templateShowsProformaRef) {
+            String line = "<div style=\"margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:11px;color:#4b5563;\">Ref. Proforma: <strong>"
+                    + escapeHtml(proformaNumber) + "</strong></div>";
+            return injectAfterBodyOpen(filled, line);
+        }
+
         return filled;
+    }
+
+    /**
+     * Insert {@code snippet} immediately inside the document body, or at the very start when
+     * the template has no {@code <body>} (some institute templates are fragments rather than
+     * whole documents). Case-insensitive, and tolerant of attributes on the tag.
+     */
+    private String injectAfterBodyOpen(String html, String snippet) {
+        if (!StringUtils.hasText(html)) {
+            return snippet;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<body[^>]*>", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(html);
+        if (m.find()) {
+            return html.substring(0, m.end()) + snippet + html.substring(m.end());
+        }
+        return snippet + html;
     }
 
     /**
@@ -3356,7 +3510,10 @@ public class InvoiceService {
                 return;
             }
 
-            String subject = "Your Invoice " + invoice.getInvoiceNumber();
+            // Say what the document actually is. A proforma emailed as "Your Invoice" reads as a
+            // tax invoice, and its number is replaced the moment it is paid.
+            String documentType = documentNounTitleCase(invoice);
+            String subject = "Your " + documentType + " " + invoice.getInvoiceNumber();
             String body;
             boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
 
@@ -3392,10 +3549,12 @@ public class InvoiceService {
                     .replace("{{user_name}}", learnerName)
                     .replace("{{learner_name}}", learnerName)
                     .replace("{{total_amount}}", totalAmount)
+                    .replace("{{document_type}}", documentType)
                     .replace("{{invoice_pdf_link}}", pdfLinkOrAttachText);
             subject = subject.replace("{{invoice_number}}", invoiceNumber)
                     .replace("{{user_name}}", learnerName)
-                    .replace("{{learner_name}}", learnerName);
+                    .replace("{{learner_name}}", learnerName)
+                    .replace("{{document_type}}", documentType);
 
             // Institute placeholders (name/address/contact) — the email template can use
             // {{institute_name}} etc., which the body-replace above did not cover.
@@ -3417,7 +3576,9 @@ public class InvoiceService {
             }
 
             if (attachPdf) {
-                String attachmentName = "invoice_" + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId()) + ".pdf";
+                String attachmentName = (isProforma(invoice) ? "proforma_" : "invoice_")
+                        + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId())
+                        + ".pdf";
                 AttachmentUsersDTO.AttachmentDTO attachmentDTO = new AttachmentUsersDTO.AttachmentDTO();
                 attachmentDTO.setAttachmentName(attachmentName);
                 attachmentDTO.setAttachment(Base64.getEncoder().encodeToString(pdfBytes));
@@ -3481,17 +3642,28 @@ public class InvoiceService {
     }
 
     private String buildDefaultInvoiceEmailBody(Invoice invoice, UserDTO user, String instituteId, boolean pdfAttached) {
+        String noun = documentNoun(invoice);
+        String number = invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "";
+        // A proforma is a request for payment, not a receipt — and its number is provisional.
+        // Say both, so nobody files it as a tax invoice or quotes a number that will change.
+        String proformaNote = isProforma(invoice)
+                ? "<p>This is a proforma invoice — a request for payment, not a tax invoice. "
+                        + "Once payment is received we will issue your invoice with its final "
+                        + "invoice number.</p>"
+                : "";
         if (pdfAttached) {
             return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
-                    + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + " attached to this email.</p>"
+                    + "<p>Please find your " + noun + " " + number + " attached to this email.</p>"
+                    + proformaNote
                     + "<p>Thank you.</p>";
         }
         String pdfUrl = StringUtils.hasText(invoice.getPdfFileId())
                 ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
                 : "";
         return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
-                + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + ".</p>"
-                + (StringUtils.hasText(pdfUrl) ? "<p>Download your invoice: <a href=\"" + pdfUrl + "\">" + pdfUrl + "</a></p>" : "")
+                + "<p>Please find your " + noun + " " + number + ".</p>"
+                + (StringUtils.hasText(pdfUrl) ? "<p>Download your " + noun + ": <a href=\"" + pdfUrl + "\">" + pdfUrl + "</a></p>" : "")
+                + proformaNote
                 + "<p>Thank you.</p>";
     }
 
@@ -4242,8 +4414,9 @@ public class InvoiceService {
             // Notify the learner via in-app system alert
             try {
                 String amountStr = request.getCurrency() + " " + totalAmount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
-                String alertTitle = "New Invoice: " + amountStr;
-                String alertBody = "You have a new invoice (" + invoiceNumber + ") of " + amountStr
+                String alertNoun = proformaMode ? "Proforma Invoice" : "Invoice";
+                String alertTitle = "New " + alertNoun + ": " + amountStr;
+                String alertBody = "You have a new " + alertNoun.toLowerCase() + " (" + invoiceNumber + ") of " + amountStr
                         + " due by " + (request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A")
                         + ". Tap to pay: " + paymentLink;
                 notificationService.createSystemAlertAnnouncement(
@@ -4567,8 +4740,9 @@ public class InvoiceService {
             notificationService.createSystemAlertAnnouncement(
                     invoice.getInstituteId(),
                     List.of(invoice.getUserId()),
-                    "Reminder: Invoice " + invoice.getInvoiceNumber() + " · " + amountStr,
-                    "Your invoice (" + invoice.getInvoiceNumber() + ") of " + amountStr
+                    "Reminder: " + documentNounTitleCase(invoice) + " " + invoice.getInvoiceNumber()
+                            + " · " + amountStr,
+                    "Your " + documentNoun(invoice) + " (" + invoice.getInvoiceNumber() + ") of " + amountStr
                             + " is still pending. Due " + dueStr + ". Tap to pay: " + paymentLink,
                     "system",
                     institute.getInstituteName() != null
@@ -5118,6 +5292,9 @@ public class InvoiceService {
                 // Taken from the row rather than a parameter so the heading can never
                 // disagree with what the invoice actually is.
                 .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(isProforma(invoice)
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
+                .proformaNumber(finalizedFromProformaNumber(invoice))
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(subtotal)
@@ -5400,18 +5577,27 @@ public class InvoiceService {
                         .findByInstituteIdAndInvoiceNumber(request.getInstituteId(), overrideNumber.trim())
                         .map(existing -> existing.getId().equals(request.getEditingInvoiceId()))
                         .orElse(true);
+        // Proforma institutes raise this unpaid, so preview the PROFORMA series — otherwise
+        // the dialog promises an invoice number the created document will not carry, and the
+        // number appears to change out from under the admin.
+        boolean proformaMode = isProformaEnabled(institute);
+        InvoiceData previewNumberingData = numberingDataForAdminInvoice(institute, user,
+                request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now(),
+                request.getCurrency());
         String invoiceNumber = numberAvailable
                 ? overrideNumber.trim()
-                : previewInvoiceNumber(request.getInstituteId(),
-                        numberingDataForAdminInvoice(institute, user,
-                                request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now(),
-                                request.getCurrency()),
-                        DOC_TYPE_ADMIN);
+                : (proformaMode
+                        ? previewProformaNumber(request.getInstituteId(), previewNumberingData)
+                        : previewInvoiceNumber(request.getInstituteId(), previewNumberingData,
+                                DOC_TYPE_ADMIN));
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoiceNumber)
+                .documentTitle(proformaMode ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(proformaMode
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
                 .invoiceDate(request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now())
                 .dueDate(request.getDueDate())
                 .subtotal(subtotal)
@@ -5621,6 +5807,9 @@ public class InvoiceService {
                 .institute(institute)
                 .invoiceNumber(invoice.getInvoiceNumber())
                 .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(isProforma(invoice)
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
+                .proformaNumber(finalizedFromProformaNumber(invoice))
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())

@@ -753,6 +753,64 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     }
 
     // -----------------------------------------------------------------------
+    // Live state (via getMeetingInfo) — used to guard destructive actions
+    // -----------------------------------------------------------------------
+
+    /** Minimal live state of a BBB meeting: who is in it and how old it is. */
+    public record MeetingLiveState(int participantCount, long createTimeMillis) {
+    }
+
+    /**
+     * Participant count and creation time for a meeting, or empty when BBB does
+     * not know it (already ended and cleaned up) or the lookup fails.
+     *
+     * Callers MUST treat empty as "no information — proceed". This exists only to
+     * block a destructive action; failing closed would permanently trap a teacher
+     * whose class really has ended and who needs to start a fresh room.
+     */
+    public Optional<MeetingLiveState> getMeetingLiveState(String providerMeetingId, String bbbServerId) {
+        if (providerMeetingId == null || providerMeetingId.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            String apiUrl;
+            String secret;
+            BbbServerPool server = serverRouter.getServer(bbbServerId);
+            apiUrl = server.getApiUrl();
+            secret = server.getSecret();
+
+            Map<String, String> params = new LinkedHashMap<>();
+            params.put("meetingID", providerMeetingId);
+            String queryString = buildQueryString(params);
+            String checksum = sha256("getMeetingInfo" + queryString + secret);
+            String url = apiUrl + "/getMeetingInfo?" + queryString + "&checksum=" + checksum;
+
+            String xmlResponse = webClientBuilder.build()
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            Document doc = parseXml(xmlResponse);
+            if (!"SUCCESS".equals(getXmlText(doc, "returncode"))) {
+                // Meeting unknown to BBB — nothing to protect.
+                return Optional.empty();
+            }
+            int participants = parseIntSafe(getXmlText(doc, "participantCount"));
+            long createTime = 0L;
+            try {
+                createTime = Long.parseLong(getXmlText(doc, "createTime").trim());
+            } catch (Exception ignored) {
+                // Age check is skipped when createTime is unusable.
+            }
+            return Optional.of(new MeetingLiveState(participants, createTime));
+        } catch (Exception e) {
+            log.warn("[BBB] getMeetingLiveState failed for meetingId={}: {}", providerMeetingId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Get attendance (via getMeetingInfo)
     // -----------------------------------------------------------------------
 

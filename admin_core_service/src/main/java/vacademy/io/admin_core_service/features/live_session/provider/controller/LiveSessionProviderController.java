@@ -42,6 +42,14 @@ import java.util.Optional;
 @Slf4j
 public class LiveSessionProviderController {
 
+    /**
+     * How long a freshly created meeting is protected from a moderator recreate.
+     * BBB reports a new room as "not running" until its first participant fully
+     * connects, so within this window "the meeting has ended" is never true — it
+     * just hasn't been joined yet.
+     */
+    private static final long RECREATE_GRACE_MS = 90_000L;
+
     private final LiveSessionProviderService providerService;
     private final BbbMeetingManager bbbMeetingManager;
     private final BbbServerRouter serverRouter;
@@ -393,6 +401,50 @@ public class LiveSessionProviderController {
             return ResponseEntity.ok(Map.of(
                     "status", "NOT_STARTED",
                     "message", "Your teacher hasn't started this class yet. Please wait a moment and try again."));
+        }
+
+        // Recreate is the one action that can strand a class: it clears the
+        // meeting id and builds a fresh room, leaving anyone already inside the
+        // old one behind. Refuse it while the current room is still viable.
+        //
+        // Two cases, both seen in production:
+        //   1. People are already in the room — obvious, but worth blocking.
+        //   2. The room is seconds old and still empty. BBB reports a meeting as
+        //      "not running" until the first participant actually connects, so a
+        //      moderator arriving during someone else's join sees "this meeting
+        //      has ended" and is offered a recreate. Accepting it strands the
+        //      learner who was mid-join. This is what produced the duplicate
+        //      rooms on 2026-08-23.
+        //
+        // Deliberately fails OPEN: if BBB doesn't know the meeting or the lookup
+        // fails, the recreate proceeds. A class that really has ended must always
+        // be restartable — blocking that would be worse than the bug.
+        if (recreate && "MODERATOR".equalsIgnoreCase(role)
+                && schedule.getProviderMeetingId() != null && !schedule.getProviderMeetingId().isBlank()) {
+            var liveState = bbbMeetingManager.getMeetingLiveState(
+                    schedule.getProviderMeetingId(), schedule.getBbbServerId());
+            if (liveState.isPresent()) {
+                int participants = liveState.get().participantCount();
+                long ageMs = System.currentTimeMillis() - liveState.get().createTimeMillis();
+                if (participants > 0) {
+                    log.info("[BBB] Blocked recreate: {} participant(s) still in meeting {} (scheduleId={})",
+                            participants, schedule.getProviderMeetingId(), scheduleId);
+                    return ResponseEntity.ok(Map.of(
+                            "status", "RECREATE_BLOCKED",
+                            "message", participants + (participants == 1 ? " person is" : " people are")
+                                    + " already in this class. Join them instead — starting a new meeting"
+                                    + " would leave them behind in the old room."));
+                }
+                if (liveState.get().createTimeMillis() > 0 && ageMs >= 0 && ageMs < RECREATE_GRACE_MS) {
+                    log.info("[BBB] Blocked recreate: meeting {} is only {}ms old (scheduleId={})",
+                            schedule.getProviderMeetingId(), ageMs, scheduleId);
+                    return ResponseEntity.ok(Map.of(
+                            "status", "RECREATE_BLOCKED",
+                            "message", "This class was started moments ago and has not ended. A new room always"
+                                    + " reports as 'not running' until the first person connects. Please join the"
+                                    + " existing class instead."));
+                }
+            }
         }
 
         // Ensure the BBB meeting exists for this schedule. The service holds a

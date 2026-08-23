@@ -226,6 +226,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Volume control state
   const [volume, setVolume] = useState(100); // 0 - 100
   const shouldAutoPlayAfterSeekRef = useRef(false);
+  /**
+   * True once the video has played to its end.
+   *
+   * playVideo() on a finished video does not resume it — it starts it over. The
+   * player has several paths that resume playback on their own (the isPlayed
+   * sync, resume-after-seek, tab-focus resume, initial autoplay), and any of them
+   * firing after the end restarts the class. That is the auto-restart: a 40-minute
+   * video in a 50-minute slot reaching its end and beginning again.
+   *
+   * Automatic resumes check this flag. Deliberate ones — the learner pressing play,
+   * or seeking somewhere — clear it, so replaying on purpose still works.
+   */
+  const hasEndedRef = useRef(false);
   // UI control states
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -875,6 +888,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           visibilityResumeTimeoutRef.current = setTimeout(async () => {
             visibilityResumeTimeoutRef.current = null;
             if (!isMountedRef.current) return;
+            if (hasEndedRef.current) return;
             const ok = await safePlayerOperation(
               () => player?.playVideo(),
               "visibilityResume"
@@ -1125,6 +1139,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = async () => {
+    // A deliberate press is a request to watch again; let it through.
+    hasEndedRef.current = false;
     setIsPlayed(true);
 
     await safePlayerOperation(async () => {
@@ -1185,6 +1201,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Handler for manual play button (for iOS/browsers that block autoplay)
   const handleManualPlay = async () => {
     if (!player || !playerReady) return;
+    // Deliberate, like togglePlay — replaying a finished class on purpose is fine.
+    hasEndedRef.current = false;
 
     const success = await safePlayerOperation(async () => {
       const p = playerRef.current;
@@ -1227,6 +1245,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const success = await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           try {
             await p.unMute(); // Unmute for autoplay
           } catch (e) {
@@ -1327,6 +1346,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const p = playerRef.current;
         if (!p) return;
         if (isPlayed) {
+          // Re-runs whenever its deps change, so without this it restarts a
+          // finished class every time it fires.
+          if (hasEndedRef.current) return;
           await p.playVideo();
           startProgressTracking();
         } else {
@@ -1397,6 +1419,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           await p.playVideo();
           if (isMountedRef.current) setIsPlayed(true);
         }, "autoPlayAfterSeek");
@@ -1455,8 +1478,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       currentStartTimeRef.current = formatVideoTime(currentTime);
       currentStartTimeInEpochRef.current =
         convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+      // Actually playing again, so it is no longer "finished".
+      hasEndedRef.current = false;
       setIsPlayed(true);
     } else if (event.data === PAUSED_STATE || event.data === ENDED_STATE) {
+      if (event.data === ENDED_STATE) hasEndedRef.current = true;
       stopTimer();
       stopProgressTracking();
       videoEndTime.current = now;
@@ -1612,6 +1638,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     if (videoId !== lastVideoIdForSeekRef.current) {
       hasPerformedInitialSeekRef.current = false;
+      // A different video is a different class — whatever ended, this has not,
+      // so it must not inherit the previous one's finished state and refuse to
+      // start. Matters where the player is reused rather than remounted.
+      hasEndedRef.current = false;
       lastVideoIdForSeekRef.current = videoId;
     }
   }, [videoId]);

@@ -1751,6 +1751,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               console.log(
                 `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`
               );
+              // The class is over even though its slot is not. Skipping the seek
+              // alone would leave autoplay to start it from the beginning, which
+              // is the same "it started again" the learner reports — just from
+              // arriving late rather than sitting through the end. Mark it ended
+              // so nothing automatic plays it, and hold the player quiet.
+              hasEndedRef.current = true;
+              void safePlayerOperation(async () => {
+                await playerRef.current?.pauseVideo();
+              }, "classAlreadyFinished");
+              if (isMountedRef.current) setIsPlayed(false);
               return;
             }
             // Seek to the calculated position (force it to bypass restrictions)

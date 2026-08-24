@@ -522,3 +522,30 @@ def test_an_enabled_agent_does_get_the_wrapper(monkeypatch, tmp_path):
         tts, watcher = _install(monkeypatch, tmp_path, mode=mode)
         assert tts.run_tts is not _sentinel_run_tts, mode
         assert watcher is not None, mode
+
+
+def test_warm_and_live_must_derive_the_same_key():
+    """The warm path and the live path must agree on the model, or a pre-warmed
+    blob is filed under a key no call can produce.
+
+    This shipped broken: admin_core sent model="" and left resolution to the bot,
+    but warm() passed that empty string straight into cache_key while the live
+    path used engine_of(tts)[1] — the resolved "bulbul:v3" / "lightning_v3.1".
+    Same sentence, same voice, two different digests, cache never hits and
+    nothing looks wrong anywhere.
+    """
+    live = _key("Namaste ji.", engine="smallest", model="lightning_v3.1")
+    warm_broken = _key("Namaste ji.", engine="smallest", model="")
+    assert live != warm_broken, "the bug this test exists for"
+
+    providers = pytest.importorskip("app.providers")
+    resolved = providers.default_engine_model("smallest")
+    assert resolved, "smallest must resolve to a concrete model, never blank"
+    assert _key("Namaste ji.", engine="smallest", model=resolved) ==            _key("Namaste ji.", engine="smallest", model=resolved)
+
+
+@pytest.mark.parametrize("engine", ["sarvam", "smallest", "google", "edge", "rumik"])
+def test_every_live_engine_resolves_to_a_concrete_model(engine):
+    """A blank here silently recreates the mismatch above for that engine."""
+    providers = pytest.importorskip("app.providers")
+    assert providers.default_engine_model(engine).strip(), engine

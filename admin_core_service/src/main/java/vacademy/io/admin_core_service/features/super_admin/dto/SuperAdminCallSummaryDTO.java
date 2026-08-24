@@ -27,4 +27,15 @@ public class SuperAdminCallSummaryDTO {
     private java.util.Map<String, Double> costBreakdown;
     private java.util.Map<String, Long> byTtsModel;
     private Boolean costIsModelled;
+
+    /** TTS speech cache, aggregated over the same filter as the rest of this
+     *  summary. Null when NO call in the range measured it — the cache was off
+     *  everywhere, which must not read as "it ran and saved nothing". */
+    private Long ttsCacheHits;
+    private Long ttsCacheMisses;
+    private Double ttsCacheHitRate;
+    private Long ttsCacheCharsSaved;
+    /** Rupees kept off the TTS bill. Excludes engines with no confirmed
+     *  per-minute cost (edge is free, smallest has no invoice rate yet). */
+    private Double ttsCacheSavedInr;
 }

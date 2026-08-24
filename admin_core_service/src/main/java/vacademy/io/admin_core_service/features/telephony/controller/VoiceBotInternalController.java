@@ -282,6 +282,13 @@ public class VoiceBotInternalController {
         // key we dropped would be served Sarvam while billed for Rumik.
         base.put("tts_model", a.getTtsModel() != null && !a.getTtsModel().isBlank()
                 ? a.getTtsModel() : TtsVoiceCatalog.MODEL_SARVAM);
+        // V466 — snake_case for the same reason as tts_model above: the bot reads
+        // agent.get("speech_cache_mode"). Always emitted, never conditional: a
+        // dropped key would fall back to the bot's default, and the ONLY safe
+        // default for "may this agent replay stored audio" is OFF.
+        base.put("speech_cache_mode",
+                a.getSpeechCacheMode() != null && !a.getSpeechCacheMode().isBlank()
+                        ? a.getSpeechCacheMode().trim().toUpperCase() : "OFF");
         return base;
     }
 
@@ -307,6 +314,9 @@ public class VoiceBotInternalController {
         // billing resolves an unresolvable agent to 'sarvam' too, and the two must
         // agree or the fallback persona would be served one engine and billed another.
         agent.put("tts_model", TtsVoiceCatalog.MODEL_SARVAM);
+        // The built-in persona predates any admin decision about caching, so it
+        // gets the same answer an unconfigured agent gets.
+        agent.put("speech_cache_mode", "OFF");
         agent.put("openingLine",
                 "Namaste! Main " + instituteName + " se baat kar rahi hoon. Kya aapke paas do minute hain?");
         agent.put("systemPrompt",

@@ -61,6 +61,22 @@ public class CallDetailDTO {
     private List<String> diagFaults;
 
     /** Highest-priority fired code — what to headline when several fired. */
+    /**
+     * Was the TTS speech cache actually running on this call?
+     *
+     * <p>Decided HERE, not in the UI. The panel must not appear for the agents
+     * nobody has enabled it for — showing a grid of "not measured" advertises a
+     * feature the institute has not turned on and buries the rows that matter.
+     * And a per-call answer is the honest one: a call placed before the agent was
+     * switched on genuinely had no cache, whatever the agent's mode says today.
+     *
+     * <p>Derived from the diagnostics blob rather than joined from
+     * ai_agent.speech_cache_mode for that reason — the blob is what the bot
+     * recorded at the time, and its counters are null exactly when the cache was
+     * off or unreadable.
+     */
+    private Boolean ttsCacheActive;
+
     private String diagHeadline;
 
     /** Human sentence for {@link #diagHeadline}, e.g. "Voice synthesis stalled — caller heard silence". */

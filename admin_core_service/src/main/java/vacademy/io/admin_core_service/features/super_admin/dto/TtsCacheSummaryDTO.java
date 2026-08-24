@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.super_admin.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,6 +25,7 @@ import java.util.Map;
  * conflates those reports a rollout that never happened as one that failed.
  */
 @Data
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -51,6 +54,7 @@ public class TtsCacheSummaryDTO {
     private List<Day> series;
 
     @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor

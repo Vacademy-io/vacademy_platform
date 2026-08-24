@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.super_admin.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,6 +28,7 @@ public final class TtsCacheDTOs {
 
     /** Tab landing: one row per agent that has ever contributed to the cache. */
     @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -63,6 +66,7 @@ public final class TtsCacheDTOs {
 
     /** The sentences screen, and (with {@code reason} set) the misses screen. */
     @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -72,6 +76,7 @@ public final class TtsCacheDTOs {
         private int chars;
         /** A bot-authored line rather than something the LLM produced. The two
          *  answer to different admission rules, so the UI should say which. */
+        @com.fasterxml.jackson.annotation.JsonProperty("is_fixed")
         private boolean isFixed;
         private String engine;
         private String voice;
@@ -95,6 +100,7 @@ public final class TtsCacheDTOs {
     }
 
     @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -107,6 +113,7 @@ public final class TtsCacheDTOs {
 
     /** What a flush or delete did, or would do on a dry run. */
     @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor

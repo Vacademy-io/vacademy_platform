@@ -384,7 +384,13 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
             logger.error("tts: SMALLEST_API_KEY unset — falling back to Sarvam bulbul")
         else:
             sm_model = s.smallest_model
-            # An explicit "smallest:<model>" wins over the env default, so one
+            # "smallest_pro" is its own engine id (TtsVoiceCatalog.MODEL_SMALLEST_PRO),
+            # NOT a colon variant — without this it would fall through to the env
+            # default (lightning_v3.1) and send pro voices to the standard model,
+            # which the API rejects outright: a silent call.
+            if "pro" in model:
+                sm_model = "lightning_v3.1_pro"
+            # An explicit "smallest:<model>" still wins over both, so one
             # agent can run pro while others run standard.
             if ":" in model:
                 cand = model.split(":", 1)[1].strip()

@@ -1545,8 +1545,10 @@ _SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis
 _SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
 _SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
 _SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
-SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
-                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
+SMALLEST_VOICES = _SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+SMALLEST_PRO_VOICES = _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE
+# Kept for any caller that wants "is this a Smallest name at all" regardless of model.
+SMALLEST_ANY_VOICES = SMALLEST_VOICES | SMALLEST_PRO_VOICES
 
 # ── Deepgram Aura-2 ─────────────────────────────────────────────────────────
 # ENGLISH ONLY — the live /v1/models catalog has no Hindi voice at any tier, so
@@ -1579,6 +1581,8 @@ def _engine_of(model: str) -> str:
         return "rumik"
     if m.startswith(("google", "chirp")):
         return "google"
+    if m.startswith(("smallest", "lightning")) and "pro" in m:
+        return "smallest_pro"
     if m.startswith(("smallest", "lightning")):
         return "smallest"
     if m.startswith(("deepgram", "aura")):
@@ -1594,6 +1598,7 @@ _ENGINE_DEFAULT_VOICE = {
     # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
     "google": "hi-IN-Chirp3-HD-Achird",
     "smallest": "devansh",
+    "smallest_pro": "mandar",
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
 }
@@ -1602,6 +1607,7 @@ _ENGINE_DEFAULT_VOICE = {
 def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
             "smallest": SMALLEST_VOICES,
+            "smallest_pro": SMALLEST_PRO_VOICES,
             "deepgram": DEEPGRAM_VOICES}.get(engine)
 
 
@@ -1656,7 +1662,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES, DEEPGRAM_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES):
         if low in other:
             return None
     return voice

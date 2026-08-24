@@ -655,3 +655,48 @@ def test_every_live_engine_resolves_to_a_concrete_model(engine):
     """A blank here silently recreates the mismatch above for that engine."""
     providers = pytest.importorskip("app.providers")
     assert providers.default_engine_model(engine).strip(), engine
+
+
+# ── the wording-consistency prompt rule (bot.build_system_prompt) ────────────
+
+def _prompt_for(mode, language="hinglish"):
+    pytest.importorskip("pipecat.frames.frames")
+    # build_system_prompt fills date placeholders with glibc-only strftime
+    # directives (%-d). They work on the Linux container and raise on Windows,
+    # which is the same reason several existing tests here cannot run locally.
+    import datetime as _dt
+    try:
+        _dt.datetime.now().strftime("%-d")
+    except ValueError:
+        pytest.skip("%-d strftime is glibc-only; this asserts in CI")
+    from app import bot
+    agent = {"id": "a1", "name": "T", "language": language, "voice": "mrunal",
+             "tts_model": "smallest_pro", "systemPrompt": "SCRIPT BODY",
+             "openingLine": "नमस्ते जी।", "speech_cache_mode": mode}
+    return bot.build_system_prompt({"agent": agent, "instituteName": "X",
+                                    "direction": "OUTBOUND", "leadName": "P"})
+
+
+def test_consistency_rule_is_absent_for_an_agent_with_the_cache_off():
+    """It tightens delivery for a reason that only exists when the cache is on.
+    26 agents are OFF and this feature has no business changing how they speak."""
+    for mode in ("OFF", "", None):
+        assert "SAY A RECURRING LINE THE SAME WAY" not in _prompt_for(mode), mode
+
+
+def test_consistency_rule_is_present_once_the_cache_is_on():
+    """The three drifts measured on shreya-v3, now told to every cached agent
+    instead of being fixed one prompt at a time."""
+    for mode in ("FIXED", "FULL"):
+        p = _prompt_for(mode)
+        assert "SAY A RECURRING LINE THE SAME WAY" in p, mode
+        assert "never Raman" in p, mode
+        assert "never 'क्लास'" in p, mode
+        assert "सर/मैम goes exactly where the script puts it" in p, mode
+
+
+def test_consistency_rule_never_forces_devanagari_on_an_english_agent():
+    """An en-IN agent is told to write Latin only; a Devanagari name rule there
+    would contradict its own SCRIPT rule."""
+    p = _prompt_for("FULL", language="en")
+    assert "never Raman" not in p

@@ -2103,6 +2103,33 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
                 "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
                 "for Hindi words ONLY; if a word is English, spell it in English."
             )
+
+        # WORDING CONSISTENCY — only for agents whose speech cache is ON.
+        #
+        # The cache keys on the exact sentence, so one line said two ways is two
+        # renders and neither is ever reused. Measured on live agent shreya-v3:
+        # SEVEN of its most-spoken sentences were near-duplicate PAIRS, each half
+        # sitting at count 1 instead of one entry at count 2 — so the longest,
+        # most-repeated lines in the call (86-172 chars) never cached at all.
+        # Every pair was one of three drifts: रमन/Raman, class/क्लास, and an
+        # optional leading "सर,".
+        #
+        # GATED, because it tightens delivery for a reason that only exists when
+        # the cache is on. An agent not using the cache keeps today's freedom —
+        # this feature has no business changing how 26 other agents speak.
+        if str(agent.get("speech_cache_mode") or "OFF").strip().upper() != "OFF":
+            script_rule += (
+                "\n- SAY A RECURRING LINE THE SAME WAY EVERY TIME — same words, same "
+                "order, same spelling. Three things drift and must not:"
+                "\n  * the student's NAME is always in DEVANAGARI — रमन, never Raman; "
+                "आर्यन, never Aryan. In this conversation the name is a Hindi word, not an "
+                "English one."
+                "\n  * an English word is never in Devanagari — write 'class', never "
+                "'क्लास'."
+                "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
+                "Never add one to a line that does not already open with it."
+            )
+
     # REGISTER. Founder, after hearing live calls: "everything is highly formal
     # Hindi... words that in general are not used". Measured across two days of
     # calls: 198 uses of literary vocabulary — प्रदर्शन 37x, पूछताछ 28x, अकादमिक

@@ -139,8 +139,15 @@ sweeper defers when the box is at half its concurrent-call cap or above — synt
 network but the decode is real CPU on a 1 vCPU node, and background work must never be why a
 live caller hears a glitch. The periodic tick then catches up during a lull.
 
-**Admission:** a key is rendered after `TTS_CACHE_MIN_SEEN` (default 2) qualifying sightings,
-so a sentence first hits on its third. Break-even is 3 uses. This is also what makes caching
+**Admission:** an LLM sentence is rendered after `TTS_CACHE_MIN_SEEN` (default 2) qualifying
+sightings, so it first hits on its third. Break-even is 3 uses.
+
+**A fixed line is rendered after ONE sighting.** The threshold exists because an LLM sentence
+might be a one-off — a name that never recurs — and a second sighting is how we learn it was
+worth rendering. A fixed line carries no such doubt: it is authored, and it is spoken on every
+call by construction. Making it wait would delay the only lines guaranteed to pay off, which is
+the opposite of what the threshold is for. So the bot's own lines are cached from **call 1 and
+hit from call 2**, with or without warm-on-save. This is also what makes caching
 name-bearing sentences affordable: a one-off personalised sentence costs zero disk and zero
 extra vendor spend, while a first name that recurs across a lead list is picked up
 automatically.

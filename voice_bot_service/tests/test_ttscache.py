@@ -340,6 +340,38 @@ def test_render_is_due_only_after_min_seen_sightings(cache):
     assert [d.key for d in due] == [c.key]      # twice is
 
 
+def test_a_fixed_line_is_due_after_ONE_sighting(cache):
+    """MIN_SEEN exists because an LLM sentence might be a one-off — a name that
+    never recurs — so a second sighting is how we learn it was worth rendering.
+
+    A fixed line has no such doubt: it is authored, and it is spoken on every
+    call by construction. Making it wait would delay the only lines guaranteed to
+    pay off, which is the opposite of what the threshold is for.
+    """
+    fixed = _cand("Namaste ji, main Shreya bol rahi hoon.", fixed=True)
+    cache.ladder([fixed])
+    assert [d.key for d in cache.due()] == [fixed.key]
+
+
+def test_an_llm_sentence_still_waits_for_the_second(cache):
+    """The other half — dropping the threshold for everything would spend a
+    render on every one-off personalised sentence."""
+    llm = _cand("Rohan abhi kaun si class mein hai?")
+    cache.ladder([llm])
+    assert cache.due() == []
+    cache.ladder([llm])
+    assert [d.key for d in cache.due()] == [llm.key]
+
+
+def test_fixed_lines_are_rendered_before_speculative_ones(cache):
+    """A capped pass must spend its budget on the certain wins first."""
+    fixed = _cand("Theek hai, dhanyavaad.", fixed=True)
+    llm = _cand("Aur uski fees kya hai?")
+    cache.ladder([llm]); cache.ladder([llm])
+    cache.ladder([fixed])
+    assert cache.due(limit=1)[0].key == fixed.key
+
+
 def test_an_already_rendered_key_is_not_due_again(cache):
     c = _cand("Yeh humara flagship programme hai.")
     cache.ladder([c])

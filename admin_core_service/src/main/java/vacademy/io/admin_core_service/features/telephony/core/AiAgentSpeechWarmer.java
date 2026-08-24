@@ -32,6 +32,12 @@ import java.util.Set;
  * without having to decide whether a caller really heard it. Everything the LLM
  * says has to earn its place in the cache the slow way, from calls that worked.
  *
+ * <p>NEEDS telephony.vacademy-ai.client-secret (or VOICE_BOT_CLIENT_SECRET) on
+ * admin-core — the same value the bot already holds. Blank is a SUPPORTED state,
+ * not a broken one: warming simply does not happen, and the bot learns its fixed
+ * lines from the first call instead, hitting from the second. All this buys is
+ * moving the opening line's first hit from call 2 to call 1.
+ *
  * <p>WHY IT CANNOT FAIL A SAVE. This spends money (each render is a vendor
  * synthesis) and crosses an ocean (admin core in Singapore, bot in Mumbai). An
  * admin pressing Save must never see either. Fire-and-forget, exactly like

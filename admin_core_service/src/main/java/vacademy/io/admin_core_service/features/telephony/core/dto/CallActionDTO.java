@@ -29,6 +29,9 @@ public class CallActionDTO {
 
     private String id;
 
+    /** The call this came from, from source_ref '<callLogId>:<ruleId>'. */
+    private String callLogId;
+
     /** The rule that fired, from source_ref '<callLogId>:<ruleId>'. */
     private String ruleId;
 
@@ -57,6 +60,7 @@ public class CallActionDTO {
         int colon = ref.indexOf(':');
         return CallActionDTO.builder()
                 .id(a.getId())
+                .callLogId(colon > 0 ? ref.substring(0, colon) : null)
                 .ruleId(colon >= 0 ? ref.substring(colon + 1) : null)
                 .actionType(a.getActionType())
                 .channel(a.getChannel())

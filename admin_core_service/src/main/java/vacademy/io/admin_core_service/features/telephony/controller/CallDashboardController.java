@@ -101,6 +101,37 @@ public class CallDashboardController {
                          .stream().map(CallActionDTO::from).toList());
      }
 
+     /**
+      * The whole institute's AI-call send backlog, with counts.
+      *
+      * <p>The per-call panel answers "did THIS call's promise go out?". This answers the
+      * question someone actually has when a parent says they never got the link: "what is
+      * stuck, anywhere?". Without it the only way to find a failed send was to guess which
+      * call it belonged to and open that one.
+      *
+      * <p>Default statuses are the ones that need a human: queued (the dispatch job has not
+      * reached it), mid-dispatch, failed, and expired-unsent. SENT is excluded unless asked
+      * for, because a delivered message is not a task.
+      */
+     @GetMapping("/actions/queue")
+     public ResponseEntity<Map<String, Object>> actionQueue(
+             @RequestParam String instituteId,
+             @RequestParam(defaultValue = "OPEN,DISPATCHING,FAILED,EXPIRED") String statuses,
+             @RequestParam(defaultValue = "50") int limit,
+             @RequestAttribute("user") CustomUserDetails user) {
+         instituteAccessValidator.validateUserAccess(user, instituteId);
+         List<String> wanted = java.util.Arrays.stream(statuses.split(","))
+                 .map(String::trim).filter(x -> !x.isEmpty()).toList();
+         List<CallActionDTO> items = actionRepository
+                 .findAiCallActions(instituteId, wanted, Math.min(limit, 200))
+                 .stream().map(CallActionDTO::from).toList();
+         Map<String, Long> counts = new java.util.LinkedHashMap<>();
+         for (Object[] row : actionRepository.countAiCallActionsByStatus(instituteId)) {
+             counts.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+         }
+         return ResponseEntity.ok(Map.of("counts", counts, "items", items));
+     }
+
      @GetMapping("/{callLogId}/detail")
     public ResponseEntity<CallDetailDTO> detail(
             @PathVariable String callLogId,
